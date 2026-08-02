@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { SettingsForm } from './components/SettingsForm'
-import { copyFileToFolder, downloadFile, listLibraryRecursive, type DriveFile } from './lib/drive'
+import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
+import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
 import { matchesSearch, parseFilename } from './lib/parseFilename'
 import { clearSettings, loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
 
@@ -17,7 +18,9 @@ export default function App() {
 
   const [files, setFiles] = useState<DriveFile[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false) // first-ever build, nothing cached to show meanwhile
+  const [syncing, setSyncing] = useState(false) // background refresh, cached list already shown
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -40,6 +43,17 @@ export default function App() {
     return <SettingsForm initial={loadPartialSettings()} onSave={(s) => { saveSettings(s); setSettings(s) }} />
   }
 
+  async function runSync(newToken: string) {
+    setLoadError(null)
+    try {
+      const { cache, rebuilt } = await syncLibrary(newToken, settings!.libraryFolderId)
+      setFiles(cache.files)
+      setSyncMessage(rebuilt ? `Library built — ${cache.files.length} books.` : 'Synced.')
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load your library.')
+    }
+  }
+
   async function handleSignIn() {
     setAuthError(null)
     setSigningIn(true)
@@ -48,14 +62,16 @@ export default function App() {
       async (newToken) => {
         setSigningIn(false)
         setToken(newToken)
-        setLoading(true)
-        setLoadError(null)
-        try {
-          const listed = await listLibraryRecursive(newToken, settings!.libraryFolderId)
-          setFiles(listed)
-        } catch (err) {
-          setLoadError(err instanceof Error ? err.message : 'Failed to load your library.')
-        } finally {
+
+        const cached = loadCachedFiles(settings!.libraryFolderId)
+        if (cached) {
+          setFiles(cached)
+          setSyncing(true)
+          await runSync(newToken)
+          setSyncing(false)
+        } else {
+          setLoading(true)
+          await runSync(newToken)
           setLoading(false)
         }
       },
@@ -64,6 +80,21 @@ export default function App() {
         setAuthError(message)
       },
     )
+  }
+
+  async function handleRefresh() {
+    if (!token) return
+    setSyncing(true)
+    await runSync(token)
+    setSyncing(false)
+  }
+
+  async function handleRebuild() {
+    if (!token) return
+    clearLibraryCache()
+    setLoading(true)
+    await runSync(token)
+    setLoading(false)
   }
 
   function toggleSelected(id: string) {
@@ -153,18 +184,38 @@ export default function App() {
     <div className="mx-auto max-w-2xl p-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">BookBrain Library</h1>
-        <button
-          className="text-xs text-neutral-400 underline"
-          onClick={() => {
-            clearSettings()
-            setSettings(null)
-            setToken(null)
-            setFiles(null)
-          }}
-        >
-          Change settings
-        </button>
+        <div className="flex items-center gap-3 text-xs text-neutral-400">
+          <button
+            className="underline disabled:opacity-50"
+            disabled={syncing || loading}
+            onClick={handleRefresh}
+          >
+            {syncing ? 'Syncing…' : 'Refresh'}
+          </button>
+          <button
+            className="underline disabled:opacity-50"
+            disabled={syncing || loading}
+            onClick={handleRebuild}
+          >
+            Rebuild
+          </button>
+          <button
+            className="underline"
+            onClick={() => {
+              clearSettings()
+              setSettings(null)
+              setToken(null)
+              setFiles(null)
+            }}
+          >
+            Change settings
+          </button>
+        </div>
       </div>
+
+      {syncMessage && !syncing && !loading && (
+        <p className="mt-1 text-xs text-neutral-400">{syncMessage}</p>
+      )}
 
       <input
         className="mt-4 w-full rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
@@ -173,7 +224,11 @@ export default function App() {
         onChange={(e) => setQuery(e.target.value)}
       />
 
-      {loading && <p className="mt-6 text-sm text-neutral-500">Loading your library…</p>}
+      {loading && (
+        <p className="mt-6 text-sm text-neutral-500">
+          Building your library for the first time — this may take a moment…
+        </p>
+      )}
       {loadError && <p className="mt-6 text-sm text-red-600">{loadError}</p>}
 
       {selected.size > 0 && (

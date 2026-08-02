@@ -3,10 +3,11 @@ export interface DriveFile {
   name: string
 }
 
-const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
+export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
 const EBOOK_EXTENSIONS = ['.epub', '.kpub']
+const WALK_CONCURRENCY = 8
 
-function isSupportedEbook(name: string): boolean {
+export function isSupportedEbook(name: string): boolean {
   const lower = name.toLowerCase()
   return EBOOK_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
@@ -22,6 +23,19 @@ async function driveFetch(token: string, path: string): Promise<unknown> {
   return response.json()
 }
 
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) || 1 }, worker))
+  return results
+}
+
 async function listChildren(token: string, folderId: string): Promise<{ files: DriveFile[]; folders: DriveFile[] }> {
   const files: DriveFile[] = []
   const folders: DriveFile[] = []
@@ -32,7 +46,7 @@ async function listChildren(token: string, folderId: string): Promise<{ files: D
     const pageParam = pageToken ? `&pageToken=${pageToken}` : ''
     const data = (await driveFetch(
       token,
-      `files?q=${query}&fields=nextPageToken,files(id,name,mimeType)&pageSize=200${pageParam}`,
+      `files?q=${query}&fields=nextPageToken,files(id,name,mimeType)&pageSize=1000${pageParam}`,
     )) as { files: { id: string; name: string; mimeType: string }[]; nextPageToken?: string }
 
     for (const f of data.files) {
@@ -45,16 +59,80 @@ async function listChildren(token: string, folderId: string): Promise<{ files: D
   return { files, folders }
 }
 
-export async function listLibraryRecursive(token: string, rootFolderId: string): Promise<DriveFile[]> {
-  const all: DriveFile[] = []
-  const stack = [rootFolderId]
-  while (stack.length > 0) {
-    const current = stack.pop()!
-    const { files, folders } = await listChildren(token, current)
-    all.push(...files)
-    stack.push(...folders.map((f) => f.id))
+// Breadth-first, with every folder at the current depth fetched concurrently
+// (capped at WALK_CONCURRENCY) instead of one Drive API round-trip at a
+// time — the sequential version turns "a few hundred author/series
+// subfolders" into minutes of pure network latency.
+export async function listLibraryTree(
+  token: string,
+  rootFolderId: string,
+): Promise<{ files: DriveFile[]; folderIds: string[] }> {
+  const allFiles: DriveFile[] = []
+  const folderIds = new Set<string>([rootFolderId])
+  let frontier = [rootFolderId]
+
+  while (frontier.length > 0) {
+    const results = await mapConcurrent(frontier, WALK_CONCURRENCY, (folderId) => listChildren(token, folderId))
+    const nextFrontier: string[] = []
+    for (const { files, folders } of results) {
+      allFiles.push(...files)
+      for (const folder of folders) {
+        folderIds.add(folder.id)
+        nextFrontier.push(folder.id)
+      }
+    }
+    frontier = nextFrontier
   }
-  return all
+
+  return { files: allFiles, folderIds: Array.from(folderIds) }
+}
+
+export async function getStartPageToken(token: string): Promise<string> {
+  const data = (await driveFetch(token, 'changes/startPageToken')) as { startPageToken: string }
+  return data.startPageToken
+}
+
+export interface DriveChange {
+  fileId: string
+  removed: boolean
+  file?: {
+    id: string
+    name: string
+    mimeType: string
+    parents?: string[]
+    trashed?: boolean
+  }
+}
+
+const CHANGE_FIELDS = encodeURIComponent(
+  'nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,parents,trashed))',
+)
+
+// Drains every page from startPageToken to "now" and returns the token to
+// resume from next time. Changes are Drive-wide (not scoped to our library
+// folder) — the caller filters by checking each change's parent against
+// the known folder set.
+export async function listAllChanges(
+  token: string,
+  startPageToken: string,
+): Promise<{ changes: DriveChange[]; newStartPageToken: string }> {
+  const changes: DriveChange[] = []
+  let pageToken = startPageToken
+  let newStartPageToken = startPageToken
+
+  while (true) {
+    const data = (await driveFetch(
+      token,
+      `changes?pageToken=${encodeURIComponent(pageToken)}&pageSize=1000&fields=${CHANGE_FIELDS}`,
+    )) as { changes: DriveChange[]; nextPageToken?: string; newStartPageToken?: string }
+
+    changes.push(...data.changes)
+    if (data.newStartPageToken) newStartPageToken = data.newStartPageToken
+    if (!data.nextPageToken) break
+    pageToken = data.nextPageToken
+  }
+
+  return { changes, newStartPageToken }
 }
 
 export async function copyFileToFolder(token: string, file: DriveFile, destinationFolderId: string): Promise<void> {
