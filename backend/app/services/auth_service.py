@@ -6,7 +6,16 @@ from google_auth_oauthlib.flow import Flow
 
 from app.core import crypto
 from app.core.config import get_settings
-from app.core.settings_keys import GOOGLE_OAUTH_SCOPE_MODE, GOOGLE_OAUTH_TOKEN_ENC
+from app.core.settings_keys import (
+    DRIVE_INBOX_FOLDER_CREATED_BY_APP,
+    DRIVE_INBOX_FOLDER_ID,
+    DRIVE_INBOX_FOLDER_NAME,
+    DRIVE_LIBRARY_FOLDER_CREATED_BY_APP,
+    DRIVE_LIBRARY_FOLDER_ID,
+    DRIVE_LIBRARY_FOLDER_NAME,
+    GOOGLE_OAUTH_SCOPE_MODE,
+    GOOGLE_OAUTH_TOKEN_ENC,
+)
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.scopes import scope_for_folder_mode
 
@@ -17,7 +26,10 @@ class AuthService:
     afterward at folder-pick time."""
 
     def __init__(self) -> None:
-        self._pending_states: dict[str, str] = {}
+        # state -> (scope, code_verifier). The PKCE code_verifier generated
+        # for the authorization_url must be reused verbatim in the token
+        # exchange — a fresh one there fails with "Missing code verifier".
+        self._pending_states: dict[str, tuple[str, str]] = {}
 
     def _client_config(self) -> dict:
         settings = get_settings()
@@ -31,9 +43,11 @@ class AuthService:
             }
         }
 
-    def _flow(self, scope: str) -> Flow:
+    def _flow(self, scope: str, code_verifier: str | None = None) -> Flow:
         settings = get_settings()
-        flow = Flow.from_client_config(self._client_config(), scopes=[scope])
+        flow = Flow.from_client_config(
+            self._client_config(), scopes=[scope], code_verifier=code_verifier
+        )
         flow.redirect_uri = settings.google_oauth_redirect_uri
         return flow
 
@@ -45,17 +59,18 @@ class AuthService:
             prompt="consent",
             include_granted_scopes="false",
         )
-        self._pending_states[state] = scope
+        self._pending_states[state] = (scope, flow.code_verifier)
         return authorization_url
 
     async def handle_callback(
         self, code: str, state: str, settings_repo: SettingsRepository
     ) -> None:
-        scope = self._pending_states.pop(state, None)
-        if scope is None:
+        pending = self._pending_states.pop(state, None)
+        if pending is None:
             raise ValueError("unknown or expired OAuth state")
+        scope, code_verifier = pending
 
-        flow = self._flow(scope)
+        flow = self._flow(scope, code_verifier=code_verifier)
         flow.fetch_token(code=code)
         await self._persist(flow.credentials, settings_repo)
         await settings_repo.set(GOOGLE_OAUTH_SCOPE_MODE, scope)
@@ -100,8 +115,22 @@ class AuthService:
         return {"connected": enc is not None, "scope_mode": scope_mode}
 
     async def disconnect(self, settings_repo: SettingsRepository) -> None:
-        await settings_repo.delete(GOOGLE_OAUTH_TOKEN_ENC)
-        await settings_repo.delete(GOOGLE_OAUTH_SCOPE_MODE)
+        # A reconnect can point at a different Google account, or the user
+        # may deliberately be switching folder modes (app-created vs
+        # existing) — either way, folder selections made under the old
+        # connection are meaningless (and previously caused the folder
+        # picker to flash and immediately hide behind stale settings).
+        for key in (
+            GOOGLE_OAUTH_TOKEN_ENC,
+            GOOGLE_OAUTH_SCOPE_MODE,
+            DRIVE_INBOX_FOLDER_ID,
+            DRIVE_INBOX_FOLDER_NAME,
+            DRIVE_INBOX_FOLDER_CREATED_BY_APP,
+            DRIVE_LIBRARY_FOLDER_ID,
+            DRIVE_LIBRARY_FOLDER_NAME,
+            DRIVE_LIBRARY_FOLDER_CREATED_BY_APP,
+        ):
+            await settings_repo.delete(key)
 
 
 _auth_service = AuthService()

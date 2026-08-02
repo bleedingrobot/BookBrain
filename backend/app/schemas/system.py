@@ -6,4 +6,3 @@ class SystemStatus(BaseModel):
     google_books_configured: bool
     confidence_auto_organize: int
     confidence_auto_flagged: int
-    confidence_review_queue: int

@@ -1,5 +1,5 @@
 from app.providers.ai.anthropic_client import AIIdentificationError
-from app.providers.ai.types import AIIdentificationResult
+from app.providers.ai.types import AIIdentificationResult, AISeriesResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.identification_service import IdentificationService
@@ -8,16 +8,31 @@ from app.services.identification_service import IdentificationService
 class _FakeAIClient:
     model_name = "fake-model"
 
-    def __init__(self, result: AIIdentificationResult | None = None, raises: bool = False) -> None:
+    def __init__(
+        self,
+        result: AIIdentificationResult | None = None,
+        raises: bool = False,
+        series_result: AISeriesResult | None = None,
+        series_raises: bool = False,
+    ) -> None:
         self._result = result
         self._raises = raises
+        self._series_result = series_result or AISeriesResult(series=None, series_number=None)
+        self._series_raises = series_raises
         self.prompts: list[str] = []
+        self.series_calls: list[tuple[str, str | None]] = []
 
     async def identify(self, prompt: str):
         self.prompts.append(prompt)
         if self._raises:
             raise AIIdentificationError("simulated failure")
         return self._result, {"stop_reason": "tool_use"}
+
+    async def identify_series(self, title: str, author: str | None):
+        self.series_calls.append((title, author))
+        if self._series_raises:
+            raise AIIdentificationError("simulated series failure")
+        return self._series_result, {"stop_reason": "tool_use"}
 
 
 def _evidence(**overrides) -> EpubEvidence:
@@ -26,7 +41,7 @@ def _evidence(**overrides) -> EpubEvidence:
     return EpubEvidence(**defaults)
 
 
-async def test_fast_path_skips_ai_when_isbn_provider_and_epub_agree() -> None:
+async def test_fast_path_skips_full_identify_call() -> None:
     fake_client = _FakeAIClient()
     service = IdentificationService(ai_client=fake_client)
     candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a")]
@@ -36,7 +51,64 @@ async def test_fast_path_skips_ai_when_isbn_provider_and_epub_agree() -> None:
     assert result.model == "deterministic"
     assert result.title == "Dune"
     assert result.author == "Frank Herbert"
-    assert fake_client.prompts == []  # never called
+    assert fake_client.prompts == []  # full identify_book call never made
+
+
+async def test_fast_path_enriches_series_when_missing_from_epub_and_providers() -> None:
+    fake_client = _FakeAIClient(
+        series_result=AISeriesResult(series="Dune Chronicles", series_number=1)
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a")]
+
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert result.model == "deterministic"
+    assert result.series == "Dune Chronicles"
+    assert result.series_number == 1
+    assert fake_client.series_calls == [("Dune", "Frank Herbert")]
+    assert "Dune Chronicles" in result.reasoning_summary
+
+
+async def test_fast_path_skips_series_lookup_when_epub_already_has_it() -> None:
+    fake_client = _FakeAIClient()
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a")]
+
+    result = await service.identify(
+        filename="dune.epub", evidence=_evidence(series="Dune Chronicles"), candidates=candidates
+    )
+
+    assert result.series == "Dune Chronicles"
+    assert fake_client.series_calls == []  # EPUB already had it — no AI call needed
+
+
+async def test_fast_path_skips_series_lookup_when_a_provider_already_has_it() -> None:
+    fake_client = _FakeAIClient()
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], isbn13="9780441172719",
+            series="Dune Chronicles", source="a",
+        )
+    ]
+
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert result.series == "Dune Chronicles"
+    assert fake_client.series_calls == []
+
+
+async def test_fast_path_series_lookup_failure_does_not_break_identification() -> None:
+    fake_client = _FakeAIClient(series_raises=True)
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a")]
+
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert result.model == "deterministic"
+    assert result.series is None
+    assert result.computed_confidence > 0
 
 
 async def test_fast_path_not_taken_when_isbn_mismatched() -> None:

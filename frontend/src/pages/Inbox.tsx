@@ -36,7 +36,11 @@ export function Inbox() {
     <div className="p-6">
       <h1 className="text-xl font-semibold">Inbox</h1>
       <p className="mt-1 text-sm text-neutral-500">
-        Raw listing from Drive — parsing and identification land in later milestones.
+        Raw listing from Drive, before parsing and identification run. See the{' '}
+        <Link to="/library" className="underline">
+          Library
+        </Link>{' '}
+        for every file's identified status.
       </p>
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">

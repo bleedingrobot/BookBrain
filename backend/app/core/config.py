@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     # Confidence thresholds (SPEC.md §5)
     confidence_auto_organize: int = 95
     confidence_auto_flagged: int = 85
-    confidence_review_queue: int = 70
 
 
 @lru_cache

@@ -27,10 +27,15 @@ class _FakeDriveProvider:
     def __init__(self, content: bytes) -> None:
         self._content = content
         self.download_calls: list[str] = []
+        self.trash_calls: list[str] = []
 
     def download_file(self, file_id: str) -> bytes:
         self.download_calls.append(file_id)
         return self._content
+
+    def trash_file(self, file_id: str) -> dict:
+        self.trash_calls.append(file_id)
+        return {"id": file_id, "trashed": True}
 
 
 class _FakeIdentificationService:
@@ -76,7 +81,34 @@ def _counts() -> dict[str, int]:
         "skipped_existing": 0,
         "skipped_too_large": 0,
         "failed": 0,
+        "removed_non_ebook": 0,
     }
+
+
+async def test_process_file_safely_does_not_abort_batch_on_unexpected_error(db_session, monkeypatch) -> None:
+    # Regression: an unhandled exception mid-file (a UNIQUE-constraint race
+    # from an overlapping job, or anything else unexpected) used to crash
+    # the whole run_scan/run_rebuild loop, leaving the job stuck at
+    # "running" forever with nothing surfaced to the user.
+    import app.services.scan_service as scan_module
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("simulated unexpected failure")
+
+    monkeypatch.setattr(scan_module, "resolve_book", _boom)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(build_epub())
+    raw = {"id": "drive-boom", "name": "boom.epub", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file_safely(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["failed"] == 1
+    assert (await db_session.execute(select(File))).scalars().all() == []
+
+    # the session must still be usable for the next file in the batch
+    await db_session.execute(select(File))
 
 
 async def test_process_file_creates_file_and_metadata(db_session) -> None:
@@ -94,6 +126,7 @@ async def test_process_file_creates_file_and_metadata(db_session) -> None:
         "skipped_existing": 0,
         "skipped_too_large": 0,
         "failed": 0,
+        "removed_non_ebook": 0,
     }
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -111,6 +144,35 @@ async def test_process_file_creates_file_and_metadata(db_session) -> None:
     decision = (await db_session.execute(select(AIDecision))).scalar_one()
     assert decision.computed_confidence == 95
     assert decision.file_id == file_row.id
+
+
+async def test_process_file_accepts_kpub_extension(db_session) -> None:
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(build_epub(title="Foo", authors=("Bar",), isbn="9780134685991"))
+    raw = {"id": "drive-kpub", "name": "foo.kpub", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["new"] == 1
+    assert provider.trash_calls == []
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.drive_file_id == "drive-kpub"
+
+
+async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_session) -> None:
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(b"not a book")
+    raw = {"id": "drive-junk", "name": "cover.jpg", "parents": ["p"], "size": "50"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["removed_non_ebook"] == 1
+    assert counts["new"] == 0
+    assert provider.trash_calls == ["drive-junk"]
+    assert provider.download_calls == []  # never even downloaded
+    assert (await db_session.execute(select(File))).scalars().all() == []
 
 
 async def test_process_file_skips_already_known(db_session) -> None:
@@ -209,7 +271,10 @@ def _identification_result(confidence: int) -> IdentificationResult:
     )
 
 
-async def test_process_file_low_confidence_marks_unidentified(db_session) -> None:
+async def test_process_file_low_confidence_sends_to_review_not_unidentified(db_session) -> None:
+    # A low-confidence AI call (thin evidence: no ISBN, one provider) can
+    # still be a correct identification — it must land somewhere actionable
+    # (the review queue), never in the unreviewable `unidentified` dead end.
     service = _no_network_scan_service(_identification_result(50))
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-6", "name": "foo.epub", "parents": ["p"], "size": "100"}
@@ -217,9 +282,13 @@ async def test_process_file_low_confidence_marks_unidentified(db_session) -> Non
     await service._process_file(db_session, provider, raw, get_settings(), _counts())
 
     file_row = (await db_session.execute(select(File))).scalar_one()
-    assert file_row.status.value == "unidentified"
-    assert file_row.status_reason is None
+    assert file_row.status.value == "review"
+    assert file_row.status_reason.value == "low_confidence"
     assert file_row.book_id is not None
+
+    review = (await db_session.execute(select(Review))).scalar_one()
+    assert review.file_id == file_row.id
+    assert review.status.value == "pending"
 
 
 async def test_process_file_medium_confidence_marks_review(db_session) -> None:
@@ -247,6 +316,80 @@ async def test_process_file_multi_parent_overrides_confidence_routing(db_session
     # identification still ran and resolved a book, even though the file is
     # blocked from auto-organizing by the structural issue
     assert file_row.book_id is not None
+
+
+async def test_process_file_already_organised_skips_review_even_at_low_confidence(db_session) -> None:
+    # Rebuild mode: a file found sitting in the library folder is trusted
+    # as already-placed, regardless of what its confidence score is — it
+    # must never be routed to the review queue.
+    service = _no_network_scan_service(_identification_result(20))
+    provider = _FakeDriveProvider(build_epub())
+    raw = {"id": "drive-9", "name": "foo.epub", "parents": ["p"], "size": "100"}
+
+    await service._process_file(
+        db_session, provider, raw, get_settings(), _counts(), already_organised=True
+    )
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "organised"
+    assert file_row.status_reason is None
+    assert (await db_session.execute(select(Review))).scalar_one_or_none() is None
+
+
+async def test_process_file_already_organised_still_flags_structural_issues(db_session) -> None:
+    service = _no_network_scan_service(_identification_result(95))
+    provider = _FakeDriveProvider(build_epub())
+    raw = {"id": "drive-10", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
+
+    await service._process_file(
+        db_session, provider, raw, get_settings(), _counts(), already_organised=True
+    )
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "review"
+    assert file_row.status_reason.value == "multi_parent"
+
+
+async def test_run_rebuild_walks_library_tree_and_marks_organised(db_session, monkeypatch) -> None:
+    epub_bytes = build_epub(title="Foo", authors=("Bar",))
+
+    class _FakeRecursiveProvider:
+        def __init__(self) -> None:
+            self.download_calls: list[str] = []
+
+        def list_epub_files_recursive(self, root_folder_id: str) -> list[dict]:
+            return [{"id": "drive-lib-1", "name": "foo.epub", "parents": ["author-folder"], "size": "10"}]
+
+        def download_file(self, file_id: str) -> bytes:
+            self.download_calls.append(file_id)
+            return epub_bytes
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    fake_provider = _FakeRecursiveProvider()
+    monkeypatch.setattr(
+        "app.services.scan_service.DriveProvider", lambda _service: fake_provider
+    )
+    monkeypatch.setattr("app.services.scan_service.build_drive_service", lambda _creds: object())
+    monkeypatch.setattr("app.services.scan_service.async_session_factory", lambda: _CM())
+
+    service = _no_network_scan_service(_identification_result(95))
+    job = service.create_job()
+
+    await service.run_rebuild(job.job_id, creds=object(), library_root_folder_id="lib-root")
+
+    status = service.get_status(job.job_id)
+    assert status.status.value == "done"
+    assert "1 rebuilt" in status.detail
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "organised"
+    assert file_row.drive_file_id == "drive-lib-1"
 
 
 async def test_process_file_skips_declared_oversize_without_downloading(db_session) -> None:
@@ -360,6 +503,36 @@ async def test_process_file_duplicate_of_corrected_content_inherits_correction(d
 
     book = (await db_session.execute(select(Book).where(Book.id == new_file.book_id))).scalar_one()
     assert book.canonical_title == "Sticky Title"
+
+
+async def test_process_file_duplicate_of_rejected_content_is_flagged(db_session) -> None:
+    epub_bytes = build_epub()
+    sha256 = hashlib.sha256(epub_bytes).hexdigest()
+
+    rejected_file = File(
+        drive_file_id="already-rejected",
+        drive_parent_id="p",
+        filename="rejected.epub",
+        sha256=sha256,
+        size_bytes=len(epub_bytes),
+        status=FileStatus.rejected,
+    )
+    db_session.add(rejected_file)
+    await db_session.commit()
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(epub_bytes)
+    raw = {"id": "drive-13", "name": "foo.epub", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["duplicate"] == 1
+    new_file = (
+        await db_session.execute(select(File).where(File.drive_file_id == "drive-13"))
+    ).scalar_one()
+    assert new_file.status.value == "duplicate"
+    assert new_file.status_reason.value == "previously_rejected"
 
 
 async def test_process_file_library_rule_skips_candidates_and_ai(db_session) -> None:

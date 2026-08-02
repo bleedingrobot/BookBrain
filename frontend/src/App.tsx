@@ -5,7 +5,7 @@ import { Activity } from './pages/Activity'
 import { Dashboard } from './pages/Dashboard'
 import { Duplicates } from './pages/Duplicates'
 import { Inbox } from './pages/Inbox'
-import { Placeholder } from './pages/Placeholder'
+import { Library } from './pages/Library'
 import { ReviewQueue } from './pages/ReviewQueue'
 import { Settings } from './pages/Settings'
 
@@ -20,7 +20,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/review" element={<ReviewQueue />} />
-          <Route path="/library" element={<Placeholder title="Library" />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/settings" element={<Settings />} />

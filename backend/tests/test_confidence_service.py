@@ -114,3 +114,59 @@ def test_filename_match_is_case_and_punctuation_insensitive() -> None:
     )
 
     assert breakdown.components["filename_matches_title"] == 5
+
+
+def test_provider_dropping_leading_article_is_not_a_disagreement() -> None:
+    # Regression: library catalogs (Open Library, Google Books) commonly
+    # strip a leading "The"/"A"/"An" from titles. That must not be scored
+    # as a provider/EPUB disagreement.
+    evidence = _evidence(title="The Winner's Crime", authors=["Marie Rutkoski"])
+    candidates = [
+        MetadataCandidate(
+            title="Winner's Crime", authors=["Marie Rutkoski"], source="open_library"
+        )
+    ]
+
+    breakdown = score(
+        evidence=evidence, candidates=candidates, filename="the_winners_crime.epub"
+    )
+
+    assert breakdown.conflicts == {}
+    assert breakdown.components["provider_matches_epub"] == 20
+
+
+def test_series_dropping_leading_article_is_not_a_disagreement() -> None:
+    evidence = _evidence(series="The Expanse")
+    candidates = [
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], series="Expanse", source="a")
+    ]
+
+    breakdown = score(evidence=evidence, candidates=candidates, filename="dune.epub")
+
+    assert "series_disagreement" not in breakdown.conflicts
+
+
+def test_provider_title_with_colon_series_suffix_is_not_a_disagreement() -> None:
+    # Regression: Open Library returned two candidates for the same book —
+    # one titled "Disquiet Gods : The Sun Eater", one titled "Disquiet
+    # Gods" — which the scorer treated as disagreeing providers (-25) and
+    # dropped the identification to confidence 20, despite the AI and every
+    # other signal agreeing this was one unambiguous book.
+    evidence = _evidence(title="Disquiet Gods", authors=["Christopher Ruocchio"], isbn13=None)
+    candidates = [
+        MetadataCandidate(
+            title="Disquiet Gods : The Sun Eater",
+            authors=["Christopher Ruocchio"],
+            source="open_library",
+        ),
+        MetadataCandidate(
+            title="Disquiet Gods", authors=["Christopher Ruocchio"], source="open_library"
+        ),
+    ]
+
+    breakdown = score(
+        evidence=evidence, candidates=candidates, filename="Disquiet Gods.epub"
+    )
+
+    assert "provider_disagreement" not in breakdown.conflicts
+    assert breakdown.components["providers_agree"] == 15

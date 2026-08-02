@@ -7,3 +7,12 @@ def classify_file(raw: dict) -> str | None:
     if len(parents) == 0:
         return "no_parent"
     return None
+
+
+_SUPPORTED_EBOOK_EXTENSIONS = (".epub", ".kpub")
+
+
+def is_supported_ebook(filename: str) -> bool:
+    """.kpub (Kobo) doesn't have a reliable Drive mimeType, so both formats
+    are recognized by filename extension rather than mimeType."""
+    return filename.lower().endswith(_SUPPORTED_EBOOK_EXTENSIONS)

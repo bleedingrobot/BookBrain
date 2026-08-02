@@ -6,7 +6,7 @@ from app.providers.ai.anthropic_client import AIIdentificationError, AnthropicId
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.confidence_service import score
-from app.services.text_match import texts_match
+from app.services.text_match import texts_match, titles_match
 
 
 @dataclass
@@ -26,10 +26,16 @@ class IdentificationResult:
 
 
 class IdentificationService:
-    """SPEC.md §5 steps 5-8: skip the AI when ISBN + a metadata provider +
-    the EPUB's own metadata all already agree; otherwise ask the AI. Either
-    way, the *computed* confidence (§13) — not the AI's self-reported one —
-    drives the needs_human_review routing decision, per the hard rule in §1.
+    """SPEC.md §5 steps 5-8: skip the full identification AI call when ISBN +
+    a metadata provider + the EPUB's own metadata all already agree;
+    otherwise ask the AI. Either way, the *computed* confidence (§13) — not
+    the AI's self-reported one — drives the needs_human_review routing
+    decision, per the hard rule in §1.
+
+    The fast path still makes one lightweight AI call when series info is
+    missing from both the EPUB and every provider candidate — title/author
+    confidence doesn't need it, but series is worth asking about separately
+    since neither deterministic source may know it.
     """
 
     def __init__(self, ai_client: AnthropicIdentificationClient | None = None) -> None:
@@ -43,22 +49,54 @@ class IdentificationService:
         fast_match = _find_isbn_match(evidence, candidates)
         if fast_match is not None:
             breakdown = score(evidence=evidence, candidates=candidates, filename=filename)
+            title = fast_match.title or evidence.title or ""
+            author = _first_author(fast_match) or _first_author_evidence(evidence)
+            series = evidence.series
+            series_number = evidence.series_number
+            if series is None:
+                candidate_with_series = next((c for c in candidates if c.series), None)
+                if candidate_with_series is not None:
+                    series = candidate_with_series.series
+                    series_number = candidate_with_series.series_number
+            reasoning_summary = (
+                "Deterministic match: ISBN, a metadata provider, and the EPUB's "
+                "own metadata all agree on title and author."
+            )
+            raw_response: dict = {"confidence_breakdown": breakdown.as_dict()}
+
+            # ISBN/provider/EPUB agreement is enough to trust title+author
+            # without asking the AI. Series is a different question — neither
+            # the EPUB nor the provider necessarily know it, so when both are
+            # silent, make one lightweight AI call just for that (skipped
+            # entirely, no extra cost, when either source already has it).
+            if series is None:
+                client = self._ai_client or AnthropicIdentificationClient()
+                try:
+                    series_result, series_raw = await client.identify_series(title, author)
+                    series = series_result.series
+                    series_number = series_result.series_number
+                    raw_response["series_lookup"] = series_raw
+                    if series:
+                        reasoning_summary += (
+                            f" Series ({series}) supplied from general bibliographic "
+                            "knowledge — not present in the EPUB or provider metadata."
+                        )
+                except AIIdentificationError as exc:
+                    raw_response["series_lookup_error"] = str(exc)
+
             return IdentificationResult(
-                title=fast_match.title or evidence.title or "",
-                author=_first_author(fast_match) or _first_author_evidence(evidence),
-                series=evidence.series,
-                series_number=evidence.series_number,
+                title=title,
+                author=author,
+                series=series,
+                series_number=series_number,
                 computed_confidence=breakdown.total,
                 ai_reported_confidence=None,
                 needs_human_review=breakdown.total < 85,
-                reasoning_summary=(
-                    "Deterministic match: ISBN, a metadata provider, and the EPUB's "
-                    "own metadata all agree on title and author."
-                ),
+                reasoning_summary=reasoning_summary,
                 model="deterministic",
                 prompt_hash=hashlib.sha256(f"deterministic:{evidence_hash}".encode()).hexdigest(),
                 evidence_hash=evidence_hash,
-                raw_response={"confidence_breakdown": breakdown.as_dict()},
+                raw_response=raw_response,
             )
 
         prompt = _build_prompt(filename, evidence, candidates)
@@ -84,8 +122,8 @@ class IdentificationService:
                 raw_response={"error": str(exc), "confidence_breakdown": breakdown.as_dict()},
             )
 
-        ai_corroborates = texts_match(ai_result.title, evidence.title) or any(
-            texts_match(ai_result.title, c.title) for c in candidates
+        ai_corroborates = titles_match(ai_result.title, evidence.title) or any(
+            titles_match(ai_result.title, c.title) for c in candidates
         )
         breakdown = score(
             evidence=evidence,
@@ -130,7 +168,7 @@ def _find_isbn_match(
         )
         if not isbn_matches:
             continue
-        if not texts_match(candidate.title, evidence.title):
+        if not titles_match(candidate.title, evidence.title):
             continue
         if not texts_match(_first_author(candidate), _first_author_evidence(evidence)):
             continue

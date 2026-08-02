@@ -28,6 +28,7 @@ class FileStatus(str, enum.Enum):
     review = "review"
     unidentified = "unidentified"
     duplicate = "duplicate"
+    rejected = "rejected"
 
 
 class FileStatusReason(str, enum.Enum):
@@ -36,6 +37,7 @@ class FileStatusReason(str, enum.Enum):
     manual_drift = "manual_drift"
     parse_failed = "parse_failed"
     low_confidence = "low_confidence"
+    previously_rejected = "previously_rejected"
 
 
 class OperationAction(str, enum.Enum):

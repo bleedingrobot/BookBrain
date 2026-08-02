@@ -21,7 +21,7 @@ def test_build_target_path_with_series() -> None:
     )
 
     assert folders == ["Frank Herbert", "Dune Chronicles"]
-    assert filename == "1 - Dune.epub"
+    assert filename == "Frank Herbert, Dune, Dune Chronicles, 1.epub"
 
 
 def test_build_target_path_without_series() -> None:
@@ -30,7 +30,7 @@ def test_build_target_path_without_series() -> None:
     )
 
     assert folders == ["William Gibson"]
-    assert filename == "Neuromancer.epub"
+    assert filename == "William Gibson, Neuromancer.epub"
 
 
 def test_build_target_path_no_author() -> None:
@@ -58,7 +58,15 @@ def test_build_target_path_fractional_series_number() -> None:
         title="Novella", author_name="Author", series_name="Series", series_number=2.5
     )
 
-    assert filename == "2.5 - Novella.epub"
+    assert filename == "Author, Novella, Series, 2.5.epub"
+
+
+def test_build_target_path_series_without_series_number() -> None:
+    _, filename = build_target_path(
+        title="Novella", author_name="Author", series_name="Series", series_number=None
+    )
+
+    assert filename == "Author, Novella, Series.epub"
 
 
 class _FakeFolderProvider:
@@ -168,7 +176,7 @@ async def test_organize_file_dry_run_does_not_touch_drive_or_file_status(db_sess
     )
 
     assert operation.dry_run is True
-    assert operation.new_name == "Dune.epub"
+    assert operation.new_name == "Frank Herbert, Dune.epub"
     assert operation.new_parent_id == "Frank Herbert"
 
     await db_session.refresh(file_row)
@@ -191,11 +199,11 @@ async def test_organize_file_real_run_moves_and_updates_file(db_session) -> None
     move = provider.move_calls[0]
     assert move["file_id"] == "drive-1"
     assert move["old_parent_id"] == "inbox-parent"
-    assert move["new_name"] == "Dune.epub"
+    assert move["new_name"] == "Frank Herbert, Dune.epub"
 
     await db_session.refresh(file_row)
     assert file_row.status.value == "organised"
-    assert file_row.filename == "Dune.epub"
+    assert file_row.filename == "Frank Herbert, Dune.epub"
     assert file_row.drive_parent_id == move["new_parent_id"]
 
 

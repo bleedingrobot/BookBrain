@@ -19,6 +19,15 @@ from app.services import review_service
 from app.services.review_service import ReviewAlreadyResolvedError, ReviewNotFoundError
 
 
+class _FakeProvider:
+    def __init__(self) -> None:
+        self.trashed: list[str] = []
+
+    def trash_file(self, file_id: str) -> dict:
+        self.trashed.append(file_id)
+        return {"id": file_id, "trashed": True}
+
+
 async def _seed_review(
     db_session,
     *,
@@ -118,7 +127,7 @@ async def test_approve_twice_raises(db_session) -> None:
         await review_service.approve(db_session, review.id)
 
 
-async def test_reject_clears_book_and_marks_unidentified(db_session) -> None:
+async def test_reject_trashes_drive_file_clears_book_and_marks_rejected(db_session) -> None:
     author = Author(name="X")
     db_session.add(author)
     await db_session.flush()
@@ -127,12 +136,48 @@ async def test_reject_clears_book_and_marks_unidentified(db_session) -> None:
     await db_session.flush()
 
     review = await _seed_review(db_session, book_id=book.id)
+    provider = _FakeProvider()
 
-    await review_service.reject(db_session, review.id)
+    await review_service.reject(db_session, review.id, provider)
+
+    assert provider.trashed == ["drive-1"]
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.book_id is None
-    assert file_row.status.value == "unidentified"
+    assert file_row.status.value == "rejected"
+    assert file_row.status_reason is None
+
+    updated = (await db_session.execute(select(Review))).scalar_one()
+    assert updated.status.value == "rejected"
+    assert updated.resolved_at is not None
+
+
+async def test_reject_clears_structural_reason_too(db_session) -> None:
+    # Unlike approve/correct, reject removes the file from Drive entirely —
+    # an unresolved structural issue (multi-parent, etc.) becomes moot once
+    # there's nothing left to fix.
+    review = await _seed_review(db_session, status_reason=FileStatusReason.multi_parent)
+    provider = _FakeProvider()
+
+    await review_service.reject(db_session, review.id, provider)
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "rejected"
+    assert file_row.status_reason is None
+
+
+async def test_reject_leaves_review_pending_when_drive_trash_fails(db_session) -> None:
+    class _FailingProvider:
+        def trash_file(self, file_id: str) -> dict:
+            raise RuntimeError("simulated Drive failure")
+
+    review = await _seed_review(db_session)
+
+    with pytest.raises(RuntimeError):
+        await review_service.reject(db_session, review.id, _FailingProvider())
+
+    updated = (await db_session.execute(select(Review))).scalar_one()
+    assert updated.status.value == "pending"
 
 
 async def test_correct_resolves_new_book_and_promotes_status(db_session) -> None:

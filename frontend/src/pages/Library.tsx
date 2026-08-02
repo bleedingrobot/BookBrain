@@ -1,0 +1,285 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { api, ApiError } from '../services/api'
+import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
+import { useRebuildStatus } from '../hooks/useRebuildStatus'
+
+const STATUSES = ['inbox', 'review', 'unidentified', 'duplicate', 'organised', 'rejected'] as const
+
+const STATUS_LABEL: Record<string, string> = {
+  inbox: 'Inbox',
+  review: 'Needs review',
+  unidentified: 'Unidentified',
+  duplicate: 'Duplicate',
+  organised: 'Organised',
+  rejected: 'Rejected',
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  inbox: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
+  review: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  unidentified: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  duplicate: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  organised: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  rejected: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+}
+
+const REASON_LABEL: Record<string, string> = {
+  multi_parent: 'in multiple folders',
+  no_parent: 'no folder',
+  manual_drift: 'moved outside the app',
+  parse_failed: "couldn't be parsed",
+  low_confidence: 'low confidence',
+  previously_rejected: 'duplicate of a previously rejected file',
+}
+
+export function Library() {
+  const queryClient = useQueryClient()
+  const [status, setStatus] = useState<string | undefined>(undefined)
+  const [showOrganised, setShowOrganised] = useState(false)
+  const [showDuplicates, setShowDuplicates] = useState(false)
+  const [organizeJobId, setOrganizeJobId] = useState<string | null>(null)
+  const [organizeError, setOrganizeError] = useState<string | null>(null)
+  const [confirmingClear, setConfirmingClear] = useState(false)
+  const [clearError, setClearError] = useState<string | null>(null)
+  const [rebuildJobId, setRebuildJobId] = useState<string | null>(null)
+  const [rebuildError, setRebuildError] = useState<string | null>(null)
+  const [organizeStarting, setOrganizeStarting] = useState(false)
+  const [rebuildStarting, setRebuildStarting] = useState(false)
+
+  const files = useQuery({ queryKey: ['files', status], queryFn: () => api.listFiles(status) })
+  const organizeSettings = useQuery({
+    queryKey: ['organize-settings'],
+    queryFn: api.getOrganizeSettings,
+  })
+  const organize = useOrganizeStatus(organizeJobId)
+  const rebuild = useRebuildStatus(rebuildJobId)
+
+  const clearLibrary = useMutation({
+    mutationFn: api.clearLibrary,
+    onSuccess: () => {
+      setConfirmingClear(false)
+      setClearError(null)
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+    onError: (err: unknown) =>
+      setClearError(err instanceof ApiError ? err.message : 'Failed to clear library.'),
+  })
+
+  useEffect(() => {
+    if (organize.data?.status === 'done') {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    }
+  }, [organize.data?.status, queryClient])
+
+  useEffect(() => {
+    if (rebuild.data?.status === 'done') {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    }
+  }, [rebuild.data?.status, queryClient])
+
+  const visibleFiles =
+    status === undefined
+      ? files.data?.filter(
+          (f) =>
+            (showOrganised || (f.status !== 'organised' && f.status !== 'rejected')) &&
+            (showDuplicates || f.status !== 'duplicate'),
+        )
+      : files.data
+
+  return (
+    <div className="p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Library</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Every file the app knows about, whatever its status — nothing here is hidden.
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <div className="flex justify-end gap-2">
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              disabled={organizeStarting || organize.data?.status === 'running'}
+              onClick={async () => {
+                setOrganizeError(null)
+                setOrganizeStarting(true)
+                try {
+                  const job = await api.startOrganize()
+                  setOrganizeJobId(job.job_id)
+                } catch (err) {
+                  setOrganizeError(err instanceof ApiError ? err.message : 'Failed to start organize.')
+                } finally {
+                  setOrganizeStarting(false)
+                }
+              }}
+            >
+              {organizeSettings.data?.dry_run ? 'Organize (dry run)' : 'Organize'}
+            </button>
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              disabled={rebuildStarting || rebuild.data?.status === 'running'}
+              onClick={async () => {
+                setRebuildError(null)
+                setRebuildStarting(true)
+                try {
+                  const job = await api.rebuildLibrary()
+                  setRebuildJobId(job.job_id)
+                } catch (err) {
+                  setRebuildError(err instanceof ApiError ? err.message : 'Failed to start rebuild.')
+                } finally {
+                  setRebuildStarting(false)
+                }
+              }}
+            >
+              Rebuild library
+            </button>
+            <button
+              className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+              onClick={() => setConfirmingClear(true)}
+            >
+              Clear library
+            </button>
+          </div>
+          {organizeError && <p className="mt-1 text-xs text-red-600">{organizeError}</p>}
+          {organize.data && (
+            <p className="mt-1 text-xs text-neutral-500">
+              organize: {organize.data.status}
+              {organize.data.detail ? ` — ${organize.data.detail}` : ''}
+            </p>
+          )}
+          {rebuildError && <p className="mt-1 text-xs text-red-600">{rebuildError}</p>}
+          {rebuild.data && (
+            <p className="mt-1 text-xs text-neutral-500">
+              rebuild: {rebuild.data.status}
+              {rebuild.data.detail ? ` — ${rebuild.data.detail}` : ''}
+            </p>
+          )}
+
+          {confirmingClear && (
+            <div className="mt-3 max-w-sm space-y-2 rounded border border-red-300 p-3 text-left text-xs dark:border-red-800">
+              <p className="text-red-700 dark:text-red-400">
+                This deletes every tracked file, book, review, and operation from the app's
+                database so you can rescan from scratch — sha256 duplicate detection won't
+                block re-processing anymore. It does not touch anything in Google Drive, and
+                your connection/folder settings are kept.
+              </p>
+              {clearError && <p className="text-red-600">{clearError}</p>}
+              <div className="flex gap-2">
+                <button
+                  className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  disabled={clearLibrary.isPending}
+                  onClick={() => clearLibrary.mutate()}
+                >
+                  Yes, clear everything
+                </button>
+                <button
+                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  onClick={() => setConfirmingClear(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setStatus(undefined)}
+          className={`rounded px-3 py-1 text-xs font-medium ${
+            status === undefined
+              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+              : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+          }`}
+        >
+          All
+        </button>
+        {STATUSES.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={`rounded px-3 py-1 text-xs font-medium ${
+              status === s
+                ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+            }`}
+          >
+            {STATUS_LABEL[s]}
+          </button>
+        ))}
+
+        {status === undefined && (
+          <>
+            <label className="ml-2 flex items-center gap-1.5 text-xs text-neutral-500">
+              <input
+                type="checkbox"
+                checked={showOrganised}
+                onChange={(e) => setShowOrganised(e.target.checked)}
+              />
+              Show organised/rejected
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <input
+                type="checkbox"
+                checked={showDuplicates}
+                onChange={(e) => setShowDuplicates(e.target.checked)}
+              />
+              Show duplicates
+            </label>
+          </>
+        )}
+      </div>
+
+      {files.isLoading && <div className="mt-6 text-sm text-neutral-500">Loading...</div>}
+      {files.isError && <div className="mt-6 text-sm text-neutral-500">Failed to load files.</div>}
+
+      <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+        {visibleFiles?.map((file) => (
+          <li key={file.id} className="py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">
+                  {file.book_title ?? file.filename}
+                  {file.book_author && (
+                    <span className="ml-2 font-normal text-neutral-500">by {file.book_author}</span>
+                  )}
+                </div>
+                <div className="truncate text-xs text-neutral-400">
+                  {file.book_series && (
+                    <span>
+                      {file.book_series}
+                      {file.book_series_number !== null && ` #${file.book_series_number}`}
+                      {' · '}
+                    </span>
+                  )}
+                  {file.book_title && file.filename}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {file.computed_confidence !== null && (
+                  <span className="text-xs text-neutral-400">confidence {file.computed_confidence}</span>
+                )}
+                <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[file.status] ?? ''}`}>
+                  {STATUS_LABEL[file.status] ?? file.status}
+                </span>
+              </div>
+            </div>
+            {(file.status_reason || file.ai_reasoning) && (
+              <p className="mt-1 text-xs text-neutral-500">
+                {file.status_reason && (REASON_LABEL[file.status_reason] ?? file.status_reason)}
+                {file.status_reason && file.ai_reasoning && ' — '}
+                {file.ai_reasoning}
+              </p>
+            )}
+          </li>
+        ))}
+        {visibleFiles?.length === 0 && (
+          <li className="py-4 text-neutral-400">No files match this filter.</li>
+        )}
+      </ul>
+    </div>
+  )
+}

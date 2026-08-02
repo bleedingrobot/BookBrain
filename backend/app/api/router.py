@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.routes import auth, drive, duplicates, health, operations, organize, reviews, scan, settings
+from app.api.routes import (
+    auth,
+    drive,
+    duplicates,
+    files,
+    health,
+    library,
+    operations,
+    organize,
+    reviews,
+    scan,
+    settings,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
@@ -12,3 +24,5 @@ api_router.include_router(settings.router)
 api_router.include_router(reviews.router)
 api_router.include_router(duplicates.router)
 api_router.include_router(operations.router)
+api_router.include_router(files.router)
+api_router.include_router(library.router)

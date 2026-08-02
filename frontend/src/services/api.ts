@@ -1,6 +1,7 @@
 import type { AuthStartResponse, AuthStatus, FolderMode } from '../types/auth'
 import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive'
-import type { DuplicateGroup } from '../types/duplicates'
+import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
+import type { FileSummary } from '../types/files'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
@@ -97,6 +98,14 @@ export const api = {
   rejectReview: (id: number) => request<ReviewDetail>(`/reviews/${id}/reject`, { method: 'POST' }),
 
   listDuplicates: () => request<DuplicateGroup[]>('/duplicates'),
+  clearDuplicates: () => request<ClearDuplicatesResult>('/duplicates/clear', { method: 'POST' }),
+
+  listFiles: (status?: string) =>
+    request<FileSummary[]>(`/files${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+
+  clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
+  rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),
+  getRebuildStatus: (jobId: string) => request<ScanJobStatus>(`/library/rebuild/${jobId}`),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),

@@ -315,10 +315,9 @@ export function Settings() {
                   Activity
                 </li>
                 <li>
-                  {systemStatus.data.confidence_review_queue}–
-                  {systemStatus.data.confidence_auto_flagged - 1} — sent to the review queue
+                  &lt; {systemStatus.data.confidence_auto_flagged} — sent to the review queue
+                  (approve/correct/reject)
                 </li>
-                <li>&lt; {systemStatus.data.confidence_review_queue} — left unidentified</li>
               </ul>
             </div>
           </div>

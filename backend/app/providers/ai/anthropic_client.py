@@ -1,8 +1,8 @@
 import anthropic
 
 from app.core.config import get_settings
-from app.providers.ai.schema import IDENTIFY_BOOK_TOOL
-from app.providers.ai.types import AIIdentificationResult
+from app.providers.ai.schema import IDENTIFY_BOOK_TOOL, IDENTIFY_SERIES_TOOL
+from app.providers.ai.types import AIIdentificationResult, AISeriesResult
 
 
 class AIIdentificationError(Exception):
@@ -38,3 +38,28 @@ class AnthropicIdentificationClient:
                 return AIIdentificationResult.from_tool_input(block.input), response.to_dict()
 
         raise AIIdentificationError("model did not return the identify_book tool call")
+
+    async def identify_series(self, title: str, author: str | None) -> tuple[AISeriesResult, dict]:
+        who = f'"{title}" by {author}' if author else f'"{title}"'
+        prompt = (
+            f"Is {who} part of a book series? Use your general bibliographic "
+            "knowledge — the EPUB file and metadata providers had no series "
+            "information for this book. If it's standalone or you aren't sure, "
+            "report series as null."
+        )
+        response = await self._client.messages.create(
+            model=self.model_name,
+            max_tokens=256,
+            tools=[IDENTIFY_SERIES_TOOL],
+            tool_choice={"type": "tool", "name": "identify_series"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        if response.stop_reason == "refusal":
+            raise AIIdentificationError("model declined to look up series info")
+
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "identify_series":
+                return AISeriesResult.from_tool_input(block.input), response.to_dict()
+
+        raise AIIdentificationError("model did not return the identify_series tool call")

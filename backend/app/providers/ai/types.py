@@ -22,3 +22,13 @@ class AIIdentificationResult:
             reasoning_summary=data["reasoning_summary"],
             needs_human_review=bool(data["needs_human_review"]),
         )
+
+
+@dataclass
+class AISeriesResult:
+    series: str | None
+    series_number: float | None
+
+    @classmethod
+    def from_tool_input(cls, data: dict) -> "AISeriesResult":
+        return cls(series=data.get("series"), series_number=data.get("series_number"))

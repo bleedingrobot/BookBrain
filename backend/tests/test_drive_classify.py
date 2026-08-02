@@ -1,4 +1,4 @@
-from app.providers.drive.classify import classify_file
+from app.providers.drive.classify import classify_file, is_supported_ebook
 
 
 def test_single_parent_is_clean() -> None:
@@ -15,3 +15,16 @@ def test_no_parent_flagged() -> None:
 
 def test_missing_parents_key_flagged() -> None:
     assert classify_file({}) == "no_parent"
+
+
+def test_is_supported_ebook_accepts_epub_and_kpub() -> None:
+    assert is_supported_ebook("book.epub") is True
+    assert is_supported_ebook("book.kpub") is True
+    assert is_supported_ebook("Book.EPUB") is True
+
+
+def test_is_supported_ebook_rejects_other_extensions() -> None:
+    assert is_supported_ebook("cover.jpg") is False
+    assert is_supported_ebook("notes.txt") is False
+    assert is_supported_ebook("book.pdf") is False
+    assert is_supported_ebook("book.epub.zip") is False

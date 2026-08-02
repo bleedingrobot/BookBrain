@@ -19,7 +19,6 @@ async def get_system_status() -> SystemStatus:
         google_books_configured=bool(settings.google_books_api_key),
         confidence_auto_organize=settings.confidence_auto_organize,
         confidence_auto_flagged=settings.confidence_auto_flagged,
-        confidence_review_queue=settings.confidence_review_queue,
     )
 
 

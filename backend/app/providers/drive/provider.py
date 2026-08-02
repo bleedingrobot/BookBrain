@@ -1,6 +1,7 @@
 from googleapiclient.discovery import Resource
 
-from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE
+from app.providers.drive.classify import is_supported_ebook
+from app.providers.drive.client import FOLDER_MIME_TYPE
 
 
 class DriveProvider:
@@ -51,10 +52,11 @@ class DriveProvider:
             .execute()
         )
 
-    def list_epub_files(self, folder_id: str) -> list[dict]:
-        query = (
-            f"'{folder_id}' in parents and trashed=false and mimeType='{EPUB_MIME_TYPE}'"
-        )
+    def list_files_in_folder(self, folder_id: str) -> list[dict]:
+        """Every non-folder file directly in this folder, any type — the
+        scan uses this (not list_epub_files) so it can find and remove
+        clutter that isn't a supported ebook format."""
+        query = f"'{folder_id}' in parents and trashed=false and mimeType!='{FOLDER_MIME_TYPE}'"
         files: list[dict] = []
         page_token: str | None = None
         while True:
@@ -73,3 +75,28 @@ class DriveProvider:
             if not page_token:
                 break
         return files
+
+    def list_epub_files(self, folder_id: str) -> list[dict]:
+        """Supported ebooks (.epub, .kpub) directly in this folder — filtered
+        by filename extension rather than Drive's mimeType, since Drive has
+        no reliable mimeType for .kpub."""
+        return [f for f in self.list_files_in_folder(folder_id) if is_supported_ebook(f["name"])]
+
+    def list_epub_files_recursive(self, root_folder_id: str) -> list[dict]:
+        """Same as list_epub_files, but walks every subfolder too — for
+        rebuilding from an organized library tree (Author/Series nesting),
+        where files aren't direct children of the root."""
+        files: list[dict] = []
+        stack = [root_folder_id]
+        while stack:
+            current = stack.pop()
+            files.extend(self.list_epub_files(current))
+            stack.extend(f["id"] for f in self.list_folders(current))
+        return files
+
+    def trash_file(self, file_id: str) -> dict:
+        return (
+            self._service.files()
+            .update(fileId=file_id, body={"trashed": True}, fields="id,trashed")
+            .execute()
+        )

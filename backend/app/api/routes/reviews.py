@@ -3,8 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.db import get_db
 from app.data.models import ReviewStatus
+from app.data.repositories.settings_repository import SettingsRepository
+from app.providers.drive.client import build_drive_service
+from app.providers.drive.provider import DriveProvider
 from app.schemas.reviews import CorrectReviewRequest, ReviewDetail, ReviewSummary
 from app.services import review_service
+from app.services.auth_service import AuthService, get_auth_service
 from app.services.review_service import ReviewAlreadyResolvedError, ReviewNotFoundError
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -49,8 +53,23 @@ async def correct_review(
 
 
 @router.post("/{review_id}/reject", response_model=ReviewDetail)
-async def reject_review(review_id: int, db: AsyncSession = Depends(get_db)) -> ReviewDetail:
-    review = await _resolve(review_service.reject, db, review_id)
+async def reject_review(
+    review_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> ReviewDetail:
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+
+    provider = DriveProvider(build_drive_service(creds))
+    try:
+        review = await review_service.reject(db, review_id, provider)
+    except ReviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return await review_service.get_review_detail(db, review.id)
 
 

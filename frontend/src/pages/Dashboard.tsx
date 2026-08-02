@@ -10,6 +10,8 @@ export function Dashboard() {
   const [scanError, setScanError] = useState<string | null>(null)
   const [organizeJobId, setOrganizeJobId] = useState<string | null>(null)
   const [organizeError, setOrganizeError] = useState<string | null>(null)
+  const [scanStarting, setScanStarting] = useState(false)
+  const [organizeStarting, setOrganizeStarting] = useState(false)
 
   const health = useQuery({ queryKey: ['health'], queryFn: api.health })
   const authStatus = useQuery({ queryKey: ['auth-status'], queryFn: api.authStatus })
@@ -50,14 +52,17 @@ export function Dashboard() {
 
       <button
         className="mt-4 rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-        disabled={!readyToScan || scan.data?.status === 'running'}
+        disabled={!readyToScan || scanStarting || scan.data?.status === 'running'}
         onClick={async () => {
           setScanError(null)
+          setScanStarting(true)
           try {
             const job = await api.startScan()
             setJobId(job.job_id)
           } catch (err) {
             setScanError(err instanceof ApiError ? err.message : 'Failed to start scan.')
+          } finally {
+            setScanStarting(false)
           }
         }}
       >
@@ -76,14 +81,17 @@ export function Dashboard() {
       <div className="mt-8">
         <button
           className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
-          disabled={organize.data?.status === 'running'}
+          disabled={organizeStarting || organize.data?.status === 'running'}
           onClick={async () => {
             setOrganizeError(null)
+            setOrganizeStarting(true)
             try {
               const job = await api.startOrganize()
               setOrganizeJobId(job.job_id)
             } catch (err) {
               setOrganizeError(err instanceof ApiError ? err.message : 'Failed to start organize.')
+            } finally {
+              setOrganizeStarting(false)
             }
           }}
         >

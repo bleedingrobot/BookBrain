@@ -24,17 +24,24 @@ def build_target_path(
     *, title: str, author_name: str | None, series_name: str | None, series_number: float | None
 ) -> tuple[list[str], str]:
     """Returns (folder_segments, filename). `folder_segments` is relative to
-    the configured library root — e.g. ["Frank Herbert", "Dune Chronicles"]."""
+    the configured library root — e.g. ["Frank Herbert", "Dune Chronicles"].
+    `filename` is "Author, Title, Series, Part N.epub", trimmed down to
+    whichever of those fields are actually known."""
     folders: list[str] = []
     if author_name:
         folders.append(_sanitize(author_name))
     if series_name:
         folders.append(_sanitize(series_name))
 
-    if series_name and series_number is not None:
-        filename = f"{series_number:g} - {_sanitize(title)}.epub"
-    else:
-        filename = f"{_sanitize(title)}.epub"
+    parts: list[str] = []
+    if author_name:
+        parts.append(_sanitize(author_name))
+    parts.append(_sanitize(title))
+    if series_name:
+        parts.append(_sanitize(series_name))
+        if series_number is not None:
+            parts.append(f"{series_number:g}")
+    filename = ", ".join(parts) + ".epub"
 
     return folders, filename
 

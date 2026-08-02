@@ -17,27 +17,29 @@ export function ReviewQueue() {
     enabled: selectedId !== null,
   })
 
-  function afterResolved() {
-    setSelectedId(null)
+  function afterResolved(resolvedId: number) {
+    const list = reviews.data ?? []
+    const next = list[list.findIndex((r) => r.id === resolvedId) + 1]
+    setSelectedId(next?.id ?? null)
     setActionError(null)
     queryClient.invalidateQueries({ queryKey: ['reviews', 'pending'] })
   }
 
   const approve = useMutation({
     mutationFn: (id: number) => api.approveReview(id),
-    onSuccess: afterResolved,
+    onSuccess: (_data, id) => afterResolved(id),
     onError: (err: unknown) =>
       setActionError(err instanceof ApiError ? err.message : 'Failed to approve.'),
   })
   const correct = useMutation({
     mutationFn: ({ id, body }: { id: number; body: CorrectReviewRequest }) => api.correctReview(id, body),
-    onSuccess: afterResolved,
+    onSuccess: (_data, { id }) => afterResolved(id),
     onError: (err: unknown) =>
       setActionError(err instanceof ApiError ? err.message : 'Failed to save correction.'),
   })
   const reject = useMutation({
     mutationFn: (id: number) => api.rejectReview(id),
-    onSuccess: afterResolved,
+    onSuccess: (_data, id) => afterResolved(id),
     onError: (err: unknown) =>
       setActionError(err instanceof ApiError ? err.message : 'Failed to reject.'),
   })
@@ -49,7 +51,8 @@ export function ReviewQueue() {
       <div>
         <h1 className="text-xl font-semibold">Review Queue</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Files that need a human decision — low confidence or a Drive folder conflict.
+          Files that need a human decision — low confidence (any evidence strength) or a Drive
+          folder conflict. Check the confidence number: thin evidence can still be correct.
         </p>
 
         <ul className="mt-4 divide-y divide-neutral-100 dark:divide-neutral-800">

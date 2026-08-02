@@ -121,6 +121,68 @@ async def test_identify_raises_on_refusal() -> None:
 
 
 @respx.mock
+async def test_identify_series_parses_tool_use_response() -> None:
+    respx.post(MESSAGES_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "msg_02",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_02",
+                        "name": "identify_series",
+                        "input": {"series": "Dune Chronicles", "series_number": 1},
+                    }
+                ],
+                "stop_reason": "tool_use",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 50, "output_tokens": 10},
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as http_client:
+        client = AnthropicIdentificationClient(
+            client=anthropic.AsyncAnthropic(api_key="test-key", http_client=http_client)
+        )
+        result, raw = await client.identify_series("Dune", "Frank Herbert")
+
+    assert result.series == "Dune Chronicles"
+    assert result.series_number == 1
+    assert raw["stop_reason"] == "tool_use"
+
+
+@respx.mock
+async def test_identify_series_raises_on_refusal() -> None:
+    respx.post(MESSAGES_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "msg_02",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "content": [],
+                "stop_reason": "refusal",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as http_client:
+        client = AnthropicIdentificationClient(
+            client=anthropic.AsyncAnthropic(api_key="test-key", http_client=http_client)
+        )
+        with pytest.raises(AIIdentificationError):
+            await client.identify_series("Dune", "Frank Herbert")
+
+
+@respx.mock
 async def test_identify_raises_when_no_tool_use_block() -> None:
     respx.post(MESSAGES_URL).mock(
         return_value=httpx.Response(

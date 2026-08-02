@@ -17,7 +17,7 @@ from app.data.models import (
     Review,
     ReviewStatus,
 )
-from app.providers.drive.classify import classify_file
+from app.providers.drive.classify import classify_file, is_supported_ebook
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError
@@ -37,16 +37,27 @@ class ScanService:
     scan only processes what's new (SPEC.md's "scanner as idempotent
     function" simplification for v1 — no webhooks yet).
 
+    Only .epub and .kpub are supported — the inbox listing is unfiltered by
+    Drive mimeType (kpub has no reliable one), and anything that isn't one
+    of those two extensions is trashed on sight rather than left in the
+    book dump folder or silently ignored.
+
     Threshold routing here only sets `files.status`/`status_reason` for the
-    <85 confidence tiers (review / unidentified) — actual Drive move/rename
-    for the ≥85 auto-eligible tier is Milestone 6's job. A structural issue
-    (multi-parent/no-parent) always overrides confidence-based routing.
+    <85 confidence tier (always `review`, always actionable via the Review
+    Queue) — actual Drive move/rename for the ≥85 auto-eligible tier is
+    Milestone 6's job. A structural issue (multi-parent/no-parent) always
+    overrides confidence-based routing. `unidentified` is reserved for
+    genuine failures (EPUB parse errors) with nothing to review against.
 
     A file whose content (sha256) exactly matches an already-known file is
     marked `duplicate` and short-circuits before parsing — same bytes means
     identical evidence, so identification is just copied from the primary.
     Every successfully-parsed file also gets a `quality_score` (§ file
     completeness, distinct from identification confidence).
+
+    `run_rebuild` is the same pipeline pointed at the organized library
+    folder instead of the inbox, for reconstructing `files`/`books` from
+    what Drive actually has on disk (see its docstring).
     """
 
     def __init__(
@@ -77,10 +88,14 @@ class ScanService:
             "skipped_existing": 0,
             "skipped_too_large": 0,
             "failed": 0,
+            "removed_non_ebook": 0,
         }
 
         try:
-            raw_files = provider.list_epub_files(folder_id)
+            # Every file in the inbox, not just ebooks — anything that
+            # isn't a supported .epub/.kpub gets removed from the book dump
+            # by _process_file below, not just ignored.
+            raw_files = provider.list_files_in_folder(folder_id)
         except Exception as exc:  # Drive API failure — nothing to salvage
             self._jobs[job_id] = ScanJobStatus(
                 job_id=job_id, status=ScanJobState.failed, detail=str(exc)
@@ -89,16 +104,81 @@ class ScanService:
 
         async with async_session_factory() as session:
             for raw in raw_files:
-                await self._process_file(session, provider, raw, settings, counts)
+                await self._process_file_safely(session, provider, raw, settings, counts)
 
         detail = (
             f"{counts['new']} new, {counts['flagged']} flagged for review, "
             f"{counts['duplicate']} duplicate, "
             f"{counts['skipped_existing']} already known, "
             f"{counts['skipped_too_large']} skipped (too large), "
+            f"{counts['removed_non_ebook']} non-ebook files removed, "
             f"{counts['failed']} failed to parse"
         )
         self._jobs[job_id] = ScanJobStatus(job_id=job_id, status=ScanJobState.done, detail=detail)
+
+    async def run_rebuild(self, job_id: str, creds: Credentials, library_root_folder_id: str) -> None:
+        """Walks the organized library folder tree (not the inbox) and
+        rebuilds `files`/`books`/etc. from what's actually sitting there —
+        for recovering after a Clear Library wipe, or reconciling drift.
+        Every file found is trusted as already-placed: it's parsed and
+        identified the same way as a normal scan, but lands directly on
+        `organised` instead of going through review/auto-organize routing,
+        since nothing here is waiting to be moved."""
+        settings = get_settings()
+        provider = DriveProvider(build_drive_service(creds))
+        counts = {
+            "new": 0,
+            "flagged": 0,
+            "duplicate": 0,
+            "skipped_existing": 0,
+            "skipped_too_large": 0,
+            "failed": 0,
+            "removed_non_ebook": 0,
+        }
+
+        try:
+            raw_files = provider.list_epub_files_recursive(library_root_folder_id)
+        except Exception as exc:  # Drive API failure — nothing to salvage
+            self._jobs[job_id] = ScanJobStatus(
+                job_id=job_id, status=ScanJobState.failed, detail=str(exc)
+            )
+            return
+
+        async with async_session_factory() as session:
+            for raw in raw_files:
+                await self._process_file_safely(
+                    session, provider, raw, settings, counts, already_organised=True
+                )
+
+        detail = (
+            f"{counts['new']} rebuilt, {counts['duplicate']} duplicate, "
+            f"{counts['skipped_existing']} already known, "
+            f"{counts['skipped_too_large']} skipped (too large), "
+            f"{counts['failed']} failed to parse"
+        )
+        self._jobs[job_id] = ScanJobStatus(job_id=job_id, status=ScanJobState.done, detail=detail)
+
+    async def _process_file_safely(
+        self,
+        session: AsyncSession,
+        provider: DriveProvider,
+        raw: dict,
+        settings: Settings,
+        counts: dict[str, int],
+        *,
+        already_organised: bool = False,
+    ) -> None:
+        """One bad file (a race on drive_file_id from an overlapping job, an
+        unexpected provider/DB error, anything) must never take down the
+        whole batch silently — without this, an exception here left the job
+        stuck at "running" forever with no error surfaced anywhere."""
+        try:
+            await self._process_file(
+                session, provider, raw, settings, counts, already_organised=already_organised
+            )
+        except Exception:
+            await session.rollback()
+            counts["failed"] += 1
 
     async def _process_file(
         self,
@@ -107,7 +187,17 @@ class ScanService:
         raw: dict,
         settings: Settings,
         counts: dict[str, int],
+        *,
+        already_organised: bool = False,
     ) -> None:
+        if not is_supported_ebook(raw["name"]):
+            # Only reachable from run_scan's broad inbox listing — run_rebuild
+            # feeds this from an already-ebook-filtered recursive listing, so
+            # nothing in the organized library folder is ever touched here.
+            provider.trash_file(raw["id"])
+            counts["removed_non_ebook"] += 1
+            return
+
         existing = await session.execute(select(File).where(File.drive_file_id == raw["id"]))
         if existing.scalar_one_or_none() is not None:
             counts["skipped_existing"] += 1
@@ -137,8 +227,21 @@ class ScanService:
             # bytes means identical evidence, so skip re-parsing entirely —
             # just copy the primary's identification and quality score,
             # unless this exact content has since been human-corrected, in
-            # which case the correction is authoritative (§1).
+            # which case the correction is authoritative (§1). A structural
+            # reason from this file's own Drive placement always wins; short
+            # of that, a primary that was itself rejected means this is a
+            # re-upload of already-rejected content, worth surfacing as such
+            # rather than a bare "duplicate".
             corrected_book_id = await resolve_corrected_book_id(session, sha256)
+            duplicate_reason = (
+                FileStatusReason(status_reason)
+                if status_reason
+                else (
+                    FileStatusReason.previously_rejected
+                    if primary.status == FileStatus.rejected
+                    else None
+                )
+            )
             session.add(
                 File(
                     drive_file_id=raw["id"],
@@ -147,7 +250,7 @@ class ScanService:
                     sha256=sha256,
                     size_bytes=len(data),
                     status=FileStatus.duplicate,
-                    status_reason=FileStatusReason(status_reason) if status_reason else None,
+                    status_reason=duplicate_reason,
                     book_id=corrected_book_id if corrected_book_id is not None else primary.book_id,
                     quality_score=primary.quality_score,
                 )
@@ -231,9 +334,19 @@ class ScanService:
         file_row.book_id = book.id
 
         if status_reason is None:
-            if identification.computed_confidence < settings.confidence_review_queue:
-                file_row.status = FileStatus.unidentified
+            if already_organised:
+                # Already sitting in the library folder — trust it, don't
+                # route through review/auto-organize thresholds again.
+                file_row.status = FileStatus.organised
             elif identification.computed_confidence < settings.confidence_auto_flagged:
+                # Below the auto-eligible bar, always goes to the review
+                # queue — never a dead-end `unidentified`. confidence_review_
+                # queue no longer forks to a separate unreviewable status: an
+                # AI call with thin evidence (no ISBN, one provider) can
+                # still be correct, and the reviewer sees the actual
+                # computed_confidence number to judge how much to trust it.
+                # `unidentified` is reserved for genuine failures (parse
+                # errors) where there's nothing to review against.
                 file_row.status = FileStatus.review
                 file_row.status_reason = FileStatusReason.low_confidence
             # >= confidence_auto_flagged stays FileStatus.inbox — auto-eligible,

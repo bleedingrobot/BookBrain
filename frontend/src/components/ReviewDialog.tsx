@@ -32,13 +32,24 @@ export function ReviewDialog({
   const [applyToSimilar, setApplyToSimilar] = useState(false)
 
   const structuralNote = review.status_reason ? STATUS_REASON_LABEL[review.status_reason] : null
+  const proposedSeries = review.proposed_json.series as string | null
+  const proposedSeriesNumber = review.proposed_json.series_number as number | null
 
   return (
     <div className="rounded border border-neutral-200 p-4 dark:border-neutral-800">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-medium">{review.filename}</h3>
-          <p className="text-sm text-neutral-500">Proposed: {review.proposed_title ?? '(none)'}</p>
+          <p className="text-sm text-neutral-500">
+            Proposed: {review.proposed_title ?? '(none)'}
+            {review.proposed_author ? ` by ${review.proposed_author}` : ''}
+          </p>
+          {proposedSeries && (
+            <p className="text-sm text-neutral-500">
+              Series: {proposedSeries}
+              {proposedSeriesNumber != null ? ` #${proposedSeriesNumber}` : ''}
+            </p>
+          )}
         </div>
         <ConfidenceBar value={review.computed_confidence} />
       </div>

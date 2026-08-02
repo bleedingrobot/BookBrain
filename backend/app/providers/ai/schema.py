@@ -33,3 +33,22 @@ IDENTIFY_BOOK_TOOL = {
     },
     "strict": True,
 }
+
+IDENTIFY_SERIES_TOOL = {
+    "name": "identify_series",
+    "description": (
+        "Report whether this already-identified book is part of a series, using "
+        "your general bibliographic knowledge. Called only when neither the EPUB "
+        "nor any metadata provider had series information for it."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "series": {"type": ["string", "null"]},
+            "series_number": {"type": ["number", "null"]},
+        },
+        "required": ["series", "series_number"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}

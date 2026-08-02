@@ -17,6 +17,7 @@ from app.data.models import (
     ReviewStatus,
     RuleType,
 )
+from app.providers.drive.provider import DriveProvider
 from app.schemas.reviews import CandidateItem, CorrectReviewRequest, EvidenceItem, ReviewDetail, ReviewSummary
 from app.services.book_repository import resolve_book
 from app.services.text_match import normalize
@@ -98,15 +99,27 @@ async def approve(session: AsyncSession, review_id: int) -> Review:
     return review
 
 
-async def reject(session: AsyncSession, review_id: int) -> Review:
+async def reject(session: AsyncSession, review_id: int, provider: DriveProvider) -> Review:
+    """Reject removes the file from the book dump entirely (Drive's Trash —
+    recoverable, not a permanent delete) rather than leaving a rejected
+    identification sitting in the folder to be reconsidered. The File row
+    itself is kept (not deleted) specifically so its sha256 stays around:
+    if this exact content gets uploaded again later, scan_service's
+    duplicate check recognizes it as a re-upload of already-rejected
+    content and flags it for cleanup instead of running the full pipeline
+    on it again. A structural issue (multi-parent, etc.) becomes moot once
+    the file is gone, so — unlike approve/correct — reject always clears
+    it rather than leaving it blocking anything."""
     review = await _fetch_pending_review(session, review_id)
+
+    provider.trash_file(review.file.drive_file_id)
+
     review.status = ReviewStatus.rejected
     review.resolved_at = datetime.now(UTC)
 
     review.file.book_id = None
-    if review.file.status_reason not in _STRUCTURAL_REASONS:
-        review.file.status = FileStatus.unidentified
-        review.file.status_reason = None
+    review.file.status = FileStatus.rejected
+    review.file.status_reason = None
 
     await session.commit()
     return review

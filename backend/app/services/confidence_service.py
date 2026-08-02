@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
-from app.services.text_match import normalize
+from app.services.text_match import normalize, normalize_title
 
 ISBN_PRESENT = 40
 PROVIDER_MATCHES_EPUB = 20
@@ -49,13 +49,18 @@ def score(
     has_isbn = bool(evidence.isbn13 or evidence.isbn10)
     components["isbn_present"] = ISBN_PRESENT if has_isbn else 0
 
-    candidate_titles = {normalize(c.title) for c in candidates if c.title}
+    # Titles and series names use normalize_title (drops a leading "the"/
+    # "a"/"an") — library catalogs routinely strip leading articles while an
+    # EPUB's own metadata usually doesn't, and that's not a real
+    # disagreement. Authors use plain normalize(); stripping articles from
+    # a name isn't meaningful and could mangle initials.
+    candidate_titles = {normalize_title(c.title) for c in candidates if c.title}
     candidate_authors = {normalize(c.authors[0]) for c in candidates if c.authors}
 
     epub_provider_conflict = (
         bool(evidence.title)
         and bool(candidate_titles)
-        and normalize(evidence.title) not in candidate_titles
+        and normalize_title(evidence.title) not in candidate_titles
     )
     provider_matches_epub = bool(candidates) and bool(evidence.title) and not epub_provider_conflict
     components["provider_matches_epub"] = PROVIDER_MATCHES_EPUB if provider_matches_epub else 0
@@ -67,7 +72,7 @@ def score(
     epub_complete = bool(evidence.title) and bool(evidence.authors) and bool(evidence.language)
     components["epub_metadata_complete"] = EPUB_METADATA_COMPLETE if epub_complete else 0
 
-    filename_matches = bool(evidence.title) and normalize(evidence.title) in normalize(filename)
+    filename_matches = bool(evidence.title) and normalize_title(evidence.title) in normalize(filename)
     components["filename_matches_title"] = FILENAME_MATCHES_TITLE if filename_matches else 0
 
     components["ai_corroborates"] = AI_CORROBORATES if ai_corroborates else 0
@@ -77,8 +82,12 @@ def score(
     if epub_provider_conflict:
         conflicts["epub_provider_disagreement"] = EPUB_PROVIDER_DISAGREEMENT_PENALTY
 
-    candidate_series = {normalize(c.series) for c in candidates if c.series}
-    if evidence.series and candidate_series and normalize(evidence.series) not in candidate_series:
+    candidate_series = {normalize_title(c.series) for c in candidates if c.series}
+    if (
+        evidence.series
+        and candidate_series
+        and normalize_title(evidence.series) not in candidate_series
+    ):
         conflicts["series_disagreement"] = SERIES_DISAGREEMENT_PENALTY
 
     total = max(0, min(100, sum(components.values()) + sum(conflicts.values())))
