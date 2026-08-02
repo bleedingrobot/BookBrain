@@ -157,7 +157,14 @@ export default function App() {
       )}
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
-        {books.map(({ file, parsed }) => (
+        {!loading && query.trim() === '' && files !== null && (
+          <li className="py-4 text-neutral-400">
+            {files.length === 0
+              ? 'No books found in this folder.'
+              : `${files.length} book${files.length === 1 ? '' : 's'} in your library — start typing to search.`}
+          </li>
+        )}
+        {query.trim() !== '' && books.map(({ file, parsed }) => (
           <li key={file.id} className="flex items-center gap-3 py-3">
             <input
               type="checkbox"
@@ -184,10 +191,8 @@ export default function App() {
             </button>
           </li>
         ))}
-        {!loading && books.length === 0 && (
-          <li className="py-4 text-neutral-400">
-            {files === null ? '' : query ? 'No books match your search.' : 'No books found in this folder.'}
-          </li>
+        {!loading && query.trim() !== '' && books.length === 0 && (
+          <li className="py-4 text-neutral-400">No books match your search.</li>
         )}
       </ul>
     </div>
