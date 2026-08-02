@@ -57,6 +57,21 @@ export async function listLibraryRecursive(token: string, rootFolderId: string):
   return all
 }
 
+export async function copyFileToFolder(token: string, file: DriveFile, destinationFolderId: string): Promise<void> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/copy`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ parents: [destinationFolderId] }),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+    throw new Error(`Failed to send ${file.name} to Kobo folder (${response.status})`)
+  }
+}
+
 export async function downloadFile(token: string, file: DriveFile): Promise<void> {
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },

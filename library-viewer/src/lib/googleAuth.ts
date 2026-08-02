@@ -30,7 +30,11 @@ declare global {
   }
 }
 
-const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+// Needs full read/write access, not just drive.readonly — "Send to Kobo"
+// copies a file into another folder (files.copy), and drive.file's
+// narrower "only files this app created or you explicitly picked" scope
+// wouldn't cover pre-existing library files this app never created.
+const SCOPE = 'https://www.googleapis.com/auth/drive'
 
 let tokenClient: TokenClient | null = null
 let currentClientId: string | null = null

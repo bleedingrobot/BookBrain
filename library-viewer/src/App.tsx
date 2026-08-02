@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { SettingsForm } from './components/SettingsForm'
-import { downloadFile, listLibraryRecursive, type DriveFile } from './lib/drive'
+import { copyFileToFolder, downloadFile, listLibraryRecursive, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
 import { matchesSearch, parseFilename } from './lib/parseFilename'
-import { clearSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
+import { clearSettings, loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -23,6 +23,9 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [sendingToKobo, setSendingToKobo] = useState(false)
+  const [koboError, setKoboError] = useState<string | null>(null)
+  const [koboMessage, setKoboMessage] = useState<string | null>(null)
 
   const books = useMemo(
     () =>
@@ -34,7 +37,7 @@ export default function App() {
   )
 
   if (!settings) {
-    return <SettingsForm initial={null} onSave={(s) => { saveSettings(s); setSettings(s) }} />
+    return <SettingsForm initial={loadPartialSettings()} onSave={(s) => { saveSettings(s); setSettings(s) }} />
   }
 
   async function handleSignIn() {
@@ -86,6 +89,37 @@ export default function App() {
       setDownloadError(err instanceof Error ? err.message : 'A download failed.')
     } finally {
       setDownloading(false)
+    }
+  }
+
+  async function sendToKobo(file: DriveFile) {
+    if (!token) return
+    setKoboError(null)
+    setKoboMessage(null)
+    try {
+      await copyFileToFolder(token, file, settings!.koboFolderId)
+      setKoboMessage(`Sent "${file.name}" to Kobo.`)
+    } catch (err) {
+      setKoboError(err instanceof Error ? err.message : 'Failed to send to Kobo.')
+    }
+  }
+
+  async function handleSendSelectedToKobo() {
+    if (!token) return
+    setSendingToKobo(true)
+    setKoboError(null)
+    setKoboMessage(null)
+    const toSend = books.filter((b) => selected.has(b.file.id))
+    try {
+      for (const { file } of toSend) {
+        await copyFileToFolder(token, file, settings!.koboFolderId)
+      }
+      setKoboMessage(`Sent ${toSend.length} book${toSend.length === 1 ? '' : 's'} to Kobo.`)
+      setSelected(new Set())
+    } catch (err) {
+      setKoboError(err instanceof Error ? err.message : 'Failed to send to Kobo.')
+    } finally {
+      setSendingToKobo(false)
     }
   }
 
@@ -143,7 +177,7 @@ export default function App() {
       {loadError && <p className="mt-6 text-sm text-red-600">{loadError}</p>}
 
       {selected.size > 0 && (
-        <div className="mt-4 flex items-center gap-3 rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800">
           <span>{selected.size} selected</span>
           <button
             className="rounded bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
@@ -152,8 +186,19 @@ export default function App() {
           >
             {downloading ? 'Downloading…' : `Download ${selected.size} book${selected.size === 1 ? '' : 's'}`}
           </button>
+          <button
+            className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+            disabled={sendingToKobo}
+            onClick={handleSendSelectedToKobo}
+          >
+            {sendingToKobo ? 'Sending…' : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to Kobo`}
+          </button>
           {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
+          {koboError && <span className="text-xs text-red-600">{koboError}</span>}
         </div>
+      )}
+      {selected.size === 0 && koboMessage && (
+        <p className="mt-4 text-xs text-neutral-500">{koboMessage}</p>
       )}
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
@@ -188,6 +233,12 @@ export default function App() {
               onClick={() => downloadFile(token, file).catch((err) => setDownloadError(err.message))}
             >
               Download
+            </button>
+            <button
+              className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+              onClick={() => sendToKobo(file)}
+            >
+              Send to Kobo
             </button>
           </li>
         ))}
