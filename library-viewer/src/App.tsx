@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { SettingsForm } from './components/SettingsForm'
+import { SetupChecklist } from './components/SetupChecklist'
 import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
@@ -11,6 +12,7 @@ function sleep(ms: number) {
 }
 
 export default function App() {
+  const [showSetup, setShowSetup] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(loadSettings)
   const [token, setToken] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -39,8 +41,21 @@ export default function App() {
     [files, query],
   )
 
+  if (showSetup) {
+    return <SetupChecklist onBack={() => setShowSetup(false)} />
+  }
+
   if (!settings) {
-    return <SettingsForm initial={loadPartialSettings()} onSave={(s) => { saveSettings(s); setSettings(s) }} />
+    return (
+      <>
+        <SettingsForm initial={loadPartialSettings()} onSave={(s) => { saveSettings(s); setSettings(s) }} />
+        <p className="mx-auto max-w-md p-6 pt-0 text-center">
+          <button className="text-xs text-neutral-400 underline" onClick={() => setShowSetup(true)}>
+            Lost your hard drive? Recovery checklist
+          </button>
+        </p>
+      </>
+    )
   }
 
   async function runSync(newToken: string) {
@@ -176,6 +191,12 @@ export default function App() {
         >
           Change settings
         </button>
+        <button
+          className="mt-2 block w-full text-xs text-neutral-400 underline"
+          onClick={() => setShowSetup(true)}
+        >
+          Lost your hard drive? Recovery checklist
+        </button>
       </div>
     )
   }
@@ -209,6 +230,9 @@ export default function App() {
             }}
           >
             Change settings
+          </button>
+          <button className="underline" onClick={() => setShowSetup(true)}>
+            Recovery checklist
           </button>
         </div>
       </div>
