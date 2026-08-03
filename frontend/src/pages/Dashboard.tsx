@@ -1,11 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { ProgressBar } from '../components/ProgressBar'
 import { api, ApiError } from '../services/api'
 import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
 import { useScanStatus } from '../hooks/useScanStatus'
 import { Duplicates } from './Duplicates'
 import { ReviewQueue } from './ReviewQueue'
+
+// Tracks "how many were there when this batch started" against the live
+// (shrinking) count, so progress reads as "5 of 8 done" instead of just
+// "3 left". Sticks at its high point while the count is nonzero (so it
+// still reads "8 of 8" once finished, rather than vanishing at 0) and only
+// resets once a genuinely new batch starts from empty.
+function useProgressBaseline(count: number): number {
+  const [baseline, setBaseline] = useState(0)
+  const prevCount = useRef(0)
+
+  useEffect(() => {
+    setBaseline((prev) => {
+      if (count === 0) return prev
+      if (prevCount.current === 0) return count
+      return Math.max(prev, count)
+    })
+    prevCount.current = count
+  }, [count])
+
+  return baseline
+}
 
 export function Dashboard() {
   const queryClient = useQueryClient()
@@ -44,6 +66,21 @@ export function Dashboard() {
   const duplicateCount = duplicates.data?.length ?? 0
   const organizeCount = readyToOrganize.data?.length ?? 0
 
+  const reviewBaseline = useProgressBaseline(reviewCount)
+  const duplicateBaseline = useProgressBaseline(duplicateCount)
+  const organizeBaseline = useProgressBaseline(organizeCount)
+
+  // A scan can create new reviews/duplicates/organize-ready files — recheck
+  // all three the moment it finishes instead of waiting on a manual
+  // "Refresh checklist" click or an unrelated background refetch.
+  useEffect(() => {
+    if (scan.data?.status === 'done') {
+      queryClient.invalidateQueries({ queryKey: ['reviews', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: ['duplicates'] })
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    }
+  }, [scan.data?.status, queryClient])
+
   async function handleStartScan() {
     setScanError(null)
     setScanStarting(true)
@@ -78,6 +115,46 @@ export function Dashboard() {
         Backend health:{' '}
         {health.isLoading ? 'checking...' : health.isError ? 'unreachable' : health.data?.status}
       </p>
+
+      <div className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+        <h2 className="text-sm font-medium text-neutral-500">Progress</h2>
+        <ul className="mt-3 space-y-2.5">
+          <li className="flex items-center justify-between gap-4 text-sm">
+            <span>Scan</span>
+            <span className="flex items-center gap-2 text-xs text-neutral-400">
+              {scan.data?.status === 'running' && (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600 dark:border-neutral-700 dark:border-t-neutral-300" />
+              )}
+              {!scan.data ? 'not started' : scan.data.status === 'running' ? 'running…' : 'done'}
+            </span>
+          </li>
+
+          {reviewBaseline > 0 && (
+            <li className="flex items-center justify-between gap-4 text-sm">
+              <span>Review</span>
+              <ProgressBar completed={reviewBaseline - reviewCount} total={reviewBaseline} />
+            </li>
+          )}
+
+          {duplicateBaseline > 0 && (
+            <li className="flex items-center justify-between gap-4 text-sm">
+              <span>Duplicates</span>
+              <ProgressBar completed={duplicateBaseline - duplicateCount} total={duplicateBaseline} />
+            </li>
+          )}
+
+          {organizeBaseline > 0 && (
+            <li className="flex items-center justify-between gap-4 text-sm">
+              <span>Organize</span>
+              <ProgressBar completed={organizeBaseline - organizeCount} total={organizeBaseline} />
+            </li>
+          )}
+
+          {reviewBaseline === 0 && duplicateBaseline === 0 && organizeBaseline === 0 && !scan.data && (
+            <li className="text-xs text-neutral-400">Nothing tracked yet — run a scan to get started.</li>
+          )}
+        </ul>
+      </div>
 
       {!readyToScan && !authStatus.isLoading && (
         <p className="mt-2 text-sm text-neutral-500">
