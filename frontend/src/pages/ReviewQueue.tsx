@@ -9,6 +9,8 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmingApproveAll, setConfirmingApproveAll] = useState(false)
+  const [approveAllProgress, setApproveAllProgress] = useState<{ done: number; total: number } | null>(null)
 
   const reviews = useQuery({ queryKey: ['reviews', 'pending'], queryFn: () => api.listReviews('pending') })
   const detail = useQuery({
@@ -48,7 +50,36 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
       setActionError(err instanceof ApiError ? err.message : 'Failed to reject.'),
   })
 
-  const busy = approve.isPending || correct.isPending || reject.isPending
+  // Approves every currently-pending review one at a time (not in parallel —
+  // this can be dozens of writes against a single sqlite file) and keeps
+  // going past individual failures so one bad file doesn't block the rest.
+  const approveAll = useMutation({
+    mutationFn: async () => {
+      const ids = (reviews.data ?? []).map((r) => r.id)
+      let succeeded = 0
+      let failed = 0
+      for (const id of ids) {
+        setApproveAllProgress({ done: succeeded + failed, total: ids.length })
+        try {
+          await api.approveReview(id)
+          succeeded++
+        } catch {
+          failed++
+        }
+      }
+      return { succeeded, failed }
+    },
+    onSuccess: ({ succeeded, failed }) => {
+      setConfirmingApproveAll(false)
+      setApproveAllProgress(null)
+      setSelectedId(null)
+      setActionError(failed > 0 ? `Approved ${succeeded}, ${failed} failed.` : null)
+      queryClient.invalidateQueries({ queryKey: ['reviews', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+  })
+
+  const busy = approve.isPending || correct.isPending || reject.isPending || approveAll.isPending
 
   return (
     <div className={embedded ? 'grid grid-cols-1 gap-6 md:grid-cols-2' : 'grid grid-cols-1 gap-6 p-6 md:grid-cols-2'}>
@@ -62,6 +93,47 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
               correct.
             </p>
           </>
+        )}
+
+        {reviews.data && reviews.data.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+              disabled={busy}
+              onClick={() => setConfirmingApproveAll(true)}
+            >
+              Approve all ({reviews.data.length})
+            </button>
+
+            {approveAllProgress && (
+              <p className="mt-2 text-xs text-neutral-500">
+                Approving {approveAllProgress.done}/{approveAllProgress.total}…
+              </p>
+            )}
+
+            {confirmingApproveAll && !approveAll.isPending && (
+              <div className="mt-2 max-w-sm space-y-2 rounded border border-amber-300 p-3 text-sm dark:border-amber-800">
+                <p className="text-amber-700 dark:text-amber-400">
+                  Approves every pending review as-is, including any low-confidence matches you
+                  haven't looked at individually.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                    onClick={() => approveAll.mutate()}
+                  >
+                    Yes, approve all
+                  </button>
+                  <button
+                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs dark:border-neutral-700"
+                    onClick={() => setConfirmingApproveAll(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <ul className="mt-4 divide-y divide-neutral-100 dark:divide-neutral-800">
