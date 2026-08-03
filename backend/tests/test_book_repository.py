@@ -140,3 +140,32 @@ async def test_author_variants_reuse_the_same_row(db_session) -> None:
 
     authors = (await db_session.execute(select(Author))).scalars().all()
     assert len(authors) == 1
+
+
+async def test_title_casing_variants_reuse_the_same_book(db_session) -> None:
+    # Regression: different uploads of the same book routinely differ in
+    # AI-extracted title casing ("The Hob's Bargain" vs "The Hob's bargain")
+    # — each was forking a separate Book row instead of resolving to the
+    # same one, even though author matching already deduped correctly.
+    first = await resolve_book(
+        db_session,
+        title="The Hob's Bargain",
+        author="Patricia Briggs",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    second = await resolve_book(
+        db_session,
+        title="The Hob's bargain",
+        author="Patricia Briggs",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+
+    assert first.id == second.id
+    books = (await db_session.execute(select(Book))).scalars().all()
+    assert len(books) == 1

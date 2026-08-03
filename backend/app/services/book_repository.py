@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import Author, Book, Identifier, IdentifierType, Series
-from app.services.text_match import normalize_words
+from app.services.text_match import normalize_title, normalize_words
 
 
 async def resolve_book(
@@ -18,13 +18,27 @@ async def resolve_book(
     author_row = await _find_or_create_author(session, author) if author else None
     series_row = await _find_or_create_series(session, series) if series else None
 
-    query = select(Book).where(Book.canonical_title == title)
+    # normalize_title, not exact string equality: different uploads of the
+    # same book routinely differ in casing/punctuation/subtitle formatting
+    # in the AI-extracted title ("The Hob's Bargain" vs "The Hob's bargain")
+    # — each variant must reuse the first-seen canonical row, same as the
+    # author/series matching above, or they fragment into separate Book
+    # records that then can't be recognized as the same book at all.
+    query = select(Book)
     query = (
         query.where(Book.author_id == author_row.id)
         if author_row is not None
         else query.where(Book.author_id.is_(None))
     )
-    book_row = (await session.execute(query)).scalar_one_or_none()
+    target_title = normalize_title(title)
+    book_row = next(
+        (
+            b
+            for b in (await session.execute(query)).scalars().all()
+            if normalize_title(b.canonical_title) == target_title
+        ),
+        None,
+    )
 
     if book_row is None:
         book_row = Book(
