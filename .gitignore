@@ -10,6 +10,9 @@ venv/
 backend/.env
 backend/*.db
 backend/*.db-journal
+backend/*.db-shm
+backend/*.db-wal
+backend/*.db.bak-*
 
 # Node / frontend
 node_modules/

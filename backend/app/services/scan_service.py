@@ -325,11 +325,14 @@ class ScanService:
 
         file_row.quality_score = score_quality(evidence, len(data))
 
-        session.add(file_row)
-        await session.flush()
-
-        for source in _evidence_to_metadata_sources(file_row.id, raw["name"], evidence):
-            session.add(source)
+        # Nothing is added to the session (no flush, no open write
+        # transaction) until every slow, non-DB step below — candidate
+        # generation and AI identification, both external network calls —
+        # has finished. A scan processes many files in one long-lived
+        # session; flushing file_row early used to hold SQLite's write lock
+        # across those calls, which could starve a concurrent request (e.g.
+        # approving a review) well past its busy_timeout.
+        metadata_sources = _evidence_to_metadata_sources(raw["name"], evidence)
 
         # A sha256 match on content that's already been human-corrected is
         # handled by the duplicate branch above (resolve_corrected_book_id)
@@ -337,6 +340,7 @@ class ScanService:
         # other File already has it, so the duplicate check already fired.
         identification = await find_rule_match(session, raw["name"], evidence)
 
+        candidate_rows: list[BookCandidate] = []
         if identification is None:
             candidates = await self._candidate_service.generate_candidates(
                 isbn13=evidence.isbn13,
@@ -344,18 +348,17 @@ class ScanService:
                 title=evidence.title,
                 authors=", ".join(evidence.authors) if evidence.authors else None,
             )
-            for candidate in candidates:
-                session.add(
-                    BookCandidate(
-                        file_id=file_row.id,
-                        title=candidate.title,
-                        author=", ".join(candidate.authors) if candidate.authors else None,
-                        series=candidate.series,
-                        series_number=candidate.series_number,
-                        source=candidate.source,
-                        confidence_component_json={},
-                    )
+            candidate_rows = [
+                BookCandidate(
+                    title=candidate.title,
+                    author=", ".join(candidate.authors) if candidate.authors else None,
+                    series=candidate.series,
+                    series_number=candidate.series_number,
+                    source=candidate.source,
+                    confidence_component_json={},
                 )
+                for candidate in candidates
+            ]
             identification = await self._identification_service.identify(
                 filename=raw["name"], evidence=evidence, candidates=candidates
             )
@@ -393,28 +396,40 @@ class ScanService:
             # confidence to `operations`, so the 85-94 vs 95+ split is visible
             # in Activity without needing a distinct status.
 
-        session.add(
-            AIDecision(
-                file_id=file_row.id,
-                model=identification.model,
-                prompt_hash=identification.prompt_hash,
-                evidence_hash=identification.evidence_hash,
-                raw_response_json=identification.raw_response,
-                computed_confidence=identification.computed_confidence,
-                ai_reported_confidence=identification.ai_reported_confidence,
-                needs_human_review=identification.needs_human_review,
-                reasoning_summary=identification.reasoning_summary,
-            )
+        ai_decision = AIDecision(
+            model=identification.model,
+            prompt_hash=identification.prompt_hash,
+            evidence_hash=identification.evidence_hash,
+            raw_response_json=identification.raw_response,
+            computed_confidence=identification.computed_confidence,
+            ai_reported_confidence=identification.ai_reported_confidence,
+            needs_human_review=identification.needs_human_review,
+            reasoning_summary=identification.reasoning_summary,
         )
 
+        review_row = None
         if file_row.status == FileStatus.review:
-            session.add(
-                Review(
-                    file_id=file_row.id,
-                    status=ReviewStatus.pending,
-                    proposed_json=_proposed_json(identification),
-                )
-            )
+            review_row = Review(status=ReviewStatus.pending, proposed_json=_proposed_json(identification))
+
+        # Everything from here to commit() is DB-only — no more network
+        # calls — so the write lock this acquires is held only briefly.
+        # `.file = file_row` (not `.file_id = file_row.id`) lets SQLAlchemy
+        # resolve every FK itself at flush time, in one round trip, without
+        # needing file_row's id up front.
+        for source in metadata_sources:
+            source.file = file_row
+        for candidate in candidate_rows:
+            candidate.file = file_row
+        ai_decision.file = file_row
+        if review_row is not None:
+            review_row.file = file_row
+
+        session.add(file_row)
+        session.add_all(metadata_sources)
+        session.add_all(candidate_rows)
+        session.add(ai_decision)
+        if review_row is not None:
+            session.add(review_row)
 
         await session.commit()
 
@@ -433,9 +448,7 @@ def _proposed_json(identification: IdentificationResult) -> dict:
     }
 
 
-def _evidence_to_metadata_sources(
-    file_id: int, filename: str, evidence: EpubEvidence
-) -> list[MetadataSource]:
+def _evidence_to_metadata_sources(filename: str, evidence: EpubEvidence) -> list[MetadataSource]:
     fields: list[tuple[str, str, str]] = [("filename", filename, "drive")]
     if evidence.title:
         fields.append(("title", evidence.title, "epub"))
@@ -456,8 +469,7 @@ def _evidence_to_metadata_sources(
     if evidence.text_snippet:
         fields.append(("text_snippet", evidence.text_snippet, "epub"))
     return [
-        MetadataSource(file_id=file_id, field_name=name, value=value, source=source)
-        for name, value, source in fields
+        MetadataSource(field_name=name, value=value, source=source) for name, value, source in fields
     ]
 
 

@@ -82,12 +82,16 @@ export function Dashboard() {
   const readyToScan = authStatus.data?.connected === true && inboxFolder.data != null
 
   // Polls the live Drive folder (not the DB) so newly-dropped files show up
-  // here even before the next scan picks them up.
+  // here even before the next scan picks them up. Paused while a scan is
+  // actively running — the scan is already reading/clearing this same
+  // folder as fast as it can, so polling adds load without adding anything
+  // useful to look at; the scan-done effect below refreshes it the moment
+  // that stops being true.
   const bookDump = useQuery({
     queryKey: ['drive-files'],
     queryFn: api.driveFiles,
     enabled: readyToScan,
-    refetchInterval: 8000,
+    refetchInterval: () => (scan.data?.status === 'running' ? false : 8000),
   })
   const reviewCount = pendingReviews.data?.length ?? 0
   const duplicateCount = duplicates.data?.length ?? 0
@@ -107,6 +111,7 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['reviews', 'pending'] })
       queryClient.invalidateQueries({ queryKey: ['duplicates'] })
       queryClient.invalidateQueries({ queryKey: ['files'] })
+      queryClient.invalidateQueries({ queryKey: ['drive-files'] })
     }
   }, [scan.data?.status, queryClient])
 
@@ -263,7 +268,12 @@ export function Dashboard() {
             <h2 className="text-xs font-medium text-neutral-500">
               Book Dump{bookDump.data ? ` (${bookDump.data.length})` : ''}
             </h2>
-            {bookDump.isFetching && <span className="text-xs text-neutral-400">syncing…</span>}
+            <span className="flex items-center gap-2 text-xs text-neutral-400">
+              {bookDump.isFetching && <span>syncing…</span>}
+              <button className="underline disabled:opacity-50" disabled={bookDump.isFetching} onClick={() => bookDump.refetch()}>
+                Refresh
+              </button>
+            </span>
           </div>
 
           {bookDump.data && bookDump.data.length > 0 ? (
