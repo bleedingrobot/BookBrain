@@ -2,6 +2,7 @@ import type { AuthStartResponse, AuthStatus, FolderMode } from '../types/auth'
 import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive'
 import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
+import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
@@ -111,6 +112,13 @@ export const api = {
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),
 
   getSystemStatus: () => request<SystemStatus>('/settings/status'),
+
+  scanLocalFolder: () => request<LocalFileSummary[]>('/local-scan', { method: 'POST' }),
+  getPendingLocalFiles: () => request<LocalFileSummary[]>('/local-scan/pending'),
+  copyLocalFiles: (fileIds: number[]) =>
+    request<CopyResult>('/local-scan/copy', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
+  dismissLocalFiles: (fileIds: number[]) =>
+    request<DismissResult>('/local-scan/dismiss', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
 }
 
 export { ApiError }

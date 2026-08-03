@@ -139,6 +139,20 @@ def test_update_file_content_uploads_new_data_and_name() -> None:
     assert result == {"id": "f1", "name": "book.epub"}
 
 
+def test_upload_new_file_creates_file_with_media_and_parent() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    result = provider.upload_new_file(
+        name="book.epub", data=b"epub bytes", parent_id="inbox-id", mime_type="application/epub+zip"
+    )
+
+    call = files.create_calls[0]
+    assert call["body"] == {"name": "book.epub", "parents": ["inbox-id"]}
+    assert call["media_body"] is not None
+    assert result == {"id": "new-folder-id", "name": "book.epub"}
+
+
 def test_list_epub_files_recursive_walks_subfolders() -> None:
     # root/: a.epub, subfolder "Author A"/; "Author A"/: b.epub, no subfolders
     files = _FakeFiles(

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120
 
+    # Local folder watched for new ebooks (e.g. a torrents download dir) to
+    # offer copying into the Drive inbox
+    torrents_watch_folder: str = r"D:\Torrents"
+
 
 @lru_cache
 def get_settings() -> Settings:

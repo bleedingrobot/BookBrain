@@ -7,6 +7,7 @@ from app.api.routes import (
     files,
     health,
     library,
+    local_scan,
     operations,
     organize,
     reviews,
@@ -26,3 +27,4 @@ api_router.include_router(duplicates.router)
 api_router.include_router(operations.router)
 api_router.include_router(files.router)
 api_router.include_router(library.router)
+api_router.include_router(local_scan.router)

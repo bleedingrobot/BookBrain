@@ -8,6 +8,11 @@ import { useScanStatus } from '../hooks/useScanStatus'
 import { Duplicates } from './Duplicates'
 import { ReviewQueue } from './ReviewQueue'
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 // Tracks "how many were there when this batch started" against the live
 // (shrinking) count, so progress reads as "5 of 8 done" instead of just
 // "3 left". Sticks at its high point while the count is nonzero (so it
@@ -42,6 +47,11 @@ export function Dashboard() {
 
   const [showReview, setShowReview] = useState(false)
   const [showDuplicates, setShowDuplicates] = useState(false)
+  const [showTorrents, setShowTorrents] = useState(false)
+  const [torrentsChecking, setTorrentsChecking] = useState(false)
+  const [torrentsError, setTorrentsError] = useState<string | null>(null)
+  const [selectedTorrents, setSelectedTorrents] = useState<Set<number>>(new Set())
+  const [torrentsBusy, setTorrentsBusy] = useState(false)
 
   const health = useQuery({ queryKey: ['health'], queryFn: api.health })
   const authStatus = useQuery({ queryKey: ['auth-status'], queryFn: api.authStatus })
@@ -60,15 +70,18 @@ export function Dashboard() {
   const pendingReviews = useQuery({ queryKey: ['reviews', 'pending'], queryFn: () => api.listReviews('pending') })
   const duplicates = useQuery({ queryKey: ['duplicates'], queryFn: api.listDuplicates })
   const readyToOrganize = useQuery({ queryKey: ['files', 'inbox'], queryFn: () => api.listFiles('inbox') })
+  const localPending = useQuery({ queryKey: ['local-scan', 'pending'], queryFn: api.getPendingLocalFiles })
 
   const readyToScan = authStatus.data?.connected === true && inboxFolder.data != null
   const reviewCount = pendingReviews.data?.length ?? 0
   const duplicateCount = duplicates.data?.length ?? 0
   const organizeCount = readyToOrganize.data?.length ?? 0
+  const torrentsCount = localPending.data?.length ?? 0
 
   const reviewBaseline = useProgressBaseline(reviewCount)
   const duplicateBaseline = useProgressBaseline(duplicateCount)
   const organizeBaseline = useProgressBaseline(organizeCount)
+  const torrentsBaseline = useProgressBaseline(torrentsCount)
 
   // A scan can create new reviews/duplicates/organize-ready files — recheck
   // all three the moment it finishes instead of waiting on a manual
@@ -107,6 +120,58 @@ export function Dashboard() {
     }
   }
 
+  async function handleCheckTorrents() {
+    setTorrentsError(null)
+    setTorrentsChecking(true)
+    try {
+      await api.scanLocalFolder()
+      queryClient.invalidateQueries({ queryKey: ['local-scan', 'pending'] })
+    } catch (err) {
+      setTorrentsError(err instanceof ApiError ? err.message : 'Failed to check the Torrents folder.')
+    } finally {
+      setTorrentsChecking(false)
+    }
+  }
+
+  function toggleTorrentSelected(id: number) {
+    setSelectedTorrents((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleCopySelectedTorrents() {
+    if (selectedTorrents.size === 0) return
+    setTorrentsBusy(true)
+    setTorrentsError(null)
+    try {
+      await api.copyLocalFiles(Array.from(selectedTorrents))
+      setSelectedTorrents(new Set())
+      queryClient.invalidateQueries({ queryKey: ['local-scan', 'pending'] })
+    } catch (err) {
+      setTorrentsError(err instanceof ApiError ? err.message : 'Failed to copy to Book Dump.')
+    } finally {
+      setTorrentsBusy(false)
+    }
+  }
+
+  async function handleDismissSelectedTorrents() {
+    if (selectedTorrents.size === 0) return
+    setTorrentsBusy(true)
+    setTorrentsError(null)
+    try {
+      await api.dismissLocalFiles(Array.from(selectedTorrents))
+      setSelectedTorrents(new Set())
+      queryClient.invalidateQueries({ queryKey: ['local-scan', 'pending'] })
+    } catch (err) {
+      setTorrentsError(err instanceof ApiError ? err.message : 'Failed to dismiss.')
+    } finally {
+      setTorrentsBusy(false)
+    }
+  }
+
   return (
     <div className="p-6">
       <h1 className="text-xl font-semibold">Dashboard</h1>
@@ -129,6 +194,13 @@ export function Dashboard() {
             </span>
           </li>
 
+          {torrentsBaseline > 0 && (
+            <li className="flex items-center justify-between gap-4 text-sm">
+              <span>Torrents folder</span>
+              <ProgressBar completed={torrentsBaseline - torrentsCount} total={torrentsBaseline} />
+            </li>
+          )}
+
           {reviewBaseline > 0 && (
             <li className="flex items-center justify-between gap-4 text-sm">
               <span>Review</span>
@@ -150,9 +222,13 @@ export function Dashboard() {
             </li>
           )}
 
-          {reviewBaseline === 0 && duplicateBaseline === 0 && organizeBaseline === 0 && !scan.data && (
-            <li className="text-xs text-neutral-400">Nothing tracked yet — run a scan to get started.</li>
-          )}
+          {torrentsBaseline === 0 &&
+            reviewBaseline === 0 &&
+            duplicateBaseline === 0 &&
+            organizeBaseline === 0 &&
+            !scan.data && (
+              <li className="text-xs text-neutral-400">Nothing tracked yet — run a scan to get started.</li>
+            )}
         </ul>
       </div>
 
@@ -167,6 +243,94 @@ export function Dashboard() {
           .
         </p>
       )}
+
+      {/* Step 0: Torrents folder — local files need to land in Book Dump
+          before a Drive scan would ever find them, so this comes first. */}
+      <div className="mt-6 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm text-neutral-500">Check the Torrents folder for new ebooks.</p>
+          <button
+            className="shrink-0 rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+            disabled={torrentsChecking}
+            onClick={handleCheckTorrents}
+          >
+            {torrentsChecking ? 'Checking…' : 'Check Torrents folder'}
+          </button>
+        </div>
+
+        {torrentsError && <p className="mt-2 text-sm text-red-600">{torrentsError}</p>}
+
+        {torrentsCount > 0 && (
+          <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+            {!showTorrents ? (
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm">
+                  {torrentsCount} new file{torrentsCount === 1 ? '' : 's'} found. Would you like to copy{' '}
+                  {torrentsCount === 1 ? 'it' : 'them'} to Book Dump?
+                </p>
+                <button
+                  className="shrink-0 rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                  onClick={() => setShowTorrents(true)}
+                >
+                  Review now
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-neutral-500">New files</h2>
+                  <button className="text-xs text-neutral-400 underline" onClick={() => setShowTorrents(false)}>
+                    Hide
+                  </button>
+                </div>
+
+                <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+                  {localPending.data?.map((f) => (
+                    <li key={f.id} className="flex items-center gap-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedTorrents.has(f.id)}
+                        onChange={() => toggleTorrentSelected(f.id)}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{f.filename}</span>
+                      <span className="shrink-0 text-xs text-neutral-400">{formatBytes(f.size_bytes)}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        selectedTorrents.size === localPending.data?.length
+                          ? new Set()
+                          : new Set(localPending.data?.map((f) => f.id)),
+                      )
+                    }
+                  >
+                    {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                  <button
+                    className="ml-auto rounded bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                    disabled={torrentsBusy || selectedTorrents.size === 0}
+                    onClick={handleCopySelectedTorrents}
+                  >
+                    Copy {selectedTorrents.size || ''} to Book Dump
+                  </button>
+                  <button
+                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+                    disabled={torrentsBusy || selectedTorrents.size === 0}
+                    onClick={handleDismissSelectedTorrents}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Step 1: Scan */}
       <div className="mt-6">
@@ -280,11 +444,15 @@ export function Dashboard() {
         </div>
       )}
 
-      {reviewCount === 0 && duplicateCount === 0 && organizeCount === 0 && scan.data?.status === 'done' && (
-        <p className="mt-6 text-sm text-neutral-500">
-          Nothing waiting on you — no reviews, duplicates, or books ready to organize.
-        </p>
-      )}
+      {torrentsCount === 0 &&
+        reviewCount === 0 &&
+        duplicateCount === 0 &&
+        organizeCount === 0 &&
+        scan.data?.status === 'done' && (
+          <p className="mt-6 text-sm text-neutral-500">
+            Nothing waiting on you — no new local files, reviews, duplicates, or books ready to organize.
+          </p>
+        )}
 
       {/* Manually re-run the checklist after taking action, or on a fresh
           visit before ever scanning — the queries above are live either way,

@@ -257,6 +257,30 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class LocalFileStatus(str, enum.Enum):
+    pending = "pending"
+    copied = "copied"
+    dismissed = "dismissed"
+
+
+class LocalFile(Base):
+    """A supported ebook file found under the watched local folder (e.g. a
+    torrents download directory), tracked so a re-scan only surfaces
+    genuinely new files — not the same ones offered (and copied or
+    dismissed) on a previous pass."""
+
+    __tablename__ = "local_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    path: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[LocalFileStatus] = mapped_column(
+        Enum(LocalFileStatus), nullable=False, default=LocalFileStatus.pending
+    )
+    discovered_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 __all__ = [
     "Author",
     "Series",
@@ -271,4 +295,5 @@ __all__ = [
     "Review",
     "LibraryRule",
     "Setting",
+    "LocalFile",
 ]

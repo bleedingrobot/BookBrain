@@ -116,3 +116,12 @@ class DriveProvider:
             .update(fileId=file_id, body={"name": new_name}, media_body=media, fields="id,name")
             .execute()
         )
+
+    def upload_new_file(
+        self, *, name: str, data: bytes, parent_id: str, mime_type: str = "application/octet-stream"
+    ) -> dict:
+        """Uploads local bytes as a brand-new Drive file — used to copy a
+        file found on the local watched folder into the inbox."""
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=False)
+        body = {"name": name, "parents": [parent_id]}
+        return self._service.files().create(body=body, media_body=media, fields="id,name,parents").execute()
