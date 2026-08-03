@@ -5,7 +5,7 @@ import { ConfidenceBar } from '../components/ConfidenceBar'
 import { ReviewDialog } from '../components/ReviewDialog'
 import type { CorrectReviewRequest } from '../types/reviews'
 
-export function ReviewQueue() {
+export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -23,6 +23,10 @@ export function ReviewQueue() {
     setSelectedId(next?.id ?? null)
     setActionError(null)
     queryClient.invalidateQueries({ queryKey: ['reviews', 'pending'] })
+    // approve/correct move the file to inbox status — anything watching
+    // file counts (the Dashboard's organize-ready prompt, the Library
+    // page) needs to see that too, not just the review list shrink.
+    queryClient.invalidateQueries({ queryKey: ['files'] })
   }
 
   const approve = useMutation({
@@ -47,13 +51,18 @@ export function ReviewQueue() {
   const busy = approve.isPending || correct.isPending || reject.isPending
 
   return (
-    <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
+    <div className={embedded ? 'grid grid-cols-1 gap-6 md:grid-cols-2' : 'grid grid-cols-1 gap-6 p-6 md:grid-cols-2'}>
       <div>
-        <h1 className="text-xl font-semibold">Review Queue</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Files that need a human decision — low confidence (any evidence strength) or a Drive
-          folder conflict. Check the confidence number: thin evidence can still be correct.
-        </p>
+        {!embedded && (
+          <>
+            <h1 className="text-xl font-semibold">Review Queue</h1>
+            <p className="mt-1 text-sm text-neutral-500">
+              Files that need a human decision — low confidence (any evidence strength) or a
+              Drive folder conflict. Check the confidence number: thin evidence can still be
+              correct.
+            </p>
+          </>
+        )}
 
         <ul className="mt-4 divide-y divide-neutral-100 dark:divide-neutral-800">
           {reviews.data?.map((r) => (

@@ -1,4 +1,4 @@
-import asyncio
+import subprocess
 
 import pytest
 
@@ -18,45 +18,14 @@ def test_is_convertible_rejects_other_extensions() -> None:
     assert is_convertible("notes.txt") is False
 
 
-class _FakeProcess:
-    def __init__(self, *, returncode: int, stderr: bytes) -> None:
-        self.returncode = returncode
-        self._stderr = stderr
-        self.killed = False
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        return (b"", self._stderr)
-
-    def kill(self) -> None:
-        self.killed = True
-
-    async def wait(self) -> int:
-        return self.returncode
-
-
-class _HangingProcess:
-    returncode: int | None = None
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        await asyncio.sleep(10)
-        return (b"", b"")
-
-    def kill(self) -> None:
-        pass
-
-    async def wait(self) -> int:
-        return -9
-
-
 async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> None:
-    async def fake_exec(binary, input_path, output_path, **kwargs):
-        assert binary == "ebook-convert"
+    def fake_run(cmd, **kwargs):
         from pathlib import Path
 
-        Path(output_path).write_bytes(b"fake epub bytes")
-        return _FakeProcess(returncode=0, stderr=b"")
+        Path(cmd[2]).write_bytes(b"fake epub bytes")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     result = await convert_to_epub(b"fake mobi content", source_filename="book.mobi")
 
@@ -64,30 +33,30 @@ async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> N
 
 
 async def test_convert_to_epub_raises_on_nonzero_exit(monkeypatch) -> None:
-    async def fake_exec(*args, **kwargs):
-        return _FakeProcess(returncode=1, stderr=b"conversion error details")
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, returncode=1, stdout=b"", stderr=b"conversion error details")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(ConversionError, match="conversion error details"):
         await convert_to_epub(b"bad content", source_filename="book.rtf")
 
 
 async def test_convert_to_epub_raises_when_binary_missing(monkeypatch) -> None:
-    async def fake_exec(*args, **kwargs):
+    def fake_run(cmd, **kwargs):
         raise FileNotFoundError()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(ConversionError, match="not found"):
         await convert_to_epub(b"content", source_filename="book.mobi", binary="nonexistent-binary")
 
 
 async def test_convert_to_epub_raises_on_timeout(monkeypatch) -> None:
-    async def fake_exec(*args, **kwargs):
-        return _HangingProcess()
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 0))
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(ConversionError, match="timed out"):
-        await convert_to_epub(b"content", source_filename="book.mobi", timeout_seconds=0.05)
+        await convert_to_epub(b"content", source_filename="book.mobi", timeout_seconds=1)

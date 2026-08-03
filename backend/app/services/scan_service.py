@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import uuid
 from pathlib import Path
 
@@ -30,6 +31,8 @@ from app.services.candidate_service import CandidateService, default_candidate_s
 from app.services.identification_service import IdentificationResult, IdentificationService
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
+
+logger = logging.getLogger(__name__)
 
 
 class ScanService:
@@ -236,6 +239,7 @@ class ScanService:
                     timeout_seconds=settings.ebook_convert_timeout_seconds,
                 )
             except Exception:
+                logger.exception("conversion failed for %s", raw["name"])
                 counts["failed"] += 1
                 return
 

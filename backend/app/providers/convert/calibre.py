@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -13,6 +14,16 @@ def is_convertible(filename: str) -> bool:
     return filename.lower().endswith(_CONVERTIBLE_EXTENSIONS)
 
 
+def _run_ebook_convert(
+    binary: str, input_path: Path, output_path: Path, timeout_seconds: int
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [binary, str(input_path), str(output_path)],
+        capture_output=True,
+        timeout=timeout_seconds,
+    )
+
+
 async def convert_to_epub(
     data: bytes,
     *,
@@ -22,7 +33,15 @@ async def convert_to_epub(
 ) -> bytes:
     """Shells out to Calibre's ebook-convert CLI to turn mobi/rtf bytes into
     an EPUB. Runs entirely through temp files — ebook-convert only operates
-    on paths, not stdin/stdout streams."""
+    on paths, not stdin/stdout streams.
+
+    Uses the plain blocking subprocess module via asyncio.to_thread rather
+    than asyncio.create_subprocess_exec: the latter requires the loop's
+    subprocess transport, which SelectorEventLoop doesn't implement on
+    Windows (raises NotImplementedError) — uvicorn can end up running under
+    exactly that loop, and by the time our own code runs the loop already
+    exists, too late to swap its policy. A thread-pooled blocking call works
+    under any event loop on any platform, no policy games required."""
     suffix = Path(source_filename).suffix or ".bin"
     with tempfile.TemporaryDirectory() as tmp_dir:
         input_path = Path(tmp_dir) / f"input{suffix}"
@@ -30,25 +49,16 @@ async def convert_to_epub(
         input_path.write_bytes(data)
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                binary,
-                str(input_path),
-                str(output_path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            result = await asyncio.to_thread(
+                _run_ebook_convert, binary, input_path, output_path, timeout_seconds
             )
         except FileNotFoundError as exc:
             raise ConversionError(f"{binary!r} not found — is Calibre installed and on PATH?") from exc
-
-        try:
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-        except TimeoutError as exc:
-            process.kill()
-            await process.wait()
+        except subprocess.TimeoutExpired as exc:
             raise ConversionError(f"ebook-convert timed out after {timeout_seconds}s") from exc
 
-        if process.returncode != 0:
-            raise ConversionError(f"ebook-convert failed: {stderr.decode(errors='replace')[:500]}")
+        if result.returncode != 0:
+            raise ConversionError(f"ebook-convert failed: {result.stderr.decode(errors='replace')[:500]}")
         if not output_path.exists():
             raise ConversionError("ebook-convert reported success but produced no output file")
 

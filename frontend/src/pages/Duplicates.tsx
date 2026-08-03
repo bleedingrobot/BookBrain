@@ -6,7 +6,7 @@ const REASON_LABEL: Record<string, string> = {
   previously_rejected: 'a previously rejected identification',
 }
 
-export function Duplicates() {
+export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [clearError, setClearError] = useState<string | null>(null)
@@ -28,15 +28,17 @@ export function Duplicates() {
   })
 
   return (
-    <div className="p-6">
+    <div className={embedded ? '' : 'p-6'}>
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Duplicates</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Files whose content exactly matches another file already in your Drive — detected
-            by content hash, not filename.
-          </p>
-        </div>
+        {!embedded && (
+          <div>
+            <h1 className="text-xl font-semibold">Duplicates</h1>
+            <p className="mt-1 text-sm text-neutral-500">
+              Files whose content exactly matches another file already in your Drive — detected
+              by content hash, not filename.
+            </p>
+          </div>
+        )}
 
         {duplicates.data && duplicates.data.length > 0 && (
           <div className="shrink-0 text-right">
