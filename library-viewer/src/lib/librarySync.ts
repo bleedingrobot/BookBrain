@@ -66,15 +66,36 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
 
   const live = changes.filter((c) => !c.removed && c.file && !c.file.trashed)
 
-  // Folders first, then files — so a folder created and populated in the
-  // same sync batch resolves correctly no matter which order Drive
-  // reports the two changes in.
-  for (const change of live) {
+  // Folders first, then files. A single pass over folder changes isn't
+  // enough on its own: organizing into a brand-new author AND a brand-new
+  // series creates both folders in the same batch (nested — the series
+  // folder's parent is the author folder), and Drive's changes.list gives
+  // no ordering guarantee between the two. If the series folder's change
+  // happened to be listed before the author folder's, a single pass would
+  // permanently reject it (parent not known *yet*) and every file inside
+  // it would silently vanish from an incremental Refresh — recoverable
+  // only via a full Rebuild, which walks the tree fresh instead of
+  // depending on this ordering at all. So: keep re-resolving newly-known
+  // parents until a full pass adds nothing further, then anything still
+  // unresolved genuinely isn't in the tree (or was moved out of it).
+  const folderChanges = live.filter((c) => c.file!.mimeType === FOLDER_MIME_TYPE)
+  let resolvedMore = true
+  while (resolvedMore) {
+    resolvedMore = false
+    for (const change of folderChanges) {
+      const file = change.file!
+      if (folderIds.has(file.id)) continue
+      if ((file.parents ?? []).some((p) => folderIds.has(p))) {
+        folderIds.add(file.id)
+        resolvedMore = true
+      }
+    }
+  }
+  for (const change of folderChanges) {
     const file = change.file!
-    if (file.mimeType !== FOLDER_MIME_TYPE) continue
-    const parentKnown = (file.parents ?? []).some((p) => folderIds.has(p))
-    if (parentKnown) folderIds.add(file.id)
-    else folderIds.delete(file.id) // not ours, or moved out of the tree
+    if (!(file.parents ?? []).some((p) => folderIds.has(p))) {
+      folderIds.delete(file.id) // not ours, or moved out of the tree
+    }
   }
 
   for (const change of live) {
