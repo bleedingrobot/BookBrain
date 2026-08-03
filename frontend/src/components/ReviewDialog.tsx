@@ -9,6 +9,31 @@ const STATUS_REASON_LABEL: Record<string, string> = {
   low_confidence: 'Identification confidence was too low to auto-organize.',
 }
 
+// Mirrors backend/app/services/organize_service.py's build_target_path —
+// same invalid-char handling and folder segments (Author, then Series) —
+// so this preview matches exactly where Organize will actually put the
+// file, not an approximation of it.
+const INVALID_CHARS_RE = /[\\/:*?"<>|]/g
+
+function sanitize(segment: string): string {
+  const cleaned = segment.replace(INVALID_CHARS_RE, ' ').trim()
+  return cleaned || 'Untitled'
+}
+
+function previewDestination(
+  title: string,
+  author: string,
+  series: string,
+  seriesNumber: string,
+): string {
+  const segments: string[] = []
+  if (author.trim()) segments.push(sanitize(author))
+  if (series.trim()) segments.push(sanitize(series))
+  segments.push(title.trim() ? sanitize(title) : '(untitled)')
+  const numberSuffix = series.trim() && seriesNumber.trim() ? ` #${seriesNumber.trim()}` : ''
+  return segments.join(' › ') + numberSuffix
+}
+
 export function ReviewDialog({
   review,
   onApprove,
@@ -53,6 +78,17 @@ export function ReviewDialog({
         </div>
         <ConfidenceBar value={review.computed_confidence} />
       </div>
+
+      <p className="mt-2 text-xs text-neutral-400">
+        Will organize to: <span className="font-mono">
+          {previewDestination(
+            review.proposed_title ?? '',
+            review.proposed_author ?? '',
+            proposedSeries ?? '',
+            proposedSeriesNumber != null ? String(proposedSeriesNumber) : '',
+          )}
+        </span>
+      </p>
 
       {structuralNote && (
         <p className="mt-3 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
@@ -134,7 +170,7 @@ export function ReviewDialog({
           </label>
           <div className="flex gap-2">
             <label className="block flex-1 text-xs text-neutral-500">
-              Series
+              Series title
               <input
                 className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
                 value={series}
@@ -142,7 +178,7 @@ export function ReviewDialog({
               />
             </label>
             <label className="block w-24 text-xs text-neutral-500">
-              #
+              Book #
               <input
                 className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
                 value={seriesNumber}
@@ -150,6 +186,11 @@ export function ReviewDialog({
               />
             </label>
           </div>
+          <p className="text-xs text-neutral-400">
+            Will organize to:{' '}
+            <span className="font-mono">{previewDestination(title, author, series, seriesNumber)}</span>
+          </p>
+
           <label className="flex items-center gap-2 text-xs text-neutral-500">
             <input
               type="checkbox"
