@@ -28,6 +28,7 @@ class _FakeDriveProvider:
         self._content = content
         self.download_calls: list[str] = []
         self.trash_calls: list[str] = []
+        self.update_content_calls: list[tuple[str, str, bytes]] = []
 
     def download_file(self, file_id: str) -> bytes:
         self.download_calls.append(file_id)
@@ -36,6 +37,10 @@ class _FakeDriveProvider:
     def trash_file(self, file_id: str) -> dict:
         self.trash_calls.append(file_id)
         return {"id": file_id, "trashed": True}
+
+    def update_file_content(self, file_id: str, *, new_name: str, data: bytes) -> dict:
+        self.update_content_calls.append((file_id, new_name, data))
+        return {"id": file_id, "name": new_name}
 
 
 class _FakeIdentificationService:
@@ -82,6 +87,7 @@ def _counts() -> dict[str, int]:
         "skipped_too_large": 0,
         "failed": 0,
         "removed_non_ebook": 0,
+        "converted": 0,
     }
 
 
@@ -127,6 +133,7 @@ async def test_process_file_creates_file_and_metadata(db_session) -> None:
         "skipped_too_large": 0,
         "failed": 0,
         "removed_non_ebook": 0,
+        "converted": 0,
     }
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -172,6 +179,82 @@ async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_ses
     assert counts["new"] == 0
     assert provider.trash_calls == ["drive-junk"]
     assert provider.download_calls == []  # never even downloaded
+    assert (await db_session.execute(select(File))).scalars().all() == []
+
+
+async def test_process_file_converts_mobi_before_processing(db_session, monkeypatch) -> None:
+    import app.services.scan_service as scan_module
+
+    converted_bytes = build_epub(title="Converted Book", authors=("Someone",))
+
+    async def fake_convert(data, *, source_filename, binary, timeout_seconds):
+        assert source_filename == "book.mobi"
+        return converted_bytes
+
+    monkeypatch.setattr(scan_module, "convert_to_epub", fake_convert)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(b"fake mobi bytes")
+    raw = {"id": "drive-mobi", "name": "book.mobi", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["converted"] == 1
+    assert counts["new"] == 1
+    assert provider.trash_calls == []
+    assert provider.download_calls == ["drive-mobi"]  # only the pre-conversion download — no redundant re-fetch
+    assert provider.update_content_calls == [("drive-mobi", "book.epub", converted_bytes)]
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.drive_file_id == "drive-mobi"
+    assert file_row.filename == "book.epub"
+    assert file_row.status.value == "inbox"
+
+
+async def test_process_file_converts_rtf_before_processing(db_session, monkeypatch) -> None:
+    import app.services.scan_service as scan_module
+
+    converted_bytes = build_epub()
+
+    async def fake_convert(data, *, source_filename, binary, timeout_seconds):
+        return converted_bytes
+
+    monkeypatch.setattr(scan_module, "convert_to_epub", fake_convert)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(b"fake rtf bytes")
+    raw = {"id": "drive-rtf", "name": "notes.RTF", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["converted"] == 1
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.filename == "notes.epub"
+
+
+async def test_process_file_conversion_failure_counts_as_failed_and_leaves_file_alone(
+    db_session, monkeypatch
+) -> None:
+    import app.services.scan_service as scan_module
+
+    async def fake_convert(*args, **kwargs):
+        raise RuntimeError("simulated conversion failure")
+
+    monkeypatch.setattr(scan_module, "convert_to_epub", fake_convert)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(b"fake mobi bytes")
+    raw = {"id": "drive-broken-mobi", "name": "broken.mobi", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts)
+
+    assert counts["failed"] == 1
+    assert counts["converted"] == 0
+    assert provider.trash_calls == []  # left alone, not trashed — retryable
+    assert provider.update_content_calls == []
     assert (await db_session.execute(select(File))).scalars().all() == []
 
 

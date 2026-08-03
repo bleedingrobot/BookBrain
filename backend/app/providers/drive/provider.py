@@ -1,7 +1,10 @@
+import io
+
 from googleapiclient.discovery import Resource
+from googleapiclient.http import MediaIoBaseUpload
 
 from app.providers.drive.classify import is_supported_ebook
-from app.providers.drive.client import FOLDER_MIME_TYPE
+from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE
 
 
 class DriveProvider:
@@ -98,5 +101,18 @@ class DriveProvider:
         return (
             self._service.files()
             .update(fileId=file_id, body={"trashed": True}, fields="id,trashed")
+            .execute()
+        )
+
+    def update_file_content(
+        self, file_id: str, *, new_name: str, data: bytes, mime_type: str = EPUB_MIME_TYPE
+    ) -> dict:
+        """Replaces a file's content and name in place, keeping its id (and
+        Drive's own revision history) — used to swap a converted mobi/rtf's
+        bytes in for the original without a separate upload+trash+relink."""
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=False)
+        return (
+            self._service.files()
+            .update(fileId=file_id, body={"name": new_name}, media_body=media, fields="id,name")
             .execute()
         )

@@ -29,7 +29,7 @@ class _FakeFiles:
 
     def update(self, **kwargs) -> _FakeExecutable:
         self.update_calls.append(kwargs)
-        return _FakeExecutable({"id": kwargs["fileId"], "trashed": kwargs["body"]["trashed"]})
+        return _FakeExecutable({"id": kwargs["fileId"], **kwargs.get("body", {})})
 
 
 class _FakeService:
@@ -124,6 +124,19 @@ def test_trash_file_sets_trashed_true() -> None:
 
     assert files.update_calls[0] == {"fileId": "f1", "body": {"trashed": True}, "fields": "id,trashed"}
     assert result == {"id": "f1", "trashed": True}
+
+
+def test_update_file_content_uploads_new_data_and_name() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    result = provider.update_file_content("f1", new_name="book.epub", data=b"epub bytes")
+
+    call = files.update_calls[0]
+    assert call["fileId"] == "f1"
+    assert call["body"] == {"name": "book.epub"}
+    assert call["media_body"] is not None
+    assert result == {"id": "f1", "name": "book.epub"}
 
 
 def test_list_epub_files_recursive_walks_subfolders() -> None:

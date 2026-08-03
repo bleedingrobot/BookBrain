@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from pathlib import Path
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from app.data.models import (
     Review,
     ReviewStatus,
 )
+from app.providers.convert.calibre import convert_to_epub, is_convertible
 from app.providers.drive.classify import classify_file, is_supported_ebook
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
@@ -37,9 +39,12 @@ class ScanService:
     scan only processes what's new (SPEC.md's "scanner as idempotent
     function" simplification for v1 — no webhooks yet).
 
-    Only .epub and .kpub are supported — the inbox listing is unfiltered by
-    Drive mimeType (kpub has no reliable one), and anything that isn't one
-    of those two extensions is trashed on sight rather than left in the
+    .epub and .kpub are processed as-is; .mobi and .rtf are converted to
+    epub first via Calibre's ebook-convert CLI, replacing the Drive file's
+    content/name in place (same drive_file_id) before anything else runs.
+    The inbox listing is unfiltered by Drive mimeType (kpub has no
+    reliable one), and anything that's neither a supported nor a
+    convertible extension is trashed on sight rather than left in the
     book dump folder or silently ignored.
 
     Threshold routing here only sets `files.status`/`status_reason` for the
@@ -89,12 +94,14 @@ class ScanService:
             "skipped_too_large": 0,
             "failed": 0,
             "removed_non_ebook": 0,
+            "converted": 0,
         }
 
         try:
-            # Every file in the inbox, not just ebooks — anything that
-            # isn't a supported .epub/.kpub gets removed from the book dump
-            # by _process_file below, not just ignored.
+            # Every file in the inbox, not just ebooks — anything that isn't
+            # a supported .epub/.kpub or a convertible .mobi/.rtf gets
+            # removed from the book dump by _process_file below, not just
+            # ignored.
             raw_files = provider.list_files_in_folder(folder_id)
         except Exception as exc:  # Drive API failure — nothing to salvage
             self._jobs[job_id] = ScanJobStatus(
@@ -112,6 +119,7 @@ class ScanService:
             f"{counts['skipped_existing']} already known, "
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['removed_non_ebook']} non-ebook files removed, "
+            f"{counts['converted']} converted to epub, "
             f"{counts['failed']} failed to parse"
         )
         self._jobs[job_id] = ScanJobStatus(job_id=job_id, status=ScanJobState.done, detail=detail)
@@ -134,6 +142,7 @@ class ScanService:
             "skipped_too_large": 0,
             "failed": 0,
             "removed_non_ebook": 0,
+            "converted": 0,
         }
 
         try:
@@ -190,7 +199,7 @@ class ScanService:
         *,
         already_organised: bool = False,
     ) -> None:
-        if not is_supported_ebook(raw["name"]):
+        if not is_supported_ebook(raw["name"]) and not is_convertible(raw["name"]):
             # Only reachable from run_scan's broad inbox listing — run_rebuild
             # feeds this from an already-ebook-filtered recursive listing, so
             # nothing in the organized library folder is ever touched here.
@@ -210,8 +219,33 @@ class ScanService:
 
         status_reason = classify_file(raw)
 
+        # mobi/rtf never gets processed as-is — Calibre converts it to epub
+        # first, and the Drive file's content/name are updated in place
+        # (same drive_file_id, so everything downstream — dedup, organize,
+        # the works — treats it exactly like a file that was always epub).
+        # Left alone (not trashed) on failure so it can be retried or
+        # inspected instead of silently vanishing.
+        converted_data: bytes | None = None
+        if is_convertible(raw["name"]):
+            try:
+                source_bytes = provider.download_file(raw["id"])
+                converted_data = await convert_to_epub(
+                    source_bytes,
+                    source_filename=raw["name"],
+                    binary=settings.ebook_convert_binary,
+                    timeout_seconds=settings.ebook_convert_timeout_seconds,
+                )
+            except Exception:
+                counts["failed"] += 1
+                return
+
+            new_name = f"{Path(raw['name']).stem}.epub"
+            provider.update_file_content(raw["id"], new_name=new_name, data=converted_data)
+            raw = {**raw, "name": new_name}
+            counts["converted"] += 1
+
         try:
-            data = provider.download_file(raw["id"])
+            data = converted_data if converted_data is not None else provider.download_file(raw["id"])
         except Exception:
             counts["failed"] += 1
             return
