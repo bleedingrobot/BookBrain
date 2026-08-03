@@ -84,3 +84,59 @@ async def test_book_without_author_resolves(db_session) -> None:
     )
 
     assert book.author_id is None
+
+
+async def test_series_variants_reuse_the_same_row(db_session) -> None:
+    # Regression: these four phrasings of the same series (reordered words,
+    # with/without parens, differing case) were each creating a separate
+    # Series row — and a separate Drive folder on organize.
+    variants = [
+        "Cirque Du Freak  The Saga of Darren Shan",
+        "Cirque Du Freak (The Saga of Darren Shan)",
+        "The Saga of Darren Shan (Cirque Du Freak)",
+        "The Saga of Darren Shan (Cirque du Freak)",
+    ]
+
+    for i, series_name in enumerate(variants):
+        await resolve_book(
+            db_session,
+            title=f"Book {i}",
+            author="Darren Shan",
+            series=series_name,
+            series_number=float(i + 1),
+            isbn13=None,
+            isbn10=None,
+        )
+
+    series_rows = (await db_session.execute(select(Series))).scalars().all()
+    assert len(series_rows) == 1
+    # first-seen phrasing wins as the canonical stored name
+    assert series_rows[0].name == variants[0]
+
+    books = (await db_session.execute(select(Book))).scalars().all()
+    assert len(books) == 4
+    assert all(b.series_id == series_rows[0].id for b in books)
+
+
+async def test_author_variants_reuse_the_same_row(db_session) -> None:
+    await resolve_book(
+        db_session,
+        title="Book One",
+        author="Frank Herbert",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    await resolve_book(
+        db_session,
+        title="Book Two",
+        author="frank   herbert",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+
+    authors = (await db_session.execute(select(Author))).scalars().all()
+    assert len(authors) == 1

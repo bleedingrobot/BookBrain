@@ -4,6 +4,7 @@ _NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 _LEADING_ARTICLE_RE = re.compile(r"^(the|a|an)\s+")
 _SUBTITLE_SEPARATOR_RE = re.compile(r"\s*[:;].*$")
 _TRAILING_PARENS_RE = re.compile(r"\s*\([^()]*\)\s*$")
+_WORD_RE = re.compile(r"[a-z0-9]+")
 
 
 def normalize(text: str | None) -> str:
@@ -29,6 +30,18 @@ def normalize_title(text: str | None) -> str:
         core_title = trimmed
     stripped = _LEADING_ARTICLE_RE.sub("", core_title.lower())
     return _NORMALIZE_RE.sub("", stripped)
+
+
+def normalize_words(text: str | None) -> frozenset[str]:
+    """Order-independent, case/punctuation-insensitive word set. Series (and
+    author) names commonly show up as the same words in a different
+    arrangement across sources/AI calls — "Cirque Du Freak (The Saga of
+    Darren Shan)" vs "The Saga of Darren Shan (Cirque Du Freak)" vs the same
+    without parens — which normalize()'s order-preserving concatenation
+    doesn't catch, but a plain word set does."""
+    if not text:
+        return frozenset()
+    return frozenset(_WORD_RE.findall(text.lower()))
 
 
 def texts_match(a: str | None, b: str | None) -> bool:

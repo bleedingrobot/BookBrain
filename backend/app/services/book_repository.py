@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import Author, Book, Identifier, IdentifierType, Series
+from app.services.text_match import normalize_words
 
 
 async def resolve_book(
@@ -44,20 +45,30 @@ async def resolve_book(
 
 
 async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
-    row = (await session.execute(select(Author).where(Author.name == name))).scalar_one_or_none()
-    if row is None:
-        row = Author(name=name)
-        session.add(row)
-        await session.flush()
+    target = normalize_words(name)
+    for existing in (await session.execute(select(Author))).scalars().all():
+        if normalize_words(existing.name) == target:
+            return existing
+    row = Author(name=name)
+    session.add(row)
+    await session.flush()
     return row
 
 
 async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
-    row = (await session.execute(select(Series).where(Series.name == name))).scalar_one_or_none()
-    if row is None:
-        row = Series(name=name)
-        session.add(row)
-        await session.flush()
+    # Word-set match, not exact string equality: the same series shows up
+    # phrased differently across providers/AI calls — "Cirque Du Freak (The
+    # Saga of Darren Shan)" vs "The Saga of Darren Shan (Cirque Du Freak)"
+    # vs the same without punctuation/casing — and each variant must reuse
+    # the first-seen canonical row, not fork a new series (and a new Drive
+    # folder on organize) every time the wording shifts slightly.
+    target = normalize_words(name)
+    for existing in (await session.execute(select(Series))).scalars().all():
+        if normalize_words(existing.name) == target:
+            return existing
+    row = Series(name=name)
+    session.add(row)
+    await session.flush()
     return row
 
 
