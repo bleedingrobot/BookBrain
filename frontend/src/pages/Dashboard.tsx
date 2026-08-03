@@ -69,10 +69,26 @@ export function Dashboard() {
 
   const pendingReviews = useQuery({ queryKey: ['reviews', 'pending'], queryFn: () => api.listReviews('pending') })
   const duplicates = useQuery({ queryKey: ['duplicates'], queryFn: api.listDuplicates })
-  const readyToOrganize = useQuery({ queryKey: ['files', 'inbox'], queryFn: () => api.listFiles('inbox') })
+  // Organize commits each file individually on the backend, so polling this
+  // while a job is running shows the count shrink book-by-book instead of
+  // jumping straight from full to empty once the whole job finishes.
+  const readyToOrganize = useQuery({
+    queryKey: ['files', 'inbox'],
+    queryFn: () => api.listFiles('inbox'),
+    refetchInterval: () => (organize.data?.status === 'running' ? 1000 : false),
+  })
   const localPending = useQuery({ queryKey: ['local-scan', 'pending'], queryFn: api.getPendingLocalFiles })
 
   const readyToScan = authStatus.data?.connected === true && inboxFolder.data != null
+
+  // Polls the live Drive folder (not the DB) so newly-dropped files show up
+  // here even before the next scan picks them up.
+  const bookDump = useQuery({
+    queryKey: ['drive-files'],
+    queryFn: api.driveFiles,
+    enabled: readyToScan,
+    refetchInterval: 8000,
+  })
   const reviewCount = pendingReviews.data?.length ?? 0
   const duplicateCount = duplicates.data?.length ?? 0
   const organizeCount = readyToOrganize.data?.length ?? 0
@@ -93,6 +109,15 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['files'] })
     }
   }, [scan.data?.status, queryClient])
+
+  // Guarantees the "N ready to organize" card and progress bar are fully in
+  // sync with the finished job the instant it completes, rather than
+  // waiting on the next 1s poll tick.
+  useEffect(() => {
+    if (organize.data?.status === 'done') {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    }
+  }, [organize.data?.status, queryClient])
 
   async function handleStartScan() {
     setScanError(null)
@@ -232,6 +257,32 @@ export function Dashboard() {
         </ul>
       </div>
 
+      {readyToScan && (
+        <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-medium text-neutral-500">
+              Book Dump{bookDump.data ? ` (${bookDump.data.length})` : ''}
+            </h2>
+            {bookDump.isFetching && <span className="text-xs text-neutral-400">syncing…</span>}
+          </div>
+
+          {bookDump.data && bookDump.data.length > 0 ? (
+            <ul className="mt-2 max-h-40 divide-y divide-neutral-100 overflow-y-auto text-xs dark:divide-neutral-800">
+              {bookDump.data.map((f) => (
+                <li key={f.id} className="flex items-center gap-3 py-1">
+                  <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                  <span className="shrink-0 text-neutral-400">{formatBytes(f.size_bytes)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-neutral-400">
+              {bookDump.isLoading ? 'loading…' : 'Empty'}
+            </p>
+          )}
+        </div>
+      )}
+
       {!readyToScan && !authStatus.isLoading && (
         <p className="mt-2 text-sm text-neutral-500">
           {authStatus.data?.connected
@@ -284,7 +335,20 @@ export function Dashboard() {
                   </button>
                 </div>
 
-                <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+                <button
+                  className="mb-2 text-xs text-neutral-400 underline"
+                  onClick={() =>
+                    setSelectedTorrents(
+                      selectedTorrents.size === localPending.data?.length
+                        ? new Set()
+                        : new Set(localPending.data?.map((f) => f.id)),
+                    )
+                  }
+                >
+                  {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
+                </button>
+
+                <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
                   {localPending.data?.map((f) => (
                     <li key={f.id} className="flex items-center gap-3 py-2">
                       <input
@@ -299,18 +363,6 @@ export function Dashboard() {
                 </ul>
 
                 <div className="mt-3 flex items-center gap-2">
-                  <button
-                    className="text-xs text-neutral-400 underline"
-                    onClick={() =>
-                      setSelectedTorrents(
-                        selectedTorrents.size === localPending.data?.length
-                          ? new Set()
-                          : new Set(localPending.data?.map((f) => f.id)),
-                      )
-                    }
-                  >
-                    {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
-                  </button>
                   <button
                     className="ml-auto rounded bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
                     disabled={torrentsBusy || selectedTorrents.size === 0}
