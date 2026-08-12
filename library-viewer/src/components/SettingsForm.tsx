@@ -4,9 +4,11 @@ import type { PartialSettings, ViewerSettings } from '../lib/settings'
 export function SettingsForm({
   initial,
   onSave,
+  onCancel,
 }: {
   initial: PartialSettings | null
   onSave: (settings: ViewerSettings) => void
+  onCancel?: () => void
 }) {
   const [googleClientId, setGoogleClientId] = useState(initial?.googleClientId ?? '')
   const [libraryFolderId, setLibraryFolderId] = useState(initial?.libraryFolderId ?? '')
@@ -75,12 +77,19 @@ export function SettingsForm({
           </span>
         </label>
 
-        <button
-          type="submit"
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-        >
-          Save
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+          >
+            Save
+          </button>
+          {onCancel && (
+            <button type="button" className="text-xs text-neutral-400 underline" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
     </div>
   )

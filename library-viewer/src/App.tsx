@@ -5,7 +5,7 @@ import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
 import { matchesSearch, parseFilename } from './lib/parseFilename'
-import { clearSettings, loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
+import { loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -29,6 +29,7 @@ function consumeSharedSettings(): ViewerSettings | null {
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(false)
+  const [editingSettings, setEditingSettings] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(() => consumeSharedSettings() ?? loadSettings())
   const [token, setToken] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -99,10 +100,28 @@ export default function App() {
     return <SetupChecklist onBack={() => setShowSetup(false)} />
   }
 
-  if (!settings) {
+  if (!settings || editingSettings) {
     return (
       <>
-        <SettingsForm initial={loadPartialSettings()} onSave={(s) => { saveSettings(s); setSettings(s) }} />
+        <SettingsForm
+          initial={loadPartialSettings()}
+          onSave={(s) => {
+            // Only the client ID / library folder actually invalidate the
+            // current sign-in and cached file list — changing just the Kobo
+            // folder ID (or re-saving unchanged values to back out of
+            // editing) shouldn't force a fresh sign-in + rebuild.
+            const resyncNeeded =
+              settings?.googleClientId !== s.googleClientId || settings?.libraryFolderId !== s.libraryFolderId
+            saveSettings(s)
+            setSettings(s)
+            setEditingSettings(false)
+            if (resyncNeeded) {
+              setToken(null)
+              setFiles(null)
+            }
+          }}
+          onCancel={settings ? () => setEditingSettings(false) : undefined}
+        />
         <p className="mx-auto max-w-md p-6 pt-0 text-center">
           <button className="text-xs text-neutral-400 underline" onClick={() => setShowSetup(true)}>
             Lost your hard drive? Recovery checklist
@@ -239,15 +258,6 @@ export default function App() {
         {authError && <p className="mt-3 text-sm text-red-600">{authError}</p>}
         <button
           className="mt-8 block w-full text-xs text-neutral-400 underline"
-          onClick={() => {
-            clearSettings()
-            setSettings(null)
-          }}
-        >
-          Change settings
-        </button>
-        <button
-          className="mt-2 block w-full text-xs text-neutral-400 underline"
           onClick={() => setShowSetup(true)}
         >
           Lost your hard drive? Recovery checklist
@@ -281,15 +291,7 @@ export default function App() {
           <button className="underline" onClick={handleCopyLink}>
             Copy link
           </button>
-          <button
-            className="underline"
-            onClick={() => {
-              clearSettings()
-              setSettings(null)
-              setToken(null)
-              setFiles(null)
-            }}
-          >
+          <button className="underline" onClick={() => setEditingSettings(true)}>
             Change settings
           </button>
           <button className="underline" onClick={() => setShowSetup(true)}>
