@@ -60,25 +60,37 @@ export default function App() {
 
   const hasKobo = Boolean(settings?.koboFolderId)
 
-  async function handleShare() {
-    if (!settings) return
+  function buildShareMessage(): { link: string; message: string } | null {
+    if (!settings) return null
     const link = `${window.location.origin}${window.location.pathname}?clientId=${encodeURIComponent(settings.googleClientId)}&folderId=${encodeURIComponent(settings.libraryFolderId)}`
     const message = `You're invited to browse and download books from the BookBrain library. Open this link and sign in with your Google account:\n${link}`
+    return { link, message }
+  }
+
+  async function handleShare() {
+    const share = buildShareMessage()
+    if (!share) return
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'BookBrain Library', text: message })
+        await navigator.share({ title: 'BookBrain Library', text: share.message })
         return
       } catch {
         return // user cancelled the share sheet — not an error
       }
     }
 
+    await handleCopyLink()
+  }
+
+  async function handleCopyLink() {
+    const share = buildShareMessage()
+    if (!share) return
     try {
-      await navigator.clipboard.writeText(message)
+      await navigator.clipboard.writeText(share.message)
       setShareStatus('Copied! Paste it into a message to send.')
     } catch {
-      setShareStatus(`Copy failed — here's the link: ${link}`)
+      setShareStatus(`Copy failed — here's the link: ${share.link}`)
     }
     setTimeout(() => setShareStatus(null), 5000)
   }
@@ -228,6 +240,9 @@ export default function App() {
         <button className="mt-8 block w-full text-xs text-neutral-400 underline" onClick={handleShare}>
           Share view/download access with someone else
         </button>
+        <button className="mt-2 block w-full text-xs text-neutral-400 underline" onClick={handleCopyLink}>
+          Or just copy the link
+        </button>
         {shareStatus && <p className="mt-2 text-xs text-neutral-500">{shareStatus}</p>}
         <button
           className="mt-2 block w-full text-xs text-neutral-400 underline"
@@ -269,6 +284,9 @@ export default function App() {
           </button>
           <button className="underline" onClick={handleShare}>
             Share
+          </button>
+          <button className="underline" onClick={handleCopyLink}>
+            Copy link
           </button>
           <button
             className="underline"
