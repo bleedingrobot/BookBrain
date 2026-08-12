@@ -340,8 +340,10 @@ export default function App() {
           {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
         </div>
       )}
-      {selected.size === 0 && hasKobo && koboMessage && (
-        <p className="mt-4 text-xs text-neutral-500">{koboMessage}</p>
+      {selected.size === 0 && hasKobo && (koboError || koboMessage) && (
+        <p className={`mt-4 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
+          {koboError ?? koboMessage}
+        </p>
       )}
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
