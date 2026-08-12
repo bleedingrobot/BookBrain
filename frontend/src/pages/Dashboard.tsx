@@ -412,6 +412,17 @@ export function Dashboard() {
             {scan.data.detail ? ` — ${scan.data.detail}` : ''}
           </p>
         )}
+
+        {scan.data && scan.data.failures.length > 0 && (
+          <ul className="mt-2 max-h-40 divide-y divide-neutral-100 overflow-y-auto rounded border border-red-200 text-xs dark:divide-neutral-800 dark:border-red-900">
+            {scan.data.failures.map((f, i) => (
+              <li key={i} className="flex items-start gap-3 px-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-neutral-700 dark:text-neutral-300">{f.filename}</span>
+                <span className="shrink-0 max-w-[60%] text-right text-red-600 dark:text-red-400">{f.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Step 2: Review */}

@@ -107,11 +107,14 @@ async def test_process_file_safely_does_not_abort_batch_on_unexpected_error(db_s
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-boom", "name": "boom.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
+    failures: list = []
 
-    await service._process_file_safely(db_session, provider, raw, get_settings(), counts)
+    await service._process_file_safely(db_session, provider, raw, get_settings(), counts, failures)
 
     assert counts["failed"] == 1
     assert (await db_session.execute(select(File))).scalars().all() == []
+    assert failures[0].filename == "boom.epub"
+    assert "simulated unexpected failure" in failures[0].reason
 
     # the session must still be usable for the next file in the batch
     await db_session.execute(select(File))
@@ -123,7 +126,7 @@ async def test_process_file_creates_file_and_metadata(db_session) -> None:
     raw = {"id": "drive-1", "name": "foo.epub", "parents": ["parent-1"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts == {
         "new": 1,
@@ -159,7 +162,7 @@ async def test_process_file_accepts_kpub_extension(db_session) -> None:
     raw = {"id": "drive-kpub", "name": "foo.kpub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["new"] == 1
     assert provider.trash_calls == []
@@ -173,7 +176,7 @@ async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_ses
     raw = {"id": "drive-junk", "name": "cover.jpg", "parents": ["p"], "size": "50"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["removed_non_ebook"] == 1
     assert counts["new"] == 0
@@ -198,7 +201,7 @@ async def test_process_file_converts_mobi_before_processing(db_session, monkeypa
     raw = {"id": "drive-mobi", "name": "book.mobi", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["converted"] == 1
     assert counts["new"] == 1
@@ -227,7 +230,7 @@ async def test_process_file_converts_rtf_before_processing(db_session, monkeypat
     raw = {"id": "drive-rtf", "name": "notes.RTF", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["converted"] == 1
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -248,14 +251,36 @@ async def test_process_file_conversion_failure_counts_as_failed_and_leaves_file_
     provider = _FakeDriveProvider(b"fake mobi bytes")
     raw = {"id": "drive-broken-mobi", "name": "broken.mobi", "parents": ["p"], "size": "100"}
     counts = _counts()
+    failures: list = []
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
 
     assert counts["failed"] == 1
     assert counts["converted"] == 0
     assert provider.trash_calls == []  # left alone, not trashed — retryable
     assert provider.update_content_calls == []
     assert (await db_session.execute(select(File))).scalars().all() == []
+    assert failures[0].filename == "broken.mobi"
+    assert "simulated conversion failure" in failures[0].reason
+
+
+async def test_process_file_download_failure_counts_as_failed(db_session) -> None:
+    class _FailingDownloadProvider:
+        def download_file(self, file_id: str) -> bytes:
+            raise RuntimeError("simulated download failure")
+
+    service = _no_network_scan_service()
+    provider = _FailingDownloadProvider()
+    raw = {"id": "drive-unreachable", "name": "unreachable.epub", "parents": ["p"], "size": "100"}
+    counts = _counts()
+    failures: list = []
+
+    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
+
+    assert counts["failed"] == 1
+    assert (await db_session.execute(select(File))).scalars().all() == []
+    assert failures[0].filename == "unreachable.epub"
+    assert "simulated download failure" in failures[0].reason
 
 
 async def test_process_file_skips_already_known(db_session) -> None:
@@ -263,9 +288,9 @@ async def test_process_file_skips_already_known(db_session) -> None:
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-1", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
     counts = _counts()
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["skipped_existing"] == 1
     assert len(provider.download_calls) == 1  # not re-downloaded on the second pass
@@ -277,7 +302,7 @@ async def test_process_file_flags_multi_parent_for_review(db_session) -> None:
     raw = {"id": "drive-2", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["flagged"] == 1
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -290,10 +315,13 @@ async def test_process_file_marks_parse_failure(db_session) -> None:
     provider = _FakeDriveProvider(b"this is not a zip file")
     raw = {"id": "drive-3", "name": "corrupt.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
+    failures: list = []
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
 
     assert counts["failed"] == 1
+    assert failures[0].filename == "corrupt.epub"
+    assert "not a valid zip archive" in failures[0].reason
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "unidentified"
     assert file_row.status_reason.value == "parse_failed"
@@ -328,7 +356,7 @@ async def test_process_file_persists_candidates(db_session) -> None:
     raw = {"id": "drive-5", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     stored = (await db_session.execute(select(BookCandidate))).scalars().all()
     assert len(stored) == 1
@@ -362,7 +390,7 @@ async def test_process_file_low_confidence_sends_to_review_not_unidentified(db_s
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-6", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -379,7 +407,7 @@ async def test_process_file_medium_confidence_marks_review(db_session) -> None:
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-7", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -391,7 +419,7 @@ async def test_process_file_multi_parent_overrides_confidence_routing(db_session
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-8", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -410,7 +438,7 @@ async def test_process_file_already_organised_skips_review_even_at_low_confidenc
     raw = {"id": "drive-9", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
     await service._process_file(
-        db_session, provider, raw, get_settings(), _counts(), already_organised=True
+        db_session, provider, raw, get_settings(), _counts(), [], already_organised=True
     )
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -425,7 +453,7 @@ async def test_process_file_already_organised_still_flags_structural_issues(db_s
     raw = {"id": "drive-10", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
     await service._process_file(
-        db_session, provider, raw, get_settings(), _counts(), already_organised=True
+        db_session, provider, raw, get_settings(), _counts(), [], already_organised=True
     )
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -487,7 +515,7 @@ async def test_process_file_skips_declared_oversize_without_downloading(db_sessi
     }
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, settings, counts)
+    await service._process_file(db_session, provider, raw, settings, counts, [])
 
     assert counts["skipped_too_large"] == 1
     assert provider.download_calls == []
@@ -499,7 +527,7 @@ async def test_process_file_creates_review_row_for_medium_confidence(db_session)
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-9", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     review = (await db_session.execute(select(Review))).scalar_one()
     assert review.status.value == "pending"
@@ -512,7 +540,7 @@ async def test_process_file_creates_review_row_for_multi_parent(db_session) -> N
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-10", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     review = (await db_session.execute(select(Review))).scalar_one()
     assert review.status.value == "pending"
@@ -523,7 +551,7 @@ async def test_process_file_no_review_row_for_high_confidence(db_session) -> Non
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-11", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     assert (await db_session.execute(select(Review))).scalar_one_or_none() is None
 
@@ -569,7 +597,7 @@ async def test_process_file_duplicate_of_corrected_content_inherits_correction(d
     raw = {"id": "drive-12", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["duplicate"] == 1
 
@@ -608,7 +636,7 @@ async def test_process_file_duplicate_of_rejected_content_is_flagged(db_session)
     raw = {"id": "drive-13", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts)
+    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
 
     assert counts["duplicate"] == 1
     new_file = (
@@ -642,7 +670,7 @@ async def test_process_file_library_rule_skips_candidates_and_ai(db_session) -> 
     provider = _FakeDriveProvider(build_epub())  # default author is "Jane Author"
     raw = {"id": "drive-13", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     decision = (await db_session.execute(select(AIDecision))).scalar_one()
     assert decision.model == "library_rule"
@@ -663,7 +691,7 @@ async def test_process_file_detects_plain_duplicate_and_copies_primary(db_sessio
     first_counts = _counts()
     await service._process_file(
         db_session, provider, {"id": "drive-20", "name": "a.epub", "parents": ["p"], "size": "100"},
-        get_settings(), first_counts,
+        get_settings(), first_counts, [],
     )
     assert first_counts["new"] == 1
 
@@ -674,7 +702,7 @@ async def test_process_file_detects_plain_duplicate_and_copies_primary(db_sessio
     second_counts = _counts()
     await service._process_file(
         db_session, provider, {"id": "drive-21", "name": "b.epub", "parents": ["p"], "size": "100"},
-        get_settings(), second_counts,
+        get_settings(), second_counts, [],
     )
 
     assert second_counts["duplicate"] == 1
@@ -689,7 +717,7 @@ async def test_process_file_sets_quality_score_on_successful_parse(db_session) -
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-22", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts())
+    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.quality_score is not None
