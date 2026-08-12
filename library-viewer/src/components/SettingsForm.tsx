@@ -24,11 +24,11 @@ export function SettingsForm({
         className="mt-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (googleClientId.trim() && libraryFolderId.trim() && koboFolderId.trim()) {
+          if (googleClientId.trim() && libraryFolderId.trim()) {
             onSave({
               googleClientId: googleClientId.trim(),
               libraryFolderId: libraryFolderId.trim(),
-              koboFolderId: koboFolderId.trim(),
+              koboFolderId: koboFolderId.trim() || undefined,
             })
           }
         }}
@@ -62,7 +62,7 @@ export function SettingsForm({
         </label>
 
         <label className="block text-sm">
-          <span className="text-neutral-500">Kobo sync folder ID</span>
+          <span className="text-neutral-500">Kobo sync folder ID (optional)</span>
           <input
             className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             value={koboFolderId}
@@ -70,7 +70,8 @@ export function SettingsForm({
             placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz"
           />
           <span className="mt-1 block text-xs text-neutral-400">
-            The folder "Send to Kobo" copies books into — same id-from-URL format as above.
+            The folder "Send to Kobo" copies books into — same id-from-URL format as above. Leave
+            blank to skip; "Send to Kobo" just won't show up.
           </span>
         </label>
 

@@ -11,12 +11,29 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// A share link (?clientId=...&folderId=...) hands a guest a ready-to-use,
+// view/download-only config with no Kobo access — they never see the
+// settings form at all. Consumed once on load, then scrubbed from the
+// address bar so the values don't linger in browser history.
+function consumeSharedSettings(): ViewerSettings | null {
+  const params = new URLSearchParams(window.location.search)
+  const googleClientId = params.get('clientId')
+  const libraryFolderId = params.get('folderId')
+  if (!googleClientId || !libraryFolderId) return null
+
+  const shared: ViewerSettings = { googleClientId, libraryFolderId }
+  saveSettings(shared)
+  window.history.replaceState({}, '', window.location.pathname)
+  return shared
+}
+
 export default function App() {
   const [showSetup, setShowSetup] = useState(false)
-  const [settings, setSettings] = useState<ViewerSettings | null>(loadSettings)
+  const [settings, setSettings] = useState<ViewerSettings | null>(() => consumeSharedSettings() ?? loadSettings())
   const [token, setToken] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [signingIn, setSigningIn] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
 
   const [files, setFiles] = useState<DriveFile[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -40,6 +57,31 @@ export default function App() {
         .sort((a, b) => a.parsed.title.localeCompare(b.parsed.title)),
     [files, query],
   )
+
+  const hasKobo = Boolean(settings?.koboFolderId)
+
+  async function handleShare() {
+    if (!settings) return
+    const link = `${window.location.origin}${window.location.pathname}?clientId=${encodeURIComponent(settings.googleClientId)}&folderId=${encodeURIComponent(settings.libraryFolderId)}`
+    const message = `You're invited to browse and download books from the BookBrain library. Open this link and sign in with your Google account:\n${link}`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'BookBrain Library', text: message })
+        return
+      } catch {
+        return // user cancelled the share sheet — not an error
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(message)
+      setShareStatus('Copied! Paste it into a message to send.')
+    } catch {
+      setShareStatus(`Copy failed — here's the link: ${link}`)
+    }
+    setTimeout(() => setShareStatus(null), 5000)
+  }
 
   if (showSetup) {
     return <SetupChecklist onBack={() => setShowSetup(false)} />
@@ -139,11 +181,11 @@ export default function App() {
   }
 
   async function sendToKobo(file: DriveFile) {
-    if (!token) return
+    if (!token || !settings?.koboFolderId) return
     setKoboError(null)
     setKoboMessage(null)
     try {
-      await copyFileToFolder(token, file, settings!.koboFolderId)
+      await copyFileToFolder(token, file, settings.koboFolderId)
       setKoboMessage(`Sent "${file.name}" to Kobo.`)
     } catch (err) {
       setKoboError(err instanceof Error ? err.message : 'Failed to send to Kobo.')
@@ -151,14 +193,15 @@ export default function App() {
   }
 
   async function handleSendSelectedToKobo() {
-    if (!token) return
+    if (!token || !settings?.koboFolderId) return
+    const koboFolderId = settings.koboFolderId
     setSendingToKobo(true)
     setKoboError(null)
     setKoboMessage(null)
     const toSend = books.filter((b) => selected.has(b.file.id))
     try {
       for (const { file } of toSend) {
-        await copyFileToFolder(token, file, settings!.koboFolderId)
+        await copyFileToFolder(token, file, koboFolderId)
       }
       setKoboMessage(`Sent ${toSend.length} book${toSend.length === 1 ? '' : 's'} to Kobo.`)
       setSelected(new Set())
@@ -182,8 +225,12 @@ export default function App() {
           {signingIn ? 'Signing in…' : 'Sign in with Google'}
         </button>
         {authError && <p className="mt-3 text-sm text-red-600">{authError}</p>}
+        <button className="mt-8 block w-full text-xs text-neutral-400 underline" onClick={handleShare}>
+          Share view/download access with someone else
+        </button>
+        {shareStatus && <p className="mt-2 text-xs text-neutral-500">{shareStatus}</p>}
         <button
-          className="mt-8 block w-full text-xs text-neutral-400 underline"
+          className="mt-2 block w-full text-xs text-neutral-400 underline"
           onClick={() => {
             clearSettings()
             setSettings(null)
@@ -220,6 +267,9 @@ export default function App() {
           >
             Rebuild
           </button>
+          <button className="underline" onClick={handleShare}>
+            Share
+          </button>
           <button
             className="underline"
             onClick={() => {
@@ -240,6 +290,7 @@ export default function App() {
       {syncMessage && !syncing && !loading && (
         <p className="mt-1 text-xs text-neutral-400">{syncMessage}</p>
       )}
+      {shareStatus && <p className="mt-1 text-xs text-neutral-400">{shareStatus}</p>}
 
       <input
         className="mt-4 w-full rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
@@ -265,18 +316,20 @@ export default function App() {
           >
             {downloading ? 'Downloading…' : `Download ${selected.size} book${selected.size === 1 ? '' : 's'}`}
           </button>
-          <button
-            className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
-            disabled={sendingToKobo}
-            onClick={handleSendSelectedToKobo}
-          >
-            {sendingToKobo ? 'Sending…' : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to Kobo`}
-          </button>
+          {hasKobo && (
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+              disabled={sendingToKobo}
+              onClick={handleSendSelectedToKobo}
+            >
+              {sendingToKobo ? 'Sending…' : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to Kobo`}
+            </button>
+          )}
           {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
-          {koboError && <span className="text-xs text-red-600">{koboError}</span>}
+          {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
         </div>
       )}
-      {selected.size === 0 && koboMessage && (
+      {selected.size === 0 && hasKobo && koboMessage && (
         <p className="mt-4 text-xs text-neutral-500">{koboMessage}</p>
       )}
 
@@ -313,12 +366,14 @@ export default function App() {
             >
               Download
             </button>
-            <button
-              className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
-              onClick={() => sendToKobo(file)}
-            >
-              Send to Kobo
-            </button>
+            {hasKobo && (
+              <button
+                className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+                onClick={() => sendToKobo(file)}
+              >
+                Send to Kobo
+              </button>
+            )}
           </li>
         ))}
         {!loading && query.trim() !== '' && books.length === 0 && (

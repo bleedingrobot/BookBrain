@@ -5,7 +5,9 @@ const KOBO_FOLDER_ID_KEY = 'bookbrain.koboFolderId'
 export interface ViewerSettings {
   googleClientId: string
   libraryFolderId: string
-  koboFolderId: string
+  // Absent for view/download-only guests — "Send to Kobo" just doesn't
+  // appear for them. Only the owner's own settings need this.
+  koboFolderId?: string
 }
 
 export type PartialSettings = Partial<ViewerSettings>
@@ -20,14 +22,18 @@ export function loadPartialSettings(): PartialSettings {
 
 export function loadSettings(): ViewerSettings | null {
   const partial = loadPartialSettings()
-  if (!partial.googleClientId || !partial.libraryFolderId || !partial.koboFolderId) return null
+  if (!partial.googleClientId || !partial.libraryFolderId) return null
   return partial as ViewerSettings
 }
 
 export function saveSettings(settings: ViewerSettings): void {
   localStorage.setItem(CLIENT_ID_KEY, settings.googleClientId)
   localStorage.setItem(FOLDER_ID_KEY, settings.libraryFolderId)
-  localStorage.setItem(KOBO_FOLDER_ID_KEY, settings.koboFolderId)
+  if (settings.koboFolderId) {
+    localStorage.setItem(KOBO_FOLDER_ID_KEY, settings.koboFolderId)
+  } else {
+    localStorage.removeItem(KOBO_FOLDER_ID_KEY)
+  }
 }
 
 export function clearSettings(): void {
