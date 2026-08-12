@@ -237,15 +237,8 @@ export default function App() {
           {signingIn ? 'Signing in…' : 'Sign in with Google'}
         </button>
         {authError && <p className="mt-3 text-sm text-red-600">{authError}</p>}
-        <button className="mt-8 block w-full text-xs text-neutral-400 underline" onClick={handleShare}>
-          Share view/download access with someone else
-        </button>
-        <button className="mt-2 block w-full text-xs text-neutral-400 underline" onClick={handleCopyLink}>
-          Or just copy the link
-        </button>
-        {shareStatus && <p className="mt-2 text-xs text-neutral-500">{shareStatus}</p>}
         <button
-          className="mt-2 block w-full text-xs text-neutral-400 underline"
+          className="mt-8 block w-full text-xs text-neutral-400 underline"
           onClick={() => {
             clearSettings()
             setSettings(null)
