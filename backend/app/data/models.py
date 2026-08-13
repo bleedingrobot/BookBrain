@@ -38,6 +38,7 @@ class FileStatusReason(str, enum.Enum):
     parse_failed = "parse_failed"
     low_confidence = "low_confidence"
     previously_rejected = "previously_rejected"
+    same_book = "same_book"
 
 
 class OperationAction(str, enum.Enum):

@@ -28,6 +28,7 @@ from app.providers.epub.parser import EpubEvidence, parse_epub_safely
 from app.schemas.scan import ScanJobState, ScanJobStatus
 from app.services.book_repository import resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
+from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
@@ -116,9 +117,16 @@ class ScanService:
             for raw in raw_files:
                 await self._process_file_safely(session, provider, raw, settings, counts)
 
+            # sha256 dedup above only catches byte-identical re-uploads; this
+            # catches a different edition/re-conversion of a book already
+            # resolved elsewhere in this same batch (or a prior one).
+            same_book_duplicates = await detect_same_book_duplicates(session)
+            await session.commit()
+
         detail = (
             f"{counts['new']} new, {counts['flagged']} flagged for review, "
             f"{counts['duplicate']} duplicate, "
+            f"{same_book_duplicates} same-book duplicate, "
             f"{counts['skipped_existing']} already known, "
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['removed_non_ebook']} non-ebook files removed, "
@@ -162,8 +170,12 @@ class ScanService:
                     session, provider, raw, settings, counts, already_organised=True
                 )
 
+            same_book_duplicates = await detect_same_book_duplicates(session)
+            await session.commit()
+
         detail = (
             f"{counts['new']} rebuilt, {counts['duplicate']} duplicate, "
+            f"{same_book_duplicates} same-book duplicate, "
             f"{counts['skipped_existing']} already known, "
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['failed']} failed to parse"

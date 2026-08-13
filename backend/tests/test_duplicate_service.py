@@ -1,7 +1,9 @@
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.data.models import File, FileStatus, FileStatusReason
-from app.services.duplicate_service import clear_duplicates, list_duplicate_groups
+from app.services.duplicate_service import clear_duplicates, detect_same_book_duplicates, list_duplicate_groups
 
 
 class _FakeProvider:
@@ -175,3 +177,134 @@ async def test_clear_duplicates_noop_when_none_exist(db_session) -> None:
 
     assert result.cleared == 0
     assert result.failed == 0
+
+
+async def test_detect_same_book_duplicates_flags_lower_quality_copy(db_session) -> None:
+    better = File(
+        drive_file_id="better",
+        drive_parent_id="p",
+        filename="better.epub",
+        sha256="hash-a",
+        size_bytes=100,
+        status=FileStatus.organised,
+        book_id=1,
+        quality_score=100,
+    )
+    worse = File(
+        drive_file_id="worse",
+        drive_parent_id="p",
+        filename="worse.epub",
+        sha256="hash-b",  # different bytes — sha256 dedup wouldn't catch this
+        size_bytes=100,
+        status=FileStatus.organised,
+        book_id=1,
+        quality_score=45,
+    )
+    db_session.add_all([better, worse])
+    await db_session.commit()
+
+    flagged = await detect_same_book_duplicates(db_session)
+    await db_session.commit()
+
+    assert flagged == 1
+    await db_session.refresh(better)
+    await db_session.refresh(worse)
+    assert better.status == FileStatus.organised
+    assert worse.status == FileStatus.duplicate
+    assert worse.status_reason == FileStatusReason.same_book
+
+
+async def test_detect_same_book_duplicates_ties_go_to_oldest(db_session) -> None:
+    now = datetime.now(UTC)
+    older = File(
+        drive_file_id="older",
+        drive_parent_id="p",
+        filename="older.epub",
+        sha256="hash-a",
+        size_bytes=100,
+        status=FileStatus.organised,
+        book_id=1,
+        quality_score=85,
+        discovered_at=now - timedelta(days=1),
+    )
+    newer = File(
+        drive_file_id="newer",
+        drive_parent_id="p",
+        filename="newer.epub",
+        sha256="hash-b",
+        size_bytes=100,
+        status=FileStatus.organised,
+        book_id=1,
+        quality_score=85,  # same score — oldest should win, not the other
+        discovered_at=now,
+    )
+    db_session.add_all([newer, older])  # insertion order deliberately reversed
+    await db_session.commit()
+
+    await detect_same_book_duplicates(db_session)
+    await db_session.commit()
+
+    await db_session.refresh(older)
+    await db_session.refresh(newer)
+    assert older.status == FileStatus.organised
+    assert newer.status == FileStatus.duplicate
+
+
+async def test_detect_same_book_duplicates_ignores_files_without_a_book(db_session) -> None:
+    db_session.add_all(
+        [
+            File(
+                drive_file_id="a",
+                drive_parent_id="p",
+                filename="a.epub",
+                sha256="hash-a",
+                size_bytes=100,
+                status=FileStatus.review,
+                book_id=None,
+            ),
+            File(
+                drive_file_id="b",
+                drive_parent_id="p",
+                filename="b.epub",
+                sha256="hash-b",
+                size_bytes=100,
+                status=FileStatus.review,
+                book_id=None,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    flagged = await detect_same_book_duplicates(db_session)
+
+    assert flagged == 0
+
+
+async def test_list_duplicate_groups_falls_back_to_book_id_for_same_book_reason(db_session) -> None:
+    primary = File(
+        drive_file_id="primary",
+        drive_parent_id="p",
+        filename="primary.epub",
+        sha256="hash-a",
+        size_bytes=100,
+        status=FileStatus.organised,
+        book_id=7,
+    )
+    dup = File(
+        drive_file_id="dup",
+        drive_parent_id="p",
+        filename="dup.epub",
+        sha256="hash-b",  # different sha256 — the sha256 lookup can't find primary
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+        book_id=7,
+    )
+    db_session.add_all([primary, dup])
+    await db_session.commit()
+
+    groups = await list_duplicate_groups(db_session)
+
+    assert len(groups) == 1
+    assert groups[0].status_reason == "same_book"
+    assert groups[0].primary_filename == "primary.epub"

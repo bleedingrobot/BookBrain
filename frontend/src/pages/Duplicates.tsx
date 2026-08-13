@@ -4,6 +4,7 @@ import { api, ApiError } from '../services/api'
 
 const REASON_LABEL: Record<string, string> = {
   previously_rejected: 'a previously rejected identification',
+  same_book: 'a different edition/upload of a book already in your library',
 }
 
 export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
