@@ -124,6 +124,26 @@ export function Dashboard() {
     }
   }, [organize.data?.status, queryClient])
 
+  // A tracked job can 404 out from under the UI (most commonly a dev-server
+  // restart wiping in-memory job state) — without this, the "Start
+  // scan"/"Organize" button stays disabled ("running…") forever because
+  // jobId never clears, even though the job itself is gone.
+  useEffect(() => {
+    if (scan.isError) {
+      setScanError('Lost track of this scan — the server may have restarted mid-job. Try again.')
+      setJobId(null)
+    }
+  }, [scan.isError])
+
+  useEffect(() => {
+    if (organize.isError) {
+      setOrganizeError(
+        'Lost track of this organize job — the server may have restarted mid-job. Check the file list below before retrying, in case it partially finished.',
+      )
+      setOrganizeJobId(null)
+    }
+  }, [organize.isError])
+
   async function handleStartScan() {
     setScanError(null)
     setScanStarting(true)

@@ -78,6 +78,26 @@ export function Library() {
     }
   }, [rebuild.data?.status, queryClient])
 
+  // A tracked job can 404 out from under the UI (most commonly a dev-server
+  // restart wiping in-memory job state) — without this, the button stays
+  // disabled ("running…") forever because the job id never clears, even
+  // though the job itself is gone.
+  useEffect(() => {
+    if (organize.isError) {
+      setOrganizeError(
+        'Lost track of this organize job — the server may have restarted mid-job. Check the file list before retrying, in case it partially finished.',
+      )
+      setOrganizeJobId(null)
+    }
+  }, [organize.isError])
+
+  useEffect(() => {
+    if (rebuild.isError) {
+      setRebuildError('Lost track of this rebuild job — the server may have restarted mid-job. Try again.')
+      setRebuildJobId(null)
+    }
+  }, [rebuild.isError])
+
   const visibleFiles =
     status === undefined
       ? files.data?.filter(
