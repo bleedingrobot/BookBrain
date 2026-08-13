@@ -25,7 +25,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError
 from app.providers.epub.parser import EpubEvidence, parse_epub_safely
-from app.schemas.scan import ScanJobState, ScanJobStatus
+from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
 from app.services.book_repository import resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.duplicate_service import detect_same_book_duplicates
@@ -100,6 +100,7 @@ class ScanService:
             "removed_non_ebook": 0,
             "converted": 0,
         }
+        failures: list[ScanFailure] = []
 
         try:
             # Every file in the inbox, not just ebooks — anything that isn't
@@ -115,7 +116,7 @@ class ScanService:
 
         async with async_session_factory() as session:
             for raw in raw_files:
-                await self._process_file_safely(session, provider, raw, settings, counts)
+                await self._process_file_safely(session, provider, raw, settings, counts, failures)
 
             # sha256 dedup above only catches byte-identical re-uploads; this
             # catches a different edition/re-conversion of a book already
@@ -133,7 +134,9 @@ class ScanService:
             f"{counts['converted']} converted to epub, "
             f"{counts['failed']} failed to parse"
         )
-        self._jobs[job_id] = ScanJobStatus(job_id=job_id, status=ScanJobState.done, detail=detail)
+        self._jobs[job_id] = ScanJobStatus(
+            job_id=job_id, status=ScanJobState.done, detail=detail, failures=failures
+        )
 
     async def run_rebuild(self, job_id: str, creds: Credentials, library_root_folder_id: str) -> None:
         """Walks the organized library folder tree (not the inbox) and
@@ -155,6 +158,7 @@ class ScanService:
             "removed_non_ebook": 0,
             "converted": 0,
         }
+        failures: list[ScanFailure] = []
 
         try:
             raw_files = provider.list_epub_files_recursive(library_root_folder_id)
@@ -167,7 +171,7 @@ class ScanService:
         async with async_session_factory() as session:
             for raw in raw_files:
                 await self._process_file_safely(
-                    session, provider, raw, settings, counts, already_organised=True
+                    session, provider, raw, settings, counts, failures, already_organised=True
                 )
 
             same_book_duplicates = await detect_same_book_duplicates(session)
@@ -180,7 +184,9 @@ class ScanService:
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['failed']} failed to parse"
         )
-        self._jobs[job_id] = ScanJobStatus(job_id=job_id, status=ScanJobState.done, detail=detail)
+        self._jobs[job_id] = ScanJobStatus(
+            job_id=job_id, status=ScanJobState.done, detail=detail, failures=failures
+        )
 
     async def _process_file_safely(
         self,
@@ -189,6 +195,7 @@ class ScanService:
         raw: dict,
         settings: Settings,
         counts: dict[str, int],
+        failures: list[ScanFailure],
         *,
         already_organised: bool = False,
     ) -> None:
@@ -198,11 +205,12 @@ class ScanService:
         stuck at "running" forever with no error surfaced anywhere."""
         try:
             await self._process_file(
-                session, provider, raw, settings, counts, already_organised=already_organised
+                session, provider, raw, settings, counts, failures, already_organised=already_organised
             )
-        except Exception:
+        except Exception as exc:
             await session.rollback()
             counts["failed"] += 1
+            failures.append(ScanFailure(filename=raw["name"], reason=f"unexpected error: {exc}"))
 
     async def _process_file(
         self,
@@ -211,6 +219,7 @@ class ScanService:
         raw: dict,
         settings: Settings,
         counts: dict[str, int],
+        failures: list[ScanFailure],
         *,
         already_organised: bool = False,
     ) -> None:
@@ -250,9 +259,12 @@ class ScanService:
                     binary=settings.ebook_convert_binary,
                     timeout_seconds=settings.ebook_convert_timeout_seconds,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception("conversion failed for %s", raw["name"])
                 counts["failed"] += 1
+                failures.append(
+                    ScanFailure(filename=raw["name"], reason=f"conversion to epub failed: {exc}")
+                )
                 return
 
             new_name = f"{Path(raw['name']).stem}.epub"
@@ -262,8 +274,9 @@ class ScanService:
 
         try:
             data = converted_data if converted_data is not None else provider.download_file(raw["id"])
-        except Exception:
+        except Exception as exc:
             counts["failed"] += 1
+            failures.append(ScanFailure(filename=raw["name"], reason=f"download failed: {exc}"))
             return
 
         sha256 = hashlib.sha256(data).hexdigest()
@@ -327,12 +340,13 @@ class ScanService:
                 max_entries=settings.epub_max_entries,
                 timeout_seconds=settings.epub_parse_timeout_seconds,
             )
-        except EpubParseError:
+        except EpubParseError as exc:
             file_row.status = FileStatus.unidentified
             file_row.status_reason = FileStatusReason.parse_failed
             session.add(file_row)
             await session.commit()
             counts["failed"] += 1
+            failures.append(ScanFailure(filename=raw["name"], reason=str(exc)))
             return
 
         file_row.quality_score = score_quality(evidence, len(data))

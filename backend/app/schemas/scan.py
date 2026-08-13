@@ -9,7 +9,13 @@ class ScanJobState(str, enum.Enum):
     failed = "failed"
 
 
+class ScanFailure(BaseModel):
+    filename: str
+    reason: str
+
+
 class ScanJobStatus(BaseModel):
     job_id: str
     status: ScanJobState
     detail: str | None = None
+    failures: list[ScanFailure] = []

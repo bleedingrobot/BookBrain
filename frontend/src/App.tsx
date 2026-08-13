@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Duplicates } from './pages/Duplicates'
 import { Inbox } from './pages/Inbox'
 import { Library } from './pages/Library'
+import { LibraryAudit } from './pages/LibraryAudit'
 import { ReviewQueue } from './pages/ReviewQueue'
 import { Settings } from './pages/Settings'
 
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/library-audit" element={<LibraryAudit />} />
           <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/settings" element={<Settings />} />
