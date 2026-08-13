@@ -16,26 +16,71 @@ from app.services.text_match import normalize, normalize_words
 # organize_service names folders after Series.name, a second Drive folder
 # too). This is a heuristic "worth a look" signal, not a certainty — the
 # report is read-only and left for human review.
-_SIMILARITY_THRESHOLD = 0.5
+_SIMILARITY_THRESHOLD = 0.72
 _MIN_LENGTH = 3
+
+# Tuned against a real ~100-series library, not just synthetic examples:
+# comparing raw normalized strings let a long shared *generic* word decide
+# the match while the actually-distinguishing word differed completely —
+# "The Farseer Trilogy" vs "The Coldfire Trilogy" scored 0.74 purely off
+# "The"/"Trilogy", nothing to do with Farseer vs Coldfire. Stripping this
+# vocabulary before comparing fixes that at the source, rather than trying
+# to out-tune a threshold against it.
+_STRUCTURAL_WORDS = frozenset(
+    {
+        "the", "a", "an", "and", "of", "in",
+        "saga", "series", "trilogy", "duology", "quartet", "quintet",
+        "cycle",
+        "book", "books", "vol", "volume", "part", "world",
+    }
+)
+
+
+def _significant_words(text: str) -> frozenset[str]:
+    return normalize_words(text) - _STRUCTURAL_WORDS
 
 
 def _is_similar(a: str, b: str) -> bool:
     na, nb = normalize(a), normalize(b)
     if len(na) < _MIN_LENGTH or len(nb) < _MIN_LENGTH:
         return False
-    if SequenceMatcher(None, na, nb).ratio() >= _SIMILARITY_THRESHOLD:
+
+    sa, sb = _significant_words(a), _significant_words(b)
+    if not sa or not sb:
+        # Nothing distinctive left to compare (e.g. a name that's entirely
+        # structural words) — no basis to call it similar to anything.
+        return False
+    if sa <= sb or sb <= sa:
         return True
-    # Catches abbreviation-style splits ("Dune" vs "Dune Chronicles") that
-    # SequenceMatcher's ratio undercounts once the length gap gets large.
-    wa, wb = normalize_words(a), normalize_words(b)
-    return bool(wa) and bool(wb) and (wa <= wb or wb <= wa)
+
+    # Ratio on the significant words only, not the raw names — otherwise a
+    # long shared generic word (see above) can carry a match on its own.
+    ratio = SequenceMatcher(None, "".join(sorted(sa)), "".join(sorted(sb))).ratio()
+    return ratio >= _SIMILARITY_THRESHOLD
 
 
 _Row = tuple[int, str, int, int]  # id, name, book_count, file_count
 
 
 def _cluster(rows: list[_Row]) -> list[SimilarNameCluster]:
+    """Groups by pairwise similarity, but never transitively — connecting
+    A-B and B-C must not imply A-C. Real data showed this go badly wrong:
+    one library-wide component grew to 60+ unrelated series through a
+    chain of individually-plausible-looking but unrelated pairs. A
+    component is only reported as one cluster if it's a genuine clique
+    (every pair in it is similar); otherwise it's broken down into its
+    individual similar pairs, each its own cluster — a name can end up in
+    more than one, which is correct (e.g. "Dune" pairing separately with
+    both "Dune Chronicles" and "Dune Saga" even if those two aren't
+    themselves similar to each other)."""
+    by_id = {row[0]: row for row in rows}
+    edges: dict[int, set[int]] = {row[0]: set() for row in rows}
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            if _is_similar(rows[i][1], rows[j][1]):
+                edges[rows[i][0]].add(rows[j][0])
+                edges[rows[j][0]].add(rows[i][0])
+
     parent = {row[0]: row[0] for row in rows}
 
     def find(x: int) -> int:
@@ -49,25 +94,39 @@ def _cluster(rows: list[_Row]) -> list[SimilarNameCluster]:
         if ra != rb:
             parent[ra] = rb
 
-    for i in range(len(rows)):
-        for j in range(i + 1, len(rows)):
-            if _is_similar(rows[i][1], rows[j][1]):
-                union(rows[i][0], rows[j][0])
+    for a, neighbors in edges.items():
+        for b in neighbors:
+            union(a, b)
 
-    groups: dict[int, list[_Row]] = {}
+    components: dict[int, list[int]] = {}
     for row in rows:
-        groups.setdefault(find(row[0]), []).append(row)
+        components.setdefault(find(row[0]), []).append(row[0])
 
-    return [
-        SimilarNameCluster(
+    def to_cluster(ids: list[int]) -> SimilarNameCluster:
+        return SimilarNameCluster(
             members=[
                 SimilarNameMember(id=r[0], name=r[1], book_count=r[2], file_count=r[3])
-                for r in sorted(members, key=lambda r: r[1])
+                for r in sorted((by_id[i] for i in ids), key=lambda r: r[1])
             ]
         )
-        for members in groups.values()
-        if len(members) > 1
-    ]
+
+    clusters: list[SimilarNameCluster] = []
+    seen_pairs: set[frozenset[int]] = set()
+    for ids in components.values():
+        if len(ids) < 2:
+            continue
+        is_clique = all(b in edges[a] for a in ids for b in ids if a != b)
+        if is_clique:
+            clusters.append(to_cluster(ids))
+            continue
+        for a in ids:
+            for b in edges[a]:
+                pair = frozenset((a, b))
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    clusters.append(to_cluster(sorted(pair)))
+
+    return clusters
 
 
 async def audit_library(session: AsyncSession) -> LibraryAuditResult:

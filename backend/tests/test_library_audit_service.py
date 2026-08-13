@@ -109,6 +109,42 @@ async def test_audit_ignores_very_short_names(db_session) -> None:
     assert result.similar_series == []
 
 
+async def test_audit_does_not_flag_unrelated_series_sharing_a_generic_suffix_word(db_session) -> None:
+    # Regression: found against a real ~100-series library. Comparing raw
+    # normalized strings let "The"/"Trilogy" alone push completely
+    # unrelated series over the similarity threshold, since those two
+    # words make up a large fraction of both strings regardless of what
+    # the actual (different) subject word is.
+    db_session.add_all([Series(name="The Farseer Trilogy"), Series(name="The Coldfire Trilogy")])
+    await db_session.commit()
+
+    result = await audit_library(db_session)
+
+    assert result.similar_series == []
+
+
+async def test_audit_does_not_bridge_unrelated_series_through_a_single_generic_word(db_session) -> None:
+    # Regression: "Vampire Chronicles" and "The Vampire Chronicles" are a
+    # real duplicate pair (below), but a since-removed version of the
+    # structural-word list stripped "Chronicles" down to just "Vampire",
+    # which then wrongly pulled in the unrelated "Empire of the Vampire"
+    # through nothing but that one generic shared word.
+    db_session.add_all(
+        [
+            Series(name="Vampire Chronicles"),
+            Series(name="The Vampire Chronicles"),
+            Series(name="Empire of the Vampire"),
+        ]
+    )
+    await db_session.commit()
+
+    result = await audit_library(db_session)
+
+    assert len(result.similar_series) == 1
+    names = {m.name for m in result.similar_series[0].members}
+    assert names == {"Vampire Chronicles", "The Vampire Chronicles"}
+
+
 async def test_audit_returns_empty_on_empty_library(db_session) -> None:
     result = await audit_library(db_session)
 
