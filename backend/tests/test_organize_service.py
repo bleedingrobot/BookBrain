@@ -334,7 +334,7 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
     service = OrganizeService()
 
     counts, failures = await service.organize_eligible_files(
-        provider=provider, library_root_folder_id="lib-root", dry_run=False
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
     )
 
     assert counts == {"organized": 5, "failed": 0}
@@ -379,7 +379,7 @@ async def test_organize_eligible_files_records_failure_reason(db_session, monkey
     service = OrganizeService()
 
     counts, failures = await service.organize_eligible_files(
-        provider=provider, library_root_folder_id="lib-root", dry_run=False
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
     )
 
     assert counts == {"organized": 0, "failed": 1}

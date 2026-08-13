@@ -800,7 +800,9 @@ async def test_process_batch_processes_all_files_concurrently_and_avoids_duplica
     counts = _counts()
     failures: list = []
 
-    await service._process_batch(provider, raw_files, get_settings(), counts, failures)
+    await service._process_batch(
+        None, raw_files, get_settings(), counts, failures, provider_factory=lambda: provider
+    )
 
     assert counts["new"] == 6
     assert failures == []
@@ -817,6 +819,7 @@ async def test_process_batch_processes_all_files_concurrently_and_avoids_duplica
 
 
 async def test_run_scan_auto_organizes_eligible_files_after_scanning(db_session, monkeypatch) -> None:
+    import app.services.organize_service as organize_module
     import app.services.scan_service as scan_module
 
     await SettingsRepository(db_session).set(ORGANIZE_DRY_RUN, "false")
@@ -841,6 +844,14 @@ async def test_run_scan_auto_organizes_eligible_files_after_scanning(db_session,
 
     monkeypatch.setattr(scan_module, "DriveProvider", lambda _service: _FakeScanProvider())
     monkeypatch.setattr(scan_module, "build_drive_service", lambda _creds: object())
+    # organize_eligible_files now builds its own DriveProvider per file
+    # (see organize_service.py — no longer accepts one pre-built provider),
+    # via its own imports of DriveProvider/build_drive_service, not
+    # scan_module's — so the auto-organize half of this test needs its own
+    # patch too, or it tries to build a real Drive client from the fake
+    # `creds=object()` below and blows up.
+    monkeypatch.setattr(organize_module, "DriveProvider", lambda _service: _FakeScanProvider())
+    monkeypatch.setattr(organize_module, "build_drive_service", lambda _creds: object())
 
     async def fake_get_library_folder_config(_settings_repo):
         return FolderConfig(folder_id="lib-root", folder_name="Library", created_by_app=False)

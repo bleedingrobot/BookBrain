@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
@@ -137,13 +138,13 @@ class ScanService:
             )
             return
 
-        await self._process_batch(provider, raw_files, settings, counts, failures)
+        await self._process_batch(creds, raw_files, settings, counts, failures)
 
         async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)
             await session.commit()
 
-        organized = await self._auto_organize(creds, provider)
+        organized = await self._auto_organize(creds)
 
         detail = (
             f"{counts['new']} new, {counts['flagged']} flagged for review, "
@@ -190,7 +191,7 @@ class ScanService:
             )
             return
 
-        await self._process_batch(provider, raw_files, settings, counts, failures, already_organised=True)
+        await self._process_batch(creds, raw_files, settings, counts, failures, already_organised=True)
 
         async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)
@@ -209,13 +210,14 @@ class ScanService:
 
     async def _process_batch(
         self,
-        provider: DriveProvider,
+        creds: Credentials | None,
         raw_files: list[dict],
         settings: Settings,
         counts: dict[str, int],
         failures: list[ScanFailure],
         *,
         already_organised: bool = False,
+        provider_factory: Callable[[], DriveProvider] | None = None,
     ) -> None:
         # A shared, process-wide lock — not one scoped to this batch. Two
         # scan/rebuild jobs running at once (or this batch's auto-organize
@@ -225,16 +227,28 @@ class ScanService:
         # job level instead of the file level.
         db_lock = get_book_write_lock()
         semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
+        # A *fresh* DriveProvider per file, not one shared across every
+        # concurrently-processing file — httplib2 (googleapiclient's HTTP
+        # layer) is not thread-safe for concurrent use from multiple threads
+        # sharing one connection, and every Drive call here runs via
+        # asyncio.to_thread on its own OS thread. Sharing one provider
+        # across concurrent files was observed live (in organize, which had
+        # the same pattern) to corrupt the TLS session under load — random
+        # "wrong version number"/"bad record mac" SSL errors. `provider_factory`
+        # exists only so tests can inject a fake provider without touching
+        # real credentials/network.
+        build_provider = provider_factory or (lambda: DriveProvider(build_drive_service(creds)))
 
         async def process_one(raw: dict) -> None:
             async with semaphore:
+                provider = build_provider()
                 await self._process_file_safely(
                     provider, raw, settings, counts, failures, db_lock, already_organised=already_organised
                 )
 
         await asyncio.gather(*(process_one(raw) for raw in raw_files))
 
-    async def _auto_organize(self, creds: Credentials, provider: DriveProvider) -> int:
+    async def _auto_organize(self, creds: Credentials) -> int:
         async with async_session_factory() as session:
             settings_repo = SettingsRepository(session)
             dry_run = await get_organize_dry_run(settings_repo)
@@ -244,7 +258,7 @@ class ScanService:
             return 0
 
         counts, _failures = await get_organize_service().organize_eligible_files(
-            provider=provider if not dry_run else None,
+            creds=creds if not dry_run else None,
             library_root_folder_id=library.folder_id,
             dry_run=dry_run,
         )

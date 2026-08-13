@@ -3,6 +3,7 @@ import logging
 import re
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
@@ -178,9 +179,8 @@ class OrganizeService:
         library_root_folder_id: str | None,
         dry_run: bool,
     ) -> None:
-        provider = DriveProvider(build_drive_service(creds)) if not dry_run and creds else None
         counts, failures = await self.organize_eligible_files(
-            provider=provider, library_root_folder_id=library_root_folder_id, dry_run=dry_run
+            creds=creds, library_root_folder_id=library_root_folder_id, dry_run=dry_run
         )
 
         detail = (
@@ -195,16 +195,34 @@ class OrganizeService:
     async def organize_eligible_files(
         self,
         *,
-        provider: DriveProvider | None,
+        creds: Credentials | None = None,
         library_root_folder_id: str | None,
         dry_run: bool,
+        provider_factory: Callable[[], DriveProvider | None] | None = None,
     ) -> tuple[dict[str, int], list[OrganizeFailure]]:
         """The shared core behind both the manual "Organize" button
         (run_organize) and ScanService's auto-organize-after-scan. Returns
         ({"organized": n, "failed": n}, failures) rather than writing job
         status itself, so callers with different reporting needs (a
         standalone job vs. one line in a scan's summary) don't have to fake
-        a job_id."""
+        a job_id.
+
+        `provider_factory` exists for tests to inject a fake provider
+        without touching real credentials/network — production always
+        leaves it unset. Production builds a *fresh* DriveProvider per file
+        rather than sharing one: httplib2 (googleapiclient's HTTP layer) is
+        not thread-safe for concurrent use from multiple threads sharing
+        one connection, and every Drive call here runs via
+        asyncio.to_thread on its own OS thread. Sharing one provider across
+        concurrently-organizing files was observed live to corrupt the TLS
+        session under load (random "wrong version number"/"bad record mac"
+        SSL errors) — a real provider is cheap to construct (no network
+        I/O), so building one per file has no real cost."""
+        has_provider = provider_factory is not None or (not dry_run and creds is not None)
+        build_provider: Callable[[], DriveProvider | None] = provider_factory or (
+            (lambda: DriveProvider(build_drive_service(creds))) if has_provider else (lambda: None)
+        )
+
         counts = {"organized": 0, "failed": 0}
         failures: list[OrganizeFailure] = []
 
@@ -223,13 +241,14 @@ class OrganizeService:
         # cache, so the exact "two coroutines miss and both create the
         # folder" bug the cache exists to prevent could still happen between
         # two overlapping jobs, just not within a single one.
-        folder_cache = get_folder_path_cache() if provider is not None else None
+        folder_cache = get_folder_path_cache() if has_provider else None
         semaphore = asyncio.Semaphore(_ORGANIZE_CONCURRENCY)
 
         async def organize_one(file_id: int) -> None:
             filename = f"file {file_id}"  # overwritten once the row is fetched; a fallback for a failure before that
             async with semaphore:
                 try:
+                    provider = build_provider()
                     async with async_session_factory() as session:
                         # A plain select(), not session.get(...,
                         # options=...) — get() only applies loader options
