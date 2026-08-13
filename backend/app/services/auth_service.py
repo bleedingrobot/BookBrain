@@ -1,4 +1,5 @@
 import json
+import time
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -19,6 +20,12 @@ from app.core.settings_keys import (
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.scopes import scope_for_folder_mode
 
+# An abandoned/incomplete sign-in (closed tab, browser back button, etc.)
+# leaves its entry in _pending_states forever otherwise — nothing ever pops
+# it except a successful callback for that exact state. A real auth flow
+# completes in well under this window; anything older is dead weight.
+_PENDING_STATE_TTL_SECONDS = 600
+
 
 class AuthService:
     """OAuth flow orchestration. SPEC.md §10: the scope is chosen from the
@@ -26,10 +33,23 @@ class AuthService:
     afterward at folder-pick time."""
 
     def __init__(self) -> None:
-        # state -> (scope, code_verifier). The PKCE code_verifier generated
-        # for the authorization_url must be reused verbatim in the token
-        # exchange — a fresh one there fails with "Missing code verifier".
-        self._pending_states: dict[str, tuple[str, str]] = {}
+        # state -> (scope, code_verifier, created_at). The PKCE code_verifier
+        # generated for the authorization_url must be reused verbatim in the
+        # token exchange — a fresh one there fails with "Missing code
+        # verifier". created_at (time.monotonic()) is only for pruning
+        # abandoned entries in _prune_pending_states, not part of the OAuth
+        # protocol itself.
+        self._pending_states: dict[str, tuple[str, str, float]] = {}
+
+    def _prune_pending_states(self) -> None:
+        now = time.monotonic()
+        expired = [
+            state
+            for state, (_, _, created_at) in self._pending_states.items()
+            if now - created_at > _PENDING_STATE_TTL_SECONDS
+        ]
+        for state in expired:
+            del self._pending_states[state]
 
     def _client_config(self) -> dict:
         settings = get_settings()
@@ -52,6 +72,7 @@ class AuthService:
         return flow
 
     def start(self, folder_mode: str) -> str:
+        self._prune_pending_states()
         scope = scope_for_folder_mode(folder_mode)
         flow = self._flow(scope)
         authorization_url, state = flow.authorization_url(
@@ -59,7 +80,7 @@ class AuthService:
             prompt="consent",
             include_granted_scopes="false",
         )
-        self._pending_states[state] = (scope, flow.code_verifier)
+        self._pending_states[state] = (scope, flow.code_verifier, time.monotonic())
         return authorization_url
 
     async def handle_callback(
@@ -68,7 +89,7 @@ class AuthService:
         pending = self._pending_states.pop(state, None)
         if pending is None:
             raise ValueError("unknown or expired OAuth state")
-        scope, code_verifier = pending
+        scope, code_verifier, _ = pending
 
         flow = self._flow(scope, code_verifier=code_verifier)
         flow.fetch_token(code=code)

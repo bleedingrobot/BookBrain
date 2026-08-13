@@ -6,9 +6,9 @@ from pathlib import Path
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.settings_keys import ORGANIZE_DRY_RUN
 from app.data.db import async_session_factory
 from app.data.repositories.settings_repository import SettingsRepository
 from app.data.models import (
@@ -28,12 +28,12 @@ from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError
 from app.providers.epub.parser import EpubEvidence, parse_epub_safely
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
-from app.services.book_repository import resolve_book
+from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.drive_service import DriveService
 from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
-from app.services.organize_service import get_organize_service
+from app.services.organize_service import get_organize_dry_run, get_organize_service
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
 
@@ -217,7 +217,13 @@ class ScanService:
         *,
         already_organised: bool = False,
     ) -> None:
-        db_lock = asyncio.Lock()
+        # A shared, process-wide lock — not one scoped to this batch. Two
+        # scan/rebuild jobs running at once (or this batch's auto-organize
+        # racing a manual organize/review correction) must serialize on the
+        # *same* lock, or each job's own private lock only stops races
+        # within itself and the fuzzy find-or-create race reopens at the
+        # job level instead of the file level.
+        db_lock = get_book_write_lock()
         semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
 
         async def process_one(raw: dict) -> None:
@@ -231,7 +237,7 @@ class ScanService:
     async def _auto_organize(self, creds: Credentials, provider: DriveProvider) -> int:
         async with async_session_factory() as session:
             settings_repo = SettingsRepository(session)
-            dry_run = (await settings_repo.get(ORGANIZE_DRY_RUN)) != "false"
+            dry_run = await get_organize_dry_run(settings_repo)
             library = await DriveService.get_library_folder_config(settings_repo)
 
         if library is None:
@@ -351,43 +357,14 @@ class ScanService:
         sha256 = hashlib.sha256(data).hexdigest()
 
         async with db_lock, async_session_factory() as session:
-            primary_result = await session.execute(
-                select(File).where(File.sha256 == sha256, File.status != FileStatus.duplicate)
-            )
-            primary = primary_result.scalars().first()
+            # SPEC.md §6: sha256 is indexed for exact-duplicate lookup. Same
+            # bytes means identical evidence, so skip re-parsing entirely —
+            # just copy the primary's identification and quality score,
+            # unless this exact content has since been human-corrected, in
+            # which case the correction is authoritative (§1).
+            primary = await _find_primary_by_sha256(session, sha256)
             if primary is not None:
-                # SPEC.md §6: sha256 is indexed for exact-duplicate lookup. Same
-                # bytes means identical evidence, so skip re-parsing entirely —
-                # just copy the primary's identification and quality score,
-                # unless this exact content has since been human-corrected, in
-                # which case the correction is authoritative (§1). A structural
-                # reason from this file's own Drive placement always wins; short
-                # of that, a primary that was itself rejected means this is a
-                # re-upload of already-rejected content, worth surfacing as such
-                # rather than a bare "duplicate".
-                corrected_book_id = await resolve_corrected_book_id(session, sha256)
-                duplicate_reason = (
-                    FileStatusReason(status_reason)
-                    if status_reason
-                    else (
-                        FileStatusReason.previously_rejected
-                        if primary.status == FileStatus.rejected
-                        else None
-                    )
-                )
-                session.add(
-                    File(
-                        drive_file_id=raw["id"],
-                        drive_parent_id=(raw.get("parents") or [None])[0],
-                        filename=raw["name"],
-                        sha256=sha256,
-                        size_bytes=len(data),
-                        status=FileStatus.duplicate,
-                        status_reason=duplicate_reason,
-                        book_id=corrected_book_id if corrected_book_id is not None else primary.book_id,
-                        quality_score=primary.quality_score,
-                    )
-                )
+                await _insert_duplicate_file(session, raw, sha256, data, status_reason, primary)
                 await session.commit()
                 counts["duplicate"] += 1
                 return
@@ -460,6 +437,21 @@ class ScanService:
         # find-or-create that must not race across concurrently-processing
         # files.
         async with db_lock, async_session_factory() as session:
+            # Re-check for a primary here, not just at the earlier sha256
+            # check: this coroutine just spent the parse/candidate/AI-identify
+            # work (all of it deliberately unlocked, for concurrency) since
+            # that check ran. A concurrent coroutine processing the exact same
+            # content could have become the primary in the meantime — without
+            # this re-check, both coroutines see "no primary yet" and both
+            # insert themselves as one, so two byte-identical uploads land as
+            # two separate books instead of one primary + one duplicate.
+            primary = await _find_primary_by_sha256(session, sha256)
+            if primary is not None:
+                await _insert_duplicate_file(session, raw, sha256, data, status_reason, primary)
+                await session.commit()
+                counts["duplicate"] += 1
+                return
+
             file_row = File(
                 drive_file_id=raw["id"],
                 drive_parent_id=(raw.get("parents") or [None])[0],
@@ -541,6 +533,46 @@ class ScanService:
             await session.commit()
 
         counts["flagged" if status_reason else "new"] += 1
+
+
+async def _find_primary_by_sha256(session: AsyncSession, sha256: str) -> File | None:
+    result = await session.execute(
+        select(File).where(File.sha256 == sha256, File.status != FileStatus.duplicate)
+    )
+    return result.scalars().first()
+
+
+async def _insert_duplicate_file(
+    session: AsyncSession,
+    raw: dict,
+    sha256: str,
+    data: bytes,
+    status_reason: str | None,
+    primary: File,
+) -> None:
+    # A structural reason from this file's own Drive placement always wins;
+    # short of that, a primary that was itself rejected means this is a
+    # re-upload of already-rejected content, worth surfacing as such rather
+    # than a bare "duplicate".
+    corrected_book_id = await resolve_corrected_book_id(session, sha256)
+    duplicate_reason = (
+        FileStatusReason(status_reason)
+        if status_reason
+        else (FileStatusReason.previously_rejected if primary.status == FileStatus.rejected else None)
+    )
+    session.add(
+        File(
+            drive_file_id=raw["id"],
+            drive_parent_id=(raw.get("parents") or [None])[0],
+            filename=raw["name"],
+            sha256=sha256,
+            size_bytes=len(data),
+            status=FileStatus.duplicate,
+            status_reason=duplicate_reason,
+            book_id=corrected_book_id if corrected_book_id is not None else primary.book_id,
+            quality_score=primary.quality_score,
+        )
+    )
 
 
 def _proposed_json(identification: IdentificationResult) -> dict:

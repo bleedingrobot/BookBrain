@@ -1,8 +1,35 @@
+import asyncio
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import Author, Book, Identifier, IdentifierType, Series
 from app.services.text_match import normalize_title, normalize_words
+
+# Process-wide, not scoped to any one caller: every write path that can
+# fuzzy-match-or-create an Author/Series/Book (scan's per-file pipeline,
+# review_service.correct()) must serialize against every other one, not just
+# against itself. A lock private to a single scan batch only stops two files
+# *within that batch* from both creating "J.R.R. Tolkien" — two overlapping
+# scan jobs, or a scan racing a human correcting a review, each holding their
+# own private lock, would reopen exactly the race this exists to prevent.
+_book_write_lock = asyncio.Lock()
+
+
+def get_book_write_lock() -> asyncio.Lock:
+    return _book_write_lock
+
+
+def reset_book_write_lock() -> None:
+    """Test-only. asyncio.Lock binds to the event loop of its first real
+    `acquire()`, and pytest-asyncio gives each test function its own loop by
+    default — reusing this module-level singleton across tests raises
+    "Lock is bound to a different event loop" the moment a second test's
+    loop actually acquires it. Call from an autouse fixture between tests;
+    production never needs this (the app has exactly one event loop for its
+    whole life)."""
+    global _book_write_lock
+    _book_write_lock = asyncio.Lock()
 
 
 async def resolve_book(

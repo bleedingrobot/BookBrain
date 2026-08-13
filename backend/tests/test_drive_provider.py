@@ -153,6 +153,28 @@ def test_upload_new_file_creates_file_with_media_and_parent() -> None:
     assert result == {"id": "new-folder-id", "name": "book.epub"}
 
 
+def test_list_folders_escapes_single_quote_in_parent_id() -> None:
+    files = _FakeFiles([{"files": []}])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.list_folders("weird'id")
+
+    assert files.list_calls[0]["q"] == (
+        "'weird\\'id' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    )
+
+
+def test_list_files_in_folder_escapes_single_quote_in_folder_id() -> None:
+    files = _FakeFiles([{"files": []}])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.list_files_in_folder("weird'id")
+
+    assert files.list_calls[0]["q"] == (
+        "'weird\\'id' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
+    )
+
+
 def test_list_epub_files_recursive_walks_subfolders() -> None:
     # root/: a.epub, subfolder "Author A"/; "Author A"/: b.epub, no subfolders
     files = _FakeFiles(

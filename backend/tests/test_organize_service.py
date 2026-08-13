@@ -92,9 +92,9 @@ class _FakeFolderProvider:
 
 async def test_folder_path_cache_creates_missing_folders() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author", "Series"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author", "Series"])
 
     assert len(provider.create_calls) == 2
     assert provider.create_calls[0] == ("Author", "root-id")
@@ -106,9 +106,9 @@ async def test_folder_path_cache_creates_missing_folders() -> None:
 async def test_folder_path_cache_reuses_existing_folder() -> None:
     provider = _FakeFolderProvider()
     provider.folders["root-id"] = [{"id": "existing-author", "name": "Author"}]
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author"])
 
     assert folder_id == "existing-author"
     assert provider.create_calls == []
@@ -120,9 +120,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
     # both create it — Drive doesn't enforce folder name uniqueness, so
     # that's a silent duplicate-folder bug, not an error.
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    results = await asyncio.gather(*(cache.resolve("root-id", ["Author", "Series"]) for _ in range(8)))
+    results = await asyncio.gather(
+        *(cache.resolve(provider, "root-id", ["Author", "Series"]) for _ in range(8))
+    )
 
     assert len(set(results)) == 1
     assert len(provider.create_calls) == 2  # "Author" once, "Series" once — not 16
@@ -130,11 +132,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
 
 async def test_folder_path_cache_hit_does_not_touch_the_lock() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
-    await cache.resolve("root-id", ["Author"])
+    cache = FolderPathCache()
+    await cache.resolve(provider, "root-id", ["Author"])
     create_calls_after_warmup = len(provider.create_calls)
 
-    await cache.resolve("root-id", ["Author"])
+    await cache.resolve(provider, "root-id", ["Author"])
 
     assert len(provider.create_calls) == create_calls_after_warmup
 
