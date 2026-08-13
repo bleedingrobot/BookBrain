@@ -3,7 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.data.models import AIDecision, Book, File, FileStatus
+from app.providers.drive.provider import DriveProvider
 from app.schemas.files import FileSummary
+
+
+class FileRecordNotFoundError(Exception):
+    pass
 
 
 async def list_files(session: AsyncSession, status: FileStatus | None = None) -> list[FileSummary]:
@@ -20,6 +25,27 @@ async def list_files(session: AsyncSession, status: FileStatus | None = None) ->
 
     files = (await session.execute(query)).scalars().all()
     return [_to_summary(f) for f in files]
+
+
+async def remove_file(session: AsyncSession, file_id: int, provider: DriveProvider) -> File:
+    """For files with no other way to clear them out — most notably
+    `unidentified` (a parse failure never gets a Review row, so
+    review_service.reject's flow doesn't apply). Trashes the Drive file
+    (recoverable via Drive's own Trash, not a permanent delete) and marks
+    the row `rejected`, the same terminal state review-reject leaves
+    behind — kept, not deleted, so its sha256 is still recognized if this
+    exact content is ever re-uploaded, instead of re-running the full
+    pipeline (and hitting the same parse failure) on it again."""
+    file_row = await session.get(File, file_id)
+    if file_row is None:
+        raise FileRecordNotFoundError(f"file {file_id} not found")
+
+    provider.trash_file(file_row.drive_file_id)
+    file_row.book_id = None
+    file_row.status = FileStatus.rejected
+    file_row.status_reason = None
+    await session.commit()
+    return file_row
 
 
 def _to_summary(file_row: File) -> FileSummary:

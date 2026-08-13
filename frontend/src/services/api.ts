@@ -105,6 +105,7 @@ export const api = {
 
   listFiles: (status?: string) =>
     request<FileSummary[]>(`/files${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  removeFile: (id: number) => request<void>(`/files/${id}/remove`, { method: 'POST' }),
 
   clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
   rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),

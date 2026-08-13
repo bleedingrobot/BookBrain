@@ -46,6 +46,8 @@ export function Library() {
   const [rebuildError, setRebuildError] = useState<string | null>(null)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<number | null>(null)
 
   const files = useQuery({ queryKey: ['files', status], queryFn: () => api.listFiles(status) })
   const organizeSettings = useQuery({
@@ -64,6 +66,19 @@ export function Library() {
     },
     onError: (err: unknown) =>
       setClearError(err instanceof ApiError ? err.message : 'Failed to clear library.'),
+  })
+
+  const removeFile = useMutation({
+    mutationFn: api.removeFile,
+    onSuccess: () => {
+      setConfirmingRemoveId(null)
+      setRemoveError(null)
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+    onError: (err: unknown) => {
+      setConfirmingRemoveId(null)
+      setRemoveError(err instanceof ApiError ? err.message : 'Failed to remove file.')
+    },
   })
 
   useEffect(() => {
@@ -265,6 +280,7 @@ export function Library() {
 
       {files.isLoading && <div className="mt-6 text-sm text-neutral-500">Loading...</div>}
       {files.isError && <div className="mt-6 text-sm text-neutral-500">Failed to load files.</div>}
+      {removeError && <div className="mt-4 text-sm text-red-600">{removeError}</div>}
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
         {visibleFiles?.map((file) => (
@@ -295,6 +311,36 @@ export function Library() {
                 <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[file.status] ?? ''}`}>
                   {STATUS_LABEL[file.status] ?? file.status}
                 </span>
+                {file.status === 'unidentified' &&
+                  (confirmingRemoveId === file.id ? (
+                    <span className="flex items-center gap-1 text-xs">
+                      <button
+                        className="rounded bg-red-600 px-2 py-0.5 text-white disabled:opacity-50"
+                        disabled={removeFile.isPending}
+                        onClick={() => removeFile.mutate(file.id)}
+                      >
+                        {removeFile.isPending ? '…' : 'Confirm'}
+                      </button>
+                      <button
+                        className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-700"
+                        disabled={removeFile.isPending}
+                        onClick={() => setConfirmingRemoveId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+                      title="Moves the file to Google Drive's Trash — recoverable there, not a permanent delete."
+                      onClick={() => {
+                        setRemoveError(null)
+                        setConfirmingRemoveId(file.id)
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ))}
               </div>
             </div>
             {(file.status_reason || file.ai_reasoning) && (
