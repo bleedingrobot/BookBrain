@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import uuid
+from collections import defaultdict
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
@@ -73,8 +74,12 @@ class FolderPathCache:
     books by an author with no folder yet) can both see "not found" and
     both create it — Drive doesn't enforce folder name uniqueness, so
     that's a silent duplicate-folder bug, not an error. A cache hit (the
-    common case once a path exists) never touches the lock at all; only a
-    genuine miss serializes.
+    common case once a path exists) never touches any lock at all; only a
+    genuine miss serializes, and only against other misses resolving that
+    *same* segment — a per-partial-path lock, not one lock for the whole
+    cache, so a stuck/slow Drive call resolving one author's folder can't
+    stall every other file's organize, only files that happen to need that
+    same not-yet-cached folder.
 
     A single process-wide instance (get_folder_path_cache()) is what
     production code actually uses — one per organize *batch* only stopped
@@ -86,16 +91,17 @@ class FolderPathCache:
 
     def __init__(self) -> None:
         self._cache: dict[tuple[str, ...], str] = {}
-        self._lock = asyncio.Lock()
+        self._locks: dict[tuple[str, ...], asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def clear(self) -> None:
-        """Test-only reset. Also replaces the lock: asyncio.Lock binds to
+        """Test-only reset. Also replaces the locks: asyncio.Lock binds to
         the event loop of its first real acquisition, and pytest-asyncio
         gives each test its own loop by default, so reusing this singleton
         across tests raises "bound to a different event loop" the moment a
-        second test's loop hits a genuine cache miss."""
+        second test's loop hits a genuine cache miss for a path an earlier
+        test's loop already touched."""
         self._cache.clear()
-        self._lock = asyncio.Lock()
+        self._locks = defaultdict(asyncio.Lock)
 
     async def resolve(self, provider: DriveProvider, root_id: str, segments: list[str]) -> str:
         key = (root_id, *segments)
@@ -103,14 +109,17 @@ class FolderPathCache:
         if cached is not None:
             return cached
 
-        async with self._lock:
-            cached = self._cache.get(key)
-            if cached is not None:
-                return cached
+        current = root_id
+        for i, segment in enumerate(segments):
+            partial_key = (root_id, *segments[: i + 1])
+            partial = self._cache.get(partial_key)
+            if partial is not None:
+                current = partial
+                continue
 
-            current = root_id
-            for i, segment in enumerate(segments):
-                partial_key = (root_id, *segments[: i + 1])
+            async with self._locks[partial_key]:
+                # Re-check under the lock: another coroutine may have
+                # resolved this exact segment while this one was waiting.
                 partial = self._cache.get(partial_key)
                 if partial is not None:
                     current = partial
@@ -124,8 +133,8 @@ class FolderPathCache:
                 )
                 self._cache[partial_key] = current
 
-            self._cache[key] = current
-            return current
+        self._cache[key] = current
+        return current
 
 
 _folder_path_cache = FolderPathCache()
