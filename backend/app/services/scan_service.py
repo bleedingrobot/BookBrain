@@ -243,7 +243,7 @@ class ScanService:
         if library is None:
             return 0
 
-        counts = await get_organize_service().organize_eligible_files(
+        counts, _failures = await get_organize_service().organize_eligible_files(
             provider=provider if not dry_run else None,
             library_root_folder_id=library.folder_id,
             dry_run=dry_run,

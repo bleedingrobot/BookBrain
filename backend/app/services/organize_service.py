@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import uuid
 
@@ -13,7 +14,9 @@ from app.data.models import Book, File, FileStatus, Operation, OperationAction, 
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
-from app.schemas.organize import OrganizeJobState, OrganizeJobStatus
+from app.schemas.organize import OrganizeFailure, OrganizeJobState, OrganizeJobStatus
+
+logger = logging.getLogger(__name__)
 
 
 async def get_organize_dry_run(settings_repo: SettingsRepository) -> bool:
@@ -167,7 +170,7 @@ class OrganizeService:
         dry_run: bool,
     ) -> None:
         provider = DriveProvider(build_drive_service(creds)) if not dry_run and creds else None
-        counts = await self.organize_eligible_files(
+        counts, failures = await self.organize_eligible_files(
             provider=provider, library_root_folder_id=library_root_folder_id, dry_run=dry_run
         )
 
@@ -176,7 +179,9 @@ class OrganizeService:
             f"{' (dry run — nothing changed in Drive)' if dry_run else ''}, "
             f"{counts['failed']} failed"
         )
-        self._jobs[job_id] = OrganizeJobStatus(job_id=job_id, status=OrganizeJobState.done, detail=detail)
+        self._jobs[job_id] = OrganizeJobStatus(
+            job_id=job_id, status=OrganizeJobState.done, detail=detail, failures=failures
+        )
 
     async def organize_eligible_files(
         self,
@@ -184,13 +189,15 @@ class OrganizeService:
         provider: DriveProvider | None,
         library_root_folder_id: str | None,
         dry_run: bool,
-    ) -> dict[str, int]:
+    ) -> tuple[dict[str, int], list[OrganizeFailure]]:
         """The shared core behind both the manual "Organize" button
         (run_organize) and ScanService's auto-organize-after-scan. Returns
-        {"organized": n, "failed": n} rather than writing job status
-        itself, so callers with different reporting needs (a standalone
-        job vs. one line in a scan's summary) don't have to fake a job_id."""
+        ({"organized": n, "failed": n}, failures) rather than writing job
+        status itself, so callers with different reporting needs (a
+        standalone job vs. one line in a scan's summary) don't have to fake
+        a job_id."""
         counts = {"organized": 0, "failed": 0}
+        failures: list[OrganizeFailure] = []
 
         async with async_session_factory() as session:
             result = await session.execute(
@@ -199,7 +206,7 @@ class OrganizeService:
             file_ids = [row[0] for row in result.all()]
 
         if not file_ids:
-            return counts
+            return counts, failures
 
         # The process-wide singleton, not a fresh cache per call — this is
         # what actually closes the cross-job race: a scan's auto-organize and
@@ -211,6 +218,7 @@ class OrganizeService:
         semaphore = asyncio.Semaphore(_ORGANIZE_CONCURRENCY)
 
         async def organize_one(file_id: int) -> None:
+            filename = f"file {file_id}"  # overwritten once the row is fetched; a fallback for a failure before that
             async with semaphore:
                 try:
                     async with async_session_factory() as session:
@@ -239,6 +247,7 @@ class OrganizeService:
                         # failure, just nothing left to do.
                         if file_row is None or file_row.status != FileStatus.inbox:
                             return
+                        filename = file_row.filename
                         await self._organize_file(
                             session,
                             file_row,
@@ -248,11 +257,13 @@ class OrganizeService:
                             folder_cache=folder_cache,
                         )
                     counts["organized"] += 1
-                except Exception:
+                except Exception as exc:
+                    logger.exception("organize failed for %s", filename)
                     counts["failed"] += 1
+                    failures.append(OrganizeFailure(filename=filename, reason=str(exc)))
 
         await asyncio.gather(*(organize_one(file_id) for file_id in file_ids))
-        return counts
+        return counts, failures
 
     async def _organize_file(
         self,

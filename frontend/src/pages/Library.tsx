@@ -169,6 +169,16 @@ export function Library() {
               {organize.data.detail ? ` — ${organize.data.detail}` : ''}
             </p>
           )}
+          {organize.data && organize.data.failures.length > 0 && (
+            <ul className="mt-1 max-h-40 max-w-sm divide-y divide-neutral-100 overflow-y-auto rounded border border-red-200 text-left text-xs dark:divide-neutral-800 dark:border-red-900">
+              {organize.data.failures.map((f, i) => (
+                <li key={i} className="px-2 py-1.5">
+                  <div className="truncate text-neutral-700 dark:text-neutral-300">{f.filename}</div>
+                  <div className="truncate text-red-600 dark:text-red-400">{f.reason}</div>
+                </li>
+              ))}
+            </ul>
+          )}
           {rebuildError && <p className="mt-1 text-xs text-red-600">{rebuildError}</p>}
           {rebuild.data && (
             <p className="mt-1 text-xs text-neutral-500">
