@@ -1,5 +1,10 @@
-from sqlalchemy import select
+import asyncio
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import selectinload
+
+from app.data.db import Base
 from app.data.models import (
     Author,
     Book,
@@ -10,9 +15,8 @@ from app.data.models import (
     Operation,
     Series,
 )
-from sqlalchemy.orm import selectinload
 
-from app.services.organize_service import OrganizeService, _ensure_folder_path, build_target_path
+from app.services.organize_service import FolderPathCache, OrganizeService, build_target_path
 
 
 def test_build_target_path_with_series() -> None:
@@ -86,10 +90,11 @@ class _FakeFolderProvider:
         return folder
 
 
-def test_ensure_folder_path_creates_missing_folders() -> None:
+async def test_folder_path_cache_creates_missing_folders() -> None:
     provider = _FakeFolderProvider()
+    cache = FolderPathCache(provider)
 
-    folder_id = _ensure_folder_path(provider, "root-id", ["Author", "Series"])
+    folder_id = await cache.resolve("root-id", ["Author", "Series"])
 
     assert len(provider.create_calls) == 2
     assert provider.create_calls[0] == ("Author", "root-id")
@@ -98,14 +103,40 @@ def test_ensure_folder_path_creates_missing_folders() -> None:
     assert folder_id == provider.folders[author_folder_id][0]["id"]
 
 
-def test_ensure_folder_path_reuses_existing_folder() -> None:
+async def test_folder_path_cache_reuses_existing_folder() -> None:
     provider = _FakeFolderProvider()
     provider.folders["root-id"] = [{"id": "existing-author", "name": "Author"}]
+    cache = FolderPathCache(provider)
 
-    folder_id = _ensure_folder_path(provider, "root-id", ["Author"])
+    folder_id = await cache.resolve("root-id", ["Author"])
 
     assert folder_id == "existing-author"
     assert provider.create_calls == []
+
+
+async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurrency() -> None:
+    # Regression: without the cache/lock, two files organizing into the
+    # same not-yet-existing folder at once could both see "not found" and
+    # both create it — Drive doesn't enforce folder name uniqueness, so
+    # that's a silent duplicate-folder bug, not an error.
+    provider = _FakeFolderProvider()
+    cache = FolderPathCache(provider)
+
+    results = await asyncio.gather(*(cache.resolve("root-id", ["Author", "Series"]) for _ in range(8)))
+
+    assert len(set(results)) == 1
+    assert len(provider.create_calls) == 2  # "Author" once, "Series" once — not 16
+
+
+async def test_folder_path_cache_hit_does_not_touch_the_lock() -> None:
+    provider = _FakeFolderProvider()
+    cache = FolderPathCache(provider)
+    await cache.resolve("root-id", ["Author"])
+    create_calls_after_warmup = len(provider.create_calls)
+
+    await cache.resolve("root-id", ["Author"])
+
+    assert len(provider.create_calls) == create_calls_after_warmup
 
 
 class _FakeMoveProvider(_FakeFolderProvider):
@@ -248,3 +279,70 @@ async def test_run_organize_skips_non_inbox_files(db_session, monkeypatch) -> No
 
     operations = (await db_session.execute(select(Operation))).scalars().all()
     assert operations == []
+
+
+async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_folder(
+    monkeypatch, tmp_path
+) -> None:
+    # organize_eligible_files gives each file its own DB session (a shared
+    # AsyncSession isn't safe across concurrent coroutines), so this needs
+    # a real file-backed DB rather than the usual :memory: fixture — SQLite
+    # :memory: databases are per-connection, and separate sessions
+    # wouldn't see each other's data.
+    import app.services.organize_service as organize_module
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'organize.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as seed:
+        author = Author(name="Brandon Sanderson")
+        seed.add(author)
+        await seed.flush()
+        for i in range(5):
+            book = Book(canonical_title=f"Book {i}", author_id=author.id)
+            seed.add(book)
+            await seed.flush()
+            seed.add(
+                File(
+                    drive_file_id=f"drive-{i}",
+                    drive_parent_id="inbox",
+                    filename=f"book{i}.epub",
+                    sha256=str(i) * 16,
+                    size_bytes=100,
+                    status=FileStatus.inbox,
+                    book_id=book.id,
+                )
+            )
+        await seed.commit()
+
+    class _CM:
+        async def __aenter__(self):
+            self._session = session_factory()
+            return self._session
+
+        async def __aexit__(self, *args):
+            await self._session.close()
+            return False
+
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+    provider = _FakeMoveProvider()
+    service = OrganizeService()
+
+    counts = await service.organize_eligible_files(
+        provider=provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    assert counts == {"organized": 5, "failed": 0}
+    assert len(provider.move_calls) == 5
+    # All 5 books share one not-yet-existing author folder — must be
+    # created exactly once, not once per concurrently-organized file.
+    assert provider.create_calls == [("Brandon Sanderson", "lib-root")]
+
+    async with session_factory() as check:
+        statuses = (await check.execute(select(File.status))).scalars().all()
+        assert all(s == FileStatus.organised for s in statuses)
+
+    await engine.dispose()

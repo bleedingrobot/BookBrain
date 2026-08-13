@@ -1,8 +1,14 @@
+import asyncio
 import hashlib
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.settings_keys import ORGANIZE_DRY_RUN
+from app.data.db import Base
+from app.data.repositories.settings_repository import SettingsRepository
 from app.data.models import (
     AIDecision,
     Author,
@@ -17,10 +23,37 @@ from app.data.models import (
     RuleType,
 )
 from app.providers.metadata.types import MetadataCandidate
+from app.schemas.drive import FolderConfig
 from app.services.candidate_service import CandidateService
 from app.services.identification_service import IdentificationResult
 from app.services.scan_service import ScanService
 from tests.epub_fixtures import build_epub
+
+
+@pytest.fixture(autouse=True)
+def _route_scan_and_organize_db_to_test_session(db_session, monkeypatch):
+    """_process_file and organize_eligible_files each open their own
+    short-lived sessions (a shared AsyncSession isn't safe across
+    concurrently-processing files) instead of taking one in as a
+    parameter — route those internal async_session_factory() calls to the
+    test's isolated db_session for every test in this file, so nothing
+    here ever touches the real configured database. Safe to share one
+    session object across a single test's sequential internal session
+    blocks (no genuine concurrency within one _process_file call); tests
+    that exercise real cross-file concurrency use their own file-backed
+    DB instead (see test_process_files_concurrently_*)."""
+    import app.services.organize_service as organize_module
+    import app.services.scan_service as scan_module
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(scan_module, "async_session_factory", lambda: _CM())
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
 
 
 class _FakeDriveProvider:
@@ -91,7 +124,7 @@ def _counts() -> dict[str, int]:
     }
 
 
-async def test_process_file_safely_does_not_abort_batch_on_unexpected_error(db_session, monkeypatch) -> None:
+async def test_process_file_safely_does_not_abort_batch_on_unexpected_error(monkeypatch) -> None:
     # Regression: an unhandled exception mid-file (a UNIQUE-constraint race
     # from an overlapping job, or anything else unexpected) used to crash
     # the whole run_scan/run_rebuild loop, leaving the job stuck at
@@ -109,15 +142,11 @@ async def test_process_file_safely_does_not_abort_batch_on_unexpected_error(db_s
     counts = _counts()
     failures: list = []
 
-    await service._process_file_safely(db_session, provider, raw, get_settings(), counts, failures)
+    await service._process_file_safely(provider, raw, get_settings(), counts, failures, asyncio.Lock())
 
     assert counts["failed"] == 1
-    assert (await db_session.execute(select(File))).scalars().all() == []
     assert failures[0].filename == "boom.epub"
     assert "simulated unexpected failure" in failures[0].reason
-
-    # the session must still be usable for the next file in the batch
-    await db_session.execute(select(File))
 
 
 async def test_process_file_creates_file_and_metadata(db_session) -> None:
@@ -126,7 +155,7 @@ async def test_process_file_creates_file_and_metadata(db_session) -> None:
     raw = {"id": "drive-1", "name": "foo.epub", "parents": ["parent-1"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts == {
         "new": 1,
@@ -162,7 +191,7 @@ async def test_process_file_accepts_kpub_extension(db_session) -> None:
     raw = {"id": "drive-kpub", "name": "foo.kpub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["new"] == 1
     assert provider.trash_calls == []
@@ -176,7 +205,7 @@ async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_ses
     raw = {"id": "drive-junk", "name": "cover.jpg", "parents": ["p"], "size": "50"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["removed_non_ebook"] == 1
     assert counts["new"] == 0
@@ -201,7 +230,7 @@ async def test_process_file_converts_mobi_before_processing(db_session, monkeypa
     raw = {"id": "drive-mobi", "name": "book.mobi", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["converted"] == 1
     assert counts["new"] == 1
@@ -230,7 +259,7 @@ async def test_process_file_converts_rtf_before_processing(db_session, monkeypat
     raw = {"id": "drive-rtf", "name": "notes.RTF", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["converted"] == 1
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -253,7 +282,7 @@ async def test_process_file_conversion_failure_counts_as_failed_and_leaves_file_
     counts = _counts()
     failures: list = []
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
+    await service._process_file(provider, raw, get_settings(), counts, failures, asyncio.Lock())
 
     assert counts["failed"] == 1
     assert counts["converted"] == 0
@@ -275,7 +304,7 @@ async def test_process_file_download_failure_counts_as_failed(db_session) -> Non
     counts = _counts()
     failures: list = []
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
+    await service._process_file(provider, raw, get_settings(), counts, failures, asyncio.Lock())
 
     assert counts["failed"] == 1
     assert (await db_session.execute(select(File))).scalars().all() == []
@@ -288,9 +317,9 @@ async def test_process_file_skips_already_known(db_session) -> None:
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-1", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
     counts = _counts()
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["skipped_existing"] == 1
     assert len(provider.download_calls) == 1  # not re-downloaded on the second pass
@@ -302,7 +331,7 @@ async def test_process_file_flags_multi_parent_for_review(db_session) -> None:
     raw = {"id": "drive-2", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["flagged"] == 1
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -317,7 +346,7 @@ async def test_process_file_marks_parse_failure(db_session) -> None:
     counts = _counts()
     failures: list = []
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, failures)
+    await service._process_file(provider, raw, get_settings(), counts, failures, asyncio.Lock())
 
     assert counts["failed"] == 1
     assert failures[0].filename == "corrupt.epub"
@@ -356,7 +385,7 @@ async def test_process_file_persists_candidates(db_session) -> None:
     raw = {"id": "drive-5", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     stored = (await db_session.execute(select(BookCandidate))).scalars().all()
     assert len(stored) == 1
@@ -390,7 +419,7 @@ async def test_process_file_low_confidence_sends_to_review_not_unidentified(db_s
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-6", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -407,7 +436,7 @@ async def test_process_file_medium_confidence_marks_review(db_session) -> None:
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-7", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -419,7 +448,7 @@ async def test_process_file_multi_parent_overrides_confidence_routing(db_session
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-8", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.status.value == "review"
@@ -438,7 +467,7 @@ async def test_process_file_already_organised_skips_review_even_at_low_confidenc
     raw = {"id": "drive-9", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
     await service._process_file(
-        db_session, provider, raw, get_settings(), _counts(), [], already_organised=True
+        provider, raw, get_settings(), _counts(), [], asyncio.Lock(), already_organised=True
     )
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -453,7 +482,7 @@ async def test_process_file_already_organised_still_flags_structural_issues(db_s
     raw = {"id": "drive-10", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
     await service._process_file(
-        db_session, provider, raw, get_settings(), _counts(), [], already_organised=True
+        provider, raw, get_settings(), _counts(), [], asyncio.Lock(), already_organised=True
     )
 
     file_row = (await db_session.execute(select(File))).scalar_one()
@@ -475,19 +504,11 @@ async def test_run_rebuild_walks_library_tree_and_marks_organised(db_session, mo
             self.download_calls.append(file_id)
             return epub_bytes
 
-    class _CM:
-        async def __aenter__(self):
-            return db_session
-
-        async def __aexit__(self, *args):
-            return False
-
     fake_provider = _FakeRecursiveProvider()
     monkeypatch.setattr(
         "app.services.scan_service.DriveProvider", lambda _service: fake_provider
     )
     monkeypatch.setattr("app.services.scan_service.build_drive_service", lambda _creds: object())
-    monkeypatch.setattr("app.services.scan_service.async_session_factory", lambda: _CM())
 
     service = _no_network_scan_service(_identification_result(95))
     job = service.create_job()
@@ -515,7 +536,7 @@ async def test_process_file_skips_declared_oversize_without_downloading(db_sessi
     }
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, settings, counts, [])
+    await service._process_file(provider, raw, settings, counts, [], asyncio.Lock())
 
     assert counts["skipped_too_large"] == 1
     assert provider.download_calls == []
@@ -527,7 +548,7 @@ async def test_process_file_creates_review_row_for_medium_confidence(db_session)
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-9", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     review = (await db_session.execute(select(Review))).scalar_one()
     assert review.status.value == "pending"
@@ -540,7 +561,7 @@ async def test_process_file_creates_review_row_for_multi_parent(db_session) -> N
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-10", "name": "foo.epub", "parents": ["p1", "p2"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     review = (await db_session.execute(select(Review))).scalar_one()
     assert review.status.value == "pending"
@@ -551,7 +572,7 @@ async def test_process_file_no_review_row_for_high_confidence(db_session) -> Non
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-11", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     assert (await db_session.execute(select(Review))).scalar_one_or_none() is None
 
@@ -597,7 +618,7 @@ async def test_process_file_duplicate_of_corrected_content_inherits_correction(d
     raw = {"id": "drive-12", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["duplicate"] == 1
 
@@ -636,7 +657,7 @@ async def test_process_file_duplicate_of_rejected_content_is_flagged(db_session)
     raw = {"id": "drive-13", "name": "foo.epub", "parents": ["p"], "size": "100"}
     counts = _counts()
 
-    await service._process_file(db_session, provider, raw, get_settings(), counts, [])
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
 
     assert counts["duplicate"] == 1
     new_file = (
@@ -670,7 +691,7 @@ async def test_process_file_library_rule_skips_candidates_and_ai(db_session) -> 
     provider = _FakeDriveProvider(build_epub())  # default author is "Jane Author"
     raw = {"id": "drive-13", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     decision = (await db_session.execute(select(AIDecision))).scalar_one()
     assert decision.model == "library_rule"
@@ -690,8 +711,8 @@ async def test_process_file_detects_plain_duplicate_and_copies_primary(db_sessio
 
     first_counts = _counts()
     await service._process_file(
-        db_session, provider, {"id": "drive-20", "name": "a.epub", "parents": ["p"], "size": "100"},
-        get_settings(), first_counts, [],
+        provider, {"id": "drive-20", "name": "a.epub", "parents": ["p"], "size": "100"},
+        get_settings(), first_counts, [], asyncio.Lock(),
     )
     assert first_counts["new"] == 1
 
@@ -701,8 +722,8 @@ async def test_process_file_detects_plain_duplicate_and_copies_primary(db_sessio
 
     second_counts = _counts()
     await service._process_file(
-        db_session, provider, {"id": "drive-21", "name": "b.epub", "parents": ["p"], "size": "100"},
-        get_settings(), second_counts, [],
+        provider, {"id": "drive-21", "name": "b.epub", "parents": ["p"], "size": "100"},
+        get_settings(), second_counts, [], asyncio.Lock(),
     )
 
     assert second_counts["duplicate"] == 1
@@ -717,8 +738,153 @@ async def test_process_file_sets_quality_score_on_successful_parse(db_session) -
     provider = _FakeDriveProvider(build_epub())
     raw = {"id": "drive-22", "name": "foo.epub", "parents": ["p"], "size": "100"}
 
-    await service._process_file(db_session, provider, raw, get_settings(), _counts(), [])
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
 
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.quality_score is not None
     assert 0 <= file_row.quality_score <= 100
+
+
+async def test_process_batch_processes_all_files_concurrently_and_avoids_duplicate_authors(
+    tmp_path, monkeypatch
+) -> None:
+    # _process_batch gives each file its own DB session (needs a real
+    # file-backed DB — :memory: is per-connection, so separate sessions
+    # wouldn't share data) and runs them concurrently. The regression this
+    # guards: three different new books by the same not-yet-seen author,
+    # processed at once, must still resolve to ONE Author row — without
+    # db_lock serializing the fuzzy find-or-create, each could see "no
+    # such author yet" and create its own.
+    import app.services.scan_service as scan_module
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'scan_concurrency.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    class _CM:
+        async def __aenter__(self):
+            self._session = session_factory()
+            return self._session
+
+        async def __aexit__(self, *args):
+            await self._session.close()
+            return False
+
+    monkeypatch.setattr(scan_module, "async_session_factory", lambda: _CM())
+
+    # No fixed result — _FakeIdentificationService's default behavior reads
+    # title/author from each file's own parsed evidence, so the 6 files
+    # correctly resolve to 6 different titles sharing one author, rather
+    # than all 6 identifying as the exact same book.
+    service = _no_network_scan_service()
+
+    class _FakeMultiFileProvider:
+        def __init__(self, files: dict[str, bytes]) -> None:
+            self._files = files
+
+        def download_file(self, file_id: str) -> bytes:
+            return self._files[file_id]
+
+        def trash_file(self, file_id: str) -> dict:
+            raise AssertionError("not expected")
+
+    files = {
+        f"drive-{i}": build_epub(title=f"Book {i}", authors=("Shared Author",)) for i in range(6)
+    }
+    provider = _FakeMultiFileProvider(files)
+    raw_files = [
+        {"id": file_id, "name": f"{file_id}.epub", "parents": ["p"], "size": "100"}
+        for file_id in files
+    ]
+    counts = _counts()
+    failures: list = []
+
+    await service._process_batch(provider, raw_files, get_settings(), counts, failures)
+
+    assert counts["new"] == 6
+    assert failures == []
+
+    async with session_factory() as check:
+        authors = (await check.execute(select(Author))).scalars().all()
+        assert len(authors) == 1
+        assert authors[0].name == "Shared Author"
+
+        book_ids = {f.book_id for f in (await check.execute(select(File))).scalars().all()}
+        assert len(book_ids) == 6  # 6 distinct books, correctly not merged into one
+
+    await engine.dispose()
+
+
+async def test_run_scan_auto_organizes_eligible_files_after_scanning(db_session, monkeypatch) -> None:
+    import app.services.scan_service as scan_module
+
+    await SettingsRepository(db_session).set(ORGANIZE_DRY_RUN, "false")
+
+    epub_bytes = build_epub(title="Foo", authors=("Bar",))
+
+    class _FakeScanProvider:
+        def list_files_in_folder(self, folder_id: str) -> list[dict]:
+            return [{"id": "drive-scan-1", "name": "foo.epub", "parents": ["inbox"], "size": "10"}]
+
+        def download_file(self, file_id: str) -> bytes:
+            return epub_bytes
+
+        def list_folders(self, parent_id: str | None) -> list[dict]:
+            return []
+
+        def create_folder(self, name: str, parent_id: str | None = None) -> dict:
+            return {"id": f"folder-{name}", "name": name}
+
+        def move_and_rename(self, file_id, *, old_parent_id, new_parent_id, new_name) -> dict:
+            return {"id": file_id, "name": new_name, "parents": [new_parent_id]}
+
+    monkeypatch.setattr(scan_module, "DriveProvider", lambda _service: _FakeScanProvider())
+    monkeypatch.setattr(scan_module, "build_drive_service", lambda _creds: object())
+
+    async def fake_get_library_folder_config(_settings_repo):
+        return FolderConfig(folder_id="lib-root", folder_name="Library", created_by_app=False)
+
+    monkeypatch.setattr(
+        scan_module.DriveService, "get_library_folder_config", fake_get_library_folder_config
+    )
+
+    service = _no_network_scan_service(_identification_result(95))
+    job = service.create_job()
+
+    await service.run_scan(job.job_id, creds=object(), folder_id="inbox-root")
+
+    status = service.get_status(job.job_id)
+    assert status.status.value == "done"
+    assert "1 auto-organized" in status.detail
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "organised"
+    assert file_row.drive_parent_id == "folder-Some Author"
+
+
+async def test_run_scan_skips_auto_organize_without_a_library_folder(monkeypatch) -> None:
+    import app.services.scan_service as scan_module
+
+    class _FakeScanProvider:
+        def list_files_in_folder(self, folder_id: str) -> list[dict]:
+            return []
+
+    monkeypatch.setattr(scan_module, "DriveProvider", lambda _service: _FakeScanProvider())
+    monkeypatch.setattr(scan_module, "build_drive_service", lambda _creds: object())
+
+    async def fake_get_library_folder_config(_settings_repo):
+        return None
+
+    monkeypatch.setattr(
+        scan_module.DriveService, "get_library_folder_config", fake_get_library_folder_config
+    )
+
+    service = _no_network_scan_service()
+    job = service.create_job()
+
+    await service.run_scan(job.job_id, creds=object(), folder_id="inbox-root")
+
+    status = service.get_status(job.job_id)
+    assert status.status.value == "done"
+    assert "0 auto-organized" in status.detail

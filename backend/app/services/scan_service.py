@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import uuid
@@ -5,10 +6,11 @@ from pathlib import Path
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.settings_keys import ORGANIZE_DRY_RUN
 from app.data.db import async_session_factory
+from app.data.repositories.settings_repository import SettingsRepository
 from app.data.models import (
     AIDecision,
     BookCandidate,
@@ -28,12 +30,25 @@ from app.providers.epub.parser import EpubEvidence, parse_epub_safely
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
 from app.services.book_repository import resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
+from app.services.drive_service import DriveService
 from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
+from app.services.organize_service import get_organize_service
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
 
 logger = logging.getLogger(__name__)
+
+# How many files a scan works on at once. Each file's slow work (Drive
+# download, EPUB parse, metadata-provider lookups, the AI identification
+# call) is independent of every other file's — bounded concurrency turns a
+# batch that used to run one file at a time, each waiting out its own
+# network round trips, into several overlapping at once. DB access is the
+# one thing that *isn't* safe to run concurrently (a shared AsyncSession
+# can't be used from multiple coroutines, and unguarded concurrent
+# find-or-create on Author/Series would race the same way the organize
+# folder-cache race did) — see _process_file's db_lock.
+_SCAN_CONCURRENCY = 6
 
 
 class ScanService:
@@ -67,6 +82,14 @@ class ScanService:
     `run_rebuild` is the same pipeline pointed at the organized library
     folder instead of the inbox, for reconstructing `files`/`books` from
     what Drive actually has on disk (see its docstring).
+
+    A successful run_scan finishes by auto-organizing whatever landed in
+    the ≥85 auto-eligible tier — the manual "Organize" button used to be
+    the only way to move those, which meant every scan left work sitting
+    in the inbox for no reason once you'd stopped actually reviewing the
+    button before clicking it. Respects the same ORGANIZE_DRY_RUN setting
+    the manual button does, and is silently skipped if no library folder
+    is configured yet.
     """
 
     def __init__(
@@ -107,22 +130,20 @@ class ScanService:
             # a supported .epub/.kpub or a convertible .mobi/.rtf gets
             # removed from the book dump by _process_file below, not just
             # ignored.
-            raw_files = provider.list_files_in_folder(folder_id)
+            raw_files = await asyncio.to_thread(provider.list_files_in_folder, folder_id)
         except Exception as exc:  # Drive API failure — nothing to salvage
             self._jobs[job_id] = ScanJobStatus(
                 job_id=job_id, status=ScanJobState.failed, detail=str(exc)
             )
             return
 
-        async with async_session_factory() as session:
-            for raw in raw_files:
-                await self._process_file_safely(session, provider, raw, settings, counts, failures)
+        await self._process_batch(provider, raw_files, settings, counts, failures)
 
-            # sha256 dedup above only catches byte-identical re-uploads; this
-            # catches a different edition/re-conversion of a book already
-            # resolved elsewhere in this same batch (or a prior one).
+        async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)
             await session.commit()
+
+        organized = await self._auto_organize(creds, provider)
 
         detail = (
             f"{counts['new']} new, {counts['flagged']} flagged for review, "
@@ -132,6 +153,7 @@ class ScanService:
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['removed_non_ebook']} non-ebook files removed, "
             f"{counts['converted']} converted to epub, "
+            f"{organized} auto-organized, "
             f"{counts['failed']} failed to parse"
         )
         self._jobs[job_id] = ScanJobStatus(
@@ -161,19 +183,16 @@ class ScanService:
         failures: list[ScanFailure] = []
 
         try:
-            raw_files = provider.list_epub_files_recursive(library_root_folder_id)
+            raw_files = await asyncio.to_thread(provider.list_epub_files_recursive, library_root_folder_id)
         except Exception as exc:  # Drive API failure — nothing to salvage
             self._jobs[job_id] = ScanJobStatus(
                 job_id=job_id, status=ScanJobState.failed, detail=str(exc)
             )
             return
 
-        async with async_session_factory() as session:
-            for raw in raw_files:
-                await self._process_file_safely(
-                    session, provider, raw, settings, counts, failures, already_organised=True
-                )
+        await self._process_batch(provider, raw_files, settings, counts, failures, already_organised=True)
 
+        async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)
             await session.commit()
 
@@ -188,14 +207,51 @@ class ScanService:
             job_id=job_id, status=ScanJobState.done, detail=detail, failures=failures
         )
 
+    async def _process_batch(
+        self,
+        provider: DriveProvider,
+        raw_files: list[dict],
+        settings: Settings,
+        counts: dict[str, int],
+        failures: list[ScanFailure],
+        *,
+        already_organised: bool = False,
+    ) -> None:
+        db_lock = asyncio.Lock()
+        semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
+
+        async def process_one(raw: dict) -> None:
+            async with semaphore:
+                await self._process_file_safely(
+                    provider, raw, settings, counts, failures, db_lock, already_organised=already_organised
+                )
+
+        await asyncio.gather(*(process_one(raw) for raw in raw_files))
+
+    async def _auto_organize(self, creds: Credentials, provider: DriveProvider) -> int:
+        async with async_session_factory() as session:
+            settings_repo = SettingsRepository(session)
+            dry_run = (await settings_repo.get(ORGANIZE_DRY_RUN)) != "false"
+            library = await DriveService.get_library_folder_config(settings_repo)
+
+        if library is None:
+            return 0
+
+        counts = await get_organize_service().organize_eligible_files(
+            provider=provider if not dry_run else None,
+            library_root_folder_id=library.folder_id,
+            dry_run=dry_run,
+        )
+        return counts["organized"]
+
     async def _process_file_safely(
         self,
-        session: AsyncSession,
         provider: DriveProvider,
         raw: dict,
         settings: Settings,
         counts: dict[str, int],
         failures: list[ScanFailure],
+        db_lock: asyncio.Lock,
         *,
         already_organised: bool = False,
     ) -> None:
@@ -205,21 +261,20 @@ class ScanService:
         stuck at "running" forever with no error surfaced anywhere."""
         try:
             await self._process_file(
-                session, provider, raw, settings, counts, failures, already_organised=already_organised
+                provider, raw, settings, counts, failures, db_lock, already_organised=already_organised
             )
         except Exception as exc:
-            await session.rollback()
             counts["failed"] += 1
             failures.append(ScanFailure(filename=raw["name"], reason=f"unexpected error: {exc}"))
 
     async def _process_file(
         self,
-        session: AsyncSession,
         provider: DriveProvider,
         raw: dict,
         settings: Settings,
         counts: dict[str, int],
         failures: list[ScanFailure],
+        db_lock: asyncio.Lock,
         *,
         already_organised: bool = False,
     ) -> None:
@@ -227,14 +282,24 @@ class ScanService:
             # Only reachable from run_scan's broad inbox listing — run_rebuild
             # feeds this from an already-ebook-filtered recursive listing, so
             # nothing in the organized library folder is ever touched here.
-            provider.trash_file(raw["id"])
+            await asyncio.to_thread(provider.trash_file, raw["id"])
             counts["removed_non_ebook"] += 1
             return
 
-        existing = await session.execute(select(File).where(File.drive_file_id == raw["id"]))
-        if existing.scalar_one_or_none() is not None:
-            counts["skipped_existing"] += 1
-            return
+        # Every DB touchpoint below opens its own short-lived session under
+        # db_lock — a single AsyncSession isn't safe to use from multiple
+        # concurrently-running files, and the fuzzy find-or-create in
+        # resolve_book races the same way organize's folder cache would
+        # without its lock (two new books by the same not-yet-seen author,
+        # processed at once, could each decide the author doesn't exist yet
+        # and both create it). Locking just the DB sections — not the whole
+        # function — still lets every file's download/parse/candidates/AI
+        # call (the actual slow part) run fully concurrently.
+        async with db_lock, async_session_factory() as session:
+            existing = await session.execute(select(File).where(File.drive_file_id == raw["id"]))
+            if existing.scalar_one_or_none() is not None:
+                counts["skipped_existing"] += 1
+                return
 
         declared_size = int(raw.get("size") or 0)
         if declared_size > settings.epub_max_total_bytes:
@@ -252,7 +317,7 @@ class ScanService:
         converted_data: bytes | None = None
         if is_convertible(raw["name"]):
             try:
-                source_bytes = provider.download_file(raw["id"])
+                source_bytes = await asyncio.to_thread(provider.download_file, raw["id"])
                 converted_data = await convert_to_epub(
                     source_bytes,
                     source_filename=raw["name"],
@@ -268,12 +333,16 @@ class ScanService:
                 return
 
             new_name = f"{Path(raw['name']).stem}.epub"
-            provider.update_file_content(raw["id"], new_name=new_name, data=converted_data)
+            await asyncio.to_thread(provider.update_file_content, raw["id"], new_name=new_name, data=converted_data)
             raw = {**raw, "name": new_name}
             counts["converted"] += 1
 
         try:
-            data = converted_data if converted_data is not None else provider.download_file(raw["id"])
+            data = (
+                converted_data
+                if converted_data is not None
+                else await asyncio.to_thread(provider.download_file, raw["id"])
+            )
         except Exception as exc:
             counts["failed"] += 1
             failures.append(ScanFailure(filename=raw["name"], reason=f"download failed: {exc}"))
@@ -281,56 +350,47 @@ class ScanService:
 
         sha256 = hashlib.sha256(data).hexdigest()
 
-        primary_result = await session.execute(
-            select(File).where(File.sha256 == sha256, File.status != FileStatus.duplicate)
-        )
-        primary = primary_result.scalars().first()
-        if primary is not None:
-            # SPEC.md §6: sha256 is indexed for exact-duplicate lookup. Same
-            # bytes means identical evidence, so skip re-parsing entirely —
-            # just copy the primary's identification and quality score,
-            # unless this exact content has since been human-corrected, in
-            # which case the correction is authoritative (§1). A structural
-            # reason from this file's own Drive placement always wins; short
-            # of that, a primary that was itself rejected means this is a
-            # re-upload of already-rejected content, worth surfacing as such
-            # rather than a bare "duplicate".
-            corrected_book_id = await resolve_corrected_book_id(session, sha256)
-            duplicate_reason = (
-                FileStatusReason(status_reason)
-                if status_reason
-                else (
-                    FileStatusReason.previously_rejected
-                    if primary.status == FileStatus.rejected
-                    else None
-                )
+        async with db_lock, async_session_factory() as session:
+            primary_result = await session.execute(
+                select(File).where(File.sha256 == sha256, File.status != FileStatus.duplicate)
             )
-            session.add(
-                File(
-                    drive_file_id=raw["id"],
-                    drive_parent_id=(raw.get("parents") or [None])[0],
-                    filename=raw["name"],
-                    sha256=sha256,
-                    size_bytes=len(data),
-                    status=FileStatus.duplicate,
-                    status_reason=duplicate_reason,
-                    book_id=corrected_book_id if corrected_book_id is not None else primary.book_id,
-                    quality_score=primary.quality_score,
+            primary = primary_result.scalars().first()
+            if primary is not None:
+                # SPEC.md §6: sha256 is indexed for exact-duplicate lookup. Same
+                # bytes means identical evidence, so skip re-parsing entirely —
+                # just copy the primary's identification and quality score,
+                # unless this exact content has since been human-corrected, in
+                # which case the correction is authoritative (§1). A structural
+                # reason from this file's own Drive placement always wins; short
+                # of that, a primary that was itself rejected means this is a
+                # re-upload of already-rejected content, worth surfacing as such
+                # rather than a bare "duplicate".
+                corrected_book_id = await resolve_corrected_book_id(session, sha256)
+                duplicate_reason = (
+                    FileStatusReason(status_reason)
+                    if status_reason
+                    else (
+                        FileStatusReason.previously_rejected
+                        if primary.status == FileStatus.rejected
+                        else None
+                    )
                 )
-            )
-            await session.commit()
-            counts["duplicate"] += 1
-            return
-
-        file_row = File(
-            drive_file_id=raw["id"],
-            drive_parent_id=(raw.get("parents") or [None])[0],
-            filename=raw["name"],
-            sha256=sha256,
-            size_bytes=len(data),
-            status=FileStatus.review if status_reason else FileStatus.inbox,
-            status_reason=FileStatusReason(status_reason) if status_reason else None,
-        )
+                session.add(
+                    File(
+                        drive_file_id=raw["id"],
+                        drive_parent_id=(raw.get("parents") or [None])[0],
+                        filename=raw["name"],
+                        sha256=sha256,
+                        size_bytes=len(data),
+                        status=FileStatus.duplicate,
+                        status_reason=duplicate_reason,
+                        book_id=corrected_book_id if corrected_book_id is not None else primary.book_id,
+                        quality_score=primary.quality_score,
+                    )
+                )
+                await session.commit()
+                counts["duplicate"] += 1
+                return
 
         try:
             evidence = parse_epub_safely(
@@ -341,30 +401,36 @@ class ScanService:
                 timeout_seconds=settings.epub_parse_timeout_seconds,
             )
         except EpubParseError as exc:
-            file_row.status = FileStatus.unidentified
-            file_row.status_reason = FileStatusReason.parse_failed
-            session.add(file_row)
-            await session.commit()
+            async with db_lock, async_session_factory() as session:
+                session.add(
+                    File(
+                        drive_file_id=raw["id"],
+                        drive_parent_id=(raw.get("parents") or [None])[0],
+                        filename=raw["name"],
+                        sha256=sha256,
+                        size_bytes=len(data),
+                        status=FileStatus.unidentified,
+                        status_reason=FileStatusReason.parse_failed,
+                    )
+                )
+                await session.commit()
             counts["failed"] += 1
             failures.append(ScanFailure(filename=raw["name"], reason=str(exc)))
             return
 
-        file_row.quality_score = score_quality(evidence, len(data))
+        quality_score = score_quality(evidence, len(data))
 
-        # Nothing is added to the session (no flush, no open write
-        # transaction) until every slow, non-DB step below — candidate
-        # generation and AI identification, both external network calls —
-        # has finished. A scan processes many files in one long-lived
-        # session; flushing file_row early used to hold SQLite's write lock
-        # across those calls, which could starve a concurrent request (e.g.
-        # approving a review) well past its busy_timeout.
+        # Metadata sources/candidates are built into ORM rows here (cheap,
+        # no I/O) but not added to any session until the final DB section —
+        # binding `.file` only happens once file_row exists there.
         metadata_sources = _evidence_to_metadata_sources(raw["name"], evidence)
 
         # A sha256 match on content that's already been human-corrected is
         # handled by the duplicate branch above (resolve_corrected_book_id)
         # — by construction, if a correction exists for this sha256, some
         # other File already has it, so the duplicate check already fired.
-        identification = await find_rule_match(session, raw["name"], evidence)
+        async with db_lock, async_session_factory() as session:
+            identification = await find_rule_match(session, raw["name"], evidence)
 
         candidate_rows: list[BookCandidate] = []
         if identification is None:
@@ -389,75 +455,90 @@ class ScanService:
                 filename=raw["name"], evidence=evidence, candidates=candidates
             )
 
-        book = await resolve_book(
-            session,
-            title=identification.title,
-            author=identification.author,
-            series=identification.series,
-            series_number=identification.series_number,
-            isbn13=evidence.isbn13,
-            isbn10=evidence.isbn10,
-        )
-        file_row.book_id = book.id
+        # Everything from here is DB-only — no more network calls — so the
+        # lock is held only briefly despite doing the fuzzy Author/Series
+        # find-or-create that must not race across concurrently-processing
+        # files.
+        async with db_lock, async_session_factory() as session:
+            file_row = File(
+                drive_file_id=raw["id"],
+                drive_parent_id=(raw.get("parents") or [None])[0],
+                filename=raw["name"],
+                sha256=sha256,
+                size_bytes=len(data),
+                status=FileStatus.review if status_reason else FileStatus.inbox,
+                status_reason=FileStatusReason(status_reason) if status_reason else None,
+                quality_score=quality_score,
+            )
 
-        if status_reason is None:
-            if already_organised:
-                # Already sitting in the library folder — trust it, don't
-                # route through review/auto-organize thresholds again.
-                file_row.status = FileStatus.organised
-            elif identification.computed_confidence < settings.confidence_auto_flagged:
-                # Below the auto-eligible bar, always goes to the review
-                # queue — never a dead-end `unidentified`. confidence_review_
-                # queue no longer forks to a separate unreviewable status: an
-                # AI call with thin evidence (no ISBN, one provider) can
-                # still be correct, and the reviewer sees the actual
-                # computed_confidence number to judge how much to trust it.
-                # `unidentified` is reserved for genuine failures (parse
-                # errors) where there's nothing to review against.
-                file_row.status = FileStatus.review
-                file_row.status_reason = FileStatusReason.low_confidence
-            # >= confidence_auto_flagged stays FileStatus.inbox — auto-eligible,
-            # actual move is Milestone 6. confidence_auto_organize (95) isn't a
-            # separate behavioral gate in v1 — every organize op logs its
-            # confidence to `operations`, so the 85-94 vs 95+ split is visible
-            # in Activity without needing a distinct status.
+            book = await resolve_book(
+                session,
+                title=identification.title,
+                author=identification.author,
+                series=identification.series,
+                series_number=identification.series_number,
+                isbn13=evidence.isbn13,
+                isbn10=evidence.isbn10,
+            )
+            file_row.book_id = book.id
 
-        ai_decision = AIDecision(
-            model=identification.model,
-            prompt_hash=identification.prompt_hash,
-            evidence_hash=identification.evidence_hash,
-            raw_response_json=identification.raw_response,
-            computed_confidence=identification.computed_confidence,
-            ai_reported_confidence=identification.ai_reported_confidence,
-            needs_human_review=identification.needs_human_review,
-            reasoning_summary=identification.reasoning_summary,
-        )
+            if status_reason is None:
+                if already_organised:
+                    # Already sitting in the library folder — trust it, don't
+                    # route through review/auto-organize thresholds again.
+                    file_row.status = FileStatus.organised
+                elif identification.computed_confidence < settings.confidence_auto_flagged:
+                    # Below the auto-eligible bar, always goes to the review
+                    # queue — never a dead-end `unidentified`. confidence_review_
+                    # queue no longer forks to a separate unreviewable status: an
+                    # AI call with thin evidence (no ISBN, one provider) can
+                    # still be correct, and the reviewer sees the actual
+                    # computed_confidence number to judge how much to trust it.
+                    # `unidentified` is reserved for genuine failures (parse
+                    # errors) where there's nothing to review against.
+                    file_row.status = FileStatus.review
+                    file_row.status_reason = FileStatusReason.low_confidence
+                # >= confidence_auto_flagged stays FileStatus.inbox — auto-eligible,
+                # picked up by run_scan's auto-organize pass right after this batch
+                # finishes. confidence_auto_organize (95) isn't a separate
+                # behavioral gate in v1 — every organize op logs its confidence to
+                # `operations`, so the 85-94 vs 95+ split is visible in Activity
+                # without needing a distinct status.
 
-        review_row = None
-        if file_row.status == FileStatus.review:
-            review_row = Review(status=ReviewStatus.pending, proposed_json=_proposed_json(identification))
+            ai_decision = AIDecision(
+                model=identification.model,
+                prompt_hash=identification.prompt_hash,
+                evidence_hash=identification.evidence_hash,
+                raw_response_json=identification.raw_response,
+                computed_confidence=identification.computed_confidence,
+                ai_reported_confidence=identification.ai_reported_confidence,
+                needs_human_review=identification.needs_human_review,
+                reasoning_summary=identification.reasoning_summary,
+            )
 
-        # Everything from here to commit() is DB-only — no more network
-        # calls — so the write lock this acquires is held only briefly.
-        # `.file = file_row` (not `.file_id = file_row.id`) lets SQLAlchemy
-        # resolve every FK itself at flush time, in one round trip, without
-        # needing file_row's id up front.
-        for source in metadata_sources:
-            source.file = file_row
-        for candidate in candidate_rows:
-            candidate.file = file_row
-        ai_decision.file = file_row
-        if review_row is not None:
-            review_row.file = file_row
+            review_row = None
+            if file_row.status == FileStatus.review:
+                review_row = Review(status=ReviewStatus.pending, proposed_json=_proposed_json(identification))
 
-        session.add(file_row)
-        session.add_all(metadata_sources)
-        session.add_all(candidate_rows)
-        session.add(ai_decision)
-        if review_row is not None:
-            session.add(review_row)
+            # `.file = file_row` (not `.file_id = file_row.id`) lets SQLAlchemy
+            # resolve every FK itself at flush time, in one round trip, without
+            # needing file_row's id up front.
+            for source in metadata_sources:
+                source.file = file_row
+            for candidate in candidate_rows:
+                candidate.file = file_row
+            ai_decision.file = file_row
+            if review_row is not None:
+                review_row.file = file_row
 
-        await session.commit()
+            session.add(file_row)
+            session.add_all(metadata_sources)
+            session.add_all(candidate_rows)
+            session.add(ai_decision)
+            if review_row is not None:
+                session.add(review_row)
+
+            await session.commit()
 
         counts["flagged" if status_reason else "new"] += 1
 

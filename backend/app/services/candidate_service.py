@@ -1,3 +1,5 @@
+import asyncio
+
 from app.core.config import get_settings
 from app.providers.metadata.base import BookMetadataProvider
 from app.providers.metadata.google_books import GoogleBooksProvider
@@ -34,10 +36,10 @@ class CandidateService:
         return []
 
     async def _query_all(self, call) -> list[MetadataCandidate]:
-        results: list[MetadataCandidate] = []
-        for provider in self._providers:
-            results.extend(await call(provider))
-        return results
+        # Providers are independent network calls (httpx.AsyncClient) — no
+        # reason to wait for Google Books before even starting Open Library.
+        results_per_provider = await asyncio.gather(*(call(provider) for provider in self._providers))
+        return [candidate for results in results_per_provider for candidate in results]
 
 
 def default_candidate_service() -> CandidateService:
