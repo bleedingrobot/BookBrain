@@ -1,4 +1,5 @@
 import anthropic
+from anthropic import DefaultAioHttpClient
 
 from app.core.config import get_settings
 from app.providers.ai.schema import IDENTIFY_BOOK_TOOL, IDENTIFY_SERIES_TOOL
@@ -18,7 +19,9 @@ class AnthropicIdentificationClient:
         self, client: anthropic.AsyncAnthropic | None = None, model: str | None = None
     ) -> None:
         settings = get_settings()
-        self._client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._client = client or anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key, http_client=DefaultAioHttpClient()
+        )
         self.model_name = model or settings.anthropic_model
 
     async def identify(self, prompt: str) -> tuple[AIIdentificationResult, dict]:
