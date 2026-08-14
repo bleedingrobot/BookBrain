@@ -175,6 +175,31 @@ def test_list_files_in_folder_escapes_single_quote_in_folder_id() -> None:
     )
 
 
+def test_create_spreadsheet_from_csv_sets_sheet_mimetype_and_parent() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.create_spreadsheet_from_csv(name="Export", csv_bytes=b"a,b\n1,2", parent_id="lib-id")
+
+    call = files.create_calls[0]
+    assert call["body"] == {
+        "name": "Export",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": ["lib-id"],
+    }
+    assert call["media_body"] is not None
+    assert call["fields"] == "id,name,webViewLink"
+
+
+def test_create_spreadsheet_from_csv_without_parent_omits_parents_key() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.create_spreadsheet_from_csv(name="Export", csv_bytes=b"a,b\n1,2")
+
+    assert "parents" not in files.create_calls[0]["body"]
+
+
 def test_list_epub_files_recursive_walks_subfolders() -> None:
     # root/: a.epub, subfolder "Author A"/; "Author A"/: b.epub, no subfolders
     files = _FakeFiles(

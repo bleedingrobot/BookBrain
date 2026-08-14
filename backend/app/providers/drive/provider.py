@@ -4,7 +4,7 @@ from googleapiclient.discovery import Resource
 from googleapiclient.http import MediaIoBaseUpload
 
 from app.providers.drive.classify import is_supported_ebook
-from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE
+from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE, SPREADSHEET_MIME_TYPE
 
 
 def _escape_query_value(value: str) -> str:
@@ -135,3 +135,19 @@ class DriveProvider:
         media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=False)
         body = {"name": name, "parents": [parent_id]}
         return self._service.files().create(body=body, media_body=media, fields="id,name,parents").execute()
+
+    def create_spreadsheet_from_csv(
+        self, *, name: str, csv_bytes: bytes, parent_id: str | None = None
+    ) -> dict:
+        """Uploads CSV bytes but declares the target as a native Sheet —
+        Drive auto-converts the import on upload, so no separate Sheets API
+        call (and no extra OAuth scope beyond Drive) is needed."""
+        media = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype="text/csv", resumable=False)
+        body: dict = {"name": name, "mimeType": SPREADSHEET_MIME_TYPE}
+        if parent_id:
+            body["parents"] = [parent_id]
+        return (
+            self._service.files()
+            .create(body=body, media_body=media, fields="id,name,webViewLink")
+            .execute()
+        )

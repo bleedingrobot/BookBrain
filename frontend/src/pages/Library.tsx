@@ -46,6 +46,9 @@ export function Library() {
   const [rebuildError, setRebuildError] = useState<string | null>(null)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportResult, setExportResult] = useState<{ name: string; url: string } | null>(null)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<number | null>(null)
 
@@ -171,12 +174,46 @@ export function Library() {
               Rebuild library
             </button>
             <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              disabled={exporting}
+              onClick={async () => {
+                setExportError(null)
+                setExportResult(null)
+                setExporting(true)
+                try {
+                  const result = await api.exportLibrary()
+                  setExportResult(result)
+                  window.open(result.url, '_blank', 'noopener')
+                } catch (err) {
+                  setExportError(err instanceof ApiError ? err.message : 'Failed to export library.')
+                } finally {
+                  setExporting(false)
+                }
+              }}
+            >
+              {exporting ? 'Exporting…' : 'Export to Google Sheets'}
+            </button>
+            <button
               className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
               onClick={() => setConfirmingClear(true)}
             >
               Clear library
             </button>
           </div>
+          {exportError && <p className="mt-1 text-xs text-red-600">{exportError}</p>}
+          {exportResult && !exportError && (
+            <p className="mt-1 text-xs text-neutral-500">
+              Exported to{' '}
+              <a
+                className="underline"
+                href={exportResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {exportResult.name}
+              </a>
+            </p>
+          )}
           {organizeError && <p className="mt-1 text-xs text-red-600">{organizeError}</p>}
           {organize.data && (
             <p className="mt-1 text-xs text-neutral-500">

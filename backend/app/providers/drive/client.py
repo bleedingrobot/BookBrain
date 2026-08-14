@@ -5,6 +5,7 @@ from googleapiclient.discovery import Resource, build
 
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 EPUB_MIME_TYPE = "application/epub+zip"
+SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet"
 
 # httplib2's default Http() has no timeout at all, so a stalled connection
 # (a transient network blip, Drive throttling silently instead of erroring,
