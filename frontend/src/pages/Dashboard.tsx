@@ -365,18 +365,48 @@ export function Dashboard() {
                   </button>
                 </div>
 
-                <button
-                  className="mb-2 text-xs text-neutral-400 underline"
-                  onClick={() =>
-                    setSelectedTorrents(
-                      selectedTorrents.size === localPending.data?.length
-                        ? new Set()
-                        : new Set(localPending.data?.map((f) => f.id)),
-                    )
-                  }
-                >
-                  {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
-                </button>
+                <div className="mb-2 flex flex-wrap items-center gap-3">
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        selectedTorrents.size === localPending.data?.length
+                          ? new Set()
+                          : new Set(localPending.data?.map((f) => f.id)),
+                      )
+                    }
+                  >
+                    {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.epub'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all EPUB
+                  </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.mobi'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all MOBI
+                  </button>
+                </div>
 
                 <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
                   {localPending.data?.map((f) => (
