@@ -5,7 +5,7 @@ import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
 import { matchesSearch, parseFilename } from './lib/parseFilename'
-import { loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
+import { clearSettings, loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -185,6 +185,21 @@ export default function App() {
     setLoading(false)
   }
 
+  // Signing in never persists the access token (kept only in React state —
+  // see `token` above), so a page reload already signs a visitor out. What
+  // *does* persist to localStorage indefinitely is the saved client
+  // ID/folder IDs and the cached library listing (titles, filenames, Drive
+  // IDs) — on a shared/public device that's readable by the next person who
+  // opens dev tools. This is the only way to clear it short of the browser's
+  // own "clear site data".
+  function handleForgetDevice() {
+    clearSettings()
+    clearLibraryCache()
+    setToken(null)
+    setFiles(null)
+    setSettings(null)
+  }
+
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -198,17 +213,23 @@ export default function App() {
     if (!token) return
     setDownloading(true)
     setDownloadError(null)
-    try {
-      for (const { file } of books.filter((b) => selected.has(b.file.id))) {
+    const toDownload = books.filter((b) => selected.has(b.file.id))
+    const stillFailed = new Set<string>()
+    for (const { file } of toDownload) {
+      try {
         await downloadFile(token, file)
-        await sleep(300) // browsers throttle/block rapid-fire simultaneous downloads
+      } catch {
+        stillFailed.add(file.id) // one bad download shouldn't skip the rest of the selection
       }
-      setSelected(new Set())
-    } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : 'A download failed.')
-    } finally {
-      setDownloading(false)
+      await sleep(300) // browsers throttle/block rapid-fire simultaneous downloads
     }
+    setSelected(stillFailed) // leave failures selected so retrying is just clicking Download again
+    setDownloadError(
+      stillFailed.size > 0
+        ? `${stillFailed.size} of ${toDownload.length} download${toDownload.length === 1 ? '' : 's'} failed — still selected, try again.`
+        : null,
+    )
+    setDownloading(false)
   }
 
   async function sendToKobo(file: DriveFile) {
@@ -256,6 +277,11 @@ export default function App() {
           {signingIn ? 'Signing in…' : 'Sign in with Google'}
         </button>
         {authError && <p className="mt-3 text-sm text-red-600">{authError}</p>}
+        <p className="mt-4 text-xs text-neutral-400">
+          Google only lets this page copy your existing library files with full Drive access, not a
+          narrower "just this folder" permission — signing in grants access to your whole Drive, not
+          only the shared library. Nothing is saved: closing or reloading this page signs you out.
+        </p>
         <button
           className="mt-8 block w-full text-xs text-neutral-400 underline"
           onClick={() => setShowSetup(true)}
@@ -296,6 +322,9 @@ export default function App() {
           </button>
           <button className="underline" onClick={() => setShowSetup(true)}>
             Recovery checklist
+          </button>
+          <button className="underline" onClick={handleForgetDevice}>
+            Forget this device
           </button>
         </div>
       </div>

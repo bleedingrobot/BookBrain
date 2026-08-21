@@ -10,11 +10,22 @@ import {
 
 const CACHE_KEY = 'bookbrain.libraryCache'
 
+// Incremental sync trusts Drive's changes feed and our own diffing logic to
+// stay correct forever — but a bug in either (we've already had to fix one:
+// see the "brand-new nested folder" fix) can silently drop something and
+// then advance the sync token past it. Once that happens it's permanently
+// invisible to Refresh, since nothing about the dropped item changes again
+// afterward for Drive to report. A periodic full walk is the only thing
+// that can catch and correct that kind of silent drift without the user
+// ever noticing something's missing.
+const AUTO_REBUILD_INTERVAL_MS = 24 * 60 * 60 * 1000
+
 export interface LibraryCache {
   libraryFolderId: string
   pageToken: string
   files: DriveFile[]
   folderIds: string[]
+  builtAt: number
 }
 
 function loadCache(): LibraryCache | null {
@@ -47,7 +58,7 @@ async function fullRebuild(token: string, libraryFolderId: string): Promise<Libr
   // (harmlessly) on the very next incremental sync.
   const pageToken = await getStartPageToken(token)
   const { files, folderIds } = await listLibraryTree(token, libraryFolderId)
-  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds }
+  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds, builtAt: Date.now() }
   saveCache(cache)
   return cache
 }
@@ -119,6 +130,10 @@ export async function syncLibrary(
   const existing = loadCache()
 
   if (!existing || existing.libraryFolderId !== libraryFolderId) {
+    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  }
+
+  if (!existing.builtAt || Date.now() - existing.builtAt > AUTO_REBUILD_INTERVAL_MS) {
     return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
   }
 

@@ -92,9 +92,9 @@ class _FakeFolderProvider:
 
 async def test_folder_path_cache_creates_missing_folders() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author", "Series"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author", "Series"])
 
     assert len(provider.create_calls) == 2
     assert provider.create_calls[0] == ("Author", "root-id")
@@ -106,9 +106,9 @@ async def test_folder_path_cache_creates_missing_folders() -> None:
 async def test_folder_path_cache_reuses_existing_folder() -> None:
     provider = _FakeFolderProvider()
     provider.folders["root-id"] = [{"id": "existing-author", "name": "Author"}]
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author"])
 
     assert folder_id == "existing-author"
     assert provider.create_calls == []
@@ -120,9 +120,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
     # both create it — Drive doesn't enforce folder name uniqueness, so
     # that's a silent duplicate-folder bug, not an error.
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    results = await asyncio.gather(*(cache.resolve("root-id", ["Author", "Series"]) for _ in range(8)))
+    results = await asyncio.gather(
+        *(cache.resolve(provider, "root-id", ["Author", "Series"]) for _ in range(8))
+    )
 
     assert len(set(results)) == 1
     assert len(provider.create_calls) == 2  # "Author" once, "Series" once — not 16
@@ -130,11 +132,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
 
 async def test_folder_path_cache_hit_does_not_touch_the_lock() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
-    await cache.resolve("root-id", ["Author"])
+    cache = FolderPathCache()
+    await cache.resolve(provider, "root-id", ["Author"])
     create_calls_after_warmup = len(provider.create_calls)
 
-    await cache.resolve("root-id", ["Author"])
+    await cache.resolve(provider, "root-id", ["Author"])
 
     assert len(provider.create_calls) == create_calls_after_warmup
 
@@ -331,11 +333,12 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
     provider = _FakeMoveProvider()
     service = OrganizeService()
 
-    counts = await service.organize_eligible_files(
-        provider=provider, library_root_folder_id="lib-root", dry_run=False
+    counts, failures = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
     )
 
     assert counts == {"organized": 5, "failed": 0}
+    assert failures == []
     assert len(provider.move_calls) == 5
     # All 5 books share one not-yet-existing author folder — must be
     # created exactly once, not once per concurrently-organized file.
@@ -346,3 +349,40 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
         assert all(s == FileStatus.organised for s in statuses)
 
     await engine.dispose()
+
+
+class _FakeFailingMoveProvider(_FakeFolderProvider):
+    """Regression: a failed move used to be swallowed as a bare failed-count
+    increment with no way to tell which file failed or why."""
+
+    def move_and_rename(self, file_id, *, old_parent_id, new_parent_id, new_name) -> dict:
+        raise RuntimeError("simulated Drive API failure")
+
+
+async def test_organize_eligible_files_records_failure_reason(db_session, monkeypatch) -> None:
+    # Without this monkeypatch, organize_eligible_files opens sessions via
+    # the real app.data.db.async_session_factory — i.e. whatever database
+    # the settings point at, not this test's isolated in-memory db_session.
+    import app.services.organize_service as organize_module
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+    file_row = await _seed_file(db_session)
+    provider = _FakeFailingMoveProvider()
+    service = OrganizeService()
+
+    counts, failures = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    assert counts == {"organized": 0, "failed": 1}
+    assert len(failures) == 1
+    assert failures[0].filename == file_row.filename
+    assert "simulated Drive API failure" in failures[0].reason

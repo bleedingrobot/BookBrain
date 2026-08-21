@@ -39,7 +39,7 @@ class IdentificationService:
     """
 
     def __init__(self, ai_client: AnthropicIdentificationClient | None = None) -> None:
-        self._ai_client = ai_client
+        self._ai_client = ai_client or AnthropicIdentificationClient()
 
     async def identify(
         self, *, filename: str, evidence: EpubEvidence, candidates: list[MetadataCandidate]
@@ -70,9 +70,8 @@ class IdentificationService:
             # silent, make one lightweight AI call just for that (skipped
             # entirely, no extra cost, when either source already has it).
             if series is None:
-                client = self._ai_client or AnthropicIdentificationClient()
                 try:
-                    series_result, series_raw = await client.identify_series(title, author)
+                    series_result, series_raw = await self._ai_client.identify_series(title, author)
                     series = series_result.series
                     series_number = series_result.series_number
                     raw_response["series_lookup"] = series_raw
@@ -101,10 +100,9 @@ class IdentificationService:
 
         prompt = _build_prompt(filename, evidence, candidates)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        client = self._ai_client or AnthropicIdentificationClient()
 
         try:
-            ai_result, raw_response = await client.identify(prompt)
+            ai_result, raw_response = await self._ai_client.identify(prompt)
         except AIIdentificationError as exc:
             breakdown = score(evidence=evidence, candidates=candidates, filename=filename)
             return IdentificationResult(
@@ -141,7 +139,7 @@ class IdentificationService:
             ai_reported_confidence=ai_result.ai_confidence,
             needs_human_review=breakdown.total < 85,
             reasoning_summary=ai_result.reasoning_summary,
-            model=client.model_name,
+            model=self._ai_client.model_name,
             prompt_hash=prompt_hash,
             evidence_hash=evidence_hash,
             raw_response={**raw_response, "confidence_breakdown": breakdown.as_dict()},

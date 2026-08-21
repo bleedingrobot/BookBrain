@@ -4,7 +4,16 @@ from googleapiclient.discovery import Resource
 from googleapiclient.http import MediaIoBaseUpload
 
 from app.providers.drive.classify import is_supported_ebook
-from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE
+from app.providers.drive.client import EPUB_MIME_TYPE, FOLDER_MIME_TYPE, SPREADSHEET_MIME_TYPE
+
+
+def _escape_query_value(value: str) -> str:
+    """Drive's query language treats a bare `'` inside a quoted string
+    literal as the end of the literal — an id containing one would otherwise
+    let its value break out of the intended `'...' in parents` clause and
+    widen the query. Per Drive's docs, escape both backslash and single
+    quote with a backslash."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
 class DriveProvider:
@@ -15,7 +24,7 @@ class DriveProvider:
         self._service = service
 
     def list_folders(self, parent_id: str | None) -> list[dict]:
-        parent = parent_id or "root"
+        parent = _escape_query_value(parent_id or "root")
         query = f"'{parent}' in parents and mimeType='{FOLDER_MIME_TYPE}' and trashed=false"
         result = (
             self._service.files()
@@ -59,7 +68,8 @@ class DriveProvider:
         """Every non-folder file directly in this folder, any type — the
         scan uses this (not list_epub_files) so it can find and remove
         clutter that isn't a supported ebook format."""
-        query = f"'{folder_id}' in parents and trashed=false and mimeType!='{FOLDER_MIME_TYPE}'"
+        escaped = _escape_query_value(folder_id)
+        query = f"'{escaped}' in parents and trashed=false and mimeType!='{FOLDER_MIME_TYPE}'"
         files: list[dict] = []
         page_token: str | None = None
         while True:
@@ -125,3 +135,19 @@ class DriveProvider:
         media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=False)
         body = {"name": name, "parents": [parent_id]}
         return self._service.files().create(body=body, media_body=media, fields="id,name,parents").execute()
+
+    def create_spreadsheet_from_csv(
+        self, *, name: str, csv_bytes: bytes, parent_id: str | None = None
+    ) -> dict:
+        """Uploads CSV bytes but declares the target as a native Sheet —
+        Drive auto-converts the import on upload, so no separate Sheets API
+        call (and no extra OAuth scope beyond Drive) is needed."""
+        media = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype="text/csv", resumable=False)
+        body: dict = {"name": name, "mimeType": SPREADSHEET_MIME_TYPE}
+        if parent_id:
+            body["parents"] = [parent_id]
+        return (
+            self._service.files()
+            .create(body=body, media_body=media, fields="id,name,webViewLink")
+            .execute()
+        )

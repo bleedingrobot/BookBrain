@@ -124,6 +124,26 @@ export function Dashboard() {
     }
   }, [organize.data?.status, queryClient])
 
+  // A tracked job can 404 out from under the UI (most commonly a dev-server
+  // restart wiping in-memory job state) — without this, the "Start
+  // scan"/"Organize" button stays disabled ("running…") forever because
+  // jobId never clears, even though the job itself is gone.
+  useEffect(() => {
+    if (scan.isError) {
+      setScanError('Lost track of this scan — the server may have restarted mid-job. Try again.')
+      setJobId(null)
+    }
+  }, [scan.isError])
+
+  useEffect(() => {
+    if (organize.isError) {
+      setOrganizeError(
+        'Lost track of this organize job — the server may have restarted mid-job. Check the file list below before retrying, in case it partially finished.',
+      )
+      setOrganizeJobId(null)
+    }
+  }, [organize.isError])
+
   async function handleStartScan() {
     setScanError(null)
     setScanStarting(true)
@@ -345,18 +365,48 @@ export function Dashboard() {
                   </button>
                 </div>
 
-                <button
-                  className="mb-2 text-xs text-neutral-400 underline"
-                  onClick={() =>
-                    setSelectedTorrents(
-                      selectedTorrents.size === localPending.data?.length
-                        ? new Set()
-                        : new Set(localPending.data?.map((f) => f.id)),
-                    )
-                  }
-                >
-                  {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
-                </button>
+                <div className="mb-2 flex flex-wrap items-center gap-3">
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        selectedTorrents.size === localPending.data?.length
+                          ? new Set()
+                          : new Set(localPending.data?.map((f) => f.id)),
+                      )
+                    }
+                  >
+                    {selectedTorrents.size === localPending.data?.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.epub'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all EPUB
+                  </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.mobi'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all MOBI
+                  </button>
+                </div>
 
                 <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
                   {localPending.data?.map((f) => (
@@ -513,6 +563,17 @@ export function Dashboard() {
               job {organize.data.job_id}: {organize.data.status}
               {organize.data.detail ? ` — ${organize.data.detail}` : ''}
             </p>
+          )}
+
+          {organize.data && organize.data.failures.length > 0 && (
+            <ul className="mt-2 max-h-40 divide-y divide-neutral-100 overflow-y-auto rounded border border-red-200 text-xs dark:divide-neutral-800 dark:border-red-900">
+              {organize.data.failures.map((f, i) => (
+                <li key={i} className="flex items-start gap-3 px-2 py-1.5">
+                  <span className="min-w-0 flex-1 truncate text-neutral-700 dark:text-neutral-300">{f.filename}</span>
+                  <span className="shrink-0 max-w-[60%] text-right text-red-600 dark:text-red-400">{f.reason}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

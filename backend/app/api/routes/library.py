@@ -1,8 +1,11 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_drive_provider
 from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
+from app.providers.drive.provider import DriveProvider
+from app.schemas.library import LibraryExportResult
 from app.schemas.scan import ScanJobStatus
 from app.services import library_service
 from app.services.auth_service import AuthService, get_auth_service
@@ -46,3 +49,14 @@ async def get_rebuild_status(
     if status is None:
         raise HTTPException(status_code=404, detail="rebuild job not found")
     return status
+
+
+@router.post("/export", response_model=LibraryExportResult)
+async def export_library(
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> LibraryExportResult:
+    settings_repo = SettingsRepository(db)
+    library = await DriveService.get_library_folder_config(settings_repo)
+    parent_id = library.folder_id if library else None
+    return await library_service.export_to_sheet(db, provider, parent_id=parent_id)

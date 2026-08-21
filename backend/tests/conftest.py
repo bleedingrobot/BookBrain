@@ -5,6 +5,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.config import get_settings
 from app.data.db import Base
 from app.data import models  # noqa: F401  (registers models on Base.metadata)
+from app.services import book_repository
+from app.services.organize_service import get_folder_path_cache
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_singletons():
+    # Both of these are process-wide in production (a single event loop for
+    # the app's whole life), but pytest-asyncio gives each test function its
+    # own event loop by default — reusing the same asyncio.Lock across tests
+    # raises "bound to a different event loop" the moment a second test's
+    # loop actually acquires it. Reset before every test so each gets a
+    # cleanly-unbound lock/cache regardless of what earlier tests touched.
+    book_repository.reset_book_write_lock()
+    get_folder_path_cache().clear()
 
 
 @pytest.fixture(autouse=True)

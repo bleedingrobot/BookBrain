@@ -19,7 +19,7 @@ from app.data.models import (
 )
 from app.providers.drive.provider import DriveProvider
 from app.schemas.reviews import CandidateItem, CorrectReviewRequest, EvidenceItem, ReviewDetail, ReviewSummary
-from app.services.book_repository import resolve_book
+from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.text_match import normalize
 
 # Structural issues (a Drive-side conflict, not an identification problem) are
@@ -139,15 +139,21 @@ async def correct(session: AsyncSession, review_id: int, body: CorrectReviewRequ
     review.resolved_at = datetime.now(UTC)
 
     isbn13, isbn10 = await _identifiers_for_book(session, file_row.book_id)
-    book = await resolve_book(
-        session,
-        title=body.title,
-        author=body.author,
-        series=body.series,
-        series_number=body.series_number,
-        isbn13=isbn13,
-        isbn10=isbn10,
-    )
+    # Shared with scan_service's per-file pipeline: resolve_book's fuzzy
+    # Author/Series/Book find-or-create must serialize against a concurrent
+    # scan doing the same, or a human correction and an in-flight scan can
+    # each decide the same not-yet-seen author doesn't exist yet and both
+    # create it.
+    async with get_book_write_lock():
+        book = await resolve_book(
+            session,
+            title=body.title,
+            author=body.author,
+            series=body.series,
+            series_number=body.series_number,
+            isbn13=isbn13,
+            isbn10=isbn10,
+        )
     file_row.book_id = book.id
     if file_row.status_reason not in _STRUCTURAL_REASONS:
         file_row.status = FileStatus.inbox

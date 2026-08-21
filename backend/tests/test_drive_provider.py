@@ -153,6 +153,53 @@ def test_upload_new_file_creates_file_with_media_and_parent() -> None:
     assert result == {"id": "new-folder-id", "name": "book.epub"}
 
 
+def test_list_folders_escapes_single_quote_in_parent_id() -> None:
+    files = _FakeFiles([{"files": []}])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.list_folders("weird'id")
+
+    assert files.list_calls[0]["q"] == (
+        "'weird\\'id' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    )
+
+
+def test_list_files_in_folder_escapes_single_quote_in_folder_id() -> None:
+    files = _FakeFiles([{"files": []}])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.list_files_in_folder("weird'id")
+
+    assert files.list_calls[0]["q"] == (
+        "'weird\\'id' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
+    )
+
+
+def test_create_spreadsheet_from_csv_sets_sheet_mimetype_and_parent() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.create_spreadsheet_from_csv(name="Export", csv_bytes=b"a,b\n1,2", parent_id="lib-id")
+
+    call = files.create_calls[0]
+    assert call["body"] == {
+        "name": "Export",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": ["lib-id"],
+    }
+    assert call["media_body"] is not None
+    assert call["fields"] == "id,name,webViewLink"
+
+
+def test_create_spreadsheet_from_csv_without_parent_omits_parents_key() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    provider.create_spreadsheet_from_csv(name="Export", csv_bytes=b"a,b\n1,2")
+
+    assert "parents" not in files.create_calls[0]["body"]
+
+
 def test_list_epub_files_recursive_walks_subfolders() -> None:
     # root/: a.epub, subfolder "Author A"/; "Author A"/: b.epub, no subfolders
     files = _FakeFiles(

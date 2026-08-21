@@ -1,5 +1,19 @@
+import pytest
+
 from app.data.models import AIDecision, Author, Book, File, FileStatus, FileStatusReason, Series
 from app.services import file_service
+
+
+class _FakeProvider:
+    def __init__(self, fail_for: set[str] | None = None) -> None:
+        self.trashed: list[str] = []
+        self._fail_for = fail_for or set()
+
+    def trash_file(self, file_id: str) -> dict:
+        if file_id in self._fail_for:
+            raise RuntimeError("simulated Drive failure")
+        self.trashed.append(file_id)
+        return {"id": file_id, "trashed": True}
 
 
 async def _seed_file(
@@ -150,3 +164,60 @@ async def test_list_files_handles_no_book_or_decision(db_session) -> None:
     assert summaries[0].book_series is None
     assert summaries[0].computed_confidence is None
     assert summaries[0].ai_reasoning is None
+
+
+async def test_remove_file_trashes_drive_file_and_marks_rejected(db_session) -> None:
+    file_row = await _seed_file(
+        db_session,
+        drive_file_id="drive-1",
+        filename="broken.epub",
+        status=FileStatus.unidentified,
+        status_reason=FileStatusReason.parse_failed,
+    )
+    provider = _FakeProvider()
+
+    result = await file_service.remove_file(db_session, file_row.id, provider)
+
+    assert provider.trashed == ["drive-1"]
+    assert result.status == FileStatus.rejected
+    assert result.status_reason is None
+    assert result.book_id is None
+
+
+async def test_remove_file_clears_book_id(db_session) -> None:
+    author = Author(name="Some Author")
+    db_session.add(author)
+    await db_session.flush()
+    book = Book(canonical_title="Some Book", author_id=author.id)
+    db_session.add(book)
+    await db_session.flush()
+    file_row = await _seed_file(
+        db_session, drive_file_id="drive-1", filename="a.epub", status=FileStatus.review, book_id=book.id
+    )
+    provider = _FakeProvider()
+
+    result = await file_service.remove_file(db_session, file_row.id, provider)
+
+    assert result.book_id is None
+
+
+async def test_remove_file_raises_for_unknown_id(db_session) -> None:
+    provider = _FakeProvider()
+
+    with pytest.raises(file_service.FileRecordNotFoundError):
+        await file_service.remove_file(db_session, 9999, provider)
+
+    assert provider.trashed == []
+
+
+async def test_remove_file_propagates_drive_failure_without_committing(db_session) -> None:
+    file_row = await _seed_file(
+        db_session, drive_file_id="drive-1", filename="a.epub", status=FileStatus.unidentified
+    )
+    provider = _FakeProvider(fail_for={"drive-1"})
+
+    with pytest.raises(RuntimeError):
+        await file_service.remove_file(db_session, file_row.id, provider)
+
+    await db_session.refresh(file_row)
+    assert file_row.status == FileStatus.unidentified

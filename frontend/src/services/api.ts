@@ -2,6 +2,7 @@ import type { AuthStartResponse, AuthStatus, FolderMode } from '../types/auth'
 import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive'
 import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
+import type { LibraryExportResult } from '../types/library'
 import type { LibraryAuditResult } from '../types/libraryAudit'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
@@ -105,10 +106,12 @@ export const api = {
 
   listFiles: (status?: string) =>
     request<FileSummary[]>(`/files${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  removeFile: (id: number) => request<void>(`/files/${id}/remove`, { method: 'POST' }),
 
   clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
   rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),
   getRebuildStatus: (jobId: string) => request<ScanJobStatus>(`/library/rebuild/${jobId}`),
+  exportLibrary: () => request<LibraryExportResult>('/library/export', { method: 'POST' }),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),

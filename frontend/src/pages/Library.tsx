@@ -46,6 +46,11 @@ export function Library() {
   const [rebuildError, setRebuildError] = useState<string | null>(null)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportResult, setExportResult] = useState<{ name: string; url: string } | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<number | null>(null)
 
   const files = useQuery({ queryKey: ['files', status], queryFn: () => api.listFiles(status) })
   const organizeSettings = useQuery({
@@ -66,6 +71,19 @@ export function Library() {
       setClearError(err instanceof ApiError ? err.message : 'Failed to clear library.'),
   })
 
+  const removeFile = useMutation({
+    mutationFn: api.removeFile,
+    onSuccess: () => {
+      setConfirmingRemoveId(null)
+      setRemoveError(null)
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+    onError: (err: unknown) => {
+      setConfirmingRemoveId(null)
+      setRemoveError(err instanceof ApiError ? err.message : 'Failed to remove file.')
+    },
+  })
+
   useEffect(() => {
     if (organize.data?.status === 'done') {
       queryClient.invalidateQueries({ queryKey: ['files'] })
@@ -77,6 +95,26 @@ export function Library() {
       queryClient.invalidateQueries({ queryKey: ['files'] })
     }
   }, [rebuild.data?.status, queryClient])
+
+  // A tracked job can 404 out from under the UI (most commonly a dev-server
+  // restart wiping in-memory job state) — without this, the button stays
+  // disabled ("running…") forever because the job id never clears, even
+  // though the job itself is gone.
+  useEffect(() => {
+    if (organize.isError) {
+      setOrganizeError(
+        'Lost track of this organize job — the server may have restarted mid-job. Check the file list before retrying, in case it partially finished.',
+      )
+      setOrganizeJobId(null)
+    }
+  }, [organize.isError])
+
+  useEffect(() => {
+    if (rebuild.isError) {
+      setRebuildError('Lost track of this rebuild job — the server may have restarted mid-job. Try again.')
+      setRebuildJobId(null)
+    }
+  }, [rebuild.isError])
 
   const visibleFiles =
     status === undefined
@@ -136,18 +174,62 @@ export function Library() {
               Rebuild library
             </button>
             <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              disabled={exporting}
+              onClick={async () => {
+                setExportError(null)
+                setExportResult(null)
+                setExporting(true)
+                try {
+                  const result = await api.exportLibrary()
+                  setExportResult(result)
+                  window.open(result.url, '_blank', 'noopener')
+                } catch (err) {
+                  setExportError(err instanceof ApiError ? err.message : 'Failed to export library.')
+                } finally {
+                  setExporting(false)
+                }
+              }}
+            >
+              {exporting ? 'Exporting…' : 'Export to Google Sheets'}
+            </button>
+            <button
               className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
               onClick={() => setConfirmingClear(true)}
             >
               Clear library
             </button>
           </div>
+          {exportError && <p className="mt-1 text-xs text-red-600">{exportError}</p>}
+          {exportResult && !exportError && (
+            <p className="mt-1 text-xs text-neutral-500">
+              Exported to{' '}
+              <a
+                className="underline"
+                href={exportResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {exportResult.name}
+              </a>
+            </p>
+          )}
           {organizeError && <p className="mt-1 text-xs text-red-600">{organizeError}</p>}
           {organize.data && (
             <p className="mt-1 text-xs text-neutral-500">
               organize: {organize.data.status}
               {organize.data.detail ? ` — ${organize.data.detail}` : ''}
             </p>
+          )}
+          {organize.data && organize.data.failures.length > 0 && (
+            <ul className="mt-1 max-h-40 max-w-sm divide-y divide-neutral-100 overflow-y-auto rounded border border-red-200 text-left text-xs dark:divide-neutral-800 dark:border-red-900">
+              {organize.data.failures.map((f, i) => (
+                <li key={i} className="px-2 py-1.5">
+                  <div className="truncate text-neutral-700 dark:text-neutral-300">{f.filename}</div>
+                  <div className="truncate text-red-600 dark:text-red-400">{f.reason}</div>
+                </li>
+              ))}
+            </ul>
           )}
           {rebuildError && <p className="mt-1 text-xs text-red-600">{rebuildError}</p>}
           {rebuild.data && (
@@ -235,6 +317,7 @@ export function Library() {
 
       {files.isLoading && <div className="mt-6 text-sm text-neutral-500">Loading...</div>}
       {files.isError && <div className="mt-6 text-sm text-neutral-500">Failed to load files.</div>}
+      {removeError && <div className="mt-4 text-sm text-red-600">{removeError}</div>}
 
       <ul className="mt-4 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
         {visibleFiles?.map((file) => (
@@ -265,6 +348,36 @@ export function Library() {
                 <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[file.status] ?? ''}`}>
                   {STATUS_LABEL[file.status] ?? file.status}
                 </span>
+                {file.status === 'unidentified' &&
+                  (confirmingRemoveId === file.id ? (
+                    <span className="flex items-center gap-1 text-xs">
+                      <button
+                        className="rounded bg-red-600 px-2 py-0.5 text-white disabled:opacity-50"
+                        disabled={removeFile.isPending}
+                        onClick={() => removeFile.mutate(file.id)}
+                      >
+                        {removeFile.isPending ? '…' : 'Confirm'}
+                      </button>
+                      <button
+                        className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-700"
+                        disabled={removeFile.isPending}
+                        onClick={() => setConfirmingRemoveId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+                      title="Moves the file to Google Drive's Trash — recoverable there, not a permanent delete."
+                      onClick={() => {
+                        setRemoveError(null)
+                        setConfirmingRemoveId(file.id)
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ))}
               </div>
             </div>
             {(file.status_reason || file.ai_reasoning) && (
