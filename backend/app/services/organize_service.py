@@ -162,6 +162,16 @@ class OrganizeService:
 
     def __init__(self) -> None:
         self._jobs: dict[str, OrganizeJobStatus] = {}
+        # Concurrent files each commit their own session at roughly the same
+        # moment once their Drive call finishes. WAL + busy_timeout (db.py)
+        # is a backstop for that, but a slow fsync (seen in practice on
+        # Windows) can make one commit hold the write lock long enough that
+        # others exhaust the timeout and fail outright instead of just
+        # waiting. Serializing commits in-process avoids ever touching
+        # SQLite's write lock concurrently from this service, so the
+        # timeout is only ever needed for contention from *other*
+        # processes/services.
+        self._write_lock = asyncio.Lock()
 
     def create_job(self) -> OrganizeJobStatus:
         job_id = str(uuid.uuid4())
@@ -326,7 +336,8 @@ class OrganizeService:
                 reason="dry run — no Drive changes made",
             )
             session.add(operation)
-            await session.commit()
+            async with self._write_lock:
+                await session.commit()
             return operation
 
         if provider is None or library_root_folder_id is None:
@@ -358,7 +369,8 @@ class OrganizeService:
         file_row.drive_parent_id = target_folder_id
         file_row.status = FileStatus.organised
 
-        await session.commit()
+        async with self._write_lock:
+            await session.commit()
         return operation
 
 
