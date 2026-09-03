@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
@@ -51,6 +51,7 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(false)
   const [showDevices, setShowDevices] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(() => consumeSharedSettings() ?? loadSettings())
   const [token, setToken] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -344,24 +345,31 @@ export default function App() {
 
   if (!token) {
     return (
-      <div className="mx-auto mt-16 max-w-md p-6 text-center">
-        <h1 className="text-xl font-semibold">BookBrain Library</h1>
-        <p className="mt-2 text-sm text-neutral-500">Sign in with Google to browse your library.</p>
+      <div className="mx-auto max-w-sm px-6 pt-24 pb-12 text-center">
+        <img
+          src={`${import.meta.env.BASE_URL}favicon.svg`}
+          alt=""
+          className="mx-auto h-12 w-12"
+        />
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">BookBrain Library</h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Sign in with Google to browse your library.
+        </p>
         <button
-          className="mt-6 rounded bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary mx-auto mt-6 px-4 py-2 text-sm"
           disabled={signingIn}
           onClick={handleSignIn}
         >
           {signingIn ? 'Signing in…' : 'Sign in with Google'}
         </button>
         {authError && <p className="mt-3 text-sm text-red-600">{authError}</p>}
-        <p className="mt-4 text-xs text-neutral-400">
+        <p className="mt-6 text-xs leading-relaxed text-neutral-400">
           Google only lets this page copy your existing library files with full Drive access, not a
           narrower "just this folder" permission — signing in grants access to your whole Drive, not
           only the shared library. Nothing is saved: closing or reloading this page signs you out.
         </p>
         <button
-          className="mt-8 block w-full text-xs text-neutral-400 underline"
+          className="mt-8 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
           onClick={() => setShowSetup(true)}
         >
           Lost your hard drive? Recovery checklist
@@ -382,71 +390,103 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">BookBrain Library</h1>
-        <div className="flex items-center gap-3 text-xs text-neutral-400">
+    <div className="mx-auto max-w-2xl px-4 pb-24 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-4">
+        <div className="flex items-center gap-2.5">
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-6 w-6" />
+          <h1 className="text-lg font-semibold tracking-tight">BookBrain Library</h1>
+        </div>
+        <div className="flex items-center gap-1">
           <button
-            className="underline disabled:opacity-50"
+            className="btn btn-ghost"
             disabled={syncing || loading}
             onClick={handleRefresh}
           >
             {syncing ? 'Syncing…' : 'Refresh'}
           </button>
-          <button
-            className="underline disabled:opacity-50"
-            disabled={syncing || loading}
-            onClick={handleRebuild}
-          >
-            Rebuild
-          </button>
           {hasKobo && (
-            <button className="underline" onClick={() => setShowDevices(true)}>
+            <button className="btn btn-ghost" onClick={() => setShowDevices(true)}>
               On devices
             </button>
           )}
-          <button className="underline" onClick={handleShare}>
-            Share
-          </button>
-          <button className="underline" onClick={handleCopyLink}>
-            Copy link
-          </button>
-          <button className="underline" onClick={() => setEditingSettings(true)}>
-            Change settings
-          </button>
-          <button className="underline" onClick={() => setShowSetup(true)}>
-            Recovery checklist
-          </button>
-          <button className="underline" onClick={handleForgetDevice}>
-            Forget this device
-          </button>
+          <div className="relative">
+            <button
+              className="btn btn-ghost px-2"
+              aria-label="More actions"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              <span className="text-base leading-none">⋯</span>
+            </button>
+            {menuOpen && (
+              <>
+                <button
+                  className="fixed inset-0 z-10 cursor-default"
+                  aria-hidden
+                  tabIndex={-1}
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="card absolute right-0 z-20 mt-1 w-44 overflow-hidden p-1 shadow-lg">
+                  {[
+                    { label: 'Rebuild library', fn: handleRebuild, disabled: syncing || loading },
+                    { label: 'Share…', fn: handleShare },
+                    { label: 'Copy link', fn: handleCopyLink },
+                    { label: 'Change settings', fn: () => setEditingSettings(true) },
+                    { label: 'Recovery checklist', fn: () => setShowSetup(true) },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      disabled={item.disabled}
+                      className="block w-full rounded px-2.5 py-1.5 text-left text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        item.fn()
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t border-neutral-200 dark:border-neutral-800" />
+                  <button
+                    className="block w-full rounded px-2.5 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      handleForgetDevice()
+                    }}
+                  >
+                    Forget this device
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
-      {syncMessage && !syncing && !loading && (
-        <p className="mt-1 text-xs text-neutral-400">{syncMessage}</p>
-      )}
-      {shareStatus && <p className="mt-1 text-xs text-neutral-400">{shareStatus}</p>}
-
-      <div className="mt-4 flex gap-2">
-        <input
-          className="min-w-0 flex-1 rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-          placeholder="Search title, author, or series…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <select
-          className="shrink-0 rounded border border-neutral-300 px-2 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          aria-label="Sort books"
-        >
-          {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-            <option key={key} value={key}>
-              {SORT_LABELS[key]}
-            </option>
-          ))}
-        </select>
+      <div className="sticky top-0 z-[5] bg-neutral-50/95 py-2 backdrop-blur dark:bg-neutral-950/95">
+        <div className="flex gap-2">
+          <input
+            className="field min-w-0 flex-1"
+            placeholder="Search title, author, or series…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <select
+            className="field shrink-0"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            aria-label="Sort books"
+          >
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+              <option key={key} value={key}>
+                {SORT_LABELS[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {(syncMessage || shareStatus) && !syncing && !loading && (
+          <p className="mt-1.5 truncate text-xs text-neutral-400">{shareStatus ?? syncMessage}</p>
+        )}
       </div>
 
       {loading && (
@@ -456,56 +496,54 @@ export default function App() {
       )}
       {loadError && <p className="mt-6 text-sm text-red-600">{loadError}</p>}
 
-      {selected.size > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-          <span>{selected.size} selected</span>
-          <button
-            className="rounded bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-            disabled={downloading}
-            onClick={handleDownloadSelected}
-          >
-            {downloading ? 'Downloading…' : `Download ${selected.size} book${selected.size === 1 ? '' : 's'}`}
-          </button>
-          {koboDevices.map((device) => (
-            <button
-              key={device.folderId}
-              className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
-              disabled={sendingToKobo}
-              onClick={() => handleSendSelectedToKobo(device)}
-            >
-              {sendingToKobo
-                ? 'Sending…'
-                : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to ${device.label}`}
-            </button>
-          ))}
-          <button
-            className="text-xs text-neutral-400 underline"
-            onClick={() => setSelected(new Set())}
-          >
-            Clear
-          </button>
-          {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
-          {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
-          {hasKobo && !koboError && koboMessage && (
-            <span className="text-xs text-neutral-500">{koboMessage}</span>
-          )}
-        </div>
-      )}
       {selected.size === 0 && hasKobo && (koboError || koboMessage) && (
-        <p className={`mt-4 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
+        <p className={`mt-3 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
           {koboError ?? koboMessage}
         </p>
       )}
 
       {!loading && files !== null && (
-        <p className="mt-4 text-xs text-neutral-400">
+        <p className="mt-4 text-xs font-medium text-neutral-400">
           {rows.length === files.length
             ? `${files.length} book${files.length === 1 ? '' : 's'}`
             : `${rows.length} of ${files.length} books`}
         </p>
       )}
 
-      <ul className="mt-1 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+      {selected.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-neutral-200 bg-white/95 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95">
+          <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2 px-4 py-3 text-sm sm:px-6">
+            <span className="font-medium">{selected.size} selected</span>
+            <button
+              className="btn btn-neutral"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </button>
+            <span className="mx-1 hidden h-4 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
+            <button className="btn btn-primary" disabled={downloading} onClick={handleDownloadSelected}>
+              {downloading ? 'Downloading…' : `Download ${selected.size}`}
+            </button>
+            {koboDevices.map((device) => (
+              <button
+                key={device.folderId}
+                className="btn btn-neutral"
+                disabled={sendingToKobo}
+                onClick={() => handleSendSelectedToKobo(device)}
+              >
+                {sendingToKobo ? 'Sending…' : `Send ${selected.size} to ${device.label}`}
+              </button>
+            ))}
+            {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
+            {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
+            {hasKobo && !koboError && koboMessage && (
+              <span className="text-xs text-neutral-500">{koboMessage}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ul className="mt-1 text-sm">
         {rows.map((row, i) => {
           const heading = groupHeading(row, sort)
           const showHeading =
@@ -519,21 +557,30 @@ export default function App() {
           const authorPeers =
             expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
           return (
-            <li key={row.id} className="py-3">
+            <Fragment key={row.id}>
               {showHeading && (
-                <label className="-mt-1 mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                <li className="mt-3 flex items-center gap-3 border-b border-neutral-200 pb-1.5 first:mt-0 dark:border-neutral-800">
                   <input
                     type="checkbox"
+                    className="accent-brand-600"
                     checked={groupAllSelected}
+                    aria-label={`Select all in ${heading}`}
                     onChange={() => selectMany(groupIds, !groupAllSelected)}
                   />
-                  {heading}
-                  <span className="font-normal normal-case">({groupIds.length})</span>
-                </label>
+                  <span className="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
+                    {heading}
+                  </span>
+                  <span className="text-[11px] text-neutral-400">{groupIds.length}</span>
+                </li>
               )}
-              <div className="flex items-center gap-3">
+              <li
+                className={`flex flex-wrap items-start gap-x-3 gap-y-2 py-2.5 ${
+                  expanded ? '' : 'border-b border-neutral-100 dark:border-neutral-800/60'
+                }`}
+              >
                 <input
                   type="checkbox"
+                  className="mt-1 accent-brand-600"
                   checked={selected.has(row.id)}
                   onChange={() => toggleSelected(row.id)}
                 />
@@ -542,81 +589,92 @@ export default function App() {
                   className="min-w-0 flex-1 text-left"
                   onClick={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
                 >
-                  <div className="truncate font-medium">
+                  <div className="truncate font-medium text-neutral-900 dark:text-neutral-100">
                     {row.title}
                     {row.author && (
-                      <span className="ml-2 font-normal text-neutral-500">by {row.author}</span>
+                      <span className="ml-2 font-normal text-neutral-500">{row.author}</span>
                     )}
                   </div>
-                  {row.series && (
-                    <div className="truncate text-xs text-neutral-400">
-                      {row.series}
-                      {row.seriesNumber && ` #${row.seriesNumber}`}
-                    </div>
-                  )}
-                  {sentTo.length > 0 && (
-                    <div className="text-xs text-emerald-600 dark:text-emerald-400">
-                      {sentTo.map((d) => `✓ ${d.label}`).join('   ')}
+                  {(row.series || sentTo.length > 0) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {row.series && (
+                        <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                          {row.series}
+                          {row.seriesNumber && ` #${row.seriesNumber}`}
+                        </span>
+                      )}
+                      {sentTo.map((d) => (
+                        <span
+                          key={d.folderId}
+                          className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+                        >
+                          ✓ {d.label}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </button>
-                <button
-                  className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
-                  onClick={() =>
-                    downloadFile(token, row.file).catch((err) => setDownloadError(err.message))
-                  }
-                >
-                  Download
-                </button>
-                {koboDevices.map((device) => (
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-1 pl-7 sm:w-auto sm:pl-0">
                   <button
-                    key={device.folderId}
-                    className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
-                    onClick={() => sendToKobo(row.file, device)}
+                    className="btn btn-ghost btn-xs"
+                    onClick={() =>
+                      downloadFile(token, row.file).catch((err) => setDownloadError(err.message))
+                    }
                   >
-                    {koboDevices.length === 1 ? 'Send to Kobo' : `→ ${device.label}`}
+                    Download
                   </button>
-                ))}
-              </div>
-              {expanded && (
-                <div className="mt-2 pl-7 text-xs text-neutral-500">
-                  {row.description ? (
-                    <p>{row.description}</p>
-                  ) : (
-                    <p className="italic text-neutral-400">No description on file.</p>
-                  )}
-                  {row.addedAt && (
-                    <p className="mt-1 text-neutral-400">
-                      Added {new Date(row.addedAt).toLocaleDateString()}
-                    </p>
-                  )}
-                  {(seriesPeers.length > 1 || authorPeers.length > 1) && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {seriesPeers.length > 1 && (
-                        <button
-                          className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
-                          onClick={() => selectMany(seriesPeers.map((r) => r.id), true)}
-                        >
-                          Select all {seriesPeers.length} in {row.series}
-                        </button>
-                      )}
-                      {authorPeers.length > 1 && (
-                        <button
-                          className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
-                          onClick={() => selectMany(authorPeers.map((r) => r.id), true)}
-                        >
-                          Select all {authorPeers.length} by {row.author}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {koboDevices.map((device) => (
+                    <button
+                      key={device.folderId}
+                      className="btn btn-neutral btn-xs"
+                      onClick={() => sendToKobo(row.file, device)}
+                    >
+                      {koboDevices.length === 1 ? 'Send to Kobo' : `→ ${device.label}`}
+                    </button>
+                  ))}
                 </div>
+              </li>
+              {expanded && (
+                <li className="mb-1 rounded-lg bg-neutral-100/70 p-3 dark:bg-neutral-800/30">
+                  <div className="text-xs leading-relaxed text-neutral-600 sm:pl-7 dark:text-neutral-400">
+                    {row.description ? (
+                      <p>{row.description}</p>
+                    ) : (
+                      <p className="text-neutral-400 italic">No description on file.</p>
+                    )}
+                    {row.addedAt && (
+                      <p className="mt-1.5 text-neutral-400">
+                        Added {new Date(row.addedAt).toLocaleDateString()}
+                      </p>
+                    )}
+                    {(seriesPeers.length > 1 || authorPeers.length > 1) && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {seriesPeers.length > 1 && (
+                          <button
+                            className="btn btn-neutral btn-xs"
+                            onClick={() => selectMany(seriesPeers.map((r) => r.id), true)}
+                          >
+                            Select all {seriesPeers.length} in {row.series}
+                          </button>
+                        )}
+                        {authorPeers.length > 1 && (
+                          <button
+                            className="btn btn-neutral btn-xs"
+                            onClick={() => selectMany(authorPeers.map((r) => r.id), true)}
+                          >
+                            Select all {authorPeers.length} by {row.author}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
               )}
-            </li>
+            </Fragment>
           )
         })}
         {!loading && files !== null && rows.length === 0 && (
-          <li className="py-4 text-neutral-400">
+          <li className="py-10 text-center text-sm text-neutral-400">
             {files.length === 0
               ? 'No books found in this folder.'
               : 'No books match your search.'}

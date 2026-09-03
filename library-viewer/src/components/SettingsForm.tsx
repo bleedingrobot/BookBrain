@@ -19,15 +19,20 @@ export function SettingsForm({
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-md p-6">
-      <h1 className="text-xl font-semibold">BookBrain Library</h1>
-      <p className="mt-2 text-sm text-neutral-500">
-        This runs entirely in your browser — nothing is sent anywhere but Google. All values
-        below are saved only in this browser's local storage.
+    <div className="mx-auto max-w-md px-6 py-12">
+      <img
+        src={`${import.meta.env.BASE_URL}favicon.svg`}
+        alt=""
+        className="h-9 w-9"
+      />
+      <h1 className="mt-4 text-xl font-semibold tracking-tight">BookBrain Library</h1>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-500">
+        This runs entirely in your browser — nothing is sent anywhere but Google. All values below
+        are saved only in this browser's local storage.
       </p>
 
       <form
-        className="mt-6 space-y-4"
+        className="mt-6 space-y-5"
         onSubmit={(e) => {
           e.preventDefault()
           if (googleClientId.trim() && libraryFolderId.trim()) {
@@ -42,10 +47,10 @@ export function SettingsForm({
           }
         }}
       >
-        <label className="block text-sm">
-          <span className="text-neutral-500">Google OAuth Client ID</span>
+        <label className="block">
+          <span className="text-sm font-medium">Google OAuth Client ID</span>
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1.5 w-full"
             value={googleClientId}
             onChange={(e) => setGoogleClientId(e.target.value)}
             placeholder="xxxxxxxx.apps.googleusercontent.com"
@@ -56,10 +61,10 @@ export function SettingsForm({
           </span>
         </label>
 
-        <label className="block text-sm">
-          <span className="text-neutral-500">Library folder ID</span>
+        <label className="block">
+          <span className="text-sm font-medium">Library folder ID</span>
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1.5 w-full"
             value={libraryFolderId}
             onChange={(e) => setLibraryFolderId(e.target.value)}
             placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz"
@@ -70,26 +75,26 @@ export function SettingsForm({
           </span>
         </label>
 
-        <div className="block text-sm">
-          <span className="text-neutral-500">Kobo devices (optional)</span>
-          <div className="mt-1 space-y-2">
+        <div>
+          <span className="text-sm font-medium">Kobo devices (optional)</span>
+          <div className="mt-1.5 space-y-2">
             {koboDevices.map((device, index) => (
               <div key={index} className="flex items-center gap-2">
                 <input
-                  className="w-24 shrink-0 rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                  className="field w-24 shrink-0"
                   value={device.label}
                   onChange={(e) => updateDevice(index, { label: e.target.value })}
                   placeholder="Name"
                 />
                 <input
-                  className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                  className="field min-w-0 flex-1"
                   value={device.folderId}
                   onChange={(e) => updateDevice(index, { folderId: e.target.value })}
                   placeholder="Sync folder ID"
                 />
                 <button
                   type="button"
-                  className="shrink-0 text-xs text-neutral-400 underline"
+                  className="btn btn-ghost btn-xs shrink-0"
                   onClick={() => setKoboDevices((prev) => prev.filter((_, i) => i !== index))}
                 >
                   Remove
@@ -99,27 +104,28 @@ export function SettingsForm({
           </div>
           <button
             type="button"
-            className="mt-2 text-xs text-neutral-500 underline"
+            className="btn btn-neutral btn-xs mt-2"
             onClick={() => setKoboDevices((prev) => [...prev, { label: '', folderId: '' }])}
           >
-            Add Kobo device
+            + Add Kobo device
           </button>
-          <span className="mt-1 block text-xs text-neutral-400">
+          <span className="mt-1.5 block text-xs leading-relaxed text-neutral-400">
             One row per eReader. The folder ID is that device's own "Rakuten Kobo" folder (from its
             Google account, shared to this one) — same id-from-URL format as above. Each book gets a
             "Send to <i>Name</i>" button. Leave empty to hide the Kobo buttons entirely.
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-          >
+        <div className="flex items-center gap-3 pt-1">
+          <button type="submit" className="btn btn-primary px-4 py-2 text-sm">
             Save
           </button>
           {onCancel && (
-            <button type="button" className="text-xs text-neutral-400 underline" onClick={onCancel}>
+            <button
+              type="button"
+              className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              onClick={onCancel}
+            >
               Cancel
             </button>
           )}

@@ -64,9 +64,9 @@ function DeviceSection({
   )
 
   return (
-    <section className="mt-6">
+    <section className="card mt-4 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium">
+        <h2 className="text-sm font-semibold">
           {device.label}
           {files && (
             <span className="ml-2 font-normal text-neutral-400">
@@ -75,7 +75,7 @@ function DeviceSection({
           )}
         </h2>
         <button
-          className="text-xs text-neutral-400 underline disabled:opacity-50"
+          className="btn btn-ghost btn-xs -mr-1"
           disabled={loading}
           onClick={() => setReloadKey((k) => k + 1)}
         >
@@ -87,21 +87,24 @@ function DeviceSection({
 
       {files && files.length > 3 && (
         <input
-          className="mt-2 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="field mt-2 w-full"
           placeholder="Filter…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
       )}
 
-      <ul className="mt-2 divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+      <ul className="mt-1 text-sm">
         {!loading && files && files.length === 0 && (
           <li className="py-3 text-neutral-400">Nothing in this device's sync folder.</li>
         )}
         {shown.map((file) => {
           const parsed = parseFilename(file.name)
           return (
-            <li key={file.id} className="flex items-center gap-3 py-2">
+            <li
+              key={file.id}
+              className="flex items-center gap-3 border-b border-neutral-100 py-2 last:border-0 dark:border-neutral-800/60"
+            >
               <div className="min-w-0 flex-1">
                 <div className="truncate">{parsed.title}</div>
                 {parsed.author && (
@@ -109,7 +112,7 @@ function DeviceSection({
                 )}
               </div>
               <button
-                className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs text-red-600 disabled:opacity-50 dark:border-neutral-700"
+                className="btn btn-danger btn-xs"
                 disabled={removing.has(file.id)}
                 onClick={() => void remove(file)}
               >
@@ -135,13 +138,16 @@ export function DeviceLibrary({
   onRemoved: (folderId: string, filename: string) => void
 }) {
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <button className="text-xs text-neutral-400 underline" onClick={onBack}>
+    <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
+      <button
+        className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+        onClick={onBack}
+      >
         &larr; Back to library
       </button>
 
-      <h1 className="mt-3 text-xl font-semibold">What's on each device</h1>
-      <p className="mt-2 text-sm text-neutral-500">
+      <h1 className="mt-3 text-xl font-semibold tracking-tight">What's on each device</h1>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-500">
         The books currently sitting in each Kobo's Google Drive sync folder. Removing one here
         trashes it from Drive (recoverable from Drive's Trash) — the eReader drops it on its next
         sync.
