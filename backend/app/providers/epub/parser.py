@@ -82,6 +82,91 @@ def parse_epub_safely(
         raise EpubParseTimeoutError("EPUB parsing exceeded the time limit") from exc
 
 
+def extract_cover(
+    data: bytes,
+    *,
+    max_entry_bytes: int,
+    max_total_bytes: int,
+    max_entries: int,
+) -> bytes | None:
+    """Raw bytes of the EPUB's cover image, or None if it has no
+    identifiable cover. Resolution order matches how readers pick it:
+      1. a manifest item with properties="cover-image" (EPUB 3)
+      2. <meta name="cover" content="ID"> pointing at a manifest item (EPUB 2)
+      3. a manifest image whose id/href looks like "cover"
+    """
+    try:
+        reader = SafeZipReader(
+            data,
+            max_entry_bytes=max_entry_bytes,
+            max_total_bytes=max_total_bytes,
+            max_entries=max_entries,
+        )
+        opf_path = _find_opf_path(reader)
+        opf_root = _safe_xml_parse(reader.read(opf_path))
+        opf_dir = posixpath.dirname(opf_path)
+
+        manifest_el = opf_root.find(f"{{{OPF_NS}}}manifest")
+        if manifest_el is None:
+            return None
+        items = manifest_el.findall(f"{{{OPF_NS}}}item")
+
+        href = _cover_href_from_properties(items)
+        if href is None:
+            href = _cover_href_from_meta(opf_root, items)
+        if href is None:
+            href = _cover_href_by_name(items)
+        if href is None:
+            return None
+
+        path = posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
+        if not reader.exists(path):
+            return None
+        return reader.read(path)
+    except (EpubParseError, EpubParseTimeoutError, KeyError, ValueError):
+        return None
+
+
+def _cover_href_from_properties(items: list) -> str | None:
+    for item in items:
+        props = item.attrib.get("properties", "")
+        if "cover-image" in props.split() and item.attrib.get("href"):
+            return item.attrib["href"]
+    return None
+
+
+def _cover_href_from_meta(opf_root, items: list) -> str | None:
+    metadata_el = opf_root.find(f"{{{OPF_NS}}}metadata")
+    if metadata_el is None:
+        return None
+    cover_id = next(
+        (
+            m.attrib.get("content")
+            for m in metadata_el.findall(f"{{{OPF_NS}}}meta")
+            if m.attrib.get("name") == "cover"
+        ),
+        None,
+    )
+    if not cover_id:
+        return None
+    return next(
+        (i.attrib["href"] for i in items if i.attrib.get("id") == cover_id and i.attrib.get("href")),
+        None,
+    )
+
+
+def _cover_href_by_name(items: list) -> str | None:
+    for item in items:
+        media_type = item.attrib.get("media-type", "")
+        href = item.attrib.get("href", "")
+        ident = item.attrib.get("id", "")
+        if media_type.startswith("image/") and (
+            "cover" in ident.lower() or "cover" in posixpath.basename(href).lower()
+        ):
+            return href
+    return None
+
+
 def _safe_xml_parse(data: bytes) -> ET.Element:
     """defusedxml blocks entity expansion / external references but raises
     its own exception types — normalize to EpubParseError so callers (the

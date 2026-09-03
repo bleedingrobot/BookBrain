@@ -17,6 +17,7 @@ from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.schemas.organize import OrganizeFailure, OrganizeJobState, OrganizeJobStatus
+from app.services.cover_service import regenerate_covers
 from app.services.library_index_service import regenerate_library_index
 
 logger = logging.getLogger(__name__)
@@ -308,6 +309,10 @@ class OrganizeService:
         # the viewer falls back to filename parsing for the new books.
         if not dry_run and creds is not None and counts["organized"] > 0:
             await regenerate_library_index(creds, library_root_folder_id)
+            # Chip away at cover thumbnails for the newly-organised books
+            # (bounded so a normal organize stays quick; the full backfill
+            # is POST /api/library/covers).
+            await regenerate_covers(creds, library_root_folder_id, limit=100)
 
         return counts, failures
 
