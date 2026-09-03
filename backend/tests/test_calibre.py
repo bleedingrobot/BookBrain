@@ -5,17 +5,19 @@ import pytest
 from app.providers.convert.calibre import ConversionError, convert_to_epub, is_convertible
 
 
-def test_is_convertible_accepts_mobi_and_rtf() -> None:
+def test_is_convertible_accepts_mobi_rtf_and_txt() -> None:
     assert is_convertible("book.mobi") is True
     assert is_convertible("book.MOBI") is True
     assert is_convertible("book.rtf") is True
+    assert is_convertible("book.txt") is True
+    assert is_convertible("book.TXT") is True
 
 
 def test_is_convertible_rejects_other_extensions() -> None:
     assert is_convertible("book.epub") is False
     assert is_convertible("book.kpub") is False
     assert is_convertible("cover.jpg") is False
-    assert is_convertible("notes.txt") is False
+    assert is_convertible("book.pdf") is False
 
 
 async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> None:

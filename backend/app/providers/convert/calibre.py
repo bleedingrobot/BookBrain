@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-_CONVERTIBLE_EXTENSIONS = (".mobi", ".rtf")
+_CONVERTIBLE_EXTENSIONS = (".mobi", ".rtf", ".txt")
 
 
 class ConversionError(Exception):
@@ -31,8 +31,8 @@ async def convert_to_epub(
     binary: str = "ebook-convert",
     timeout_seconds: int = 120,
 ) -> bytes:
-    """Shells out to Calibre's ebook-convert CLI to turn mobi/rtf bytes into
-    an EPUB. Runs entirely through temp files — ebook-convert only operates
+    """Shells out to Calibre's ebook-convert CLI to turn mobi/rtf/txt bytes
+    into an EPUB. Runs entirely through temp files — ebook-convert only operates
     on paths, not stdin/stdout streams.
 
     Uses the plain blocking subprocess module via asyncio.to_thread rather

@@ -406,6 +406,20 @@ export function Dashboard() {
                   >
                     Select all MOBI
                   </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.txt'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all TXT
+                  </button>
                 </div>
 
                 <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">

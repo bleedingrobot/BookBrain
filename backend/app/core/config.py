@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     confidence_auto_organize: int = 95
     confidence_auto_flagged: int = 85
 
-    # Calibre CLI conversion (mobi/rtf -> epub before processing)
+    # Calibre CLI conversion (mobi/rtf/txt -> epub before processing)
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120
 
