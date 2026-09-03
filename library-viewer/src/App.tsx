@@ -5,7 +5,14 @@ import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { requestAccessToken } from './lib/googleAuth'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
 import { matchesSearch, parseFilename } from './lib/parseFilename'
-import { clearSettings, loadPartialSettings, loadSettings, saveSettings, type ViewerSettings } from './lib/settings'
+import {
+  clearSettings,
+  loadPartialSettings,
+  loadSettings,
+  saveSettings,
+  type KoboDevice,
+  type ViewerSettings,
+} from './lib/settings'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -59,7 +66,8 @@ export default function App() {
     [files, query],
   )
 
-  const hasKobo = Boolean(settings?.koboFolderId)
+  const koboDevices = settings?.koboDevices ?? []
+  const hasKobo = koboDevices.length > 0
 
   function buildShareMessage(): { link: string; message: string } | null {
     if (!settings) return null
@@ -108,7 +116,7 @@ export default function App() {
           onSave={(s) => {
             // Only the client ID / library folder actually invalidate the
             // current sign-in and cached file list — changing just the Kobo
-            // folder ID (or re-saving unchanged values to back out of
+            // devices (or re-saving unchanged values to back out of
             // editing) shouldn't force a fresh sign-in + rebuild.
             const resyncNeeded =
               settings?.googleClientId !== s.googleClientId || settings?.libraryFolderId !== s.libraryFolderId
@@ -232,33 +240,34 @@ export default function App() {
     setDownloading(false)
   }
 
-  async function sendToKobo(file: DriveFile) {
-    if (!token || !settings?.koboFolderId) return
+  async function sendToKobo(file: DriveFile, device: KoboDevice) {
+    if (!token) return
     setKoboError(null)
     setKoboMessage(null)
     try {
-      await copyFileToFolder(token, file, settings.koboFolderId)
-      setKoboMessage(`Sent "${file.name}" to Kobo.`)
+      await copyFileToFolder(token, file, device.folderId)
+      setKoboMessage(`Sent "${file.name}" to ${device.label}.`)
     } catch (err) {
-      setKoboError(err instanceof Error ? err.message : 'Failed to send to Kobo.')
+      setKoboError(err instanceof Error ? err.message : `Failed to send to ${device.label}.`)
     }
   }
 
-  async function handleSendSelectedToKobo() {
-    if (!token || !settings?.koboFolderId) return
-    const koboFolderId = settings.koboFolderId
+  async function handleSendSelectedToKobo(device: KoboDevice) {
+    if (!token) return
     setSendingToKobo(true)
     setKoboError(null)
     setKoboMessage(null)
     const toSend = books.filter((b) => selected.has(b.file.id))
     try {
       for (const { file } of toSend) {
-        await copyFileToFolder(token, file, koboFolderId)
+        await copyFileToFolder(token, file, device.folderId)
       }
-      setKoboMessage(`Sent ${toSend.length} book${toSend.length === 1 ? '' : 's'} to Kobo.`)
+      setKoboMessage(
+        `Sent ${toSend.length} book${toSend.length === 1 ? '' : 's'} to ${device.label}.`,
+      )
       setSelected(new Set())
     } catch (err) {
-      setKoboError(err instanceof Error ? err.message : 'Failed to send to Kobo.')
+      setKoboError(err instanceof Error ? err.message : `Failed to send to ${device.label}.`)
     } finally {
       setSendingToKobo(false)
     }
@@ -358,15 +367,18 @@ export default function App() {
           >
             {downloading ? 'Downloading…' : `Download ${selected.size} book${selected.size === 1 ? '' : 's'}`}
           </button>
-          {hasKobo && (
+          {koboDevices.map((device) => (
             <button
+              key={device.folderId}
               className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
               disabled={sendingToKobo}
-              onClick={handleSendSelectedToKobo}
+              onClick={() => handleSendSelectedToKobo(device)}
             >
-              {sendingToKobo ? 'Sending…' : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to Kobo`}
+              {sendingToKobo
+                ? 'Sending…'
+                : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to ${device.label}`}
             </button>
-          )}
+          ))}
           {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
           {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
         </div>
@@ -410,14 +422,15 @@ export default function App() {
             >
               Download
             </button>
-            {hasKobo && (
+            {koboDevices.map((device) => (
               <button
+                key={device.folderId}
                 className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
-                onClick={() => sendToKobo(file)}
+                onClick={() => sendToKobo(file, device)}
               >
-                Send to Kobo
+                {koboDevices.length === 1 ? 'Send to Kobo' : `→ ${device.label}`}
               </button>
-            )}
+            ))}
           </li>
         ))}
         {!loading && query.trim() !== '' && books.length === 0 && (
