@@ -390,7 +390,7 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-24 sm:px-6">
+    <div className="mx-auto max-w-2xl px-4 pb-10 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-4">
         <div className="flex items-center gap-2.5">
           <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-6 w-6" />
@@ -463,7 +463,38 @@ export default function App() {
         </div>
       </header>
 
-      <div className="sticky top-0 z-[5] bg-neutral-50/95 py-2 backdrop-blur dark:bg-neutral-950/95">
+      <div className="sticky top-0 z-20 bg-neutral-50/95 py-2 backdrop-blur dark:bg-neutral-950/95">
+        {selected.size > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <span className="font-medium">{selected.size} selected</span>
+            <button className="btn btn-neutral" onClick={() => setSelected(new Set())}>
+              Clear
+            </button>
+            <span className="mx-1 hidden h-4 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
+            <button
+              className="btn btn-primary"
+              disabled={downloading}
+              onClick={handleDownloadSelected}
+            >
+              {downloading ? 'Downloading…' : `Download ${selected.size}`}
+            </button>
+            {koboDevices.map((device) => (
+              <button
+                key={device.folderId}
+                className="btn btn-neutral"
+                disabled={sendingToKobo}
+                onClick={() => handleSendSelectedToKobo(device)}
+              >
+                {sendingToKobo ? 'Sending…' : `Send ${selected.size} to ${device.label}`}
+              </button>
+            ))}
+            {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
+            {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
+            {hasKobo && !koboError && koboMessage && (
+              <span className="text-xs text-neutral-500">{koboMessage}</span>
+            )}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             className="field min-w-0 flex-1"
@@ -510,38 +541,6 @@ export default function App() {
         </p>
       )}
 
-      {selected.size > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-neutral-200 bg-white/95 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95">
-          <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2 px-4 py-3 text-sm sm:px-6">
-            <span className="font-medium">{selected.size} selected</span>
-            <button
-              className="btn btn-neutral"
-              onClick={() => setSelected(new Set())}
-            >
-              Clear
-            </button>
-            <span className="mx-1 hidden h-4 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
-            <button className="btn btn-primary" disabled={downloading} onClick={handleDownloadSelected}>
-              {downloading ? 'Downloading…' : `Download ${selected.size}`}
-            </button>
-            {koboDevices.map((device) => (
-              <button
-                key={device.folderId}
-                className="btn btn-neutral"
-                disabled={sendingToKobo}
-                onClick={() => handleSendSelectedToKobo(device)}
-              >
-                {sendingToKobo ? 'Sending…' : `Send ${selected.size} to ${device.label}`}
-              </button>
-            ))}
-            {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
-            {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
-            {hasKobo && !koboError && koboMessage && (
-              <span className="text-xs text-neutral-500">{koboMessage}</span>
-            )}
-          </div>
-        </div>
-      )}
 
       <ul className="mt-1 text-sm">
         {rows.map((row, i) => {
