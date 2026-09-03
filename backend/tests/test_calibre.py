@@ -34,6 +34,39 @@ async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> N
     assert result == b"fake epub bytes"
 
 
+async def test_convert_to_epub_passes_plain_formatting_for_txt(monkeypatch) -> None:
+    seen: dict[str, list[str]] = {}
+
+    def fake_run(cmd, **kwargs):
+        from pathlib import Path
+
+        seen["cmd"] = cmd
+        Path(cmd[2]).write_bytes(b"epub")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    await convert_to_epub(b"plain text", source_filename="novel.txt")
+    assert "--formatting-type" in seen["cmd"]
+    assert seen["cmd"][seen["cmd"].index("--formatting-type") + 1] == "plain"
+
+
+async def test_convert_to_epub_passes_no_extra_args_for_mobi(monkeypatch) -> None:
+    seen: dict[str, list[str]] = {}
+
+    def fake_run(cmd, **kwargs):
+        from pathlib import Path
+
+        seen["cmd"] = cmd
+        Path(cmd[2]).write_bytes(b"epub")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    await convert_to_epub(b"mobi", source_filename="book.mobi")
+    assert len(seen["cmd"]) == 3
+
+
 async def test_convert_to_epub_raises_on_nonzero_exit(monkeypatch) -> None:
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, returncode=1, stdout=b"", stderr=b"conversion error details")
