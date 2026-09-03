@@ -135,6 +135,38 @@ export async function listAllChanges(
   return { changes, newStartPageToken }
 }
 
+// Every non-folder file directly in `folderId` (not recursive) — used to
+// show what's actually sitting in a device's Rakuten Kobo sync folder.
+export async function listFolderContents(token: string, folderId: string): Promise<DriveFile[]> {
+  const files: DriveFile[] = []
+  let pageToken: string | undefined
+  do {
+    const query = encodeURIComponent(
+      `'${folderId}' in parents and trashed=false and mimeType != '${FOLDER_MIME_TYPE}'`,
+    )
+    const pageParam = pageToken ? `&pageToken=${pageToken}` : ''
+    const data = (await driveFetch(
+      token,
+      `files?q=${query}&fields=nextPageToken,files(id,name)&pageSize=1000${pageParam}`,
+    )) as { files: DriveFile[]; nextPageToken?: string }
+    files.push(...data.files)
+    pageToken = data.nextPageToken
+  } while (pageToken)
+  return files
+}
+
+export async function trashFile(token: string, fileId: string): Promise<void> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+    throw new Error(`Failed to remove file (${response.status})`)
+  }
+}
+
 export async function copyFileToFolder(token: string, file: DriveFile, destinationFolderId: string): Promise<void> {
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/copy`, {
     method: 'POST',

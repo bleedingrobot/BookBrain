@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { DeviceLibrary } from './components/DeviceLibrary'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
 import { buildRows, groupHeading, matchesRow, SORT_LABELS, SORTS, type SortKey } from './lib/books'
@@ -11,6 +12,12 @@ import {
   type LibraryIndex,
 } from './lib/libraryIndex'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from './lib/librarySync'
+import {
+  clearSentTracker,
+  getSentMap,
+  markSent,
+  unmarkSent,
+} from './lib/sentTracker'
 import {
   clearSettings,
   loadPartialSettings,
@@ -42,6 +49,7 @@ function consumeSharedSettings(): ViewerSettings | null {
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(false)
+  const [showDevices, setShowDevices] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(() => consumeSharedSettings() ?? loadSettings())
   const [token, setToken] = useState<string | null>(null)
@@ -65,15 +73,44 @@ export default function App() {
   const [sendingToKobo, setSendingToKobo] = useState(false)
   const [koboError, setKoboError] = useState<string | null>(null)
   const [koboMessage, setKoboMessage] = useState<string | null>(null)
+  const [sentMap, setSentMap] = useState(getSentMap)
 
+  const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
   const rows = useMemo(() => {
-    const built = buildRows(files ?? [], index).filter((row) => matchesRow(row, query))
-    built.sort(SORTS[sort])
-    return built
-  }, [files, index, query, sort])
+    const filtered = allRows.filter((row) => matchesRow(row, query))
+    filtered.sort(SORTS[sort])
+    return filtered
+  }, [allRows, query, sort])
+
+  // Row ids per visible group heading, for the heading's select-all box.
+  // Only meaningful on the name sorts, where headings actually render.
+  const groupIndex = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (sort === 'author' || sort === 'series') {
+      for (const row of rows) {
+        const heading = groupHeading(row, sort)
+        if (heading == null) continue
+        const ids = map.get(heading)
+        if (ids) ids.push(row.id)
+        else map.set(heading, [row.id])
+      }
+    }
+    return map
+  }, [rows, sort])
 
   const koboDevices = settings?.koboDevices ?? []
   const hasKobo = koboDevices.length > 0
+
+  function selectMany(ids: string[], on: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (on) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
 
   function buildShareMessage(): { link: string; message: string } | null {
     if (!settings) return null
@@ -216,9 +253,11 @@ export default function App() {
     clearSettings()
     clearLibraryCache()
     clearCachedIndex()
+    clearSentTracker()
     setToken(null)
     setFiles(null)
     setIndex({})
+    setSentMap({})
     setSettings(null)
   }
 
@@ -231,11 +270,18 @@ export default function App() {
     })
   }
 
+  // A book removed from a device's folder is no longer "on" that device —
+  // match it back to the library row by filename and drop the tick.
+  function handleDeviceRemoval(folderId: string, filename: string) {
+    const match = allRows.find((r) => r.filename === filename)
+    if (match) setSentMap(unmarkSent(folderId, [match.id]))
+  }
+
   async function handleDownloadSelected() {
     if (!token) return
     setDownloading(true)
     setDownloadError(null)
-    const toDownload = rows.filter((r) => selected.has(r.id))
+    const toDownload = allRows.filter((r) => selected.has(r.id))
     const stillFailed = new Set<string>()
     for (const { file } of toDownload) {
       try {
@@ -260,6 +306,7 @@ export default function App() {
     setKoboMessage(null)
     try {
       await copyFileToFolder(token, file, device.folderId)
+      setSentMap(markSent(device.folderId, [file.id]))
       setKoboMessage(`Sent "${file.name}" to ${device.label}.`)
     } catch (err) {
       setKoboError(err instanceof Error ? err.message : `Failed to send to ${device.label}.`)
@@ -271,20 +318,28 @@ export default function App() {
     setSendingToKobo(true)
     setKoboError(null)
     setKoboMessage(null)
-    const toSend = rows.filter((r) => selected.has(r.id))
-    try {
-      for (const { file } of toSend) {
+    const toSend = allRows.filter((r) => selected.has(r.id))
+    const sentIds: string[] = []
+    const stillFailed = new Set<string>()
+    for (const { file } of toSend) {
+      try {
         await copyFileToFolder(token, file, device.folderId)
+        sentIds.push(file.id)
+      } catch {
+        stillFailed.add(file.id) // one failure shouldn't abort the rest of the batch
       }
-      setKoboMessage(
-        `Sent ${toSend.length} book${toSend.length === 1 ? '' : 's'} to ${device.label}.`,
-      )
-      setSelected(new Set())
-    } catch (err) {
-      setKoboError(err instanceof Error ? err.message : `Failed to send to ${device.label}.`)
-    } finally {
-      setSendingToKobo(false)
     }
+    if (sentIds.length > 0) setSentMap(markSent(device.folderId, sentIds))
+    setSelected(stillFailed) // leave failures selected so retrying is just clicking Send again
+    setKoboMessage(
+      `Sent ${sentIds.length} book${sentIds.length === 1 ? '' : 's'} to ${device.label}.`,
+    )
+    setKoboError(
+      stillFailed.size > 0
+        ? `${stillFailed.size} of ${toSend.length} failed — still selected, try again.`
+        : null,
+    )
+    setSendingToKobo(false)
   }
 
   if (!token) {
@@ -315,6 +370,17 @@ export default function App() {
     )
   }
 
+  if (showDevices) {
+    return (
+      <DeviceLibrary
+        token={token}
+        devices={koboDevices}
+        onBack={() => setShowDevices(false)}
+        onRemoved={handleDeviceRemoval}
+      />
+    )
+  }
+
   return (
     <div className="mx-auto max-w-2xl p-6">
       <div className="flex items-center justify-between gap-4">
@@ -334,6 +400,11 @@ export default function App() {
           >
             Rebuild
           </button>
+          {hasKobo && (
+            <button className="underline" onClick={() => setShowDevices(true)}>
+              On devices
+            </button>
+          )}
           <button className="underline" onClick={handleShare}>
             Share
           </button>
@@ -407,8 +478,17 @@ export default function App() {
                 : `Send ${selected.size} book${selected.size === 1 ? '' : 's'} to ${device.label}`}
             </button>
           ))}
+          <button
+            className="text-xs text-neutral-400 underline"
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </button>
           {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
           {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
+          {hasKobo && !koboError && koboMessage && (
+            <span className="text-xs text-neutral-500">{koboMessage}</span>
+          )}
         </div>
       )}
       {selected.size === 0 && hasKobo && (koboError || koboMessage) && (
@@ -430,13 +510,26 @@ export default function App() {
           const heading = groupHeading(row, sort)
           const showHeading =
             heading != null && heading !== (i > 0 ? groupHeading(rows[i - 1], sort) : null)
+          const groupIds = showHeading ? (groupIndex.get(heading) ?? []) : []
+          const groupAllSelected = groupIds.length > 0 && groupIds.every((id) => selected.has(id))
           const expanded = expandedId === row.id
+          const sentTo = koboDevices.filter((d) => sentMap[d.folderId]?.[row.id])
+          const seriesPeers =
+            expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
+          const authorPeers =
+            expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
           return (
             <li key={row.id} className="py-3">
               {showHeading && (
-                <p className="-mt-1 mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                <label className="-mt-1 mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                  <input
+                    type="checkbox"
+                    checked={groupAllSelected}
+                    onChange={() => selectMany(groupIds, !groupAllSelected)}
+                  />
                   {heading}
-                </p>
+                  <span className="font-normal normal-case">({groupIds.length})</span>
+                </label>
               )}
               <div className="flex items-center gap-3">
                 <input
@@ -459,6 +552,11 @@ export default function App() {
                     <div className="truncate text-xs text-neutral-400">
                       {row.series}
                       {row.seriesNumber && ` #${row.seriesNumber}`}
+                    </div>
+                  )}
+                  {sentTo.length > 0 && (
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                      {sentTo.map((d) => `✓ ${d.label}`).join('   ')}
                     </div>
                   )}
                 </button>
@@ -491,6 +589,26 @@ export default function App() {
                     <p className="mt-1 text-neutral-400">
                       Added {new Date(row.addedAt).toLocaleDateString()}
                     </p>
+                  )}
+                  {(seriesPeers.length > 1 || authorPeers.length > 1) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {seriesPeers.length > 1 && (
+                        <button
+                          className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
+                          onClick={() => selectMany(seriesPeers.map((r) => r.id), true)}
+                        >
+                          Select all {seriesPeers.length} in {row.series}
+                        </button>
+                      )}
+                      {authorPeers.length > 1 && (
+                        <button
+                          className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
+                          onClick={() => selectMany(authorPeers.map((r) => r.id), true)}
+                        >
+                          Select all {authorPeers.length} by {row.author}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
