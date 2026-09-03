@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listFolderContents, trashFile, type DriveFile } from '../lib/drive'
 import { parseFilename } from '../lib/parseFilename'
 import type { KoboDevice } from '../lib/settings'
@@ -7,10 +7,12 @@ function DeviceSection({
   token,
   device,
   onRemoved,
+  onReconcile,
 }: {
   token: string
   device: KoboDevice
   onRemoved: (folderId: string, filename: string) => void
+  onReconcile: (folderId: string, filenames: string[]) => void
 }) {
   const [files, setFiles] = useState<DriveFile[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +20,9 @@ function DeviceSection({
   const [removing, setRemoving] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+
+  const onReconcileRef = useRef(onReconcile)
+  onReconcileRef.current = onReconcile
 
   useEffect(() => {
     let cancelled = false
@@ -28,6 +33,10 @@ function DeviceSection({
         if (cancelled) return
         contents.sort((a, b) => a.name.localeCompare(b.name))
         setFiles(contents)
+        onReconcileRef.current(
+          device.folderId,
+          contents.map((f) => f.name),
+        )
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -131,11 +140,13 @@ export function DeviceLibrary({
   devices,
   onBack,
   onRemoved,
+  onReconcile,
 }: {
   token: string
   devices: KoboDevice[]
   onBack: () => void
   onRemoved: (folderId: string, filename: string) => void
+  onReconcile: (folderId: string, filenames: string[]) => void
 }) {
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
@@ -159,6 +170,7 @@ export function DeviceLibrary({
           token={token}
           device={device}
           onRemoved={onRemoved}
+          onReconcile={onReconcile}
         />
       ))}
     </div>

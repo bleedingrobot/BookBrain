@@ -1,6 +1,7 @@
 import type { DriveFile } from './drive'
 import type { LibraryIndex } from './libraryIndex'
 import { parseFilename } from './parseFilename'
+import type { SentMap } from './sentTracker'
 
 // One row = one Drive file, with metadata taken from the sidecar index when
 // it's there and recovered from the organized filename when it isn't.
@@ -14,6 +15,7 @@ export interface BookRow {
   seriesNumber: string | null
   description: string | null
   addedAt: string | null
+  isbn: string | null
 }
 
 export type SortKey = 'title' | 'author' | 'series' | 'added'
@@ -27,7 +29,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
 
 export function buildRows(files: DriveFile[], index: LibraryIndex): BookRow[] {
   return files.map((file) => {
-    const meta = index[file.id]
+    const meta = index.entries[file.id]
     const parsed = parseFilename(file.name)
     return {
       id: file.id,
@@ -40,6 +42,7 @@ export function buildRows(files: DriveFile[], index: LibraryIndex): BookRow[] {
         meta?.seriesNumber != null ? String(meta.seriesNumber) : parsed.seriesNumber,
       description: meta?.description ?? null,
       addedAt: meta?.addedAt ?? null,
+      isbn: meta?.isbn ?? null,
     }
   })
 }
@@ -50,6 +53,19 @@ export function matchesRow(row: BookRow, query: string): boolean {
   const haystack =
     `${row.author ?? ''} ${row.title} ${row.series ?? ''} ${row.filename}`.toLowerCase()
   return q.split(/\s+/).every((term) => haystack.includes(term))
+}
+
+// Filter chips. `all` and `noseries` are self-contained; `on:<folderId>`
+// and `off:<folderId>` are built per device at render time.
+export type FilterKey = 'all' | 'noseries' | `on:${string}` | `off:${string}` | 'unsent'
+
+export function matchesFilter(row: BookRow, filter: FilterKey, sent: SentMap): boolean {
+  if (filter === 'all') return true
+  if (filter === 'noseries') return !row.series
+  if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
+  if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
+  if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]
+  return true
 }
 
 // Sorts after the low one so unknowns sink to the bottom of a name sort but

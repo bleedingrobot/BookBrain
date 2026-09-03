@@ -1,8 +1,9 @@
 // bookbrain-index.json is a sidecar the backend drops in the library root
 // on every organize/rebuild: structured metadata (author, series,
-// description, added-date) keyed by Drive file id. It's strictly optional —
-// when it's missing or a book isn't in it, the viewer falls back to parsing
-// the organized filename. See backend/app/services/library_index_service.py.
+// description, added-date, isbn) keyed by Drive file id, plus the id of the
+// covers/ folder. It's strictly optional — when it's missing or a book
+// isn't in it, the viewer falls back to parsing the organized filename.
+// See backend/app/services/library_index_service.py.
 
 const INDEX_FILENAME = 'bookbrain-index.json'
 const CACHE_KEY = 'bookbrain.metadataIndex'
@@ -14,9 +15,15 @@ export interface IndexEntry {
   seriesNumber: number | null
   description: string | null
   addedAt: string | null
+  isbn: string | null
 }
 
-export type LibraryIndex = Record<string, IndexEntry>
+export interface LibraryIndex {
+  entries: Record<string, IndexEntry>
+  coversFolder: string | null
+}
+
+export const EMPTY_INDEX: LibraryIndex = { entries: {}, coversFolder: null }
 
 interface CachedIndex {
   libraryFolderId: string
@@ -26,30 +33,35 @@ interface CachedIndex {
 
 interface RawIndexFile {
   version?: number
+  coversFolder?: string | null
   books?: Record<string, Partial<IndexEntry>>
 }
 
 function normalise(raw: RawIndexFile): LibraryIndex {
-  const out: LibraryIndex = {}
+  const entries: Record<string, IndexEntry> = {}
   for (const [id, entry] of Object.entries(raw.books ?? {})) {
     if (!entry || typeof entry.title !== 'string') continue
-    out[id] = {
+    entries[id] = {
       title: entry.title,
       author: entry.author ?? null,
       series: entry.series ?? null,
       seriesNumber: typeof entry.seriesNumber === 'number' ? entry.seriesNumber : null,
       description: entry.description ?? null,
       addedAt: entry.addedAt ?? null,
+      isbn: typeof entry.isbn === 'string' ? entry.isbn : null,
     }
   }
-  return out
+  return { entries, coversFolder: raw.coversFolder ?? null }
 }
 
 function readCache(): CachedIndex | null {
   const raw = localStorage.getItem(CACHE_KEY)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as CachedIndex
+    const parsed = JSON.parse(raw) as CachedIndex
+    // tolerate the pre-restructure cache shape
+    if (parsed.index && !('entries' in parsed.index)) return null
+    return parsed
   } catch {
     return null
   }
@@ -57,7 +69,7 @@ function readCache(): CachedIndex | null {
 
 export function loadCachedIndex(libraryFolderId: string): LibraryIndex {
   const cached = readCache()
-  return cached && cached.libraryFolderId === libraryFolderId ? cached.index : {}
+  return cached && cached.libraryFolderId === libraryFolderId ? cached.index : EMPTY_INDEX
 }
 
 export function clearCachedIndex(): void {
@@ -87,7 +99,7 @@ export async function fetchLibraryIndex(
     const { files } = (await listResp.json()) as {
       files: { id: string; modifiedTime: string }[]
     }
-    if (files.length === 0) return cacheValid ? cached.index : {}
+    if (files.length === 0) return cacheValid ? cached.index : EMPTY_INDEX
 
     const { id, modifiedTime } = files[0]
     if (cacheValid && cached.modifiedTime === modifiedTime) return cached.index
@@ -102,6 +114,6 @@ export async function fetchLibraryIndex(
     localStorage.setItem(CACHE_KEY, JSON.stringify(next))
     return index
   } catch {
-    return cacheValid ? cached.index : {}
+    return cacheValid ? cached.index : EMPTY_INDEX
   }
 }
