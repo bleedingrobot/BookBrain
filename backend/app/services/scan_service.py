@@ -36,6 +36,7 @@ from app.services.candidate_service import CandidateService, default_candidate_s
 from app.services.drive_service import DriveService
 from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
+from app.services.library_index_service import regenerate_library_index
 from app.services.organize_service import get_organize_dry_run, get_organize_service
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
@@ -246,6 +247,10 @@ class ScanService:
         async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)
             await session.commit()
+
+        # The rebuild reconstructed every `organised` record — refresh the
+        # viewer's sidecar metadata to match. Best-effort, never raises.
+        await regenerate_library_index(creds, library_root_folder_id)
 
         detail = (
             f"{counts['new']} rebuilt, {counts['duplicate']} duplicate, "

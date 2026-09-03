@@ -29,13 +29,3 @@ export function parseFilename(filename: string): ParsedBook {
     seriesNumber: parts.slice(3).join(', '),
   }
 }
-
-export function matchesSearch(book: ParsedBook, filename: string, query: string): boolean {
-  if (!query.trim()) return true
-  const haystack = `${book.author ?? ''} ${book.title} ${book.series ?? ''} ${filename}`.toLowerCase()
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((term) => haystack.includes(term))
-}

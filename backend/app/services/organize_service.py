@@ -17,6 +17,7 @@ from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.schemas.organize import OrganizeFailure, OrganizeJobState, OrganizeJobStatus
+from app.services.library_index_service import regenerate_library_index
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,13 @@ class OrganizeService:
                     failures.append(OrganizeFailure(filename=filename, reason=str(exc)))
 
         await asyncio.gather(*(organize_one(file_id) for file_id in file_ids))
+
+        # Refresh the viewer's sidecar metadata now that the library tree
+        # changed. Best-effort and never raises — a stale index just means
+        # the viewer falls back to filename parsing for the new books.
+        if not dry_run and creds is not None and counts["organized"] > 0:
+            await regenerate_library_index(creds, library_root_folder_id)
+
         return counts, failures
 
     async def _organize_file(

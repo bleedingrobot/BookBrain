@@ -8,6 +8,7 @@ from app.providers.drive.provider import DriveProvider
 from app.schemas.library import LibraryExportResult
 from app.schemas.scan import ScanJobStatus
 from app.services import library_service
+from app.services.library_index_service import regenerate_library_index
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.drive_service import DriveService
 from app.services.scan_service import ScanService, get_scan_service
@@ -49,6 +50,29 @@ async def get_rebuild_status(
     if status is None:
         raise HTTPException(status_code=404, detail="rebuild job not found")
     return status
+
+
+@router.post("/index")
+async def refresh_library_index(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Regenerate bookbrain-index.json in the library folder now, instead of
+    waiting for the next organize/rebuild to do it. Handy for the very first
+    generation, or after correcting a book's metadata by hand."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+
+    count = await regenerate_library_index(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="index refresh failed — see server logs")
+    return {"books": count}
 
 
 @router.post("/export", response_model=LibraryExportResult)
