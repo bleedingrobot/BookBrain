@@ -28,8 +28,6 @@ the frontend affordance.
 
 ## Later / maybe
 
-- **Populate `Book.description`** — the column is dead; ~half the library
-  has no EPUB `<dc:description>`. Fill from a provider or Claude.
 - **library-viewer: "new since last visit"** — stamp a last-opened time,
   surface books added since.
 - **library-viewer: tap a badge to filter** — author / series pill →
@@ -39,3 +37,12 @@ the frontend affordance.
 - **CI: run `npm run lint` + `npm test` for library-viewer** — the deploy
   workflow only builds. (Blocked on the pushing token having `workflow`
   scope.)
+
+## Config to set
+
+- **`GOOGLE_BOOKS_API_KEY` in `backend/.env`** — currently empty, so every
+  Google Books call (identification *and* the description backfill) uses
+  the shared anonymous quota, which is small and gets exhausted (HTTP
+  429). A key gives 1,000/day (requestable higher) and isolates the
+  quota. James has one saved.
+
