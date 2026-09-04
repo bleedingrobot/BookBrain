@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { logActivity } from '../lib/activityLog'
 import { clearCoverCache, loadCoverManifest } from '../lib/covers'
 import { isAuthError, type DriveFile } from '../lib/drive'
 import { requestAccessToken, SCOPE_FULL, SCOPE_READONLY } from '../lib/googleAuth'
 import { loadRemoteKoboDevices, saveRemoteKoboDevices } from '../lib/koboDeviceSync'
+import { getViewerName } from '../lib/viewerIdentity'
 import {
   clearCachedIndex,
   EMPTY_INDEX,
@@ -138,6 +140,12 @@ export function useLibrary(settings: ViewerSettings | null) {
       async (newToken, expiresIn) => {
         setSigningIn(false)
         applyToken(newToken, expiresIn)
+        // A drive.readonly token (share-link guests) can't write the log
+        // file at all, so don't bother trying.
+        if (!settings.readOnly) {
+          const who = getViewerName()
+          if (who) void logActivity(newToken, settings.libraryFolderId, who, 'sign-in', '')
+        }
         const cached = loadCachedFiles(settings.libraryFolderId)
         if (cached) {
           setFiles(cached)

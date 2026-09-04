@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActivityScreen } from './components/ActivityScreen'
 import { BookList } from './components/BookList'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
+import { WhoAmI } from './components/WhoAmI'
 import { WishlistScreen } from './components/WishlistScreen'
+import { logActivity } from './lib/activityLog'
 import {
   buildRows,
   matchesFilter,
@@ -27,6 +30,7 @@ import {
   type KoboDevice,
   type ViewerSettings,
 } from './lib/settings'
+import { getViewerName, setViewerName } from './lib/viewerIdentity'
 import { useLibrary } from './hooks/useLibrary'
 
 function sleep(ms: number) {
@@ -50,9 +54,11 @@ function consumeSharedSettings(): ViewerSettings | null {
 }
 
 export default function App() {
+  const [viewerName, setViewerNameState] = useState(getViewerName)
   const [showSetup, setShowSetup] = useState(false)
   const [showDevices, setShowDevices] = useState(false)
   const [showWishlist, setShowWishlist] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(
     () => consumeSharedSettings() ?? loadSettings(),
@@ -89,6 +95,18 @@ export default function App() {
   const koboDevices = readOnly ? [] : (lib.remoteKoboDevices ?? settings?.koboDevices ?? [])
   const hasKobo = koboDevices.length > 0
 
+  // A drive.readonly token (share-link guests) can't write the log file at
+  // all, so these are no-ops for them rather than a doomed API call.
+  function logDownload(file: DriveFile) {
+    if (!token || !settings || !viewerName || readOnly) return
+    void logActivity(token, settings.libraryFolderId, viewerName, 'download', file.name)
+  }
+
+  function logKoboSend(file: DriveFile, device: KoboDevice) {
+    if (!token || !settings || !viewerName || readOnly) return
+    void logActivity(token, settings.libraryFolderId, viewerName, 'kobo-send', `${file.name} → ${device.label}`)
+  }
+
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
   const seriesGaps = useMemo(() => computeSeriesGaps(allRows), [allRows])
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
@@ -99,6 +117,21 @@ export default function App() {
     out.sort(SORTS[sort])
     return out
   }, [allRows, query, sort, filter, sentMap, incompleteSeries])
+
+  // Log a search a beat after typing settles, not on every keystroke — a
+  // read+write to Drive per character would be both wasteful and racy.
+  const lastLoggedQueryRef = useRef('')
+  useEffect(() => {
+    if (!token || !settings || !viewerName || readOnly) return
+    const trimmed = query.trim()
+    if (trimmed.length < 2 || trimmed === lastLoggedQueryRef.current) return
+    const folderId = settings.libraryFolderId
+    const id = setTimeout(() => {
+      lastLoggedQueryRef.current = trimmed
+      void logActivity(token, folderId, viewerName, 'search', trimmed)
+    }, 800)
+    return () => clearTimeout(id)
+  }, [query, token, viewerName, readOnly, settings])
 
   function selectMany(ids: string[], on: boolean) {
     setSelected((prev) => {
@@ -199,6 +232,7 @@ export default function App() {
     for (const { file } of toDownload) {
       try {
         await downloadFile(token, file)
+        logDownload(file)
       } catch (err) {
         lib.flagAuthError(err)
         stillFailed.add(file.id)
@@ -223,6 +257,7 @@ export default function App() {
     setSendState((prev) => ({ ...prev, [key]: 'pending' }))
     try {
       await copyFileToFolder(token, file, device.folderId)
+      logKoboSend(file, device)
       setSentMap(markSent(device.folderId, [file.id]))
       setKoboMessage(`Sent "${file.name}" to ${device.label}.`)
       setSendState((prev) => {
@@ -258,6 +293,7 @@ export default function App() {
     for (const { file } of toSend) {
       try {
         await copyFileToFolder(token, file, device.folderId)
+        logKoboSend(file, device)
         sentIds.push(file.id)
       } catch (err) {
         lib.flagAuthError(err)
@@ -273,6 +309,17 @@ export default function App() {
         : null,
     )
     setSendingToKobo(false)
+  }
+
+  if (!viewerName) {
+    return (
+      <WhoAmI
+        onPick={(name) => {
+          setViewerName(name)
+          setViewerNameState(name)
+        }}
+      />
+    )
   }
 
   if (showSetup) return <SetupChecklist onBack={() => setShowSetup(false)} />
@@ -345,6 +392,16 @@ export default function App() {
     )
   }
 
+  if (showActivity) {
+    return (
+      <ActivityScreen
+        token={token}
+        libraryFolderId={settings.libraryFolderId}
+        onBack={() => setShowActivity(false)}
+      />
+    )
+  }
+
   if (showDevices) {
     return (
       <DeviceLibrary
@@ -392,6 +449,7 @@ export default function App() {
         onRebuild={lib.rebuild}
         onShowDevices={() => setShowDevices(true)}
         onShowWishlist={() => setShowWishlist(true)}
+        onShowActivity={() => setShowActivity(true)}
         onShare={handleShare}
         onCopyLink={handleCopyLink}
         onEditSettings={() => setEditingSettings(true)}
@@ -528,10 +586,12 @@ export default function App() {
           onExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
           onSend={sendToKobo}
           onDownload={(file) =>
-            downloadFile(token, file).catch((err) => {
-              lib.flagAuthError(err)
-              setDownloadError(err.message)
-            })
+            downloadFile(token, file)
+              .then(() => logDownload(file))
+              .catch((err) => {
+                lib.flagAuthError(err)
+                setDownloadError(err.message)
+              })
           }
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}

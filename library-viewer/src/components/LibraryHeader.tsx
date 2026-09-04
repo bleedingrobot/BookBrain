@@ -8,6 +8,7 @@ interface Props {
   onRebuild: () => void
   onShowDevices: () => void
   onShowWishlist: () => void
+  onShowActivity: () => void
   onShare: () => void
   onCopyLink: () => void
   onEditSettings: () => void
@@ -23,6 +24,7 @@ export function LibraryHeader({
   onRebuild,
   onShowDevices,
   onShowWishlist,
+  onShowActivity,
   onShare,
   onCopyLink,
   onEditSettings,
@@ -32,6 +34,7 @@ export function LibraryHeader({
   const [menuOpen, setMenuOpen] = useState(false)
 
   const items = [
+    { label: 'Activity', fn: onShowActivity },
     ...(readOnly
       ? []
       : [
