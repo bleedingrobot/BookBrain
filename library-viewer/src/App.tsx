@@ -61,6 +61,7 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('title')
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
@@ -317,6 +318,10 @@ export default function App() {
   const emptyMessage =
     (files?.length ?? 0) === 0 ? 'No books found in this folder.' : 'Nothing matches.'
 
+  // Don't dump the whole library on screen — wait for a search, a filter,
+  // or an explicit "show everything".
+  const browsing = query.trim() !== '' || filter !== 'all' || showAll
+
   return (
     <div className="mx-auto max-w-2xl px-4 pb-10 sm:px-6">
       <LibraryHeader
@@ -427,7 +432,23 @@ export default function App() {
         </p>
       )}
 
-      {!lib.loading && files !== null && (
+      {!lib.loading && files !== null && !browsing && (
+        <div className="mt-10 text-center text-sm text-neutral-400">
+          <p>
+            {files.length.toLocaleString()} book{files.length === 1 ? '' : 's'} in your library.
+            <br />
+            Search, or pick a filter, to see them.
+          </p>
+          <button
+            className="btn btn-neutral mt-4"
+            onClick={() => setShowAll(true)}
+          >
+            Show all books
+          </button>
+        </div>
+      )}
+
+      {!lib.loading && files !== null && browsing && (
         <BookList
           rows={rows}
           allRows={allRows}
