@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../services/api'
+import { useCoverStatus } from '../hooks/useCoverStatus'
 import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
 import { useRebuildStatus } from '../hooks/useRebuildStatus'
 
@@ -44,6 +45,12 @@ export function Library() {
   const [clearError, setClearError] = useState<string | null>(null)
   const [rebuildJobId, setRebuildJobId] = useState<string | null>(null)
   const [rebuildError, setRebuildError] = useState<string | null>(null)
+  const [coverJobId, setCoverJobId] = useState<string | null>(null)
+  const [coverError, setCoverError] = useState<string | null>(null)
+  const [coverStarting, setCoverStarting] = useState(false)
+  const [indexBusy, setIndexBusy] = useState(false)
+  const [indexError, setIndexError] = useState<string | null>(null)
+  const [indexResult, setIndexResult] = useState<number | null>(null)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -59,6 +66,7 @@ export function Library() {
   })
   const organize = useOrganizeStatus(organizeJobId)
   const rebuild = useRebuildStatus(rebuildJobId)
+  const covers = useCoverStatus(coverJobId)
 
   const clearLibrary = useMutation({
     mutationFn: api.clearLibrary,
@@ -116,6 +124,13 @@ export function Library() {
     }
   }, [rebuild.isError])
 
+  useEffect(() => {
+    if (covers.isError) {
+      setCoverError('Lost track of the cover job — the server may have restarted. Re-run to continue where it left off.')
+      setCoverJobId(null)
+    }
+  }, [covers.isError])
+
   const visibleFiles =
     status === undefined
       ? files.data?.filter(
@@ -172,6 +187,45 @@ export function Library() {
               }}
             >
               Rebuild library
+            </button>
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              title="Rewrites bookbrain-index.json in the library folder — the metadata the viewer reads (author, series, description, ISBN, covers folder)."
+              disabled={indexBusy}
+              onClick={async () => {
+                setIndexError(null)
+                setIndexResult(null)
+                setIndexBusy(true)
+                try {
+                  const r = await api.refreshLibraryIndex()
+                  setIndexResult(r.books)
+                } catch (err) {
+                  setIndexError(err instanceof ApiError ? err.message : 'Failed to refresh index.')
+                } finally {
+                  setIndexBusy(false)
+                }
+              }}
+            >
+              {indexBusy ? 'Refreshing…' : 'Refresh viewer data'}
+            </button>
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              title="Extracts a cover thumbnail from every organised EPUB into the Drive covers/ folder. Resumable — re-running only fills the gaps."
+              disabled={coverStarting || covers.data?.status === 'running'}
+              onClick={async () => {
+                setCoverError(null)
+                setCoverStarting(true)
+                try {
+                  const job = await api.generateCovers()
+                  setCoverJobId(job.job_id)
+                } catch (err) {
+                  setCoverError(err instanceof ApiError ? err.message : 'Failed to start cover job.')
+                } finally {
+                  setCoverStarting(false)
+                }
+              }}
+            >
+              {covers.data?.status === 'running' ? 'Generating covers…' : 'Generate covers'}
             </button>
             <button
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
@@ -236,6 +290,20 @@ export function Library() {
             <p className="mt-1 text-xs text-neutral-500">
               rebuild: {rebuild.data.status}
               {rebuild.data.detail ? ` — ${rebuild.data.detail}` : ''}
+            </p>
+          )}
+          {indexError && <p className="mt-1 text-xs text-red-600">{indexError}</p>}
+          {indexResult !== null && !indexError && (
+            <p className="mt-1 text-xs text-neutral-500">viewer data refreshed — {indexResult} books</p>
+          )}
+          {coverError && <p className="mt-1 text-xs text-red-600">{coverError}</p>}
+          {covers.data && (
+            <p className="mt-1 text-xs text-neutral-500">
+              covers: {covers.data.status} — {covers.data.generated} made,{' '}
+              {covers.data.no_cover} with no cover, {covers.data.failed} failed
+              {covers.data.status === 'running' && covers.data.remaining > 0
+                ? `, ${covers.data.remaining} to go`
+                : ''}
             </p>
           )}
 

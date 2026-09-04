@@ -8,6 +8,7 @@ import asyncio
 import io
 import logging
 import uuid
+from collections.abc import Callable
 
 from google.oauth2.credentials import Credentials
 from PIL import Image
@@ -81,11 +82,13 @@ async def regenerate_covers(
     library_folder_id: str | None,
     *,
     limit: int | None = None,
+    on_progress: Callable[[dict[str, int], int], None] | None = None,
 ) -> dict[str, int]:
     """Generate covers for organised books that don't have one yet. Bounded
     by `limit` (the organize hook passes a small number so it just chips
     away); the manual endpoint leaves it None for a full backfill.
-    Best-effort — never raises into the caller."""
+    `on_progress(counts, total)` fires after each file so a long backfill
+    can report progress. Best-effort — never raises into the caller."""
     counts = {"done": 0, "nocover": 0, "failed": 0, "remaining": 0}
     if creds is None or not library_folder_id:
         return counts
@@ -109,6 +112,7 @@ async def regenerate_covers(
 
         todo = missing if limit is None else missing[:limit]
         counts["remaining"] = len(missing) - len(todo)
+        total = len(todo)
 
         sem = asyncio.Semaphore(_COVER_CONCURRENCY)
 
@@ -122,6 +126,8 @@ async def regenerate_covers(
                 except Exception:
                     logger.exception("cover generation failed for %s", drive_id)
                     counts["failed"] += 1
+                if on_progress is not None:
+                    on_progress(counts, total)
 
         await asyncio.gather(*(run(d) for d in todo))
         logger.info("covers pass: %s", counts)
@@ -146,7 +152,17 @@ class CoverService:
     async def run(
         self, job_id: str, creds: Credentials, library_folder_id: str
     ) -> None:
-        counts = await regenerate_covers(creds, library_folder_id)
+        def progress(counts: dict[str, int], total: int) -> None:
+            self._jobs[job_id] = CoverJobStatus(
+                job_id=job_id,
+                status=CoverJobState.running,
+                generated=counts["done"],
+                no_cover=counts["nocover"],
+                failed=counts["failed"],
+                remaining=total - counts["done"] - counts["nocover"] - counts["failed"],
+            )
+
+        counts = await regenerate_covers(creds, library_folder_id, on_progress=progress)
         self._jobs[job_id] = CoverJobStatus(
             job_id=job_id,
             status=CoverJobState.done,
