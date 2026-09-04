@@ -1,8 +1,8 @@
-// Minimal network-first service worker: always serves fresh content when
-// online, falls back to the last-seen response (and the app shell for
-// navigations) when offline. The library list and metadata index live in
-// localStorage, so an offline shell still renders a browsable library.
-const CACHE = 'bookbrain-v1'
+// Network-first service worker: always serves fresh content when online,
+// falls back to the last-seen response (and the app shell for navigations)
+// when offline. The library list and metadata index live in localStorage,
+// so an offline shell still renders a browsable library.
+const CACHE = 'bookbrain-v2'
 const SHELL = new URL('./', self.registration.scope).pathname
 
 self.addEventListener('install', () => self.skipWaiting())
@@ -22,8 +22,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
 
+  // Navigations and the hashed app bundle must never come from the browser's
+  // own HTTP cache — bypass it so a deploy is picked up on the next load.
+  const revalidate = req.mode === 'navigate' || url.pathname.includes('/assets/')
+  const fetchReq = revalidate ? new Request(req, { cache: 'reload' }) : req
+
   event.respondWith(
-    fetch(req)
+    fetch(fetchReq)
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone()
