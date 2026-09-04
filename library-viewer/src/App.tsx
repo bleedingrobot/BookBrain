@@ -9,9 +9,11 @@ import {
   buildRows,
   matchesFilter,
   matchesRow,
+  sendKey,
   SORT_LABELS,
   SORTS,
   type FilterKey,
+  type SendStatus,
   type SortKey,
 } from './lib/books'
 import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
@@ -71,6 +73,13 @@ export default function App() {
   const [sendingToKobo, setSendingToKobo] = useState(false)
   const [koboError, setKoboError] = useState<string | null>(null)
   const [koboMessage, setKoboMessage] = useState<string | null>(null)
+  // Per-row, per-device send state (keyed by sendKey) — lets each "→ Tess"
+  // button show its own "Sending…"/failed state immediately, so a slow or
+  // failed send is obvious right at the button instead of only in the
+  // page-level banner below, which is easy to miss (and easy to mistake
+  // for "nothing happened" — the exact thing that led to someone clicking
+  // the same button three times in a row).
+  const [sendState, setSendState] = useState<Record<string, SendStatus>>({})
   const [sentMap, setSentMap] = useState(getSentMap)
 
   const readOnly = settings?.readOnly ?? false
@@ -204,15 +213,34 @@ export default function App() {
 
   async function sendToKobo(file: DriveFile, device: KoboDevice) {
     if (!token) return
+    const key = sendKey(file.id, device.folderId)
+    if (sendState[key] === 'pending') return // already in flight — the disabled button should prevent this anyway
     setKoboError(null)
     setKoboMessage(null)
+    setSendState((prev) => ({ ...prev, [key]: 'pending' }))
     try {
       await copyFileToFolder(token, file, device.folderId)
       setSentMap(markSent(device.folderId, [file.id]))
       setKoboMessage(`Sent "${file.name}" to ${device.label}.`)
+      setSendState((prev) => {
+        const { [key]: _removed, ...rest } = prev
+        return rest
+      })
     } catch (err) {
       lib.flagAuthError(err)
       setKoboError(err instanceof Error ? err.message : `Failed to send to ${device.label}.`)
+      setSendState((prev) => ({ ...prev, [key]: 'error' }))
+      // Leave the button showing "Failed" for a few seconds rather than
+      // instantly reverting to its normal label — long enough to register
+      // as feedback, short enough that a genuine retry isn't stuck looking
+      // like a stale error.
+      setTimeout(() => {
+        setSendState((prev) => {
+          if (prev[key] !== 'error') return prev
+          const { [key]: _removed, ...rest } = prev
+          return rest
+        })
+      }, 4000)
     }
   }
 
@@ -476,6 +504,7 @@ export default function App() {
           expandedId={expandedId}
           sentMap={sentMap}
           koboDevices={koboDevices}
+          sendState={sendState}
           emptyMessage={emptyMessage}
           onToggleSelect={toggleSelected}
           onSelectMany={selectMany}

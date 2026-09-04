@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { groupHeading, type BookRow as Row, type SortKey } from '../lib/books'
+import { groupHeading, type BookRow as Row, type SendStatus, type SortKey } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { SentMap } from '../lib/sentTracker'
@@ -19,6 +19,7 @@ interface Props {
   expandedId: string | null
   sentMap: SentMap
   koboDevices: KoboDevice[]
+  sendState: Record<string, SendStatus>
   emptyMessage: string
   onToggleSelect: (id: string) => void
   onSelectMany: (ids: string[], on: boolean) => void
@@ -40,6 +41,7 @@ export function BookList({
   expandedId,
   sentMap,
   koboDevices,
+  sendState,
   emptyMessage,
   onToggleSelect,
   onSelectMany,
@@ -125,6 +127,7 @@ export function BookList({
                 expanded={expandedId === row.id}
                 sentDevices={koboDevices.filter((d) => sentMap[d.folderId]?.[row.id])}
                 koboDevices={koboDevices}
+                sendState={sendState}
                 onToggleSelect={onToggleSelect}
                 onExpand={onExpand}
                 onSelectMany={onSelectMany}

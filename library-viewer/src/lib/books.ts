@@ -18,6 +18,15 @@ export interface BookRow {
   isbn: string | null
 }
 
+// Identifies one row's send-to-one-device button, for per-button in-flight/
+// error state — a plain string so App.tsx and BookRow can both key off the
+// same value without importing each other.
+export function sendKey(fileId: string, deviceFolderId: string): string {
+  return `${fileId}:${deviceFolderId}`
+}
+
+export type SendStatus = 'pending' | 'error'
+
 export type SortKey = 'title' | 'author' | 'series' | 'added'
 
 export const SORT_LABELS: Record<SortKey, string> = {

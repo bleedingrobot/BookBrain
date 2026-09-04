@@ -1,4 +1,4 @@
-import type { BookRow as Row } from '../lib/books'
+import { sendKey, type BookRow as Row, type SendStatus } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
@@ -13,6 +13,7 @@ interface Props {
   expanded: boolean
   sentDevices: KoboDevice[]
   koboDevices: KoboDevice[]
+  sendState: Record<string, SendStatus>
   onToggleSelect: (id: string) => void
   onExpand: (id: string) => void
   onSelectMany: (ids: string[], on: boolean) => void
@@ -31,6 +32,7 @@ export function BookRow({
   expanded,
   sentDevices,
   koboDevices,
+  sendState,
   onToggleSelect,
   onExpand,
   onSelectMany,
@@ -105,15 +107,29 @@ export function BookRow({
           <button className="btn btn-ghost btn-xs" onClick={() => onDownload(row.file)}>
             Download
           </button>
-          {koboDevices.map((device) => (
-            <button
-              key={device.folderId}
-              className="btn btn-neutral btn-xs"
-              onClick={() => onSend(row.file, device)}
-            >
-              {koboDevices.length === 1 ? 'Send to Kobo' : `→ ${device.label}`}
-            </button>
-          ))}
+          {koboDevices.map((device) => {
+            const status = sendState[sendKey(row.file.id, device.folderId)]
+            const label =
+              status === 'pending'
+                ? 'Sending…'
+                : status === 'error'
+                  ? 'Failed — retry'
+                  : koboDevices.length === 1
+                    ? 'Send to Kobo'
+                    : `→ ${device.label}`
+            return (
+              <button
+                key={device.folderId}
+                type="button"
+                className={`btn btn-xs ${status === 'error' ? 'btn-danger' : 'btn-neutral'}`}
+                disabled={status === 'pending'}
+                aria-busy={status === 'pending'}
+                onClick={() => onSend(row.file, device)}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
       </li>
       {expanded && (
