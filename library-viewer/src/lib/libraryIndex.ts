@@ -31,13 +31,13 @@ interface CachedIndex {
   index: LibraryIndex
 }
 
-interface RawIndexFile {
+export interface RawIndexFile {
   version?: number
   coversFolder?: string | null
   books?: Record<string, Partial<IndexEntry>>
 }
 
-function normalise(raw: RawIndexFile): LibraryIndex {
+export function normalise(raw: RawIndexFile): LibraryIndex {
   const entries: Record<string, IndexEntry> = {}
   for (const [id, entry] of Object.entries(raw.books ?? {})) {
     if (!entry || typeof entry.title !== 'string') continue

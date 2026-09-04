@@ -7,6 +7,15 @@ export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
 const EBOOK_EXTENSIONS = ['.epub', '.kpub']
 const WALK_CONCURRENCY = 8
 
+// The Drive helpers throw a plain Error with one of these messages on an
+// expired/invalid token — used to switch the UI into "reconnect" mode.
+export function isAuthError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    /sign-in expired|invalid credentials|invalid authentication|\b401\b/i.test(err.message)
+  )
+}
+
 export function isSupportedEbook(name: string): boolean {
   const lower = name.toLowerCase()
   return EBOOK_EXTENSIONS.some((ext) => lower.endsWith(ext))
