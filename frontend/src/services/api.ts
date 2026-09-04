@@ -12,6 +12,11 @@ import type { CopyResult, DismissResult, LocalFileSummary } from '../types/local
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
+import type {
+  ResolveResult,
+  WishlistItem,
+  WishlistItemCreate,
+} from '../types/wishlist'
 import type { ScanJobStatus } from '../types/scan'
 import type { SystemStatus } from '../types/system'
 
@@ -130,6 +135,21 @@ export const api = {
     }),
   getDescriptionStatus: (jobId: string) =>
     request<DescriptionJobStatus>(`/library/descriptions/${jobId}`),
+
+  resolveWishlist: (text: string) =>
+    request<ResolveResult>('/wishlist/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  listWishlist: () => request<WishlistItem[]>('/wishlist'),
+  addWishlist: (body: WishlistItemCreate) =>
+    request<WishlistItem>('/wishlist', { method: 'POST', body: JSON.stringify(body) }),
+  setWishlistStatus: (id: number, status: 'wanted' | 'acquired') =>
+    request<WishlistItem>(`/wishlist/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  deleteWishlist: (id: number) => request<void>(`/wishlist/${id}`, { method: 'DELETE' }),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),

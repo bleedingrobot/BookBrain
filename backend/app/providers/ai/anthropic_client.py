@@ -2,8 +2,16 @@ import anthropic
 from anthropic import DefaultAioHttpClient
 
 from app.core.config import get_settings
-from app.providers.ai.schema import IDENTIFY_BOOK_TOOL, IDENTIFY_SERIES_TOOL
-from app.providers.ai.types import AIIdentificationResult, AISeriesResult
+from app.providers.ai.schema import (
+    IDENTIFY_BOOK_TOOL,
+    IDENTIFY_SERIES_TOOL,
+    RESOLVE_BOOK_REQUEST_TOOL,
+)
+from app.providers.ai.types import (
+    AIBookRequestResult,
+    AIIdentificationResult,
+    AISeriesResult,
+)
 
 
 class AIIdentificationError(Exception):
@@ -41,6 +49,26 @@ class AnthropicIdentificationClient:
                 return AIIdentificationResult.from_tool_input(block.input), response.to_dict()
 
         raise AIIdentificationError("model did not return the identify_book tool call")
+
+    async def resolve_book_request(self, text: str) -> AIBookRequestResult:
+        response = await self._client.messages.create(
+            model=self.model_name,
+            max_tokens=512,
+            tools=[RESOLVE_BOOK_REQUEST_TOOL],
+            tool_choice={"type": "tool", "name": "resolve_book_request"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"A book the user wants to add to their wishlist:\n\n{text}",
+                }
+            ],
+        )
+        if response.stop_reason == "refusal":
+            raise AIIdentificationError("model declined to resolve this request")
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "resolve_book_request":
+                return AIBookRequestResult.from_tool_input(block.input)
+        raise AIIdentificationError("model did not return the resolve_book_request tool call")
 
     async def describe(self, title: str, author: str | None) -> str | None:
         """A short back-cover-style blurb from the model's own knowledge, or

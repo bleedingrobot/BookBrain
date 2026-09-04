@@ -258,6 +258,38 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class WishlistStatus(str, enum.Enum):
+    wanted = "wanted"
+    acquired = "acquired"
+
+
+class WishlistItem(Base):
+    """A book the user wants but doesn't own yet. `raw_request` is what they
+    typed; the rest is what Claude + Google Books resolved it to. Flips to
+    `acquired` (with `acquired_file_id`) once a matching book turns up in
+    the library — see wishlist_service.reconcile."""
+
+    __tablename__ = "wishlist"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    raw_request: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    author: Mapped[str | None] = mapped_column(String)
+    series: Mapped[str | None] = mapped_column(String)
+    series_number: Mapped[float | None] = mapped_column()
+    isbn13: Mapped[str | None] = mapped_column(String)
+    cover_url: Mapped[str | None] = mapped_column(String)
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[WishlistStatus] = mapped_column(
+        Enum(WishlistStatus), nullable=False, default=WishlistStatus.wanted
+    )
+    acquired_at: Mapped[datetime | None] = mapped_column()
+    acquired_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class LocalFileStatus(str, enum.Enum):
     pending = "pending"
     copied = "copied"
@@ -297,4 +329,5 @@ __all__ = [
     "LibraryRule",
     "Setting",
     "LocalFile",
+    "WishlistItem",
 ]
