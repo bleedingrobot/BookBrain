@@ -7,6 +7,7 @@ interface Props {
   onRefresh: () => void
   onRebuild: () => void
   onShowDevices: () => void
+  onShowWishlist: () => void
   onShare: () => void
   onCopyLink: () => void
   onEditSettings: () => void
@@ -21,6 +22,7 @@ export function LibraryHeader({
   onRefresh,
   onRebuild,
   onShowDevices,
+  onShowWishlist,
   onShare,
   onCopyLink,
   onEditSettings,
@@ -30,7 +32,12 @@ export function LibraryHeader({
   const [menuOpen, setMenuOpen] = useState(false)
 
   const items = [
-    ...(readOnly ? [] : [{ label: 'Rebuild library', fn: onRebuild, disabled: busy }]),
+    ...(readOnly
+      ? []
+      : [
+          { label: 'Wishlist', fn: onShowWishlist },
+          { label: 'Rebuild library', fn: onRebuild, disabled: busy },
+        ]),
     { label: 'Share…', fn: onShare },
     { label: 'Copy link', fn: onCopyLink },
     { label: 'Change settings', fn: onEditSettings },

@@ -164,6 +164,69 @@ export async function listFolderContents(token: string, folderId: string): Promi
   return files
 }
 
+// Reads a single JSON file by name from a folder. Returns its parsed
+// content and Drive id + modifiedTime (for change detection), or null.
+export async function readJsonFile<T>(
+  token: string,
+  folderId: string,
+  name: string,
+): Promise<{ id: string; modifiedTime: string; content: T } | null> {
+  const q = encodeURIComponent(`'${folderId}' in parents and name = '${name}' and trashed = false`)
+  const listResp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!listResp.ok) throw new Error(`Drive API error (${listResp.status})`)
+  const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
+  if (files.length === 0) return null
+  const dl = await fetch(`https://www.googleapis.com/drive/v3/files/${files[0].id}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!dl.ok) throw new Error(`Drive API error (${dl.status})`)
+  return { id: files[0].id, modifiedTime: files[0].modifiedTime, content: (await dl.json()) as T }
+}
+
+// Creates or overwrites a JSON file in a folder. Returns the file's id.
+export async function writeJsonFile(
+  token: string,
+  folderId: string,
+  name: string,
+  content: unknown,
+  existingId: string | null,
+): Promise<string> {
+  const body = JSON.stringify(content)
+  if (existingId) {
+    const resp = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&fields=id`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body,
+      },
+    )
+    if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
+    return existingId
+  }
+  const boundary = 'bookbrain' + Math.random().toString(36).slice(2)
+  const multipart =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify({ name, parents: [folderId] })}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
+  const resp = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body: multipart,
+    },
+  )
+  if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
+  return ((await resp.json()) as { id: string }).id
+}
+
 export async function trashFile(token: string, fileId: string): Promise<void> {
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
     method: 'PATCH',

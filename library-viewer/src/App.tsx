@@ -4,6 +4,7 @@ import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
+import { WishlistScreen } from './components/WishlistScreen'
 import {
   buildRows,
   matchesFilter,
@@ -49,6 +50,7 @@ function consumeSharedSettings(): ViewerSettings | null {
 export default function App() {
   const [showSetup, setShowSetup] = useState(false)
   const [showDevices, setShowDevices] = useState(false)
+  const [showWishlist, setShowWishlist] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(
     () => consumeSharedSettings() ?? loadSettings(),
@@ -310,6 +312,17 @@ export default function App() {
     )
   }
 
+  if (showWishlist && !readOnly) {
+    return (
+      <WishlistScreen
+        token={token}
+        libraryFolderId={settings.libraryFolderId}
+        rows={allRows}
+        onBack={() => setShowWishlist(false)}
+      />
+    )
+  }
+
   const filterChips: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'All' },
     ...koboDevices.flatMap((d) => [
@@ -338,6 +351,7 @@ export default function App() {
         onRefresh={lib.refresh}
         onRebuild={lib.rebuild}
         onShowDevices={() => setShowDevices(true)}
+        onShowWishlist={() => setShowWishlist(true)}
         onShare={handleShare}
         onCopyLink={handleCopyLink}
         onEditSettings={() => setEditingSettings(true)}
