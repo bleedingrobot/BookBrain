@@ -14,6 +14,7 @@ import {
   type SortKey,
 } from './lib/books'
 import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
+import { computeSeriesGaps, incompleteSeriesNames } from './lib/seriesGaps'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -74,13 +75,15 @@ export default function App() {
   const hasKobo = koboDevices.length > 0
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
+  const seriesGaps = useMemo(() => computeSeriesGaps(allRows), [allRows])
+  const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const rows = useMemo(() => {
     const out = allRows.filter(
-      (row) => matchesRow(row, query) && matchesFilter(row, filter, sentMap),
+      (row) => matchesRow(row, query) && matchesFilter(row, filter, sentMap, incompleteSeries),
     )
     out.sort(SORTS[sort])
     return out
-  }, [allRows, query, sort, filter, sentMap])
+  }, [allRows, query, sort, filter, sentMap, incompleteSeries])
 
   function selectMany(ids: string[], on: boolean) {
     setSelected((prev) => {
@@ -306,6 +309,7 @@ export default function App() {
       { key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` },
     ]),
     ...(koboDevices.length > 1 ? [{ key: 'unsent' as FilterKey, label: 'On no device' }] : []),
+    ...(incompleteSeries.size > 0 ? [{ key: 'gaps' as FilterKey, label: 'Missing books' }] : []),
     { key: 'noseries', label: 'No series' },
   ]
 
@@ -430,6 +434,7 @@ export default function App() {
           totalCount={files.length}
           sort={sort}
           token={token}
+          seriesGaps={seriesGaps}
           selected={selected}
           expandedId={expandedId}
           sentMap={sentMap}

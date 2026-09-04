@@ -70,22 +70,30 @@ describe('matchesRow', () => {
 
 describe('matchesFilter', () => {
   const sent: SentMap = { james: { a: 't' }, tess: { b: 't' } }
-  it('all', () => expect(matchesFilter(row({ id: 'a' }), 'all', sent)).toBe(true))
+  const incomplete = new Set(['Mistborn'])
+  const m = (r: BookRow, f: Parameters<typeof matchesFilter>[1]) =>
+    matchesFilter(r, f, sent, incomplete)
+  it('all', () => expect(m(row({ id: 'a' }), 'all')).toBe(true))
   it('noseries', () => {
-    expect(matchesFilter(row({ series: null }), 'noseries', sent)).toBe(true)
-    expect(matchesFilter(row({ series: 'X' }), 'noseries', sent)).toBe(false)
+    expect(m(row({ series: null }), 'noseries')).toBe(true)
+    expect(m(row({ series: 'X' }), 'noseries')).toBe(false)
+  })
+  it('gaps = in an incomplete series', () => {
+    expect(m(row({ series: 'Mistborn' }), 'gaps')).toBe(true)
+    expect(m(row({ series: 'Elantris' }), 'gaps')).toBe(false)
+    expect(m(row({ series: null }), 'gaps')).toBe(false)
   })
   it('on:<folder>', () => {
-    expect(matchesFilter(row({ id: 'a' }), 'on:james', sent)).toBe(true)
-    expect(matchesFilter(row({ id: 'b' }), 'on:james', sent)).toBe(false)
+    expect(m(row({ id: 'a' }), 'on:james')).toBe(true)
+    expect(m(row({ id: 'b' }), 'on:james')).toBe(false)
   })
   it('off:<folder>', () => {
-    expect(matchesFilter(row({ id: 'b' }), 'off:james', sent)).toBe(true)
-    expect(matchesFilter(row({ id: 'a' }), 'off:james', sent)).toBe(false)
+    expect(m(row({ id: 'b' }), 'off:james')).toBe(true)
+    expect(m(row({ id: 'a' }), 'off:james')).toBe(false)
   })
   it('unsent = on no device at all', () => {
-    expect(matchesFilter(row({ id: 'c' }), 'unsent', sent)).toBe(true)
-    expect(matchesFilter(row({ id: 'a' }), 'unsent', sent)).toBe(false)
+    expect(m(row({ id: 'c' }), 'unsent')).toBe(true)
+    expect(m(row({ id: 'a' }), 'unsent')).toBe(false)
   })
 })
 

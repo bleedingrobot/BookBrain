@@ -1,5 +1,6 @@
 import type { BookRow as Row } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
+import type { SeriesGap } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
 import { Cover } from './Cover'
 
@@ -7,6 +8,7 @@ interface Props {
   row: Row
   allRows: Row[]
   token: string
+  gap: SeriesGap | undefined
   selected: boolean
   expanded: boolean
   sentDevices: KoboDevice[]
@@ -22,6 +24,7 @@ export function BookRow({
   row,
   allRows,
   token,
+  gap,
   selected,
   expanded,
   sentDevices,
@@ -105,6 +108,11 @@ export function BookRow({
             {row.addedAt && (
               <p className="mt-1.5 text-neutral-400">
                 Added {new Date(row.addedAt).toLocaleDateString()}
+              </p>
+            )}
+            {gap && gap.missing.length > 0 && row.series && (
+              <p className="mt-1.5 text-amber-700 dark:text-amber-500">
+                Missing from {row.series}: {gap.missing.map((n) => `#${n}`).join(', ')}
               </p>
             )}
             {(seriesPeers.length > 1 || authorPeers.length > 1) && (

@@ -55,13 +55,19 @@ export function matchesRow(row: BookRow, query: string): boolean {
   return q.split(/\s+/).every((term) => haystack.includes(term))
 }
 
-// Filter chips. `all` and `noseries` are self-contained; `on:<folderId>`
-// and `off:<folderId>` are built per device at render time.
-export type FilterKey = 'all' | 'noseries' | `on:${string}` | `off:${string}` | 'unsent'
+// Filter chips. `all`, `noseries` and `gaps` are self-contained; `on:<id>`
+// and `off:<id>` are built per device at render time.
+export type FilterKey = 'all' | 'noseries' | 'gaps' | `on:${string}` | `off:${string}` | 'unsent'
 
-export function matchesFilter(row: BookRow, filter: FilterKey, sent: SentMap): boolean {
+export function matchesFilter(
+  row: BookRow,
+  filter: FilterKey,
+  sent: SentMap,
+  incompleteSeries: Set<string>,
+): boolean {
   if (filter === 'all') return true
   if (filter === 'noseries') return !row.series
+  if (filter === 'gaps') return row.series != null && incompleteSeries.has(row.series)
   if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
   if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
   if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]

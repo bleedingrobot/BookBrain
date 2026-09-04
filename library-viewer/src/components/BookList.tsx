@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { groupHeading, type BookRow as Row, type SortKey } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
+import type { SeriesGap } from '../lib/seriesGaps'
 import type { SentMap } from '../lib/sentTracker'
 import type { KoboDevice } from '../lib/settings'
 import { BookRow } from './BookRow'
@@ -13,6 +14,7 @@ interface Props {
   totalCount: number
   sort: SortKey
   token: string
+  seriesGaps: Map<string, SeriesGap>
   selected: Set<string>
   expandedId: string | null
   sentMap: SentMap
@@ -31,6 +33,7 @@ export function BookList({
   totalCount,
   sort,
   token,
+  seriesGaps,
   selected,
   expandedId,
   sentMap,
@@ -113,6 +116,7 @@ export function BookList({
                 row={row}
                 allRows={allRows}
                 token={token}
+                gap={row.series ? seriesGaps.get(row.series) : undefined}
                 selected={selected.has(row.id)}
                 expanded={expandedId === row.id}
                 sentDevices={koboDevices.filter((d) => sentMap[d.folderId]?.[row.id])}
