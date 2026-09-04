@@ -96,6 +96,12 @@ async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
     return row
 
 
+async def resolve_series(session: AsyncSession, name: str | None) -> Series | None:
+    """Public wrapper — a hand correction sets a book's series directly
+    (resolve_book only sets series on newly-created rows, not existing ones)."""
+    return await _find_or_create_series(session, name) if name else None
+
+
 async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
     # Word-set match, not exact string equality: the same series shows up
     # phrased differently across providers/AI calls — "Cirque Du Freak (The

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { CorrectFileForm } from '../components/CorrectFileForm'
+import type { CorrectReviewRequest } from '../types/reviews'
 import { api, ApiError } from '../services/api'
 import { useCoverStatus } from '../hooks/useCoverStatus'
 import { useDescriptionStatus } from '../hooks/useDescriptionStatus'
@@ -63,6 +65,8 @@ export function Library() {
   const [exportResult, setExportResult] = useState<{ name: string; url: string } | null>(null)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<number | null>(null)
+  const [correctingId, setCorrectingId] = useState<number | null>(null)
+  const [correctError, setCorrectError] = useState<string | null>(null)
 
   const files = useQuery({ queryKey: ['files', status], queryFn: () => api.listFiles(status) })
   const organizeSettings = useQuery({
@@ -96,6 +100,18 @@ export function Library() {
       setConfirmingRemoveId(null)
       setRemoveError(err instanceof ApiError ? err.message : 'Failed to remove file.')
     },
+  })
+
+  const correctFile = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: CorrectReviewRequest }) =>
+      api.correctFile(id, body),
+    onSuccess: () => {
+      setCorrectingId(null)
+      setCorrectError(null)
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+    onError: (err: unknown) =>
+      setCorrectError(err instanceof ApiError ? err.message : 'Failed to save correction.'),
   })
 
   useEffect(() => {
@@ -474,6 +490,18 @@ export function Library() {
                 <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[file.status] ?? ''}`}>
                   {STATUS_LABEL[file.status] ?? file.status}
                 </span>
+                {file.book_title && file.status !== 'rejected' && (
+                  <button
+                    className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+                    title="Fix the title / author / series, then run Organize to re-file it."
+                    onClick={() => {
+                      setCorrectError(null)
+                      setCorrectingId(correctingId === file.id ? null : file.id)
+                    }}
+                  >
+                    Correct
+                  </button>
+                )}
                 {file.status === 'unidentified' &&
                   (confirmingRemoveId === file.id ? (
                     <span className="flex items-center gap-1 text-xs">
@@ -512,6 +540,15 @@ export function Library() {
                 {file.status_reason && file.ai_reasoning && ' — '}
                 {file.ai_reasoning}
               </p>
+            )}
+            {correctingId === file.id && (
+              <CorrectFileForm
+                file={file}
+                busy={correctFile.isPending}
+                error={correctError}
+                onSubmit={(body) => correctFile.mutate({ id: file.id, body })}
+                onCancel={() => setCorrectingId(null)}
+              />
             )}
           </li>
         ))}

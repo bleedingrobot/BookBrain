@@ -1,6 +1,18 @@
 import pytest
+from sqlalchemy import select
 
-from app.data.models import AIDecision, Author, Book, File, FileStatus, FileStatusReason, Series
+from app.data.models import (
+    AIDecision,
+    Author,
+    Book,
+    File,
+    FileStatus,
+    FileStatusReason,
+    Review,
+    ReviewStatus,
+    Series,
+)
+from app.schemas.reviews import CorrectReviewRequest
 from app.services import file_service
 
 
@@ -221,3 +233,80 @@ async def test_remove_file_propagates_drive_failure_without_committing(db_sessio
 
     await db_session.refresh(file_row)
     assert file_row.status == FileStatus.unidentified
+
+
+async def _organised_book_file(db_session, *, title, author_name, series_name=None, series_number=None):
+    author = Author(name=author_name)
+    db_session.add(author)
+    await db_session.flush()
+    series = None
+    if series_name:
+        series = Series(name=series_name)
+        db_session.add(series)
+        await db_session.flush()
+    book = Book(
+        canonical_title=title,
+        author_id=author.id,
+        series_id=series.id if series else None,
+        series_number=series_number,
+    )
+    db_session.add(book)
+    await db_session.flush()
+    file_row = await _seed_file(
+        db_session,
+        drive_file_id=f"d-{title}",
+        filename=f"{title}.epub",
+        status=FileStatus.organised,
+        book_id=book.id,
+    )
+    return file_row, book
+
+
+async def test_correct_file_re_files_and_records_a_sticky_review(db_session) -> None:
+    file_row, wrong_book = await _organised_book_file(
+        db_session,
+        title="Scion",
+        author_name="James Islington",
+        series_name="The Hierarchy",
+        series_number=2,
+    )
+    db_session.add(
+        AIDecision(
+            file_id=file_row.id,
+            model="m",
+            prompt_hash="p",
+            evidence_hash="e",
+            raw_response_json={},
+            computed_confidence=85,
+        )
+    )
+    await db_session.commit()
+
+    await file_service.correct_file(
+        db_session,
+        file_row.id,
+        CorrectReviewRequest(title="Scion", author="James Islington", series=None, series_number=None),
+    )
+    await db_session.refresh(file_row)
+    await db_session.refresh(wrong_book)
+
+    assert file_row.status == FileStatus.inbox
+    assert wrong_book.series_id is None and wrong_book.series_number is None
+
+    reviews = (await db_session.execute(select(Review))).scalars().all()
+    assert len(reviews) == 1 and reviews[0].status == ReviewStatus.corrected
+    assert reviews[0].correction_json["series"] is None
+    assert reviews[0].proposed_json["series"] == "The Hierarchy"
+
+    left = (
+        await db_session.execute(select(AIDecision).where(AIDecision.file_id == file_row.id))
+    ).scalars().all()
+    assert left == []
+
+
+async def test_correct_file_rejects_an_unidentified_file(db_session) -> None:
+    file_row = await _seed_file(
+        db_session, drive_file_id="u1", filename="u.epub", status=FileStatus.unidentified
+    )
+    with pytest.raises(file_service.FileNotIdentifiedError):
+        await file_service.correct_file(db_session, file_row.id, CorrectReviewRequest(title="X"))
