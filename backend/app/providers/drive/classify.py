@@ -9,10 +9,11 @@ def classify_file(raw: dict) -> str | None:
     return None
 
 
-_SUPPORTED_EBOOK_EXTENSIONS = (".epub", ".kpub")
+_SUPPORTED_EBOOK_EXTENSIONS = (".epub", ".kpub", ".cbz")
 
 
 def is_supported_ebook(filename: str) -> bool:
-    """.kpub (Kobo) doesn't have a reliable Drive mimeType, so both formats
-    are recognized by filename extension rather than mimeType."""
+    """Files BookBrain ingests as-is: EPUB, Kobo .kpub, and .cbz comic
+    archives. All recognized by filename extension rather than Drive's
+    mimeType, which is unreliable for .kpub and .cbz alike."""
     return filename.lower().endswith(_SUPPORTED_EBOOK_EXTENSIONS)

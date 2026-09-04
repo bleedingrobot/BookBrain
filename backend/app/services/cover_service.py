@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.data.db import async_session_factory
 from app.data.models import File, FileStatus
+from app.providers.comic.archive import extract_comic_cover, is_comic_archive
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.parser import extract_cover
@@ -55,11 +56,14 @@ def _ensure_covers_folder(provider: DriveProvider, library_folder_id: str) -> st
     return provider.create_folder(COVERS_FOLDER_NAME, parent_id=library_folder_id)["id"]
 
 
-def _make_one(provider: DriveProvider, covers_folder_id: str, drive_file_id: str) -> str:
+def _make_one(
+    provider: DriveProvider, covers_folder_id: str, drive_file_id: str, filename: str
+) -> str:
     settings = get_settings()
-    raw_epub = provider.download_file(drive_file_id)
-    cover_raw = extract_cover(
-        raw_epub,
+    raw_book = provider.download_file(drive_file_id)
+    extract = extract_comic_cover if is_comic_archive(filename) else extract_cover
+    cover_raw = extract(
+        raw_book,
         max_entry_bytes=settings.epub_max_entry_bytes,
         max_total_bytes=settings.epub_max_total_bytes,
         max_entries=settings.epub_max_entries,
@@ -113,11 +117,11 @@ async def regenerate_covers(
 
         async with async_session_factory() as session:
             rows = await session.execute(
-                select(File.drive_file_id).where(
+                select(File.drive_file_id, File.filename).where(
                     File.status == FileStatus.organised, File.book_id.is_not(None)
                 )
             )
-            missing = [r[0] for r in rows.all() if r[0] not in have]
+            missing = [(r[0], r[1]) for r in rows.all() if r[0] not in have]
 
         todo = missing if limit is None else missing[:limit]
         counts["remaining"] = len(missing) - len(todo)
@@ -125,13 +129,18 @@ async def regenerate_covers(
 
         sem = asyncio.Semaphore(_COVER_CONCURRENCY)
 
-        async def run(drive_id: str) -> None:
+        async def run(entry: tuple[str, str]) -> None:
+            drive_id, filename = entry
             async with sem:
                 # Fresh provider per file — httplib2 isn't safe to share
                 # across the threads asyncio.to_thread hands work to.
                 provider = DriveProvider(build_drive_service(creds))
                 try:
-                    counts[await asyncio.to_thread(_make_one, provider, covers_folder_id, drive_id)] += 1
+                    counts[
+                        await asyncio.to_thread(
+                            _make_one, provider, covers_folder_id, drive_id, filename
+                        )
+                    ] += 1
                 except Exception:
                     logger.exception("cover generation failed for %s", drive_id)
                     counts["failed"] += 1

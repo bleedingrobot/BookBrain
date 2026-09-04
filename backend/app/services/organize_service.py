@@ -4,6 +4,7 @@ import re
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
+from pathlib import PurePosixPath
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
@@ -46,12 +47,19 @@ def _sanitize(segment: str) -> str:
 
 
 def build_target_path(
-    *, title: str, author_name: str | None, series_name: str | None, series_number: float | None
+    *,
+    title: str,
+    author_name: str | None,
+    series_name: str | None,
+    series_number: float | None,
+    extension: str = ".epub",
 ) -> tuple[list[str], str]:
     """Returns (folder_segments, filename). `folder_segments` is relative to
     the configured library root — e.g. ["Frank Herbert", "Dune Chronicles"].
-    `filename` is "Author, Title, Series, Part N.epub", trimmed down to
-    whichever of those fields are actually known."""
+    `filename` is "Author, Title, Series, Part N<extension>", trimmed down to
+    whichever of those fields are actually known. `extension` preserves the
+    file's original format (.epub / .kpub / .cbz) — organize renames, it
+    never converts."""
     folders: list[str] = []
     if author_name:
         folders.append(_sanitize(author_name))
@@ -66,7 +74,7 @@ def build_target_path(
         parts.append(_sanitize(series_name))
         if series_number is not None:
             parts.append(f"{series_number:g}")
-    filename = ", ".join(parts) + ".epub"
+    filename = ", ".join(parts) + extension
 
     return folders, filename
 
@@ -335,6 +343,9 @@ class OrganizeService:
             author_name=author_name,
             series_name=series_name,
             series_number=book.series_number,
+            # Keep whatever format the file already is — organize moves and
+            # renames, it never converts.
+            extension=PurePosixPath(file_row.filename).suffix.lower() or ".epub",
         )
 
         if dry_run:

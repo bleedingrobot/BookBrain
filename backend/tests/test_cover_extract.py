@@ -116,7 +116,7 @@ def test_make_one_writes_a_jpg_when_the_epub_has_a_cover() -> None:
 
     epub = _epub(_OPF_EPUB3, {"OEBPS/cover.png": _png(), "OEBPS/c1.xhtml": b"x"})
     p = _FakeCoverProvider(epub)
-    assert _make_one(p, "covers-folder", "drive-1") == "done"
+    assert _make_one(p, "covers-folder", "drive-1", "book.epub") == "done"
     assert p.uploaded == [("drive-1.jpg", p.uploaded[0][1])]
     assert p.uploaded[0][1] > 0
 
@@ -126,5 +126,21 @@ def test_make_one_writes_a_nocover_marker_when_there_is_no_cover() -> None:
 
     epub = _epub(_OPF_NOCOVER, {"OEBPS/c1.xhtml": b"x"})
     p = _FakeCoverProvider(epub)
-    assert _make_one(p, "covers-folder", "drive-2") == "nocover"
+    assert _make_one(p, "covers-folder", "drive-2", "book.epub") == "nocover"
     assert p.uploaded == [("drive-2.nocover", 0)]
+
+
+def test_make_one_pulls_first_page_as_cover_for_a_cbz() -> None:
+    import io
+    import zipfile
+
+    from app.services.cover_service import _make_one
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("000.jpg", _png("blue"))
+        zf.writestr("001.jpg", _png("green"))
+    p = _FakeCoverProvider(buf.getvalue())
+    assert _make_one(p, "covers-folder", "drive-3", "Batman 001.cbz") == "done"
+    assert p.uploaded == [("drive-3.jpg", p.uploaded[0][1])]
+    assert p.uploaded[0][1] > 0

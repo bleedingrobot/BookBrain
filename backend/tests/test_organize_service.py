@@ -73,6 +73,18 @@ def test_build_target_path_series_without_series_number() -> None:
     assert filename == "Author, Novella, Series.epub"
 
 
+def test_build_target_path_preserves_non_epub_extension() -> None:
+    _, filename = build_target_path(
+        title="Saga",
+        author_name="Brian K. Vaughan",
+        series_name="Saga",
+        series_number=1.0,
+        extension=".cbz",
+    )
+
+    assert filename == "Brian K. Vaughan, Saga, Saga, 1.cbz"
+
+
 class _FakeFolderProvider:
     def __init__(self) -> None:
         self.folders: dict[str, list[dict]] = {}

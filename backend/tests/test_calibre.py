@@ -18,6 +18,8 @@ def test_is_convertible_rejects_other_extensions() -> None:
     assert is_convertible("book.kpub") is False
     assert is_convertible("cover.jpg") is False
     assert is_convertible("book.pdf") is False
+    # .cbz is ingested as-is (never converted), so it's not "convertible".
+    assert is_convertible("comic.cbz") is False
 
 
 async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> None:

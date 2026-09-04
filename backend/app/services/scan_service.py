@@ -24,6 +24,7 @@ from app.data.models import (
     Review,
     ReviewStatus,
 )
+from app.providers.comic.archive import is_comic_archive, parse_comic_archive
 from app.providers.convert.calibre import convert_to_epub, is_convertible
 from app.providers.drive.classify import classify_file, is_supported_ebook
 from app.providers.drive.client import build_drive_service
@@ -96,13 +97,16 @@ class ScanService:
     scan only processes what's new (SPEC.md's "scanner as idempotent
     function" simplification for v1 — no webhooks yet).
 
-    .epub and .kpub are processed as-is; .mobi and .rtf are converted to
-    epub first via Calibre's ebook-convert CLI, replacing the Drive file's
+    .epub, .kpub and .cbz are processed as-is; .mobi and .rtf are converted
+    to epub first via Calibre's ebook-convert CLI, replacing the Drive file's
     content/name in place (same drive_file_id) before anything else runs.
-    The inbox listing is unfiltered by Drive mimeType (kpub has no
-    reliable one), and anything that's neither a supported nor a
-    convertible extension is trashed on sight rather than left in the
-    book dump folder or silently ignored.
+    A .cbz carries only what its ComicInfo.xml sidecar (if any) says plus its
+    filename — identification leans on the filename, so comics normally land
+    in the review queue for a quick human glance. The inbox listing is
+    unfiltered by Drive mimeType (kpub/cbz have no reliable one), and
+    anything that's neither a supported nor a convertible extension is
+    trashed on sight rather than left in the book dump folder or silently
+    ignored.
 
     Threshold routing here only sets `files.status`/`status_reason` for the
     <85 confidence tier (always `review`, always actionable via the Review
@@ -166,7 +170,7 @@ class ScanService:
 
         try:
             # Every file in the inbox, not just ebooks — anything that isn't
-            # a supported .epub/.kpub or a convertible .mobi/.rtf gets
+            # a supported .epub/.kpub/.cbz or a convertible .mobi/.rtf gets
             # removed from the book dump by _process_file below, not just
             # ignored.
             raw_files = await asyncio.to_thread(provider.list_files_in_folder, folder_id)
@@ -474,15 +478,27 @@ class ScanService:
                     counts["duplicate"] += 1
                     return
 
+        is_comic = is_comic_archive(raw["name"])
         try:
             with _timed(timings, "parse"):
-                evidence = parse_epub_safely(
-                    data,
-                    max_entry_bytes=settings.epub_max_entry_bytes,
-                    max_total_bytes=settings.epub_max_total_bytes,
-                    max_entries=settings.epub_max_entries,
-                    timeout_seconds=settings.epub_parse_timeout_seconds,
-                )
+                if is_comic:
+                    # .cbz is kept as-is — no conversion. This only reads a
+                    # ComicInfo.xml sidecar if the archive has one; otherwise
+                    # identification runs on the filename alone.
+                    evidence = parse_comic_archive(
+                        data,
+                        max_entry_bytes=settings.epub_max_entry_bytes,
+                        max_total_bytes=settings.epub_max_total_bytes,
+                        max_entries=settings.epub_max_entries,
+                    )
+                else:
+                    evidence = parse_epub_safely(
+                        data,
+                        max_entry_bytes=settings.epub_max_entry_bytes,
+                        max_total_bytes=settings.epub_max_total_bytes,
+                        max_entries=settings.epub_max_entries,
+                        timeout_seconds=settings.epub_parse_timeout_seconds,
+                    )
         except EpubParseError as exc:
             with _timed(timings, "db"):
                 async with db_lock, async_session_factory() as session:
@@ -507,7 +523,9 @@ class ScanService:
         # Metadata sources/candidates are built into ORM rows here (cheap,
         # no I/O) but not added to any session until the final DB section —
         # binding `.file` only happens once file_row exists there.
-        metadata_sources = _evidence_to_metadata_sources(raw["name"], evidence)
+        metadata_sources = _evidence_to_metadata_sources(
+            raw["name"], evidence, source="comic" if is_comic else "epub"
+        )
 
         # A sha256 match on content that's already been human-corrected is
         # handled by the duplicate branch above (resolve_corrected_book_id)
@@ -700,26 +718,28 @@ def _proposed_json(identification: IdentificationResult) -> dict:
     }
 
 
-def _evidence_to_metadata_sources(filename: str, evidence: EpubEvidence) -> list[MetadataSource]:
+def _evidence_to_metadata_sources(
+    filename: str, evidence: EpubEvidence, *, source: str = "epub"
+) -> list[MetadataSource]:
     fields: list[tuple[str, str, str]] = [("filename", filename, "drive")]
     if evidence.title:
-        fields.append(("title", evidence.title, "epub"))
+        fields.append(("title", evidence.title, source))
     if evidence.authors:
-        fields.append(("authors", ", ".join(evidence.authors), "epub"))
+        fields.append(("authors", ", ".join(evidence.authors), source))
     if evidence.language:
-        fields.append(("language", evidence.language, "epub"))
+        fields.append(("language", evidence.language, source))
     if evidence.description:
-        fields.append(("description", evidence.description, "epub"))
+        fields.append(("description", evidence.description, source))
     if evidence.isbn13:
-        fields.append(("isbn13", evidence.isbn13, "epub"))
+        fields.append(("isbn13", evidence.isbn13, source))
     if evidence.isbn10:
-        fields.append(("isbn10", evidence.isbn10, "epub"))
+        fields.append(("isbn10", evidence.isbn10, source))
     if evidence.series:
-        fields.append(("series", evidence.series, "epub"))
+        fields.append(("series", evidence.series, source))
     if evidence.series_number is not None:
-        fields.append(("series_number", str(evidence.series_number), "epub"))
+        fields.append(("series_number", str(evidence.series_number), source))
     if evidence.text_snippet:
-        fields.append(("text_snippet", evidence.text_snippet, "epub"))
+        fields.append(("text_snippet", evidence.text_snippet, source))
     return [
         MetadataSource(field_name=name, value=value, source=source) for name, value, source in fields
     ]

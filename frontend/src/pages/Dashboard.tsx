@@ -420,6 +420,20 @@ export function Dashboard() {
                   >
                     Select all TXT
                   </button>
+                  <button
+                    className="text-xs text-neutral-400 underline"
+                    onClick={() =>
+                      setSelectedTorrents(
+                        new Set(
+                          localPending.data
+                            ?.filter((f) => f.filename.toLowerCase().endsWith('.cbz'))
+                            .map((f) => f.id),
+                        ),
+                      )
+                    }
+                  >
+                    Select all CBZ
+                  </button>
                 </div>
 
                 <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">

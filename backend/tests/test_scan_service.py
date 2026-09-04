@@ -199,6 +199,62 @@ async def test_process_file_accepts_kpub_extension(db_session) -> None:
     assert file_row.drive_file_id == "drive-kpub"
 
 
+async def test_process_file_accepts_cbz_without_converting(db_session) -> None:
+    import io
+    import zipfile
+
+    comicinfo = "<ComicInfo><Series>Saga</Series><Number>1</Number><Writer>Brian K. Vaughan</Writer></ComicInfo>"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("000.jpg", b"\xff\xd8\xff\xe0 fake jpeg" * 500)
+        zf.writestr("ComicInfo.xml", comicinfo)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(buf.getvalue())
+    raw = {"id": "drive-cbz", "name": "Saga 001.cbz", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
+
+    assert counts["new"] == 1
+    assert counts["converted"] == 0
+    assert provider.trash_calls == []
+    assert provider.update_content_calls == []  # kept as-is, no rewrite
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.drive_file_id == "drive-cbz"
+    assert file_row.filename == "Saga 001.cbz"
+    assert file_row.book_id is not None
+
+    sources = {
+        (s.field_name, s.source)
+        for s in (await db_session.execute(select(MetadataSource))).scalars().all()
+    }
+    assert ("series", "comic") in sources
+    assert ("authors", "comic") in sources
+
+
+async def test_process_file_marks_cbz_with_no_images_as_unidentified(db_session) -> None:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("notes.txt", b"no pages here")
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(buf.getvalue())
+    raw = {"id": "drive-bad-cbz", "name": "empty.cbz", "parents": ["p"], "size": "100"}
+    counts = _counts()
+    failures: list = []
+
+    await service._process_file(provider, raw, get_settings(), counts, failures, asyncio.Lock())
+
+    assert counts["failed"] == 1
+    assert "no page images" in failures[0].reason
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "unidentified"
+
+
 async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_session) -> None:
     service = _no_network_scan_service()
     provider = _FakeDriveProvider(b"not a book")

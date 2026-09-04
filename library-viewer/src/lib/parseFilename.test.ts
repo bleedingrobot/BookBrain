@@ -40,4 +40,13 @@ describe('parseFilename', () => {
   it('strips .kpub too, case-insensitively', () => {
     expect(parseFilename('Book.KPUB').title).toBe('Book')
   })
+
+  it('strips .cbz comic archives too', () => {
+    expect(parseFilename('Brian K. Vaughan, Saga, Saga, 1.cbz')).toEqual({
+      author: 'Brian K. Vaughan',
+      title: 'Saga',
+      series: 'Saga',
+      seriesNumber: '1',
+    })
+  })
 })
