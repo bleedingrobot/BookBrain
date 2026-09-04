@@ -42,6 +42,29 @@ class AnthropicIdentificationClient:
 
         raise AIIdentificationError("model did not return the identify_book tool call")
 
+    async def describe(self, title: str, author: str | None) -> str | None:
+        """A short back-cover-style blurb from the model's own knowledge, or
+        None if it doesn't recognise the book. Used only to fill descriptions
+        that neither the EPUB nor any metadata provider had."""
+        who = f'"{title}" by {author}' if author else f'"{title}"'
+        prompt = (
+            f"Write a 2-3 sentence back-cover blurb for the book {who}, using only "
+            "what you actually know about this specific book — no invented plot "
+            "points. If you don't recognise it, or aren't confident it's a real "
+            "published book, reply with exactly: UNKNOWN"
+        )
+        response = await self._client.messages.create(
+            model=self.model_name,
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if response.stop_reason == "refusal":
+            return None
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        if not text or text.upper().startswith("UNKNOWN"):
+            return None
+        return text
+
     async def identify_series(self, title: str, author: str | None) -> tuple[AISeriesResult, dict]:
         who = f'"{title}" by {author}' if author else f'"{title}"'
         prompt = (

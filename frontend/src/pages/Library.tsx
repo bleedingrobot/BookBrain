@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../services/api'
 import { useCoverStatus } from '../hooks/useCoverStatus'
+import { useDescriptionStatus } from '../hooks/useDescriptionStatus'
 import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
 import { useRebuildStatus } from '../hooks/useRebuildStatus'
 
@@ -51,6 +52,10 @@ export function Library() {
   const [indexBusy, setIndexBusy] = useState(false)
   const [indexError, setIndexError] = useState<string | null>(null)
   const [indexResult, setIndexResult] = useState<number | null>(null)
+  const [descJobId, setDescJobId] = useState<string | null>(null)
+  const [descError, setDescError] = useState<string | null>(null)
+  const [descStarting, setDescStarting] = useState(false)
+  const [descUseAi, setDescUseAi] = useState(false)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -67,6 +72,7 @@ export function Library() {
   const organize = useOrganizeStatus(organizeJobId)
   const rebuild = useRebuildStatus(rebuildJobId)
   const covers = useCoverStatus(coverJobId)
+  const descriptions = useDescriptionStatus(descJobId)
 
   const clearLibrary = useMutation({
     mutationFn: api.clearLibrary,
@@ -130,6 +136,19 @@ export function Library() {
       setCoverJobId(null)
     }
   }, [covers.isError])
+
+  useEffect(() => {
+    if (descriptions.isError) {
+      setDescError('Lost track of the description job — the server may have restarted. Re-run to continue.')
+      setDescJobId(null)
+    }
+  }, [descriptions.isError])
+
+  useEffect(() => {
+    if (descriptions.data?.status === 'done') {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    }
+  }, [descriptions.data?.status, queryClient])
 
   const visibleFiles =
     status === undefined
@@ -229,6 +248,25 @@ export function Library() {
             </button>
             <button
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              title="Fills in missing book descriptions from Google Books / Open Library (free). Tick the box to also have Claude write one for anything still blank (uses API credits)."
+              disabled={descStarting || descriptions.data?.status === 'running'}
+              onClick={async () => {
+                setDescError(null)
+                setDescStarting(true)
+                try {
+                  const job = await api.backfillDescriptions(descUseAi)
+                  setDescJobId(job.job_id)
+                } catch (err) {
+                  setDescError(err instanceof ApiError ? err.message : 'Failed to start description job.')
+                } finally {
+                  setDescStarting(false)
+                }
+              }}
+            >
+              {descriptions.data?.status === 'running' ? 'Filling descriptions…' : 'Fill descriptions'}
+            </button>
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
               disabled={exporting}
               onClick={async () => {
                 setExportError(null)
@@ -303,6 +341,26 @@ export function Library() {
               {covers.data.no_cover} with no cover, {covers.data.failed} failed
               {covers.data.status === 'running' && covers.data.remaining > 0
                 ? `, ${covers.data.remaining} to go`
+                : ''}
+            </p>
+          )}
+          <label className="mt-1 flex items-center justify-end gap-1.5 text-xs text-neutral-500">
+            <input
+              type="checkbox"
+              checked={descUseAi}
+              onChange={(e) => setDescUseAi(e.target.checked)}
+            />
+            Also write blurbs with Claude for anything still blank (uses API credits)
+          </label>
+          {descError && <p className="mt-1 text-xs text-red-600">{descError}</p>}
+          {descriptions.data && (
+            <p className="mt-1 text-xs text-neutral-500">
+              descriptions: {descriptions.data.status} — {descriptions.data.from_provider} from a
+              source
+              {descriptions.data.from_ai > 0 ? `, ${descriptions.data.from_ai} from Claude` : ''},{' '}
+              {descriptions.data.not_found} not found
+              {descriptions.data.status === 'running' && descriptions.data.remaining > 0
+                ? `, ${descriptions.data.remaining} to go`
                 : ''}
             </p>
           )}

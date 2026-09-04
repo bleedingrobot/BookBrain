@@ -308,11 +308,12 @@ class OrganizeService:
         # changed. Best-effort and never raises — a stale index just means
         # the viewer falls back to filename parsing for the new books.
         if not dry_run and creds is not None and counts["organized"] > 0:
-            await regenerate_library_index(creds, library_root_folder_id)
             # Chip away at cover thumbnails for the newly-organised books
-            # (bounded so a normal organize stays quick; the full backfill
-            # is POST /api/library/covers).
+            # (bounded so a normal organize stays quick). Descriptions aren't
+            # here — they hit slow external APIs; run POST /api/library/
+            # descriptions when you want them.
             await regenerate_covers(creds, library_root_folder_id, limit=100)
+            await regenerate_library_index(creds, library_root_folder_id)
 
         return counts, failures
 

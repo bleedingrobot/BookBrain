@@ -2,7 +2,11 @@ import type { AuthStartResponse, AuthStatus, FolderMode } from '../types/auth'
 import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive'
 import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
-import type { CoverJobStatus, LibraryExportResult } from '../types/library'
+import type {
+  CoverJobStatus,
+  DescriptionJobStatus,
+  LibraryExportResult,
+} from '../types/library'
 import type { LibraryAuditResult } from '../types/libraryAudit'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
@@ -115,6 +119,12 @@ export const api = {
   refreshLibraryIndex: () => request<{ books: number }>('/library/index', { method: 'POST' }),
   generateCovers: () => request<CoverJobStatus>('/library/covers', { method: 'POST' }),
   getCoverStatus: (jobId: string) => request<CoverJobStatus>(`/library/covers/${jobId}`),
+  backfillDescriptions: (ai: boolean) =>
+    request<DescriptionJobStatus>(`/library/descriptions${ai ? '?ai=true' : ''}`, {
+      method: 'POST',
+    }),
+  getDescriptionStatus: (jobId: string) =>
+    request<DescriptionJobStatus>(`/library/descriptions/${jobId}`),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),

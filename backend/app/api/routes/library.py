@@ -6,11 +6,13 @@ from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.provider import DriveProvider
 from app.schemas.covers import CoverJobStatus
+from app.schemas.descriptions import DescriptionJobStatus
 from app.schemas.library import LibraryExportResult
 from app.schemas.scan import ScanJobStatus
 from app.services import library_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
+from app.services.description_service import DescriptionService, get_description_service
 from app.services.drive_service import DriveService
 from app.services.library_index_service import regenerate_library_index
 from app.services.scan_service import ScanService, get_scan_service
@@ -107,6 +109,30 @@ async def get_cover_status(
     status = service.get_status(job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="cover job not found")
+    return status
+
+
+@router.post("/descriptions", response_model=DescriptionJobStatus, status_code=202)
+async def start_description_backfill(
+    background_tasks: BackgroundTasks,
+    ai: bool = False,
+    service: DescriptionService = Depends(get_description_service),
+) -> DescriptionJobStatus:
+    """Fill in `books.description` for organised books that have no blurb
+    from the EPUB or a metadata provider. `ai=true` also writes a short
+    model-generated blurb for whatever's still blank."""
+    job = service.create_job()
+    background_tasks.add_task(service.run, job.job_id, use_ai=ai)
+    return job
+
+
+@router.get("/descriptions/{job_id}", response_model=DescriptionJobStatus)
+async def get_description_status(
+    job_id: str, service: DescriptionService = Depends(get_description_service)
+) -> DescriptionJobStatus:
+    status = service.get_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="description job not found")
     return status
 
 
