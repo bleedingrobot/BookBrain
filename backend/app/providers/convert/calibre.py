@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-_CONVERTIBLE_EXTENSIONS = (".mobi", ".rtf", ".txt")
+_CONVERTIBLE_EXTENSIONS = (".mobi", ".rtf", ".txt", ".cbz")
 
 # Per-format ebook-convert flags. These are input-plugin options — passing a
 # .txt-only flag when converting a .mobi makes ebook-convert exit with
@@ -15,8 +15,15 @@ _CONVERTIBLE_EXTENSIONS = (".mobi", ".rtf", ".txt")
 # novel as one preformatted block, which then can't be split to EPUB flow
 # limits and dies with SplitError. "plain" wraps real paragraphs into <p>,
 # which splits fine.
+#
+# .cbz: comic archives are just a zip of page images. Calibre's Comic input
+# plugin defaults to converting every page to greyscale and reflowing it to a
+# device profile — fine for an e-ink reader, lossy for a library. Keep the
+# pages in colour and at their real aspect ratio, and skip the auto-trim pass
+# that can crop artwork.
 _FORMAT_CONVERT_ARGS: dict[str, tuple[str, ...]] = {
     ".txt": ("--formatting-type", "plain"),
+    ".cbz": ("--dont-grayscale", "--keep-aspect-ratio", "--disable-trim"),
 }
 
 
@@ -53,7 +60,7 @@ async def convert_to_epub(
     binary: str = "ebook-convert",
     timeout_seconds: int = 120,
 ) -> bytes:
-    """Shells out to Calibre's ebook-convert CLI to turn mobi/rtf/txt bytes
+    """Shells out to Calibre's ebook-convert CLI to turn mobi/rtf/txt/cbz bytes
     into an EPUB. Runs entirely through temp files — ebook-convert only operates
     on paths, not stdin/stdout streams.
 

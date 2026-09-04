@@ -5,12 +5,14 @@ import pytest
 from app.providers.convert.calibre import ConversionError, convert_to_epub, is_convertible
 
 
-def test_is_convertible_accepts_mobi_rtf_and_txt() -> None:
+def test_is_convertible_accepts_mobi_rtf_txt_and_cbz() -> None:
     assert is_convertible("book.mobi") is True
     assert is_convertible("book.MOBI") is True
     assert is_convertible("book.rtf") is True
     assert is_convertible("book.txt") is True
     assert is_convertible("book.TXT") is True
+    assert is_convertible("comic.cbz") is True
+    assert is_convertible("comic.CBZ") is True
 
 
 def test_is_convertible_rejects_other_extensions() -> None:
@@ -18,6 +20,7 @@ def test_is_convertible_rejects_other_extensions() -> None:
     assert is_convertible("book.kpub") is False
     assert is_convertible("cover.jpg") is False
     assert is_convertible("book.pdf") is False
+    assert is_convertible("comic.cbr") is False
 
 
 async def test_convert_to_epub_returns_output_bytes_on_success(monkeypatch) -> None:
@@ -49,6 +52,24 @@ async def test_convert_to_epub_passes_plain_formatting_for_txt(monkeypatch) -> N
     await convert_to_epub(b"plain text", source_filename="novel.txt")
     assert "--formatting-type" in seen["cmd"]
     assert seen["cmd"][seen["cmd"].index("--formatting-type") + 1] == "plain"
+
+
+async def test_convert_to_epub_passes_comic_flags_for_cbz(monkeypatch) -> None:
+    seen: dict[str, list[str]] = {}
+
+    def fake_run(cmd, **kwargs):
+        from pathlib import Path
+
+        seen["cmd"] = cmd
+        Path(cmd[2]).write_bytes(b"epub")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    await convert_to_epub(b"PK\x03\x04 fake cbz", source_filename="Batman 001.cbz")
+    assert "--dont-grayscale" in seen["cmd"]
+    assert "--keep-aspect-ratio" in seen["cmd"]
+    assert "--disable-trim" in seen["cmd"]
 
 
 async def test_convert_to_epub_passes_no_extra_args_for_mobi(monkeypatch) -> None:
