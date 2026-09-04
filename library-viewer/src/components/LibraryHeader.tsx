@@ -64,12 +64,12 @@ export function LibraryHeader({
           {menuOpen && (
             <>
               <button
-                className="fixed inset-0 z-10 cursor-default"
+                className="fixed inset-0 z-30 cursor-default"
                 aria-hidden
                 tabIndex={-1}
                 onClick={() => setMenuOpen(false)}
               />
-              <div className="card absolute right-0 z-20 mt-1 w-44 overflow-hidden p-1 shadow-lg">
+              <div className="card absolute right-0 z-40 mt-1 w-44 overflow-hidden p-1 shadow-lg">
                 {items.map((item) => (
                   <button
                     key={item.label}
