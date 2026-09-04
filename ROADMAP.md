@@ -4,6 +4,7 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 
 ## Later / maybe
 
+- **Wishlist auto-tick promptness** — reconcile only runs on GET /wishlist; a scan/organize hook would tick items off without opening the page (skipped for now to avoid the network-in-tests hang; would need a mock guard).
 - **library-viewer: "new since last visit"** — stamp a last-opened time,
   surface books added since.
 - **Populate `Book.description` for the ~950 still-blank books** — the
@@ -19,3 +20,4 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   a "Correct" button on every identified Library row (2026-09-04).
 - Tap an author / series to filter to it in the library-viewer.
 - Cover job: `.nocover` markers so no-cover EPUBs aren't re-downloaded.
+- Wishlist — free-text → Claude+GoogleBooks resolve → list, auto-ticked when the book is imported.
