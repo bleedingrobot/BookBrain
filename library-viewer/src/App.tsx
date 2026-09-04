@@ -83,7 +83,10 @@ export default function App() {
   const [sentMap, setSentMap] = useState(getSentMap)
 
   const readOnly = settings?.readOnly ?? false
-  const koboDevices = readOnly ? [] : (settings?.koboDevices ?? [])
+  // Drive-synced (lib.remoteKoboDevices) once a sync has resolved it —
+  // falls back to this browser's own local copy until then, or if the
+  // library has no synced settings file at all yet.
+  const koboDevices = readOnly ? [] : (lib.remoteKoboDevices ?? settings?.koboDevices ?? [])
   const hasKobo = koboDevices.length > 0
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
@@ -278,7 +281,17 @@ export default function App() {
     return (
       <>
         <SettingsForm
-          initial={loadPartialSettings()}
+          // Prefer whatever's synced from Drive for Kobo devices over this
+          // browser's own (possibly empty, possibly stale) local copy, once
+          // a sync has actually resolved one — otherwise re-opening
+          // Settings on a second device would show blank rows even though
+          // sending books already works. `lib.remoteKoboDevices` is null
+          // (not [] ?? []) until that first sync completes, so this only
+          // overrides once there's something real to show.
+          initial={{
+            ...loadPartialSettings(),
+            ...(lib.remoteKoboDevices ? { koboDevices: lib.remoteKoboDevices } : {}),
+          }}
           onSave={(s) => {
             const resyncNeeded =
               settings?.googleClientId !== s.googleClientId ||
@@ -287,6 +300,10 @@ export default function App() {
             setSettings(s)
             setEditingSettings(false)
             if (resyncNeeded) lib.reset()
+            // Already signed in (editing, not first-time setup) — push the
+            // Kobo device list to Drive right away rather than waiting for
+            // the next sync, so another device picks up the change sooner.
+            else if (!s.readOnly) lib.saveKoboDevices(s.koboDevices ?? [])
           }}
           onCancel={settings ? () => setEditingSettings(false) : undefined}
         />

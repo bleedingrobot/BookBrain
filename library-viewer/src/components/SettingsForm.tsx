@@ -27,8 +27,11 @@ export function SettingsForm({
       />
       <h1 className="mt-4 text-xl font-semibold tracking-tight">BookBrain Library</h1>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-        This runs entirely in your browser — nothing is sent anywhere but Google. All values below
-        are saved only in this browser's local storage.
+        This runs entirely in your browser — nothing is sent anywhere but Google. The Client ID and
+        library folder are saved only in this browser's local storage. Kobo devices also get a copy
+        saved to a small settings file in your Drive library folder, so once one signed-in device
+        has them, any other device signed in with access to that library picks them up automatically
+        — no retyping the same folder ids twice.
       </p>
 
       <form

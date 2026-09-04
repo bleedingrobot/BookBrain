@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { clearCoverCache, loadCoverManifest } from '../lib/covers'
 import { isAuthError, type DriveFile } from '../lib/drive'
 import { requestAccessToken, SCOPE_FULL, SCOPE_READONLY } from '../lib/googleAuth'
+import { loadRemoteKoboDevices, saveRemoteKoboDevices } from '../lib/koboDeviceSync'
 import {
   clearCachedIndex,
   EMPTY_INDEX,
@@ -10,7 +11,7 @@ import {
   type LibraryIndex,
 } from '../lib/libraryIndex'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from '../lib/librarySync'
-import type { ViewerSettings } from '../lib/settings'
+import type { KoboDevice, ViewerSettings } from '../lib/settings'
 
 const REFRESH_LEAD_MS = 120_000 // renew the token this long before it lapses
 
@@ -31,6 +32,15 @@ export function useLibrary(settings: ViewerSettings | null) {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+
+  // Kobo device folder ids, synced via a small JSON file in the library
+  // folder — null until the first sync resolves (App falls back to
+  // settings.koboDevices until then, so nothing regresses while this is
+  // still in flight). Not held in React state for the write side: writes
+  // just need the latest fileId, not a re-render, so a ref avoids stale
+  // closures without adding another effect dependency.
+  const [remoteKoboDevices, setRemoteKoboDevices] = useState<KoboDevice[] | null>(null)
+  const remoteSettingsFileIdRef = useRef<string | null>(null)
 
   const scope = settings?.readOnly ? SCOPE_READONLY : SCOPE_FULL
 
@@ -59,8 +69,58 @@ export function useLibrary(settings: ViewerSettings | null) {
       const idx = await fetchLibraryIndex(activeToken, settings.libraryFolderId)
       setIndex(idx)
       await loadCoverManifest(activeToken, idx.coversFolder)
+
+      if (!settings.readOnly) {
+        try {
+          const remote = await loadRemoteKoboDevices(activeToken, settings.libraryFolderId)
+          if (remote.devices !== null) {
+            remoteSettingsFileIdRef.current = remote.fileId
+            setRemoteKoboDevices(remote.devices)
+          } else if (settings.koboDevices && settings.koboDevices.length > 0) {
+            // No settings file in this library yet, but this browser has
+            // devices configured locally (the pre-sync setup, or a device
+            // added before this feature existed) — seed Drive from them so
+            // the next device/browser that signs in gets them for free
+            // instead of retyping the same folder ids.
+            const fileId = await saveRemoteKoboDevices(
+              activeToken,
+              settings.libraryFolderId,
+              settings.koboDevices,
+              null,
+            )
+            remoteSettingsFileIdRef.current = fileId
+            setRemoteKoboDevices(settings.koboDevices)
+          }
+        } catch {
+          // Best-effort — settings.koboDevices (App's fallback) still works.
+        }
+      }
     },
     [settings, flagAuthError],
+  )
+
+  // Called when Settings is saved with Kobo devices changed — pushes the
+  // new list to Drive so it's not just sitting in this one browser's
+  // localStorage. Silently gives up on failure; the local save (App's
+  // saveSettings) already went through, so nothing is lost, it just won't
+  // show up on another device until the next successful sync.
+  const saveKoboDevices = useCallback(
+    async (devices: KoboDevice[]) => {
+      if (!token || !settings || settings.readOnly) return
+      try {
+        const fileId = await saveRemoteKoboDevices(
+          token,
+          settings.libraryFolderId,
+          devices,
+          remoteSettingsFileIdRef.current,
+        )
+        remoteSettingsFileIdRef.current = fileId
+        setRemoteKoboDevices(devices)
+      } catch (err) {
+        flagAuthError(err)
+      }
+    },
+    [token, settings, flagAuthError],
   )
 
   // Keep the freshest runSync around so the silent-refresh timer and the
@@ -140,6 +200,8 @@ export function useLibrary(settings: ViewerSettings | null) {
     setTokenExpiresAt(0)
     setFiles(null)
     setIndex(EMPTY_INDEX)
+    setRemoteKoboDevices(null)
+    remoteSettingsFileIdRef.current = null
   }, [])
 
   return {
@@ -154,6 +216,8 @@ export function useLibrary(settings: ViewerSettings | null) {
     loading,
     syncing,
     syncMessage,
+    remoteKoboDevices,
+    saveKoboDevices,
     signIn,
     refresh,
     rebuild,
