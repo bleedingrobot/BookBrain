@@ -96,8 +96,8 @@ class ScanService:
     scan only processes what's new (SPEC.md's "scanner as idempotent
     function" simplification for v1 — no webhooks yet).
 
-    .epub and .kpub are processed as-is; .mobi, .rtf, .txt and .cbz are
-    converted to epub first via Calibre's ebook-convert CLI, replacing the Drive file's
+    .epub and .kpub are processed as-is; .mobi and .rtf are converted to
+    epub first via Calibre's ebook-convert CLI, replacing the Drive file's
     content/name in place (same drive_file_id) before anything else runs.
     The inbox listing is unfiltered by Drive mimeType (kpub has no
     reliable one), and anything that's neither a supported nor a
@@ -166,7 +166,7 @@ class ScanService:
 
         try:
             # Every file in the inbox, not just ebooks — anything that isn't
-            # a supported .epub/.kpub or a convertible .mobi/.rtf/.txt/.cbz gets
+            # a supported .epub/.kpub or a convertible .mobi/.rtf gets
             # removed from the book dump by _process_file below, not just
             # ignored.
             raw_files = await asyncio.to_thread(provider.list_files_in_folder, folder_id)
@@ -412,7 +412,7 @@ class ScanService:
 
         status_reason = classify_file(raw)
 
-        # mobi/rtf/txt/cbz never gets processed as-is — Calibre converts it to epub
+        # mobi/rtf never gets processed as-is — Calibre converts it to epub
         # first, and the Drive file's content/name are updated in place
         # (same drive_file_id, so everything downstream — dedup, organize,
         # the works — treats it exactly like a file that was always epub).

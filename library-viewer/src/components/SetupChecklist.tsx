@@ -54,7 +54,7 @@ export function SetupChecklist({ onBack }: { onBack: () => void }) {
 
       <ol className="mt-6">
         <Step title="1. Install prerequisites">
-          <p>Git, Node.js 20+, Python 3.11+, and (optional — for mobi/rtf/txt/cbz conversion) Calibre.</p>
+          <p>Git, Node.js 20+, Python 3.11+, and (optional — for mobi/rtf conversion) Calibre.</p>
         </Step>
 
         <Step title="2. Clone the repo">

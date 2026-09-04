@@ -16,7 +16,7 @@ def _is_watchable(filename: str) -> bool:
 
 async def scan_local_folder(session: AsyncSession, root: str) -> list[LocalFile]:
     """Walks `root` recursively, recording every not-yet-seen .epub/.kpub/
-    .mobi/.rtf/.txt/.cbz file as a pending LocalFile row (keyed by absolute path, so a
+    .mobi/.rtf/.txt file as a pending LocalFile row (keyed by absolute path, so a
     re-scan never re-offers the same file twice). Returns every row still
     pending — both newly discovered this pass and anything left over from
     an earlier scan the user hasn't copied or dismissed yet."""

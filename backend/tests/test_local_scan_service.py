@@ -31,19 +31,11 @@ async def test_scan_local_folder_discovers_supported_extensions(db_session, tmp_
     _write(tmp_path, "book.mobi")
     _write(tmp_path, "book.rtf")
     _write(tmp_path, "book.txt")
-    _write(tmp_path, "comic.cbz")
     _write(tmp_path, "cover.jpg")
 
     rows = await local_scan_service.scan_local_folder(db_session, str(tmp_path))
 
-    assert {r.filename for r in rows} == {
-        "book.epub",
-        "book.kpub",
-        "book.mobi",
-        "book.rtf",
-        "book.txt",
-        "comic.cbz",
-    }
+    assert {r.filename for r in rows} == {"book.epub", "book.kpub", "book.mobi", "book.rtf", "book.txt"}
     assert all(r.status == LocalFileStatus.pending for r in rows)
 
 
