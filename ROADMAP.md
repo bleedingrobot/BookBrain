@@ -38,11 +38,4 @@ the frontend affordance.
   workflow only builds. (Blocked on the pushing token having `workflow`
   scope.)
 
-## Config to set
-
-- **`GOOGLE_BOOKS_API_KEY` in `backend/.env`** — currently empty, so every
-  Google Books call (identification *and* the description backfill) uses
-  the shared anonymous quota, which is small and gets exhausted (HTTP
-  429). A key gives 1,000/day (requestable higher) and isolates the
-  quota. James has one saved.
 
