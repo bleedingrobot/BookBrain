@@ -14,11 +14,11 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 - **Populate `Book.description` for the ~950 still-blank books** — the
   free-source backfill (`POST /api/library/descriptions`) filled 109; the
   rest need the `ai=true` path (Claude), which costs credits.
-- **CI: run `npm run lint` + `npm test` for library-viewer** — the deploy
-  workflow only builds. (Blocked on the pushing token having `workflow`
-  scope.)
-
 ## Done (kept for context)
+
+- **CI: run `npm run lint` + `npm test` for library-viewer** before the
+  build/deploy steps (2026-09-05) — was blocked on the pushing token
+  lacking `workflow` scope; fixed with `gh auth refresh -s workflow`.
 
 - Correct an already-organised book — `POST /api/files/{id}/correct` +
   a "Correct" button on every identified Library row (2026-09-04).
