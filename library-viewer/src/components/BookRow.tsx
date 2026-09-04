@@ -18,6 +18,8 @@ interface Props {
   onSelectMany: (ids: string[], on: boolean) => void
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
+  onFilterAuthor: (author: string) => void
+  onFilterSeries: (series: string) => void
 }
 
 export function BookRow({
@@ -34,6 +36,8 @@ export function BookRow({
   onSelectMany,
   onSend,
   onDownload,
+  onFilterAuthor,
+  onFilterSeries,
 }: Props) {
   const seriesPeers = expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
   const authorPeers = expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
@@ -53,35 +57,50 @@ export function BookRow({
         />
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          className="mt-0.5 shrink-0"
           onClick={() => onExpand(row.id)}
+          aria-label="Details"
         >
           <Cover token={token} driveId={row.id} isbn={row.isbn} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium text-neutral-900 dark:text-neutral-100">
-              {row.title}
-              {row.author && <span className="ml-2 font-normal text-neutral-500">{row.author}</span>}
-            </span>
-            {(row.series || sentDevices.length > 0) && (
-              <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                {row.series && (
-                  <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
-                    {row.series}
-                    {row.seriesNumber && ` #${row.seriesNumber}`}
-                  </span>
-                )}
-                {sentDevices.map((d) => (
-                  <span
-                    key={d.folderId}
-                    className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
-                  >
-                    ✓ {d.label}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
         </button>
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="block max-w-full truncate text-left font-medium text-neutral-900 dark:text-neutral-100"
+            onClick={() => onExpand(row.id)}
+          >
+            {row.title}
+          </button>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            {row.author && (
+              <button
+                type="button"
+                className="text-xs text-neutral-500 hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+                onClick={() => onFilterAuthor(row.author!)}
+              >
+                {row.author}
+              </button>
+            )}
+            {row.series && (
+              <button
+                type="button"
+                className="badge bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-950"
+                onClick={() => onFilterSeries(row.series!)}
+              >
+                {row.series}
+                {row.seriesNumber && ` #${row.seriesNumber}`}
+              </button>
+            )}
+            {sentDevices.map((d) => (
+              <span
+                key={d.folderId}
+                className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+              >
+                ✓ {d.label}
+              </span>
+            ))}
+          </div>
+        </div>
         <div className="flex w-full shrink-0 flex-wrap items-center gap-1 pl-7 sm:w-auto sm:pl-0">
           <button className="btn btn-ghost btn-xs" onClick={() => onDownload(row.file)}>
             Download

@@ -97,6 +97,13 @@ export default function App() {
     })
   }
 
+  function filterTo(value: string, by: SortKey) {
+    setQuery(value)
+    setSort(by)
+    setFilter('all')
+    window.scrollTo({ top: 0 })
+  }
+
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -471,6 +478,8 @@ export default function App() {
               setDownloadError(err.message)
             })
           }
+          onFilterAuthor={(a) => filterTo(a, 'author')}
+          onFilterSeries={(s) => filterTo(s, 'series')}
         />
       )}
     </div>

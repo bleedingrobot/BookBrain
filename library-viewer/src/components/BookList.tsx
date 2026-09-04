@@ -25,6 +25,8 @@ interface Props {
   onExpand: (id: string) => void
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
+  onFilterAuthor: (author: string) => void
+  onFilterSeries: (series: string) => void
 }
 
 export function BookList({
@@ -44,6 +46,8 @@ export function BookList({
   onExpand,
   onSend,
   onDownload,
+  onFilterAuthor,
+  onFilterSeries,
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const visibleRows = rows.slice(0, visibleCount)
@@ -126,6 +130,8 @@ export function BookList({
                 onSelectMany={onSelectMany}
                 onSend={onSend}
                 onDownload={onDownload}
+                onFilterAuthor={onFilterAuthor}
+                onFilterSeries={onFilterSeries}
               />
             </Fragment>
           )
