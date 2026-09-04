@@ -96,3 +96,35 @@ def test_thumbnail_shrinks_and_reencodes() -> None:
 
 def test_thumbnail_none_on_bad_bytes() -> None:
     assert _thumbnail(b"nope") is None
+
+
+class _FakeCoverProvider:
+    def __init__(self, epub_bytes: bytes) -> None:
+        self._epub = epub_bytes
+        self.uploaded: list[tuple[str, int]] = []
+
+    def download_file(self, _id: str) -> bytes:
+        return self._epub
+
+    def upload_new_file(self, *, name: str, data: bytes, parent_id: str, mime_type: str) -> dict:
+        self.uploaded.append((name, len(data)))
+        return {"id": name, "name": name}
+
+
+def test_make_one_writes_a_jpg_when_the_epub_has_a_cover() -> None:
+    from app.services.cover_service import _make_one
+
+    epub = _epub(_OPF_EPUB3, {"OEBPS/cover.png": _png(), "OEBPS/c1.xhtml": b"x"})
+    p = _FakeCoverProvider(epub)
+    assert _make_one(p, "covers-folder", "drive-1") == "done"
+    assert p.uploaded == [("drive-1.jpg", p.uploaded[0][1])]
+    assert p.uploaded[0][1] > 0
+
+
+def test_make_one_writes_a_nocover_marker_when_there_is_no_cover() -> None:
+    from app.services.cover_service import _make_one
+
+    epub = _epub(_OPF_NOCOVER, {"OEBPS/c1.xhtml": b"x"})
+    p = _FakeCoverProvider(epub)
+    assert _make_one(p, "covers-folder", "drive-2") == "nocover"
+    assert p.uploaded == [("drive-2.nocover", 0)]

@@ -28,6 +28,7 @@ COVERS_FOLDER_NAME = "covers"
 _COVER_MAX_PX = 320
 _COVER_MIME = "image/jpeg"
 _COVER_CONCURRENCY = 4
+_NO_COVER_EXT = ".nocover"  # 0-byte marker: this EPUB has no extractable cover
 
 
 def _thumbnail(raw: bytes) -> bytes | None:
@@ -63,10 +64,16 @@ def _make_one(provider: DriveProvider, covers_folder_id: str, drive_file_id: str
         max_total_bytes=settings.epub_max_total_bytes,
         max_entries=settings.epub_max_entries,
     )
-    if cover_raw is None:
-        return "nocover"
-    thumb = _thumbnail(cover_raw)
+    thumb = _thumbnail(cover_raw) if cover_raw is not None else None
     if thumb is None:
+        # Leave a marker so this EPUB isn't re-downloaded on every run just
+        # to rediscover it has no usable cover.
+        provider.upload_new_file(
+            name=f"{drive_file_id}{_NO_COVER_EXT}",
+            data=b"",
+            parent_id=covers_folder_id,
+            mime_type="text/plain",
+        )
         return "nocover"
     provider.upload_new_file(
         name=f"{drive_file_id}.jpg",
@@ -97,8 +104,10 @@ async def regenerate_covers(
         covers_folder_id = await asyncio.to_thread(
             _ensure_covers_folder, lister, library_folder_id
         )
+        # A book is "handled" once it has either a .jpg thumbnail or a
+        # .nocover marker.
         have = {
-            f["name"].removesuffix(".jpg")
+            f["name"].removesuffix(".jpg").removesuffix(_NO_COVER_EXT)
             for f in await asyncio.to_thread(lister.list_files_in_folder, covers_folder_id)
         }
 
