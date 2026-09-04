@@ -325,13 +325,8 @@ export default function App() {
 
   const filterChips: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'All' },
-    ...koboDevices.flatMap((d) => [
-      { key: `off:${d.folderId}` as FilterKey, label: `Not on ${d.label}` },
-      { key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` },
-    ]),
-    ...(koboDevices.length > 1 ? [{ key: 'unsent' as FilterKey, label: 'On no device' }] : []),
+    ...koboDevices.map((d) => ({ key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` })),
     ...(incompleteSeries.size > 0 ? [{ key: 'gaps' as FilterKey, label: 'Missing books' }] : []),
-    { key: 'noseries', label: 'No series' },
   ]
 
   const koboStatus = koboError || koboMessage
@@ -416,7 +411,7 @@ export default function App() {
             ))}
           </select>
         </div>
-        {filterChips.length > 2 && (
+        {filterChips.length > 1 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {filterChips.map((chip) => (
               <button
