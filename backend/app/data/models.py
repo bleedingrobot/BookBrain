@@ -360,6 +360,25 @@ class LocalFile(Base):
     discovered_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class DismissedReidentFlag(Base):
+    """A book the Bulk Re-identify Audit flagged as diverging from its stored
+    identification that James has reviewed and decided not to act on (a
+    false positive, or a divergence he's chosen to leave). The reident
+    report filters these out by book id at read time — same pattern as
+    DismissedAuditCluster. Keyed on book id alone: the report row *is* a
+    book, and any later real change to that book (a /correct) is a
+    different question that a fresh rebuild will re-surface if it still
+    diverges."""
+
+    __tablename__ = "dismissed_reident_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    book_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("book_id", name="uq_dismissed_reident_flag"),)
+
+
 class AuditClusterKind(str, enum.Enum):
     series = "series"
     author = "author"
@@ -405,4 +424,5 @@ __all__ = [
     "WishlistItem",
     "AuditClusterKind",
     "DismissedAuditCluster",
+    "DismissedReidentFlag",
 ]

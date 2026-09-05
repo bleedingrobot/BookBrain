@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SeriesMergePanel } from '../components/SeriesMergePanel'
+import { ReidentAuditPanel } from '../components/ReidentAuditPanel'
 import type { AuditClusterKind, SimilarNameCluster } from '../types/libraryAudit'
 import { api } from '../services/api'
 
@@ -128,11 +129,42 @@ function DismissedClusters() {
 
 export function LibraryAudit() {
   const audit = useQuery({ queryKey: ['library-audit'], queryFn: api.getLibraryAudit })
+  const [tab, setTab] = useState<'split' | 'reident'>('split')
 
   return (
     <div className="p-6">
       <h1 className="text-xl font-semibold">Library Audit</h1>
-      <p className="mt-1 max-w-2xl text-sm text-neutral-500">
+
+      <div className="mt-3 flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
+        {(
+          [
+            ['split', 'Split records'],
+            ['reident', 'Re-identification'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${
+              tab === key
+                ? 'border-neutral-900 font-medium text-neutral-900 dark:border-neutral-100 dark:text-neutral-100'
+                : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'reident' && (
+        <div className="mt-4">
+          <ReidentAuditPanel />
+        </div>
+      )}
+
+      {tab === 'split' && (
+        <div className="mt-4">
+      <p className="max-w-2xl text-sm text-neutral-500">
         Flags series/author names that look similar enough to be the same thing split across two
         records — usually because identification phrased it differently across two batches. Since
         organize names Drive folders after these, a split record here almost always means a split
@@ -169,7 +201,9 @@ export function LibraryAudit() {
         </>
       )}
 
-      <DismissedClusters />
+          <DismissedClusters />
+        </div>
+      )}
     </div>
   )
 }

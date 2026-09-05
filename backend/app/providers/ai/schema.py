@@ -86,6 +86,54 @@ IDENTIFY_SERIES_TOOL = {
 }
 
 
+AUDIT_BOOK_IDENTITY_TOOL = {
+    "name": "audit_book_identity",
+    "description": (
+        "A book already filed in a personal library is being re-checked. You are "
+        "given the identification currently stored for it, the evidence it was "
+        "identified from, and what book-metadata providers say now. Decide "
+        "whether the stored identification is still correct. Pay particular "
+        "attention to the series: report series_is_real=false if the stored "
+        "series name is not an actual published series this book belongs to "
+        "(a common past mistake was inventing a plausible-sounding series). "
+        "Only fill the corrected_* fields when verdict is 'stored_is_wrong'; "
+        "leave corrected_series null if the book is really a standalone."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {
+                "type": "string",
+                "enum": ["stored_is_correct", "stored_is_wrong", "uncertain"],
+            },
+            "series_is_real": {
+                "type": "boolean",
+                "description": "Is the stored series an actual published series this book is part of?",
+            },
+            "corrected_title": {"type": ["string", "null"]},
+            "corrected_author": {"type": ["string", "null"]},
+            "corrected_series": {"type": ["string", "null"]},
+            "corrected_series_number": {"type": ["number", "null"]},
+            "explanation": {
+                "type": "string",
+                "description": "1-3 sentences shown to the human reviewer: what's wrong (or right) and why.",
+            },
+        },
+        "required": [
+            "verdict",
+            "series_is_real",
+            "corrected_title",
+            "corrected_author",
+            "corrected_series",
+            "corrected_series_number",
+            "explanation",
+        ],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
 PROPOSE_SERIES_MERGE_TOOL = {
     "name": "propose_series_merge",
     "description": (

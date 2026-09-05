@@ -16,3 +16,9 @@ ORGANIZE_DRY_RUN = "organize_dry_run"
 # local time.
 NIGHTLY_RUN_ENABLED = "nightly_run_enabled"
 NIGHTLY_RUN_HOUR = "nightly_run_hour"
+
+# Cached Bulk Re-identify Audit report (reident_audit_service). A JSON blob —
+# expensive to build (a provider lookup per organised book), so it's stored
+# and only regenerated on demand, like the nightly job_runs trail. Carries
+# its own generated_at.
+REIDENT_REPORT_JSON = "reident_report_json"

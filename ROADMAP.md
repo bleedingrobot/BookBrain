@@ -7,7 +7,8 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB
-  *(done, see below)*, (5) bulk re-identify audit.
+  *(done, see below)*, (5) bulk re-identify audit *(done, see below)*. All four
+  shipped.
 - **Series merge — auto-create a `library_rule` (series_alias)** on apply, so
   the next scan that phrases the merged-away name the old way gets corrected
   by `find_rule_match` instead of re-forking the Series row (and Drive
@@ -28,6 +29,37 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   free-source backfill (`POST /api/library/descriptions`) filled 109; the
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
+
+- **Bulk Re-identify Audit** (2026-09-06) — `prompts/05`. A second tab on the
+  Library Audit page. Where task 1 compares DB row *names*, this re-derives
+  what identification would say now and diffs it against what's stored, per
+  organised book. `app/services/reident_audit_service.py` +
+  `GET/POST /api/library-audit/reident*`. The free pass makes **zero**
+  Anthropic calls — it reconstructs the EPUB evidence + candidates from the
+  stored `metadata_sources`/`book_candidates`, reuses the cached
+  `ai_decisions`, recomputes the deterministic `confidence_service` score, and
+  does free Google Books / Open Library lookups. Signals: series not backed by
+  EPUB/candidate/provider and not human-set (the AI-invented-series case),
+  provider consensus now disagreeing on title/author, stored ISBN resolving
+  elsewhere, stored confidence below the auto bar, two organised books with the
+  same canonical identity. Report cached as a JSON blob in `settings`
+  (`reident_report_json`, carries `generated_at`), rebuilt on demand as a
+  tracked in-memory job. Deep re-check = opt-in, capped at 50/run, shows a
+  credit estimate first, only touches already-flagged rows, writes verdicts
+  back onto the cached report (never a book row — the whole feature is
+  read-only; acting on a row is the existing `/correct` flow). Per-row dismiss
+  persisted in `dismissed_reident_flags`, filtered at read time like the audit
+  cluster dismissals. Follow-ups worth noting:
+  - `below_auto_organize` fires below `confidence_auto_flagged` (85), not 95 —
+    scan deliberately auto-organizes the 85-94 tier in v1, so flagging all of
+    those as "shouldn't be here" would be pure noise.
+  - Reconstructed candidates lack `isbn13` (never stored on `book_candidates`),
+    so the evidence-hash fidelity test covers the candidate-free path only;
+    the free pass doesn't depend on hash matching (it reads `ai_decisions` by
+    file id, not by hash).
+  - A run is ~1 provider call per organised book (2 when it has an ISBN),
+    bounded at concurrency 4 — minutes on the ~2200-book library. A provider
+    429 is treated as "no data / inconclusive", never as "everything diverged".
 
 - **Write resolved metadata + cover into the EPUB** (2026-09-06) — reverses
   SPEC §3's "no EPUB metadata writing". `app/providers/epub/writer.py`

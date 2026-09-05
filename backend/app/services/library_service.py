@@ -10,6 +10,7 @@ from app.data.models import (
     Author,
     Book,
     BookCandidate,
+    DismissedReidentFlag,
     File,
     Identifier,
     LibraryRule,
@@ -28,6 +29,9 @@ from app.services import file_service
 # folder choice, dry-run mode survive a clear so you don't have to
 # reconnect and re-pick folders just to retest the pipeline).
 _TABLES_IN_DELETE_ORDER = [
+    # book-id-keyed, no FK — a stale flag would wrongly suppress a re-scanned
+    # book that happens to reuse the id, so it goes when the library does.
+    DismissedReidentFlag,
     LibraryRule,
     Review,
     Operation,

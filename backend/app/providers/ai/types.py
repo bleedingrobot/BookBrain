@@ -58,6 +58,29 @@ class AISeriesResult:
 
 
 @dataclass
+class AIAuditResult:
+    verdict: str  # "stored_is_correct" | "stored_is_wrong" | "uncertain"
+    series_is_real: bool
+    corrected_title: str | None
+    corrected_author: str | None
+    corrected_series: str | None
+    corrected_series_number: float | None
+    explanation: str
+
+    @classmethod
+    def from_tool_input(cls, data: dict) -> "AIAuditResult":
+        return cls(
+            verdict=data["verdict"],
+            series_is_real=bool(data["series_is_real"]),
+            corrected_title=data.get("corrected_title"),
+            corrected_author=data.get("corrected_author"),
+            corrected_series=data.get("corrected_series"),
+            corrected_series_number=data.get("corrected_series_number"),
+            explanation=data["explanation"],
+        )
+
+
+@dataclass
 class AISeriesMergeResult:
     is_same_series: bool
     canonical_series_name: str

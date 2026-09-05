@@ -9,6 +9,13 @@ import type {
   MetadataWritebackJobStatus,
 } from '../types/library'
 import type { AuditClusterKind, DismissedClusterInfo, LibraryAuditResult } from '../types/libraryAudit'
+import type {
+  DeepCheckEstimate,
+  DeepCheckResult,
+  ReidentDismissedInfo,
+  ReidentRebuildJobStatus,
+  ReidentReport,
+} from '../types/reidentAudit'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
@@ -123,6 +130,31 @@ export const api = {
   listDismissedClusters: () => request<DismissedClusterInfo[]>('/library-audit/dismissed'),
   restoreDismissedCluster: (id: number) =>
     request<void>(`/library-audit/dismissed/${id}/restore`, { method: 'POST' }),
+  getReidentReport: () => request<ReidentReport>('/library-audit/reident'),
+  rebuildReidentReport: () =>
+    request<ReidentRebuildJobStatus>('/library-audit/reident/rebuild', { method: 'POST' }),
+  getReidentRebuildStatus: (jobId: string) =>
+    request<ReidentRebuildJobStatus>(`/library-audit/reident/rebuild/${jobId}`),
+  estimateReidentDeepCheck: (bookIds: number[]) =>
+    request<DeepCheckEstimate>('/library-audit/reident/deep-check/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ book_ids: bookIds }),
+    }),
+  runReidentDeepCheck: (bookIds: number[]) =>
+    request<DeepCheckResult>('/library-audit/reident/deep-check', {
+      method: 'POST',
+      body: JSON.stringify({ book_ids: bookIds }),
+    }),
+  dismissReidentFlag: (bookId: number) =>
+    request<void>('/library-audit/reident/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId }),
+    }),
+  listReidentDismissed: () =>
+    request<ReidentDismissedInfo[]>('/library-audit/reident/dismissed'),
+  restoreReidentFlag: (bookId: number) =>
+    request<void>(`/library-audit/reident/dismissed/${bookId}/restore`, { method: 'POST' }),
+
   investigateSeriesMerge: (seriesIds: number[]) =>
     request<SeriesMergeProposal>('/library-audit/series/investigate', {
       method: 'POST',
