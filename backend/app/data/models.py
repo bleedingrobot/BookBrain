@@ -46,6 +46,10 @@ class OperationAction(str, enum.Enum):
     move = "move"
     rename = "rename"
     move_and_rename = "move_and_rename"
+    # Rewrote the .epub's embedded OPF metadata (title/author/series/cover)
+    # in place. Not app-undoable — we don't keep the original bytes (Drive's
+    # own revision history is the fallback). See operation_service.undo_operation.
+    write_metadata = "write_metadata"
 
 
 class OperationStatus(str, enum.Enum):
@@ -137,6 +141,17 @@ class File(Base):
     drive_parent_id: Mapped[str | None] = mapped_column(String)
     filename: Mapped[str] = mapped_column(String, nullable=False)
     sha256: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # The content hash this file had *before* BookBrain rewrote its embedded
+    # metadata (see metadata_writeback_service). NULL if never rewritten.
+    # Exact-duplicate detection and sticky corrections (SPEC §1) match on
+    # this too, so a re-upload of the pristine original still resolves to
+    # the same book / inherits the same human correction.
+    original_sha256: Mapped[str | None] = mapped_column(String, index=True)
+    # Set once the embedded OPF metadata has been written to match the
+    # resolved book — a hash of (title, author, series, series_number). The
+    # writeback job skips a file whose key already matches, so re-runs cause
+    # no hash churn; a later correction changes the key and it's picked up.
+    embedded_metadata_key: Mapped[str | None] = mapped_column(String)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"))
     status: Mapped[FileStatus] = mapped_column(

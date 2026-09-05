@@ -106,6 +106,36 @@ async def test_undo_raises_for_missing_operation(db_session) -> None:
         await operation_service.undo_operation(db_session, None, 999, provider=_FakeProvider())
 
 
+async def test_undo_rejects_write_metadata_operation(db_session) -> None:
+    """A metadata rewrite isn't a move and BookBrain keeps no original
+    bytes — never undoable, even though its status is `done`."""
+    file_row = File(
+        drive_file_id="drive-9",
+        drive_parent_id="library-folder",
+        filename="Dune.epub",
+        sha256="new-hash",
+        size_bytes=120,
+        status=FileStatus.organised,
+    )
+    db_session.add(file_row)
+    await db_session.flush()
+    operation = Operation(
+        file_id=file_row.id,
+        action=OperationAction.write_metadata,
+        original_name="Dune.epub",
+        new_name="Dune.epub",
+        reason="embedded metadata → Dune",
+        status=OperationStatus.done,
+    )
+    db_session.add(operation)
+    await db_session.commit()
+    provider = _FakeProvider()
+
+    with pytest.raises(OperationNotUndoableError):
+        await operation_service.undo_operation(db_session, None, operation.id, provider=provider)
+    assert provider.move_calls == []
+
+
 async def test_get_operation_summary_raises_for_missing(db_session) -> None:
     with pytest.raises(OperationNotFoundError):
         await operation_service.get_operation_summary(db_session, 999)

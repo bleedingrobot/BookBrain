@@ -7,6 +7,7 @@ from app.data.db import Base
 from app.data import models  # noqa: F401  (registers models on Base.metadata)
 from app.jobs.nightly import reset_nightly_lock
 from app.services import book_repository
+from app.services.metadata_writeback_service import reset_write_lock as reset_metadata_writeback_lock
 from app.services.organize_service import get_folder_path_cache
 from app.services.series_merge_service import reset_series_merge_write_lock
 
@@ -23,6 +24,7 @@ def _reset_shared_singletons():
     get_folder_path_cache().clear()
     reset_series_merge_write_lock()
     reset_nightly_lock()
+    reset_metadata_writeback_lock()
 
 
 @pytest.fixture(autouse=True)

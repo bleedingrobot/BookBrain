@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import File, LibraryRule, Review, ReviewStatus, RuleType
@@ -17,10 +17,16 @@ from app.services.text_match import normalize
 
 
 async def _latest_correction(session: AsyncSession, sha256: str) -> Review | None:
+    # Match a file's current hash OR the hash it had before BookBrain
+    # rewrote its embedded metadata — a correction made against the
+    # pristine original must still stick after a writeback changes the bytes.
     result = await session.execute(
         select(Review)
         .join(File, Review.file_id == File.id)
-        .where(Review.status == ReviewStatus.corrected, File.sha256 == sha256)
+        .where(
+            Review.status == ReviewStatus.corrected,
+            or_(File.sha256 == sha256, File.original_sha256 == sha256),
+        )
         .order_by(Review.resolved_at.desc())
     )
     review = result.scalars().first()

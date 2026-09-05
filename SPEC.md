@@ -14,7 +14,7 @@ A file can have 0, 1, or >1 parents in Drive's model. The app requires exactly 1
 
 **Dry-run is Milestone 6a, not a vague aside.** Milestone 6 builds move/rename/logging but wires it only to a dry-run flag that defaults `true`. Milestone 6a is dry-run validation: the user runs a full scan+identify+dry-run-organize pass, reviews the log of *what would have happened*, and explicitly flips the flag. Milestone 7 (review queue) and Milestone 6 auto-move enablement both depend on 6a having been exercised at least once — this is a gate, not a suggestion.
 
-**Correction stickiness, keyed by content not by file row.** Cache AI decisions by `sha256(file) + evidence_hash` as the default path. But corrections are stickier than cache and are keyed by `sha256` alone (not `file_id`), because the same EPUB content can appear under multiple `files` rows (duplicates, re-uploads). Pipeline order on every identification pass:
+**Correction stickiness, keyed by content not by file row.** Cache AI decisions by `sha256(file) + evidence_hash` as the default path. But corrections are stickier than cache and are keyed by `sha256` alone (not `file_id`), because the same EPUB content can appear under multiple `files` rows (duplicates, re-uploads). A metadata writeback (§3) changes a file's bytes, so the lookup matches `files.original_sha256` (the pre-rewrite hash) as well — a correction made against the pristine original still sticks. Pipeline order on every identification pass:
 1. Check `reviews` for any `status='corrected'` row sharing this file's `sha256`. If found, use its `correction_json` directly — confidence 100, source `user_correction`, skip providers and AI entirely.
 2. Else check the `ai_decisions` cache keyed by `sha256 + evidence_hash`.
 3. Else run the full pipeline (§5).
@@ -56,7 +56,23 @@ The specific disagreeing fields and sources are stored in `metadata_sources`/`bo
 - AI provider hard-coded to Anthropic's Messages API with structured JSON, behind one thin service class.
 - No webhooks/near-real-time watching. Scan stays an idempotent function; a **nightly scheduled run** (2026-09-06) now calls it (plus auto-organize, covers, index) unattended — see `app/jobs/nightly.py`, an in-process APScheduler job and a standalone `python -m app.jobs.nightly` entrypoint sharing one job function. Still no push/watch channel.
 - No natural-language search / conversational librarian in v1 — schema (books/authors/series normalized) must not preclude it later.
-- No EPUB metadata repair/writing — read-only parsing only.
+- ~~No EPUB metadata repair/writing — read-only parsing only.~~ **Reversed
+  (2026-09-06).** A Kobo/Calibre shelf shows the epub's *embedded* OPF
+  metadata, so an organised file whose filename BookBrain fixed still
+  displays the original junk on the device. `app/providers/epub/writer.py`
+  now writes the resolved title/author/series (EPUB 3
+  `belongs-to-collection` **and** the legacy `calibre:series` pair, since
+  Kobo reads the latter) plus a cover (only when the epub genuinely has
+  none) back into the `.epub`, copying every other zip entry through
+  untouched and keeping `mimetype` first + stored. It's a separate opt-in
+  pass (`POST /api/library/embedded-metadata`, `dry_run` supported), not a
+  step of organize. **Not undoable** — the pre-rewrite bytes aren't kept;
+  Drive's own file revision history (in-place `update_file_content`, same
+  `drive_file_id`) is the only fallback. Rewriting changes `files.sha256`,
+  so the pre-rewrite hash is stashed in `files.original_sha256` and matched
+  alongside `sha256` in exact-duplicate detection and sticky-correction
+  lookup (below); `files.embedded_metadata_key` makes the pass skip
+  already-stamped files so re-runs cause no hash churn.
 - Single user, one OAuth-connected Google account, config in local settings table.
 
 ## 4. Architecture
@@ -94,7 +110,9 @@ books(id, canonical_title, author_id, series_id, series_number,
       description, language, first_published, created_at)
 identifiers(id, book_id, type[isbn10|isbn13|other], value, source)
 files(id, drive_file_id, drive_parent_id, filename, sha256, size_bytes,
-      book_id NULL, status[inbox|organised|review|unidentified|duplicate],
+      original_sha256 NULL,       -- content hash before a §3 metadata writeback
+      embedded_metadata_key NULL, -- resolved (title,author,series) already stamped into the epub
+      book_id NULL, status[inbox|organised|review|unidentified|duplicate|rejected],
       status_reason NULL,  -- multi_parent | no_parent | manual_drift | parse_failed | ...
       quality_score, discovered_at, last_processed_at)
 metadata_sources(id, file_id, field_name, value, source, retrieved_at)
@@ -103,8 +121,10 @@ book_candidates(id, file_id, title, author, series, series_number,
 ai_decisions(id, file_id, model, prompt_hash, evidence_hash, raw_response_json,
              computed_confidence, ai_reported_confidence,
              needs_human_review, reasoning_summary, created_at)
-operations(id, timestamp, file_id, action, original_name, original_parent_id,
-           new_name, new_parent_id, confidence, model, reason, status[done|undone])
+operations(id, timestamp, file_id, action[move|rename|move_and_rename|write_metadata],
+           original_name, original_parent_id, new_name, new_parent_id,
+           confidence, model, reason, status[done|undone], dry_run)
+           -- write_metadata (§3 embedded-metadata rewrite) is logged but never undoable
 reviews(id, file_id, status[pending|approved|rejected|corrected],
         proposed_json, correction_json, resolved_at)
 library_rules(id, rule_type[filename_pattern|author_alias|series_alias],

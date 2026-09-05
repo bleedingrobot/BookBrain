@@ -6,6 +6,7 @@ import type {
   CoverJobStatus,
   DescriptionJobStatus,
   LibraryExportResult,
+  MetadataWritebackJobStatus,
 } from '../types/library'
 import type { AuditClusterKind, DismissedClusterInfo, LibraryAuditResult } from '../types/libraryAudit'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
@@ -160,6 +161,13 @@ export const api = {
     }),
   getDescriptionStatus: (jobId: string) =>
     request<DescriptionJobStatus>(`/library/descriptions/${jobId}`),
+  writeEmbeddedMetadata: (dryRun: boolean) =>
+    request<MetadataWritebackJobStatus>(
+      `/library/embedded-metadata${dryRun ? '?dry_run=true' : ''}`,
+      { method: 'POST' },
+    ),
+  getEmbeddedMetadataStatus: (jobId: string) =>
+    request<MetadataWritebackJobStatus>(`/library/embedded-metadata/${jobId}`),
 
   resolveWishlist: (text: string) =>
     request<ResolveResult>('/wishlist/resolve', {

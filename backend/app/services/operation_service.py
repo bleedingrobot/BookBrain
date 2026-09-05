@@ -2,7 +2,7 @@ from google.oauth2.credentials import Credentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.models import File, FileStatus, Operation, OperationStatus
+from app.data.models import File, FileStatus, Operation, OperationAction, OperationStatus
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.schemas.operations import OperationSummary
@@ -45,11 +45,22 @@ async def undo_operation(
 ) -> Operation:
     """Reverses a completed, real (non-dry-run) move/rename. A dry run never
     touched Drive, so there's nothing to undo — and an already-undone
-    operation can't be undone again."""
+    operation can't be undone again. A `write_metadata` op isn't a move at
+    all (and BookBrain doesn't keep the pre-rewrite bytes), so it's never
+    undoable here."""
     operation = await session.get(Operation, operation_id)
     if operation is None:
         raise OperationNotFoundError(f"operation {operation_id} not found")
-    if operation.dry_run or operation.status != OperationStatus.done:
+    _UNDOABLE_ACTIONS = {
+        OperationAction.move,
+        OperationAction.rename,
+        OperationAction.move_and_rename,
+    }
+    if (
+        operation.dry_run
+        or operation.status != OperationStatus.done
+        or operation.action not in _UNDOABLE_ACTIONS
+    ):
         raise OperationNotUndoableError(
             f"operation {operation_id} is not an undoable completed move"
         )

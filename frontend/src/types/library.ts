@@ -20,3 +20,13 @@ export interface DescriptionJobStatus {
   not_found: number
   remaining: number
 }
+
+export interface MetadataWritebackJobStatus {
+  job_id: string
+  status: 'running' | 'done' | 'failed'
+  dry_run: boolean
+  updated: number
+  skipped: number
+  failed: number
+  remaining: number
+}

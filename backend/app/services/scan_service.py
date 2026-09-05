@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -674,8 +674,14 @@ class ScanService:
 
 
 async def _find_primary_by_sha256(session: AsyncSession, sha256: str) -> File | None:
+    # `original_sha256` is also matched so a re-upload of the pristine
+    # original of a file whose embedded metadata BookBrain has since
+    # rewritten is still recognised as the same content, not a new book.
     result = await session.execute(
-        select(File).where(File.sha256 == sha256, File.status != FileStatus.duplicate)
+        select(File).where(
+            or_(File.sha256 == sha256, File.original_sha256 == sha256),
+            File.status != FileStatus.duplicate,
+        )
     )
     return result.scalars().first()
 

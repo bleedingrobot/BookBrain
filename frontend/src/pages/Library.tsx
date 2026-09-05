@@ -5,6 +5,7 @@ import type { CorrectReviewRequest } from '../types/reviews'
 import { api, ApiError } from '../services/api'
 import { useCoverStatus } from '../hooks/useCoverStatus'
 import { useDescriptionStatus } from '../hooks/useDescriptionStatus'
+import { useEmbeddedMetadataStatus } from '../hooks/useEmbeddedMetadataStatus'
 import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
 import { useRebuildStatus } from '../hooks/useRebuildStatus'
 
@@ -58,6 +59,10 @@ export function Library() {
   const [descError, setDescError] = useState<string | null>(null)
   const [descStarting, setDescStarting] = useState(false)
   const [descUseAi, setDescUseAi] = useState(false)
+  const [mdJobId, setMdJobId] = useState<string | null>(null)
+  const [mdError, setMdError] = useState<string | null>(null)
+  const [mdStarting, setMdStarting] = useState(false)
+  const [mdDryRun, setMdDryRun] = useState(false)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -77,6 +82,7 @@ export function Library() {
   const rebuild = useRebuildStatus(rebuildJobId)
   const covers = useCoverStatus(coverJobId)
   const descriptions = useDescriptionStatus(descJobId)
+  const embeddedMetadata = useEmbeddedMetadataStatus(mdJobId)
 
   const clearLibrary = useMutation({
     mutationFn: api.clearLibrary,
@@ -165,6 +171,13 @@ export function Library() {
       queryClient.invalidateQueries({ queryKey: ['files'] })
     }
   }, [descriptions.data?.status, queryClient])
+
+  useEffect(() => {
+    if (embeddedMetadata.isError) {
+      setMdError('Lost track of the metadata job — the server may have restarted. Re-run to continue where it left off.')
+      setMdJobId(null)
+    }
+  }, [embeddedMetadata.isError])
 
   const visibleFiles =
     status === undefined
@@ -283,6 +296,29 @@ export function Library() {
             </button>
             <button
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              title="Writes the resolved title / author / series (and a cover, if the epub has none) into each organised .epub's own metadata, so Kobo and other readers show it correctly. Tick 'dry run' to preview what would change. Resumable."
+              disabled={mdStarting || embeddedMetadata.data?.status === 'running'}
+              onClick={async () => {
+                setMdError(null)
+                setMdStarting(true)
+                try {
+                  const job = await api.writeEmbeddedMetadata(mdDryRun)
+                  setMdJobId(job.job_id)
+                } catch (err) {
+                  setMdError(err instanceof ApiError ? err.message : 'Failed to start metadata job.')
+                } finally {
+                  setMdStarting(false)
+                }
+              }}
+            >
+              {embeddedMetadata.data?.status === 'running'
+                ? 'Writing metadata…'
+                : mdDryRun
+                  ? 'Fix embedded metadata (dry run)'
+                  : 'Fix embedded metadata'}
+            </button>
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
               disabled={exporting}
               onClick={async () => {
                 setExportError(null)
@@ -368,6 +404,26 @@ export function Library() {
             />
             Also write blurbs with Claude for anything still blank (uses API credits)
           </label>
+          <label className="mt-1 flex items-center justify-end gap-1.5 text-xs text-neutral-500">
+            <input
+              type="checkbox"
+              checked={mdDryRun}
+              onChange={(e) => setMdDryRun(e.target.checked)}
+            />
+            Dry run — preview the embedded-metadata changes without touching any file
+          </label>
+          {mdError && <p className="mt-1 text-xs text-red-600">{mdError}</p>}
+          {embeddedMetadata.data && (
+            <p className="mt-1 text-xs text-neutral-500">
+              embedded metadata{embeddedMetadata.data.dry_run ? ' (dry run)' : ''}:{' '}
+              {embeddedMetadata.data.status} — {embeddedMetadata.data.updated}{' '}
+              {embeddedMetadata.data.dry_run ? 'would change' : 'written'},{' '}
+              {embeddedMetadata.data.skipped} already correct, {embeddedMetadata.data.failed} failed
+              {embeddedMetadata.data.status === 'running' && embeddedMetadata.data.remaining > 0
+                ? `, ${embeddedMetadata.data.remaining} to go`
+                : ''}
+            </p>
+          )}
           {descError && <p className="mt-1 text-xs text-red-600">{descError}</p>}
           {descriptions.data && (
             <p className="mt-1 text-xs text-neutral-500">

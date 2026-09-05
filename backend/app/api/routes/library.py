@@ -8,12 +8,17 @@ from app.providers.drive.provider import DriveProvider
 from app.schemas.covers import CoverJobStatus
 from app.schemas.descriptions import DescriptionJobStatus
 from app.schemas.library import LibraryExportResult
+from app.schemas.metadata_writeback import MetadataWritebackJobStatus
 from app.schemas.scan import ScanJobStatus
 from app.services import library_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
 from app.services.description_service import DescriptionService, get_description_service
 from app.services.drive_service import DriveService
+from app.services.metadata_writeback_service import (
+    MetadataWritebackService,
+    get_metadata_writeback_service,
+)
 from app.services.library_index_service import regenerate_library_index
 from app.services.scan_service import ScanService, get_scan_service
 
@@ -133,6 +138,46 @@ async def get_description_status(
     status = service.get_status(job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="description job not found")
+    return status
+
+
+@router.post("/embedded-metadata", response_model=MetadataWritebackJobStatus, status_code=202)
+async def start_embedded_metadata_writeback(
+    background_tasks: BackgroundTasks,
+    dry_run: bool = False,
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+    service: MetadataWritebackService = Depends(get_metadata_writeback_service),
+) -> MetadataWritebackJobStatus:
+    """Write BookBrain's resolved title/author/series (and a cover, if the
+    epub has none) into each organised `.epub`'s embedded OPF metadata — so
+    Kobo and other readers stop showing the messy original. `dry_run=true`
+    reports what would change without touching Drive or any file hash.
+    Resumable — re-running only touches files whose metadata has changed."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+
+    library = await DriveService.get_library_folder_config(settings_repo)
+    job = service.create_job(dry_run=dry_run)
+    background_tasks.add_task(
+        service.run,
+        job.job_id,
+        creds,
+        library.folder_id if library else None,
+        dry_run=dry_run,
+    )
+    return job
+
+
+@router.get("/embedded-metadata/{job_id}", response_model=MetadataWritebackJobStatus)
+async def get_embedded_metadata_status(
+    job_id: str, service: MetadataWritebackService = Depends(get_metadata_writeback_service)
+) -> MetadataWritebackJobStatus:
+    status = service.get_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="metadata writeback job not found")
     return status
 
 
