@@ -291,6 +291,36 @@ class WishlistItem(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class JobRunStatus(str, enum.Enum):
+    running = "running"
+    success = "success"
+    failed = "failed"
+
+
+class JobRun(Base):
+    """Audit trail for a whole-pipeline run (currently only `kind="nightly"`).
+    Unlike the in-memory `ScanService._jobs` tracker, this survives a server
+    restart, so the morning-after Dashboard can show what the overnight run
+    did — and a `running` row doubles as a coarse "a pipeline run is active"
+    flag that keeps a scheduled run and a standalone `python -m app.jobs.nightly`
+    from stepping on each other (see job_run_service.has_active_run)."""
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    trigger: Mapped[str] = mapped_column(String, nullable=False)  # scheduler | cli | manual
+    status: Mapped[JobRunStatus] = mapped_column(
+        Enum(JobRunStatus), nullable=False, default=JobRunStatus.running
+    )
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column()
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (Index("ix_job_runs_kind_started", "kind", "started_at"),)
+
+
 class LocalFileStatus(str, enum.Enum):
     pending = "pending"
     copied = "copied"
@@ -354,6 +384,8 @@ __all__ = [
     "Review",
     "LibraryRule",
     "Setting",
+    "JobRunStatus",
+    "JobRun",
     "LocalFile",
     "WishlistItem",
     "AuditClusterKind",

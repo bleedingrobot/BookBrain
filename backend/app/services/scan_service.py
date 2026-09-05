@@ -153,6 +153,12 @@ class ScanService:
     def get_status(self, job_id: str) -> ScanJobStatus | None:
         return self._jobs.get(job_id)
 
+    def has_running_job(self) -> bool:
+        """True while a manual scan/rebuild started via the API is still in
+        flight. The nightly job checks this so a scheduled run doesn't start
+        a second scan on top of one James kicked off by hand."""
+        return any(job.status == ScanJobState.running for job in self._jobs.values())
+
     async def run_scan(self, job_id: str, creds: Credentials, folder_id: str) -> None:
         settings = get_settings()
         provider = DriveProvider(build_drive_service(creds))

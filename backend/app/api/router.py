@@ -6,6 +6,7 @@ from app.api.routes import (
     duplicates,
     files,
     health,
+    jobs,
     library,
     library_audit,
     local_scan,
@@ -31,4 +32,5 @@ api_router.include_router(files.router)
 api_router.include_router(library.router)
 api_router.include_router(library_audit.router)
 api_router.include_router(local_scan.router)
+api_router.include_router(jobs.router)
 api_router.include_router(wishlist.router)

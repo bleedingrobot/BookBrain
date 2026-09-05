@@ -23,6 +23,31 @@ uvicorn app.main:app --reload
 
 Runs at `http://localhost:8000`. Tests: `pytest`.
 
+Dependencies (including APScheduler, added for the nightly run) are declared in
+`pyproject.toml` — `pip install -e ".[dev]"` installs them. After pulling changes,
+re-run that and `alembic upgrade head`.
+
+### Nightly unattended run
+
+Settings → **Nightly run** turns on a once-a-night pass that does the whole
+pipeline with no one watching: pull the Torrents folder, scan the Book Dump,
+auto-organize everything above the confidence threshold, then refresh covers and
+the library index. It never resolves a review or clears a duplicate — uncertain
+books still wait in the queue.
+
+Two layers run the same job (`app/jobs/nightly.py::run_nightly`):
+
+- **In-process** — an APScheduler job in the FastAPI lifespan. Fires only if the
+  server is up at the chosen hour. Toggling the setting re-arms it live.
+- **Standalone** — `python -m app.jobs.nightly`, no HTTP layer, exits non-zero on
+  failure, logs to `backend/nightly-runs.log`. For when the machine's usually not
+  running the server overnight: double-click `backend/scripts/register-nightly-task.bat`
+  once to install a Windows Scheduled Task (2am by default; pass an hour to match
+  the in-app setting). `unregister-nightly-task.bat` removes it.
+
+A dead Google token makes either layer log "reconnect Google in Settings" and stop
+cleanly. The Dashboard shows the last run's result.
+
 ### Google OAuth setup (needed for Milestone 2+)
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project, enable the **Google Drive API**, and create an **OAuth client ID** of type "Web application".

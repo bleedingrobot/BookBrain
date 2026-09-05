@@ -10,3 +10,9 @@ DRIVE_LIBRARY_FOLDER_CREATED_BY_APP = "drive_library_folder_created_by_app"
 
 # SPEC.md §1: dry-run defaults true until explicitly flipped (Milestone 6a gate).
 ORGANIZE_DRY_RUN = "organize_dry_run"
+
+# Nightly unattended pipeline run (scan -> auto-organize -> covers -> index).
+# Off until James turns it on in Settings. Hour is 0-23 in the machine's
+# local time.
+NIGHTLY_RUN_ENABLED = "nightly_run_enabled"
+NIGHTLY_RUN_HOUR = "nightly_run_hour"

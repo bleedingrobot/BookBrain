@@ -29,6 +29,13 @@ export function Settings() {
     queryFn: api.getOrganizeSettings,
   })
   const systemStatus = useQuery({ queryKey: ['system-status'], queryFn: api.getSystemStatus })
+  const nightly = useQuery({ queryKey: ['nightly-settings'], queryFn: api.getNightlySettings })
+
+  const updateNightly = useMutation({
+    mutationFn: ({ enabled, hour }: { enabled: boolean; hour: number }) =>
+      api.updateNightlySettings(enabled, hour),
+    onSuccess: (data) => queryClient.setQueryData(['nightly-settings'], data),
+  })
 
   const disconnect = useMutation({
     mutationFn: api.authDisconnect,
@@ -279,6 +286,75 @@ export function Settings() {
                 </div>
               </>
             )}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="font-medium">Nightly run</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Once a night, unattended: pull the Torrents folder, scan the Book Dump,
+          auto-organize everything that clears the confidence bar, then refresh covers
+          and the library index. Anything uncertain still waits in the review queue.
+          Needs the machine awake at that hour; if it's off, the run catches up next
+          time the app opens.
+        </p>
+
+        {nightly.data && (
+          <div className="mt-3 space-y-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={nightly.data.enabled}
+                disabled={updateNightly.isPending}
+                onChange={(e) =>
+                  updateNightly.mutate({ enabled: e.target.checked, hour: nightly.data!.hour })
+                }
+              />
+              Run automatically every night
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="text-neutral-500">At</span>
+              <select
+                className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                value={nightly.data.hour}
+                disabled={!nightly.data.enabled || updateNightly.isPending}
+                onChange={(e) =>
+                  updateNightly.mutate({ enabled: nightly.data!.enabled, hour: Number(e.target.value) })
+                }
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+              <span className="text-neutral-400">machine local time</span>
+            </label>
+
+            <div className="text-xs text-neutral-400">
+              {nightly.data.last_run ? (
+                <>
+                  Last run{' '}
+                  {new Date(
+                    nightly.data.last_run.finished_at ?? nightly.data.last_run.started_at,
+                  ).toLocaleString()}
+                  {' — '}
+                  {nightly.data.last_run.status === 'failed' ? (
+                    <span className="text-red-600 dark:text-red-400">
+                      failed: {nightly.data.last_run.error}
+                    </span>
+                  ) : nightly.data.last_run.status === 'running' ? (
+                    'running…'
+                  ) : (
+                    nightly.data.last_run.summary
+                  )}
+                </>
+              ) : (
+                'Has not run yet.'
+              )}
+            </div>
           </div>
         )}
       </section>

@@ -54,6 +54,7 @@ export function Dashboard() {
   const [torrentsBusy, setTorrentsBusy] = useState(false)
 
   const health = useQuery({ queryKey: ['health'], queryFn: api.health })
+  const nightly = useQuery({ queryKey: ['nightly-settings'], queryFn: api.getNightlySettings })
   const authStatus = useQuery({ queryKey: ['auth-status'], queryFn: api.authStatus })
   const inboxFolder = useQuery({
     queryKey: ['inbox-folder'],
@@ -230,6 +231,38 @@ export function Dashboard() {
         Backend health:{' '}
         {health.isLoading ? 'checking...' : health.isError ? 'unreachable' : health.data?.status}
       </p>
+
+      {nightly.data && (
+        <p className="mt-1 text-sm text-neutral-500">
+          Nightly run:{' '}
+          {nightly.data.enabled
+            ? `on, ${String(nightly.data.hour).padStart(2, '0')}:00`
+            : 'off'}
+          {nightly.data.last_run ? (
+            <>
+              {' — last '}
+              {new Date(
+                nightly.data.last_run.finished_at ?? nightly.data.last_run.started_at,
+              ).toLocaleString()}
+              {': '}
+              {nightly.data.last_run.status === 'failed' ? (
+                <span className="text-red-600 dark:text-red-400">
+                  failed — {nightly.data.last_run.error}
+                </span>
+              ) : nightly.data.last_run.status === 'running' ? (
+                'running…'
+              ) : (
+                nightly.data.last_run.summary
+              )}
+            </>
+          ) : (
+            ' — never run'
+          )}{' '}
+          <Link to="/settings" className="underline">
+            change
+          </Link>
+        </p>
+      )}
 
       <div className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
         <h2 className="text-sm font-medium text-neutral-500">Progress</h2>

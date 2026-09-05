@@ -20,6 +20,7 @@ import type {
 } from '../types/wishlist'
 import type { ScanJobStatus } from '../types/scan'
 import type { SystemStatus } from '../types/system'
+import type { NightlySettings } from '../types/jobs'
 
 class ApiError extends Error {
   status: number
@@ -179,6 +180,13 @@ export const api = {
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),
 
   getSystemStatus: () => request<SystemStatus>('/settings/status'),
+
+  getNightlySettings: () => request<NightlySettings>('/jobs/nightly'),
+  updateNightlySettings: (enabled: boolean, hour: number) =>
+    request<NightlySettings>('/jobs/nightly', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, hour }),
+    }),
 
   scanLocalFolder: () => request<LocalFileSummary[]>('/local-scan', { method: 'POST' }),
   getPendingLocalFiles: () => request<LocalFileSummary[]>('/local-scan/pending'),

@@ -54,7 +54,7 @@ The specific disagreeing fields and sources are stored in `metadata_sources`/`bo
 
 - `BookMetadataProvider` interface built, but only Google Books implemented first, Open Library second. No plugin system.
 - AI provider hard-coded to Anthropic's Messages API with structured JSON, behind one thin service class.
-- No webhooks/near-real-time watching — manual scan only, designed as an idempotent function so a scheduler can call it later.
+- No webhooks/near-real-time watching. Scan stays an idempotent function; a **nightly scheduled run** (2026-09-06) now calls it (plus auto-organize, covers, index) unattended — see `app/jobs/nightly.py`, an in-process APScheduler job and a standalone `python -m app.jobs.nightly` entrypoint sharing one job function. Still no push/watch channel.
 - No natural-language search / conversational librarian in v1 — schema (books/authors/series normalized) must not preclude it later.
 - No EPUB metadata repair/writing — read-only parsing only.
 - Single user, one OAuth-connected Google account, config in local settings table.
@@ -139,7 +139,7 @@ Review dialog is the most important component: evidence, confidence breakdown (i
 | ISBN validation | isbnlib | checksum + normalization built-in |
 | Drive API | google-api-python-client + google-auth-oauthlib | official SDK |
 | AI | Anthropic Messages API, structured JSON via forced schema | avoids prose parsing |
-| Background jobs | FastAPI BackgroundTasks for v1 | avoids infra overkill now, interface allows Celery/RQ later |
+| Background jobs | FastAPI BackgroundTasks for v1; APScheduler (in-process) + a standalone entrypoint for the nightly run | avoids infra overkill now, interface allows Celery/RQ later |
 | Frontend | React + TypeScript + Vite + TanStack Query + Tailwind | matches §29 |
 | Testing | pytest + pytest-asyncio + responses/respx | matches §35 |
 

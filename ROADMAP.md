@@ -6,8 +6,8 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
-  runs, (3) write resolved metadata + cover into the EPUB, (5) bulk
-  re-identify audit.
+  runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB,
+  (5) bulk re-identify audit.
 - **Series merge — auto-create a `library_rule` (series_alias)** on apply, so
   the next scan that phrases the merged-away name the old way gets corrected
   by `find_rule_match` instead of re-forking the Series row (and Drive
@@ -29,6 +29,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **Scheduled nightly runs** (2026-09-06) — Settings toggle + hour. Two layers
+  sharing `app/jobs/nightly.py::run_nightly`: an in-process APScheduler job
+  (FastAPI lifespan) and a standalone `python -m app.jobs.nightly` entrypoint a
+  Windows Scheduled Task calls (`backend/scripts/register-nightly-task.bat`).
+  One pass = Torrents pull → scan → threshold auto-organize → covers → index;
+  never auto-resolves a review or duplicate. Dead token → clean "reconnect in
+  Settings", no traceback. `job_runs` table is the audit trail + a coarse
+  "a run is active" guard; Dashboard shows the last run. This closes SPEC's
+  "manual scan only, designed so a scheduler can call it later" (§ "No webhooks").
 - **.cbr (RAR) comic support** (2026-09-06) — handled exactly like .cbz (kept
   as-is, never converted; reads ComicInfo.xml). Container is picked by magic
   bytes not extension, since `.cbr`/`.cbz` are widely mislabelled. RAR reading

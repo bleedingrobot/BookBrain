@@ -8,6 +8,7 @@ venv/
 
 # Backend runtime
 backend/.env
+backend/nightly-runs.log*
 backend/*.db
 backend/*.db-journal
 backend/*.db-shm
