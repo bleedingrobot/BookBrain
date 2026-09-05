@@ -6,6 +6,10 @@
 // Only rows actually on screen ever trigger a fetch (see components/Cover).
 
 const blobUrlByBook = new Map<string, string>()
+// In-flight fetches, so the several places a cover can be rendered at once
+// (a list row, the recently-added ticker, its duplicated track) share one
+// Drive request instead of racing — the loser used to leak its blob URL.
+const inFlightByBook = new Map<string, Promise<string | null>>()
 let coverFileIdByBook: Map<string, string> = new Map()
 let manifestFolderId: string | null = null
 
@@ -61,19 +65,28 @@ export async function loadCoverManifest(
 export async function fetchLocalCover(token: string, driveId: string): Promise<string | null> {
   const cached = blobUrlByBook.get(driveId)
   if (cached) return cached
+  const pending = inFlightByBook.get(driveId)
+  if (pending) return pending
   const coverId = coverFileIdByBook.get(driveId)
   if (!coverId) return null
-  try {
-    const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${coverId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!resp.ok) return null
-    const url = URL.createObjectURL(await resp.blob())
-    blobUrlByBook.set(driveId, url)
-    return url
-  } catch {
-    return null
-  }
+
+  const request = (async () => {
+    try {
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${coverId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!resp.ok) return null
+      const url = URL.createObjectURL(await resp.blob())
+      blobUrlByBook.set(driveId, url)
+      return url
+    } catch {
+      return null
+    } finally {
+      inFlightByBook.delete(driveId)
+    }
+  })()
+  inFlightByBook.set(driveId, request)
+  return request
 }
 
 export function clearCoverCache(): void {

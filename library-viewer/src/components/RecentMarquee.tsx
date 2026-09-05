@@ -71,20 +71,24 @@ export function RecentMarquee({ books, token, onPick }: Props) {
   }, [])
 
   const settled = books.length > 0 && books.every((b) => b.id in results)
-  const okCount = Object.values(results).filter(Boolean).length
+  // Drop books whose cover won't load — a blank tile isn't worth a slot.
+  // Books still resolving stay in until they report back.
+  const visible = books.filter((b) => results[b.id] !== false)
+  // Duration tracks the full candidate count, not `visible` — so covers
+  // dropping out as they fail to load doesn't lurch the scroll speed.
   const duration = `${Math.max(18, books.length * SECONDS_PER_COVER)}s`
 
   // Nothing worth showing, or the covers just aren't loading — stay out of
   // the way entirely.
   if (books.length < 2) return null
-  if (settled && okCount < 2) return null
+  if (settled && visible.length < 2) return null
 
   const strip = (large: boolean) => (
     <div className="marquee group relative">
       <div className="marquee-track flex w-max" style={{ animationDuration: duration }}>
-        <Track books={books} token={token} large={large} onPick={onPick} onResolved={handleResolved} />
+        <Track books={visible} token={token} large={large} onPick={onPick} onResolved={handleResolved} />
         <Track
-          books={books}
+          books={visible}
           token={token}
           large={large}
           ariaHidden
