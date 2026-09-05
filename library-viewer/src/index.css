@@ -71,3 +71,44 @@ body {
 .badge {
   @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-tight font-medium;
 }
+
+/* Recently-added ticker (components/RecentMarquee). The track holds two
+   identical copies of the cover list, so translating it by -50% lands
+   exactly on the loop point — no seam, no jump. */
+.marquee {
+  overflow: hidden;
+}
+
+.marquee-track {
+  animation: marquee-scroll linear infinite;
+  will-change: transform;
+}
+
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Pause when someone's looking at a cover / tabbing through. */
+.marquee:hover .marquee-track,
+.marquee:focus-within .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    overflow-x: auto;
+  }
+  .marquee-track {
+    animation: none;
+    transform: none;
+  }
+  /* One copy is enough when it isn't scrolling itself. */
+  .marquee-track > ul[aria-hidden='true'] {
+    display: none;
+  }
+}

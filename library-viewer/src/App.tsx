@@ -3,6 +3,7 @@ import { ActivityScreen } from './components/ActivityScreen'
 import { BookList } from './components/BookList'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
+import { RecentMarquee } from './components/RecentMarquee'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
 import { WhoAmI } from './components/WhoAmI'
@@ -20,6 +21,7 @@ import {
   type SortKey,
 } from './lib/books'
 import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
+import { pickRecentBooks } from './lib/marquee'
 import { computeSeriesGaps, incompleteSeriesNames } from './lib/seriesGaps'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
@@ -73,6 +75,7 @@ export default function App() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -108,6 +111,7 @@ export default function App() {
   }
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
+  const recentBooks = useMemo(() => pickRecentBooks(allRows), [allRows])
   const seriesGaps = useMemo(() => computeSeriesGaps(allRows), [allRows])
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const rows = useMemo(() => {
@@ -150,6 +154,26 @@ export default function App() {
     setFilter('all')
     window.scrollTo({ top: 0 })
   }
+
+  // A cover in the "recently added" ticker was clicked — switch the list to
+  // the recently-added view (where the book is near the top), open it, and
+  // scroll it into view once it's rendered.
+  function jumpToRecent(id: string) {
+    setQuery('')
+    setFilter('all')
+    setSort('added')
+    setShowAll(true)
+    setExpandedId(id)
+    setPendingScrollId(id)
+  }
+
+  useEffect(() => {
+    if (!pendingScrollId) return
+    const el = document.getElementById(`book-${pendingScrollId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setPendingScrollId(null)
+  }, [pendingScrollId, rows])
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -456,6 +480,10 @@ export default function App() {
         onShowSetup={() => setShowSetup(true)}
         onForget={handleForget}
       />
+
+      {!lib.loading && (
+        <RecentMarquee books={recentBooks} token={token} onPick={jumpToRecent} />
+      )}
 
       {lib.sessionExpired && (
         <div className="mb-2 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">

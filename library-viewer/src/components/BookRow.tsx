@@ -47,6 +47,7 @@ export function BookRow({
   return (
     <>
       <li
+        id={`book-${row.id}`}
         className={`flex flex-wrap items-start gap-x-3 gap-y-2 py-2.5 ${
           expanded ? '' : 'border-b border-neutral-100 dark:border-neutral-800/60'
         }`}
