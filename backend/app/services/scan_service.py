@@ -97,13 +97,14 @@ class ScanService:
     scan only processes what's new (SPEC.md's "scanner as idempotent
     function" simplification for v1 — no webhooks yet).
 
-    .epub, .kpub and .cbz are processed as-is; .mobi and .rtf are converted
-    to epub first via Calibre's ebook-convert CLI, replacing the Drive file's
-    content/name in place (same drive_file_id) before anything else runs.
-    A .cbz carries only what its ComicInfo.xml sidecar (if any) says plus its
-    filename — identification leans on the filename, so comics normally land
-    in the review queue for a quick human glance. The inbox listing is
-    unfiltered by Drive mimeType (kpub/cbz have no reliable one), and
+    .epub, .kpub, .cbz and .cbr are processed as-is; .mobi and .rtf are
+    converted to epub first via Calibre's ebook-convert CLI, replacing the
+    Drive file's content/name in place (same drive_file_id) before anything
+    else runs. A comic archive carries only what its ComicInfo.xml sidecar
+    (if any) says plus its filename — identification leans on the filename,
+    so comics normally land in the review queue for a quick human glance.
+    The inbox listing is unfiltered by Drive mimeType (kpub/cbz/cbr have no
+    reliable one), and
     anything that's neither a supported nor a convertible extension is
     trashed on sight rather than left in the book dump folder or silently
     ignored.
@@ -170,9 +171,9 @@ class ScanService:
 
         try:
             # Every file in the inbox, not just ebooks — anything that isn't
-            # a supported .epub/.kpub/.cbz or a convertible .mobi/.rtf gets
-            # removed from the book dump by _process_file below, not just
-            # ignored.
+            # a supported .epub/.kpub/.cbz/.cbr or a convertible .mobi/.rtf
+            # gets removed from the book dump by _process_file below, not
+            # just ignored.
             raw_files = await asyncio.to_thread(provider.list_files_in_folder, folder_id)
         except Exception as exc:  # Drive API failure — nothing to salvage
             self._jobs[job_id] = ScanJobStatus(
@@ -482,9 +483,9 @@ class ScanService:
         try:
             with _timed(timings, "parse"):
                 if is_comic:
-                    # .cbz is kept as-is — no conversion. This only reads a
-                    # ComicInfo.xml sidecar if the archive has one; otherwise
-                    # identification runs on the filename alone.
+                    # .cbz / .cbr are kept as-is — no conversion. This only
+                    # reads a ComicInfo.xml sidecar if the archive has one;
+                    # otherwise identification runs on the filename alone.
                     evidence = parse_comic_archive(
                         data,
                         max_entry_bytes=settings.epub_max_entry_bytes,

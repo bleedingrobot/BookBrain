@@ -9,11 +9,11 @@ def classify_file(raw: dict) -> str | None:
     return None
 
 
-_SUPPORTED_EBOOK_EXTENSIONS = (".epub", ".kpub", ".cbz")
+_SUPPORTED_EBOOK_EXTENSIONS = (".epub", ".kpub", ".cbz", ".cbr")
 
 
 def is_supported_ebook(filename: str) -> bool:
-    """Files BookBrain ingests as-is: EPUB, Kobo .kpub, and .cbz comic
-    archives. All recognized by filename extension rather than Drive's
-    mimeType, which is unreliable for .kpub and .cbz alike."""
+    """Files BookBrain ingests as-is: EPUB, Kobo .kpub, and .cbz / .cbr
+    comic archives. All recognized by filename extension rather than Drive's
+    mimeType, which is unreliable for .kpub and comic archives alike."""
     return filename.lower().endswith(_SUPPORTED_EBOOK_EXTENSIONS)

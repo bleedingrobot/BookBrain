@@ -58,8 +58,8 @@ def build_target_path(
     the configured library root — e.g. ["Frank Herbert", "Dune Chronicles"].
     `filename` is "Author, Title, Series, Part N<extension>", trimmed down to
     whichever of those fields are actually known. `extension` preserves the
-    file's original format (.epub / .kpub / .cbz) — organize renames, it
-    never converts."""
+    file's original format (.epub / .kpub / .cbz / .cbr) — organize renames,
+    it never converts."""
     folders: list[str] = []
     if author_name:
         folders.append(_sanitize(author_name))

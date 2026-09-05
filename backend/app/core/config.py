@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120
 
+    # 7-Zip CLI, used only to read .cbr (RAR) comic archives — .cbr is kept
+    # as-is like .cbz, never converted. Empty = auto-detect: PATH (7z / 7za /
+    # 7zz), then the standard Windows install dir.
+    seven_zip_binary: str = ""
+    seven_zip_timeout_seconds: int = 60
+
     # Local folder watched for new ebooks (e.g. a torrents download dir) to
     # offer copying into the Drive inbox
     torrents_watch_folder: str = r"D:\Torrents"
