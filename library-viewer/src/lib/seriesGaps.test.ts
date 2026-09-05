@@ -48,6 +48,32 @@ describe('computeSeriesGaps', () => {
   it('skips books with no series or no number', () => {
     expect(computeSeriesGaps([book(null, '1'), book('S', null)]).size).toBe(0)
   })
+
+  it('a wildly-out-of-band number (junk sorting placeholder) does not explode the missing list', () => {
+    const gaps = computeSeriesGaps([
+      book('Alexis Carew', '2'),
+      book('Alexis Carew', '3'),
+      book('Alexis Carew', '4'),
+      book('Alexis Carew', '5'),
+      book('Alexis Carew', '6'),
+      book('Alexis Carew', '7'),
+      book('Alexis Carew', '301'), // companion short story tagged "#301"
+    ])
+    const gap = gaps.get('Alexis Carew')!
+    expect(gap.have).toContain(301)
+    expect(gap.missing).toEqual([1]) // just the genuinely-absent #1, not #8..#300
+  })
+
+  it('two entries far enough apart are not treated as one run', () => {
+    const gaps = computeSeriesGaps([book('S', '1'), book('S', '14')])
+    // 14 - 1 > MAX_RUN_GAP, so the run is just [1] → not enough to flag
+    expect(gaps.get('S')).toBeUndefined()
+  })
+
+  it('gaps within the jump limit are still reported', () => {
+    const gaps = computeSeriesGaps([book('S', '1'), book('S', '10')])
+    expect(gaps.get('S')).toEqual({ have: [1, 10], missing: [2, 3, 4, 5, 6, 7, 8, 9] })
+  })
 })
 
 describe('incompleteSeriesNames', () => {
