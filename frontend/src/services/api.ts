@@ -7,11 +7,12 @@ import type {
   DescriptionJobStatus,
   LibraryExportResult,
 } from '../types/library'
-import type { LibraryAuditResult } from '../types/libraryAudit'
+import type { AuditClusterKind, DismissedClusterInfo, LibraryAuditResult } from '../types/libraryAudit'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
+import type { SeriesMergeProposal, SeriesMergeResult } from '../types/seriesMerge'
 import type {
   ResolveResult,
   WishlistItem,
@@ -112,6 +113,29 @@ export const api = {
   listDuplicates: () => request<DuplicateGroup[]>('/duplicates'),
   clearDuplicates: () => request<ClearDuplicatesResult>('/duplicates/clear', { method: 'POST' }),
   getLibraryAudit: () => request<LibraryAuditResult>('/library-audit'),
+  dismissAuditCluster: (kind: AuditClusterKind, memberIds: number[]) =>
+    request<void>('/library-audit/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ kind, member_ids: memberIds }),
+    }),
+  listDismissedClusters: () => request<DismissedClusterInfo[]>('/library-audit/dismissed'),
+  restoreDismissedCluster: (id: number) =>
+    request<void>(`/library-audit/dismissed/${id}/restore`, { method: 'POST' }),
+  investigateSeriesMerge: (seriesIds: number[]) =>
+    request<SeriesMergeProposal>('/library-audit/series/investigate', {
+      method: 'POST',
+      body: JSON.stringify({ series_ids: seriesIds }),
+    }),
+  applySeriesMerge: (seriesIds: number[], canonicalSeriesName: string, excludedSeriesNames: string[]) =>
+    request<SeriesMergeResult>('/library-audit/series/apply', {
+      method: 'POST',
+      body: JSON.stringify({
+        series_ids: seriesIds,
+        canonical_series_name: canonicalSeriesName,
+        excluded_series_names: excludedSeriesNames,
+        confirm_same_series: true,
+      }),
+    }),
 
   listFiles: (status?: string) =>
     request<FileSummary[]>(`/files${status ? `?status=${encodeURIComponent(status)}` : ''}`),

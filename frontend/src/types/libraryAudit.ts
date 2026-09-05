@@ -13,3 +13,12 @@ export interface LibraryAuditResult {
   similar_series: SimilarNameCluster[]
   similar_authors: SimilarNameCluster[]
 }
+
+export type AuditClusterKind = 'series' | 'author'
+
+export interface DismissedClusterInfo {
+  id: number
+  kind: AuditClusterKind
+  member_ids: number[]
+  created_at: string
+}
