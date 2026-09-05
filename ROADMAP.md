@@ -29,6 +29,11 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **.cbr (RAR) comic support** (2026-09-06) — handled exactly like .cbz (kept
+  as-is, never converted; reads ComicInfo.xml). Container is picked by magic
+  bytes not extension, since `.cbr`/`.cbz` are widely mislabelled. RAR reading
+  shells out to 7-Zip (auto-detected, or `SEVEN_ZIP_BINARY`); no 7-Zip ⇒ the
+  file lands in `unidentified` with a clear reason.
 - **Library Audit: dismiss clusters + in-place series merge** (2026-09-06) —
   Investigate a "possibly split series" cluster (Claude picks canonical from
   the existing names only), preview the exact Drive move plan, Apply (moves
