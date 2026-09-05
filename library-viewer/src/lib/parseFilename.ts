@@ -10,7 +10,7 @@ export interface ParsedBook {
 // down to whichever fields are known. Falls back to the raw filename as
 // the title for anything that doesn't match (manually-added files, etc.).
 export function parseFilename(filename: string): ParsedBook {
-  const withoutExt = filename.replace(/\.(epub|kpub|cbz)$/i, '')
+  const withoutExt = filename.replace(/\.(epub|kpub|cbz|cbr)$/i, '')
   const parts = withoutExt.split(',').map((p) => p.trim())
 
   if (parts.length === 1) {

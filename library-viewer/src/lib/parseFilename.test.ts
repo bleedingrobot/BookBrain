@@ -49,4 +49,13 @@ describe('parseFilename', () => {
       seriesNumber: '1',
     })
   })
+
+  it('strips .cbr comic archives too', () => {
+    expect(parseFilename('Tui T. Sutherland, Winter Turning, Wings of Fire, 7.CBR')).toEqual({
+      author: 'Tui T. Sutherland',
+      title: 'Winter Turning',
+      series: 'Wings of Fire',
+      seriesNumber: '7',
+    })
+  })
 })

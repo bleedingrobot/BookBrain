@@ -4,7 +4,7 @@ export interface DriveFile {
 }
 
 export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
-const EBOOK_EXTENSIONS = ['.epub', '.kpub', '.cbz']
+const EBOOK_EXTENSIONS = ['.epub', '.kpub', '.cbz', '.cbr']
 const WALK_CONCURRENCY = 8
 
 // The Drive helpers throw a plain Error with one of these messages on an
