@@ -7,6 +7,7 @@ from app.data.db import Base
 from app.data import models  # noqa: F401  (registers models on Base.metadata)
 from app.services import book_repository
 from app.services.organize_service import get_folder_path_cache
+from app.services.series_merge_service import reset_series_merge_write_lock
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +20,7 @@ def _reset_shared_singletons():
     # cleanly-unbound lock/cache regardless of what earlier tests touched.
     book_repository.reset_book_write_lock()
     get_folder_path_cache().clear()
+    reset_series_merge_write_lock()
 
 
 @pytest.fixture(autouse=True)

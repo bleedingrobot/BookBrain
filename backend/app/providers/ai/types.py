@@ -55,3 +55,24 @@ class AISeriesResult:
     @classmethod
     def from_tool_input(cls, data: dict) -> "AISeriesResult":
         return cls(series=data.get("series"), series_number=data.get("series_number"))
+
+
+@dataclass
+class AISeriesMergeResult:
+    is_same_series: bool
+    canonical_series_name: str
+    excluded_series_names: list[str]
+    confidence: float
+    explanation: str
+    warnings: list[str]
+
+    @classmethod
+    def from_tool_input(cls, data: dict) -> "AISeriesMergeResult":
+        return cls(
+            is_same_series=bool(data["is_same_series"]),
+            canonical_series_name=data["canonical_series_name"],
+            excluded_series_names=list(data["excluded_series_names"]),
+            confidence=float(data["confidence"]),
+            explanation=data["explanation"],
+            warnings=list(data["warnings"]),
+        )

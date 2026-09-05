@@ -153,6 +153,26 @@ def test_upload_new_file_creates_file_with_media_and_parent() -> None:
     assert result == {"id": "new-folder-id", "name": "book.epub"}
 
 
+def test_list_folders_paginates() -> None:
+    # Regression: a parent with more than one page of children (e.g. a
+    # library root with hundreds of author folders) was silently truncated
+    # to the first page, which could make FolderPathCache think an existing
+    # folder further down the list didn't exist and create a duplicate.
+    files = _FakeFiles(
+        [
+            {"files": [{"id": "1", "name": "Author A"}], "nextPageToken": "tok"},
+            {"files": [{"id": "2", "name": "Author B"}]},
+        ]
+    )
+    provider = DriveProvider(_FakeService(files))
+
+    results = provider.list_folders("p")
+
+    assert [f["id"] for f in results] == ["1", "2"]
+    assert len(files.list_calls) == 2
+    assert files.list_calls[1]["pageToken"] == "tok"
+
+
 def test_list_folders_escapes_single_quote_in_parent_id() -> None:
     files = _FakeFiles([{"files": []}])
     provider = DriveProvider(_FakeService(files))

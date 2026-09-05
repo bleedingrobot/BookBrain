@@ -1,11 +1,17 @@
 from difflib import SequenceMatcher
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.data.models import Author, Book, Series
-from app.schemas.library_audit import LibraryAuditResult, SimilarNameCluster, SimilarNameMember
+from app.data.models import AuditClusterKind, Author, Book, DismissedAuditCluster, Series
+from app.schemas.library_audit import (
+    DismissedClusterInfo,
+    LibraryAuditResult,
+    SimilarNameCluster,
+    SimilarNameMember,
+)
 from app.services.text_match import normalize, normalize_words
 
 # Anything reaching this check already failed the exact word-set match that
@@ -129,12 +135,30 @@ def _cluster(rows: list[_Row]) -> list[SimilarNameCluster]:
     return clusters
 
 
+def _cluster_key(member_ids: list[int]) -> str:
+    return ",".join(str(i) for i in sorted(set(member_ids)))
+
+
+async def _dismissed_keys(session: AsyncSession, kind: AuditClusterKind) -> set[str]:
+    rows = (
+        (
+            await session.execute(
+                select(DismissedAuditCluster.member_ids_key).where(DismissedAuditCluster.kind == kind)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return set(rows)
+
+
 async def audit_library(session: AsyncSession) -> LibraryAuditResult:
     """Read-only: flags Series/Author rows whose names look like they might
     be the same thing split across two records (and, by construction of
-    organize_service.build_target_path, two Drive folders). Fixing is
-    manual today — move the files in Drive, then Rebuild library to
-    re-derive Author/Series/Book from wherever they actually ended up."""
+    organize_service.build_target_path, two Drive folders). Fixing series
+    clusters can be done in place via propose_series_merge/apply_series_merge;
+    author clusters (and any cluster the user has decided not to act on,
+    dismissed below) still need the manual Drive-move + Rebuild workflow."""
     series_rows = (
         (await session.execute(select(Series).options(selectinload(Series.books).selectinload(Book.files))))
         .scalars()
@@ -153,7 +177,59 @@ async def audit_library(session: AsyncSession) -> LibraryAuditResult:
         (a.id, a.name, len(a.books), sum(len(b.files) for b in a.books)) for a in author_rows
     ]
 
+    dismissed_series = await _dismissed_keys(session, AuditClusterKind.series)
+    dismissed_authors = await _dismissed_keys(session, AuditClusterKind.author)
+
+    def _not_dismissed(cluster: SimilarNameCluster, dismissed: set[str]) -> bool:
+        return _cluster_key([m.id for m in cluster.members]) not in dismissed
+
     return LibraryAuditResult(
-        similar_series=_cluster(series_tuples),
-        similar_authors=_cluster(author_tuples),
+        similar_series=[c for c in _cluster(series_tuples) if _not_dismissed(c, dismissed_series)],
+        similar_authors=[c for c in _cluster(author_tuples) if _not_dismissed(c, dismissed_authors)],
     )
+
+
+async def dismiss_cluster(session: AsyncSession, kind: AuditClusterKind, member_ids: list[int]) -> None:
+    """Idempotent: dismissing an already-dismissed cluster (same kind +
+    exact member-id-set) is a no-op, not an error."""
+    key = _cluster_key(member_ids)
+    existing = (
+        await session.execute(
+            select(DismissedAuditCluster).where(
+                DismissedAuditCluster.kind == kind, DismissedAuditCluster.member_ids_key == key
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(DismissedAuditCluster(kind=kind, member_ids_key=key))
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Lost a race with a concurrent dismiss of the exact same cluster —
+        # the outcome (dismissed) is the same either way.
+        await session.rollback()
+
+
+async def list_dismissed_clusters(session: AsyncSession) -> list[DismissedClusterInfo]:
+    rows = (
+        (await session.execute(select(DismissedAuditCluster).order_by(DismissedAuditCluster.created_at.desc())))
+        .scalars()
+        .all()
+    )
+    return [
+        DismissedClusterInfo(
+            id=r.id,
+            kind=r.kind.value,
+            member_ids=[int(x) for x in r.member_ids_key.split(",")],
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+async def undismiss_cluster(session: AsyncSession, dismissed_id: int) -> None:
+    row = await session.get(DismissedAuditCluster, dismissed_id)
+    if row is not None:
+        await session.delete(row)
+        await session.commit()

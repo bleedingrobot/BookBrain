@@ -1,5 +1,10 @@
-from app.data.models import Author, Book, File, Series
-from app.services.library_audit_service import audit_library
+from app.data.models import AuditClusterKind, Author, Book, File, Series
+from app.services.library_audit_service import (
+    audit_library,
+    dismiss_cluster,
+    list_dismissed_clusters,
+    undismiss_cluster,
+)
 
 
 def _file(drive_id: str) -> File:
@@ -150,3 +155,96 @@ async def test_audit_returns_empty_on_empty_library(db_session) -> None:
 
     assert result.similar_series == []
     assert result.similar_authors == []
+
+
+async def test_dismissed_cluster_is_filtered_out_of_audit(db_session) -> None:
+    dune = Series(name="Dune")
+    dune_chronicles = Series(name="Dune Chronicles")
+    db_session.add_all([dune, dune_chronicles])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Book(canonical_title="Dune", series_id=dune.id, files=[_file("d1")]),
+            Book(canonical_title="Dune Messiah", series_id=dune_chronicles.id, files=[_file("d2")]),
+        ]
+    )
+    await db_session.commit()
+
+    before = await audit_library(db_session)
+    assert len(before.similar_series) == 1
+    member_ids = [m.id for m in before.similar_series[0].members]
+
+    await dismiss_cluster(db_session, AuditClusterKind.series, member_ids)
+
+    after = await audit_library(db_session)
+    assert after.similar_series == []
+
+
+async def test_dismiss_cluster_is_idempotent(db_session) -> None:
+    db_session.add_all([Series(name="Dune"), Series(name="Dune Chronicles")])
+    await db_session.commit()
+    result = await audit_library(db_session)
+    member_ids = [m.id for m in result.similar_series[0].members]
+
+    await dismiss_cluster(db_session, AuditClusterKind.series, member_ids)
+    await dismiss_cluster(db_session, AuditClusterKind.series, list(reversed(member_ids)))
+
+    dismissed = await list_dismissed_clusters(db_session)
+    assert len(dismissed) == 1
+
+
+async def test_dismiss_does_not_cross_kinds(db_session) -> None:
+    # Dismissing a series cluster must not accidentally suppress an author
+    # cluster that happens to share the same member ids.
+    db_session.add_all([Series(name="Dune"), Series(name="Dune Chronicles")])
+    await db_session.commit()
+    result = await audit_library(db_session)
+    member_ids = [m.id for m in result.similar_series[0].members]
+
+    await dismiss_cluster(db_session, AuditClusterKind.author, member_ids)
+
+    after = await audit_library(db_session)
+    assert len(after.similar_series) == 1  # untouched — dismissal was for "author", not "series"
+
+
+async def test_undismiss_cluster_brings_it_back(db_session) -> None:
+    db_session.add_all([Series(name="Dune"), Series(name="Dune Chronicles")])
+    await db_session.commit()
+    result = await audit_library(db_session)
+    member_ids = [m.id for m in result.similar_series[0].members]
+
+    await dismiss_cluster(db_session, AuditClusterKind.series, member_ids)
+    assert (await audit_library(db_session)).similar_series == []
+
+    [dismissed] = await list_dismissed_clusters(db_session)
+    await undismiss_cluster(db_session, dismissed.id)
+
+    assert len(( await audit_library(db_session)).similar_series) == 1
+
+
+async def test_dismissed_cluster_reappears_once_membership_changes(db_session) -> None:
+    # A 3-member cluster's dismissal is keyed on that exact membership — if
+    # one member later disappears (e.g. merged elsewhere), the resulting
+    # 2-member cluster is a different question and should reappear rather
+    # than silently staying hidden under a stale dismissal.
+    a, b, c = Series(name="Night Angel Trilogy"), Series(name="The Night Angel Trilogy"), Series(name="Book of Night")
+    db_session.add_all([a, b, c])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Book(canonical_title="X", series_id=a.id, files=[_file("x1")]),
+            Book(canonical_title="Y", series_id=b.id, files=[_file("x2")]),
+            Book(canonical_title="Z", series_id=c.id, files=[_file("x3")]),
+        ]
+    )
+    await db_session.commit()
+
+    await dismiss_cluster(db_session, AuditClusterKind.series, [a.id, b.id, c.id])
+    assert (await audit_library(db_session)).similar_series == []
+
+    await db_session.delete(b)
+    await db_session.commit()
+
+    after = await audit_library(db_session)
+    assert len(after.similar_series) == 1
+    assert {m.name for m in after.similar_series[0].members} == {"Night Angel Trilogy", "Book of Night"}

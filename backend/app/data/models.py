@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -314,6 +315,31 @@ class LocalFile(Base):
     discovered_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class AuditClusterKind(str, enum.Enum):
+    series = "series"
+    author = "author"
+
+
+class DismissedAuditCluster(Base):
+    """A Library Audit "possibly split" cluster the user has already
+    reviewed and decided isn't worth re-flagging (a false positive, or a
+    real split they've chosen to leave as-is) — audit_library filters these
+    out by exact member-id-set match. member_ids_key is the cluster's
+    member ids, sorted and comma-joined (e.g. "6,399") — if the cluster's
+    membership changes later (e.g. one member gets merged away elsewhere),
+    that's a different key and the dismissal naturally stops applying,
+    since it's genuinely a different question being asked."""
+
+    __tablename__ = "dismissed_audit_clusters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[AuditClusterKind] = mapped_column(Enum(AuditClusterKind), nullable=False)
+    member_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("kind", "member_ids_key", name="uq_dismissed_audit_cluster"),)
+
+
 __all__ = [
     "Author",
     "Series",
@@ -330,4 +356,6 @@ __all__ = [
     "Setting",
     "LocalFile",
     "WishlistItem",
+    "AuditClusterKind",
+    "DismissedAuditCluster",
 ]

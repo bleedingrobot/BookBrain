@@ -5,11 +5,13 @@ from app.core.config import get_settings
 from app.providers.ai.schema import (
     IDENTIFY_BOOK_TOOL,
     IDENTIFY_SERIES_TOOL,
+    PROPOSE_SERIES_MERGE_TOOL,
     RESOLVE_BOOK_REQUEST_TOOL,
 )
 from app.providers.ai.types import (
     AIBookRequestResult,
     AIIdentificationResult,
+    AISeriesMergeResult,
     AISeriesResult,
 )
 
@@ -117,3 +119,18 @@ class AnthropicIdentificationClient:
                 return AISeriesResult.from_tool_input(block.input), response.to_dict()
 
         raise AIIdentificationError("model did not return the identify_series tool call")
+
+    async def propose_series_merge(self, prompt: str) -> AISeriesMergeResult:
+        response = await self._client.messages.create(
+            model=self.model_name,
+            max_tokens=1024,
+            tools=[PROPOSE_SERIES_MERGE_TOOL],
+            tool_choice={"type": "tool", "name": "propose_series_merge"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if response.stop_reason == "refusal":
+            raise AIIdentificationError("model declined to compare these series")
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "propose_series_merge":
+                return AISeriesMergeResult.from_tool_input(block.input)
+        raise AIIdentificationError("model did not return the propose_series_merge tool call")

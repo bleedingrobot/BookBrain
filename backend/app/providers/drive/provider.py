@@ -24,14 +24,31 @@ class DriveProvider:
         self._service = service
 
     def list_folders(self, parent_id: str | None) -> list[dict]:
+        # Paginated: a parent with more than one page of children (e.g. a
+        # library root with hundreds of author folders) would otherwise
+        # silently only see the first page, causing FolderPathCache's
+        # exact-name lookup to miss an existing folder and create a
+        # duplicate — this bit a real library with 433 root-level folders.
         parent = _escape_query_value(parent_id or "root")
         query = f"'{parent}' in parents and mimeType='{FOLDER_MIME_TYPE}' and trashed=false"
-        result = (
-            self._service.files()
-            .list(q=query, fields="files(id,name)", pageSize=200)
-            .execute()
-        )
-        return result.get("files", [])
+        folders: list[dict] = []
+        page_token: str | None = None
+        while True:
+            result = (
+                self._service.files()
+                .list(
+                    q=query,
+                    fields="nextPageToken, files(id,name)",
+                    pageSize=200,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+            folders.extend(result.get("files", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+        return folders
 
     def create_folder(self, name: str, parent_id: str | None = None) -> dict:
         body = {"name": name, "mimeType": FOLDER_MIME_TYPE}
