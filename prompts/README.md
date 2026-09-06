@@ -61,7 +61,7 @@ and `SPEC.md` § "Identification pipeline (2026)".
 
 | # | File | Kind | One line |
 |---|------|------|----------|
-| 17 | [`17-library-viewer-epub-reader.md`](17-library-viewer-epub-reader.md) | feature — `library-viewer` only | **§A–C DONE 2026-09-07** (`e08b700` + `511d2cf`). Vendored `foliate-js` (EPUB path, no npm dep) → `components/Reader.tsx`: full-screen paginated reader, tap/key/swipe, Contents drawer, Display panel (`readerPrefs.ts`), position in `localStorage` (`readingProgress.ts`), IndexedDB offline byte-cache (`bookCache.ts`, LRU 300 MB/20). "Read" on `.epub` rows + "Continue reading" strip + "Clear downloaded books". Build/lint/86 tests green; **full render + page-turn + restore is James's manual-QA** (foliate renders into iframes headless Chrome can't drive). §D (word-count→time-left) + §E (cross-device reading-state sidecar → `prompts/18`) deferred. |
+| 17 | [`17-library-viewer-epub-reader.md`](17-library-viewer-epub-reader.md) | feature — `library-viewer` only | **§A–C DONE 2026-09-07** (`e08b700` + `511d2cf`). Vendored `foliate-js` (EPUB path, no npm dep) → `components/Reader.tsx`: full-screen paginated reader, tap/key/swipe, Contents drawer, Display panel (`readerPrefs.ts`), position in `localStorage` (`readingProgress.ts`), IndexedDB offline byte-cache (`bookCache.ts`, LRU 300 MB/20). "Read" on `.epub` rows + "Continue reading" strip + "Clear downloaded books". Build/lint/90 tests green; James-verified on real devices (`2ad7e40` + `c9c4c6b` follow-up fixes). §D (word-count→time-left) deferred. **§E (cross-device position sync) + Kobo sync — dropped, James doesn't want them; position stays per-device.** |
 
 ## Shared context (every session should know this)
 

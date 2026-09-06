@@ -201,13 +201,13 @@ mis-identification guards). The rest of that session's ideas, for later:
     to `localStorage` and restored on reopen, opened books cached in IndexedDB
     (`lib/bookCache.ts`, LRU 300 MB / 20). "Read" button on `.epub` rows;
     "Continue reading" strip on the home screen (`components/ContinueReading.tsx`);
-    "Clear downloaded books (N)" in the header menu. **Full render + page-turn +
-    restore is still manual-QA** (foliate paginates into iframes; headless Chrome
-    can't drive them — verified the upstream reference reader behaves the same
-    headless). §D (word-count → time-left) and §E (cross-device reading-state
-    Drive sidecar → `prompts/18`) deferred.
-  - Reading state per person — want-to-read / reading / finished. Even manual
-    toggles unlock everything below. (§E of prompt 17 is the first slice.)
+    "Clear downloaded books (N)" in the header menu. James-verified on real
+    devices (`2ad7e40` failed-open recovery, `c9c4c6b` vertical fill). §D
+    (word-count → time-left) deferred. **§E (cross-device position sync via a
+    Drive sidecar) and a "sync from Kobo" button — James decided not to pursue
+    these; position stays per-device.**
+  - ~~Reading state per person — want-to-read / reading / finished~~ — **not
+    planned** (was going to piggy-back on §E; James doesn't want the sync).
   - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,
     you own #2" on the home screen; "you own #3 but not #1–2" → offer to add to
     the wishlist.

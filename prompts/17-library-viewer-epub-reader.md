@@ -162,9 +162,13 @@ Skippable for v1 — without it the reader shows `%` and page counts, just not
 If it's not in this PR, add it to ROADMAP as a follow-up rather than half-doing
 it.
 
-## E. (stretch — probably its own task) cross-device reading state
+## E. cross-device reading state — DROPPED
 
-Only if §B/C land clean and there's appetite. A `bookbrain-reading-state.json`
+> **2026-09-07: James decided not to pursue this.** Reading position stays
+> per-device (`localStorage`). A "sync from Kobo" button was considered and
+> also dropped. The rest of this section is kept for context only.
+
+~~Only if §B/C land clean and there's appetite.~~ A `bookbrain-reading-state.json`
 Drive sidecar, same read-modify-write + concurrent-save guard as
 `wishlist.ts`:
 
@@ -244,9 +248,8 @@ reading together). Push to `main` — that deploys the viewer.
 Then:
 
 - `ROADMAP.md` — mark the EPUB reader + "Continue reading" done under "Viewer as
-  a reading tool"; leave the rest of that cluster (per-person state, ratings,
-  NL search, Kobo round-trip) open, and add §E (cross-device reading state) as
-  the explicit next step / `prompts/18`.
+  a reading tool"; leave ratings / NL search open. Per-person reading state +
+  §E cross-device sync + Kobo round-trip are **dropped** (James, 2026-09-07).
 - `prompts/README.md` — add row 17 (done), note it's viewer-only + vendored dep.
 - `library-viewer/README.md` — the vendored `foliate-js` + its pinned commit;
   a line on the reader + offline cache + where prefs/progress live.
