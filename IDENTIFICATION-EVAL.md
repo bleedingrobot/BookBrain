@@ -151,3 +151,9 @@ cd backend && python scripts/eval_identification.py --live --tag standalone-seri
 
 Compare per-field series precision + the confusion list on those slices against
 the Stage 0 baseline, and record cost/identify here.
+
+**Known gap left for later:** the fast-path `identify_series` lookup (fired when
+ISBN+provider+EPUB agree on title/author but no source has a series) is *not*
+grounded — that path is the other half of the "Scion → invented Hierarchy #2"
+mechanism. Stage B (real provider series) shrinks how often it runs; grounding
+it too is a candidate follow-up once Stage B lands.
