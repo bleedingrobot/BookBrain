@@ -14,8 +14,10 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.data.db import async_session_factory
 from app.data.models import Author, Book, File, FileStatus, Identifier, IdentifierType, MetadataSource
+from app.schemas.descriptions import DescriptionBackfillEstimate
 from app.providers.ai.anthropic_client import AnthropicIdentificationClient
 from app.schemas.descriptions import DescriptionJobState, DescriptionJobStatus
 from app.services.candidate_service import default_candidate_service
@@ -97,15 +99,42 @@ async def _isbns_for(session: AsyncSession, book_ids: list[int]) -> dict[int, tu
     return out
 
 
+async def estimate_description_backfill() -> DescriptionBackfillEstimate:
+    """Pure DB count + arithmetic — makes **zero** AI calls. Upper bound: it
+    assumes every description-less book will need the model (the free
+    provider pass may satisfy some), which is the number to warn on."""
+    settings = get_settings()
+    cap = settings.ai_description_cap
+    try:
+        async with async_session_factory() as session:
+            books_missing = len(await _books_needing_descriptions(session))
+    except Exception:
+        logger.exception("description estimate: query failed")
+        books_missing = 0
+    will_process = min(books_missing, cap)
+    return DescriptionBackfillEstimate(
+        books_missing=books_missing,
+        will_process=will_process,
+        cap=cap,
+        estimated_cost_usd=round(will_process * settings.ai_description_cost_usd, 2),
+    )
+
+
 async def backfill_descriptions(
     *,
     use_ai: bool = False,
     limit: int | None = None,
+    ai_cap: int | None = None,
     on_progress: Callable[[dict[str, int], int], None] | None = None,
 ) -> dict[str, int]:
     counts = {"from_provider": 0, "from_ai": 0, "not_found": 0, "remaining": 0}
     candidates = default_candidate_service()
     ai = AnthropicIdentificationClient() if use_ai else None
+    # Free provider lookups stay uncapped; only model-written blurbs are
+    # rationed. _books_needing_descriptions is stateless, so a re-run picks
+    # up whatever the cap left behind.
+    ai_budget = {"left": ai_cap if (use_ai and ai_cap is not None) else None}
+    deferred = {"n": 0}
 
     try:
         async with async_session_factory() as session:
@@ -147,11 +176,16 @@ async def backfill_descriptions(
                         ol_dead["count"] += 1
                 if desc:
                     source = "from_provider"
-                # 3. opt-in, costs API credits: a model-written blurb
+                # 3. opt-in, costs API credits: a model-written blurb, rationed
                 elif ai is not None:
-                    ai_text = _clean(await ai.describe(title, author))
-                    if ai_text:
-                        desc, source = ai_text, "from_ai"
+                    if ai_budget["left"] is not None and ai_budget["left"] <= 0:
+                        deferred["n"] += 1
+                    else:
+                        if ai_budget["left"] is not None:
+                            ai_budget["left"] -= 1
+                        ai_text = _clean(await ai.describe(title, author))
+                        if ai_text:
+                            desc, source = ai_text, "from_ai"
             except Exception:
                 logger.exception("description backfill failed for book %s", book_id)
 
@@ -174,6 +208,9 @@ async def backfill_descriptions(
         await asyncio.gather(*(one(bid, t, a) for bid, t, a in todo))
     finally:
         await http.aclose()
+    # Books whose model blurb we skipped because the per-run cap ran out are
+    # still "to go" — a re-run continues from here.
+    counts["remaining"] += deferred["n"]
     logger.info("description backfill: %s", counts)
     return counts
 
@@ -203,7 +240,11 @@ class DescriptionService:
                 remaining=total - done,
             )
 
-        counts = await backfill_descriptions(use_ai=use_ai, on_progress=progress)
+        counts = await backfill_descriptions(
+            use_ai=use_ai,
+            ai_cap=get_settings().ai_description_cap if use_ai else None,
+            on_progress=progress,
+        )
         self._jobs[job_id] = DescriptionJobStatus(
             job_id=job_id,
             status=DescriptionJobState.done,

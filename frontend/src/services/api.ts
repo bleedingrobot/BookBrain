@@ -4,9 +4,11 @@ import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
 import type {
   CoverJobStatus,
+  DescriptionBackfillEstimate,
   DescriptionJobStatus,
   LibraryExportResult,
   MetadataWritebackJobStatus,
+  RebuildEstimate,
 } from '../types/library'
 import type {
   AuditClusterKind,
@@ -193,6 +195,9 @@ export const api = {
 
   clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
   rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),
+  rebuildEstimate: () => request<RebuildEstimate>('/library/rebuild/estimate'),
+  descriptionEstimate: () =>
+    request<DescriptionBackfillEstimate>('/library/descriptions/estimate'),
   getRebuildStatus: (jobId: string) => request<ScanJobStatus>(`/library/rebuild/${jobId}`),
   exportLibrary: () => request<LibraryExportResult>('/library/export', { method: 'POST' }),
   refreshLibraryIndex: () => request<{ books: number }>('/library/index', { method: 'POST' }),

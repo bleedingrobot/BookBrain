@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     confidence_auto_organize: int = 95
     confidence_auto_flagged: int = 85
 
+    # AI spend guard rails (finding 11). Per-call figures are padded
+    # estimates in the same spirit as reident_audit_service's
+    # ~1.5k in + 0.4k out; they exist to show the user a "~$X" before a
+    # click, not to bill anything.
+    ai_description_cap: int = 200  # max model-written blurbs per backfill run
+    ai_description_cost_usd: float = 0.01  # describe(): ~150 in + ~400 out
+    ai_identify_cost_usd: float = 0.03  # a full forced-tool identify pass
+
     # Calibre CLI conversion (mobi/rtf/txt -> epub before processing)
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120

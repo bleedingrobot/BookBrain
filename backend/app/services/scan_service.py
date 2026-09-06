@@ -31,6 +31,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError
 from app.providers.epub.parser import EpubEvidence, parse_epub_safely
+from app.schemas.library import RebuildEstimate
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
 from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
@@ -756,6 +757,36 @@ def _evidence_to_metadata_sources(
     return [
         MetadataSource(field_name=name, value=value, source=source) for name, value, source in fields
     ]
+
+
+async def estimate_rebuild(
+    creds: Credentials | None, library_root_folder_id: str | None
+) -> RebuildEstimate:
+    """How many library-tree .epubs a rebuild would (re-)identify — the ones
+    not already in `files`. One Drive listing, zero AI calls. Degrades to
+    `estimated=False` if we can't list the tree."""
+    settings = get_settings()
+    if creds is None or not library_root_folder_id:
+        return RebuildEstimate(files_to_identify=0, estimated_cost_usd=0.0, estimated=False)
+    try:
+        provider = DriveProvider(build_drive_service(creds))
+        raw_files = await asyncio.to_thread(
+            provider.list_epub_files_recursive, library_root_folder_id
+        )
+    except Exception:
+        logger.exception("rebuild estimate: Drive listing failed")
+        return RebuildEstimate(files_to_identify=0, estimated_cost_usd=0.0, estimated=False)
+
+    async with async_session_factory() as session:
+        known = set(
+            (await session.execute(select(File.drive_file_id))).scalars().all()
+        )
+    unknown = sum(1 for f in raw_files if f.get("id") not in known)
+    return RebuildEstimate(
+        files_to_identify=unknown,
+        estimated_cost_usd=round(unknown * settings.ai_identify_cost_usd, 2),
+        estimated=True,
+    )
 
 
 _scan_service = ScanService()

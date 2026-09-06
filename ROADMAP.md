@@ -30,6 +30,18 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **AI spend guard rails on descriptions + rebuild** (2026-09-06, review batch #2
+  / finding 11, P2) — `POST /api/library/descriptions?ai=true` fanned out one
+  `describe()` per description-less book (~950) with no cap or estimate;
+  `POST /api/library/rebuild` re-identified every unknown file (~2200 after Clear
+  Library) with no warning. Now: `ai_description_cap` (200) rations the model
+  blurbs per run (free provider pass stays uncapped; a re-run continues);
+  `GET /api/library/descriptions/estimate` and `GET /api/library/rebuild/estimate`
+  return `~N, ~$X` with **zero** AI calls; `Library.tsx` shows the estimate and
+  needs a second click before either AI run. Per-call `$` figures are padded
+  constants in `config.py`. Rebuild estimate degrades to "couldn't estimate,
+  proceed?" if the Drive listing fails.
+
 - **Write locks unified onto one shared commit serialiser** (2026-09-06, review
   batch #2 / finding 09, P2) — `conftest._reset_shared_singletons` reset five
   locks but missed `OrganizeService._write_lock` (an instance attr on the module

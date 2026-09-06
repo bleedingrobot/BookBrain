@@ -21,6 +21,19 @@ export interface DescriptionJobStatus {
   remaining: number
 }
 
+export interface DescriptionBackfillEstimate {
+  books_missing: number
+  will_process: number
+  cap: number
+  estimated_cost_usd: number
+}
+
+export interface RebuildEstimate {
+  files_to_identify: number
+  estimated_cost_usd: number
+  estimated: boolean
+}
+
 export interface MetadataWritebackJobStatus {
   job_id: string
   status: 'running' | 'done' | 'failed'

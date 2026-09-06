@@ -16,3 +16,10 @@ class DescriptionJobStatus(BaseModel):
     from_ai: int = 0
     not_found: int = 0
     remaining: int = 0
+
+
+class DescriptionBackfillEstimate(BaseModel):
+    books_missing: int
+    will_process: int
+    cap: int
+    estimated_cost_usd: float

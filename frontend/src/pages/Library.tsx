@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { CorrectFileForm } from '../components/CorrectFileForm'
 import type { CorrectReviewRequest } from '../types/reviews'
+import type { DescriptionBackfillEstimate, RebuildEstimate } from '../types/library'
 import { api, ApiError } from '../services/api'
 import { useCoverStatus } from '../hooks/useCoverStatus'
 import { useDescriptionStatus } from '../hooks/useDescriptionStatus'
@@ -65,6 +66,8 @@ export function Library() {
   const [mdDryRun, setMdDryRun] = useState(false)
   const [organizeStarting, setOrganizeStarting] = useState(false)
   const [rebuildStarting, setRebuildStarting] = useState(false)
+  const [rebuildConfirm, setRebuildConfirm] = useState<RebuildEstimate | 'unknown' | null>(null)
+  const [descConfirm, setDescConfirm] = useState<DescriptionBackfillEstimate | 'unknown' | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [exportResult, setExportResult] = useState<{ name: string; url: string } | null>(null)
@@ -125,6 +128,62 @@ export function Library() {
       queryClient.invalidateQueries({ queryKey: ['files'] })
     }
   }, [organize.data?.status, queryClient])
+
+  const startRebuild = async () => {
+    setRebuildConfirm(null)
+    setRebuildError(null)
+    setRebuildStarting(true)
+    try {
+      const job = await api.rebuildLibrary()
+      setRebuildJobId(job.job_id)
+    } catch (err) {
+      setRebuildError(err instanceof ApiError ? err.message : 'Failed to start rebuild.')
+    } finally {
+      setRebuildStarting(false)
+    }
+  }
+
+  const requestRebuild = async () => {
+    setRebuildError(null)
+    setRebuildStarting(true)
+    try {
+      setRebuildConfirm(await api.rebuildEstimate())
+    } catch {
+      setRebuildConfirm('unknown')
+    } finally {
+      setRebuildStarting(false)
+    }
+  }
+
+  const startDescriptions = async (useAi: boolean) => {
+    setDescConfirm(null)
+    setDescError(null)
+    setDescStarting(true)
+    try {
+      const job = await api.backfillDescriptions(useAi)
+      setDescJobId(job.job_id)
+    } catch (err) {
+      setDescError(err instanceof ApiError ? err.message : 'Failed to start description job.')
+    } finally {
+      setDescStarting(false)
+    }
+  }
+
+  const requestDescriptions = async () => {
+    if (!descUseAi) {
+      await startDescriptions(false)
+      return
+    }
+    setDescError(null)
+    setDescStarting(true)
+    try {
+      setDescConfirm(await api.descriptionEstimate())
+    } catch {
+      setDescConfirm('unknown')
+    } finally {
+      setDescStarting(false)
+    }
+  }
 
   useEffect(() => {
     if (rebuild.data?.status === 'done') {
@@ -220,19 +279,9 @@ export function Library() {
             </button>
             <button
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              title="Re-identifies every library file not already tracked (AI included). Shows an estimate first."
               disabled={rebuildStarting || rebuild.data?.status === 'running'}
-              onClick={async () => {
-                setRebuildError(null)
-                setRebuildStarting(true)
-                try {
-                  const job = await api.rebuildLibrary()
-                  setRebuildJobId(job.job_id)
-                } catch (err) {
-                  setRebuildError(err instanceof ApiError ? err.message : 'Failed to start rebuild.')
-                } finally {
-                  setRebuildStarting(false)
-                }
-              }}
+              onClick={requestRebuild}
             >
               Rebuild library
             </button>
@@ -277,20 +326,9 @@ export function Library() {
             </button>
             <button
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
-              title="Fills in missing book descriptions from Google Books / Open Library (free). Tick the box to also have Claude write one for anything still blank (uses API credits)."
+              title="Fills in missing book descriptions from Google Books / Open Library (free). Tick the box to also have Claude write one for anything still blank (uses API credits — you'll see an estimate first)."
               disabled={descStarting || descriptions.data?.status === 'running'}
-              onClick={async () => {
-                setDescError(null)
-                setDescStarting(true)
-                try {
-                  const job = await api.backfillDescriptions(descUseAi)
-                  setDescJobId(job.job_id)
-                } catch (err) {
-                  setDescError(err instanceof ApiError ? err.message : 'Failed to start description job.')
-                } finally {
-                  setDescStarting(false)
-                }
-              }}
+              onClick={requestDescriptions}
             >
               {descriptions.data?.status === 'running' ? 'Filling descriptions…' : 'Fill descriptions'}
             </button>
@@ -435,6 +473,62 @@ export function Library() {
                 ? `, ${descriptions.data.remaining} to go`
                 : ''}
             </p>
+          )}
+
+          {rebuildConfirm && (
+            <div className="mt-3 max-w-sm space-y-2 rounded border border-amber-300 p-3 text-left text-xs dark:border-amber-800">
+              <p className="text-neutral-700 dark:text-neutral-300">
+                {rebuildConfirm === 'unknown'
+                  ? "Couldn't estimate the size of this rebuild (Drive listing failed). It re-identifies every library file not already tracked, AI included."
+                  : `This re-identifies about ${rebuildConfirm.files_to_identify} file${
+                      rebuildConfirm.files_to_identify === 1 ? '' : 's'
+                    } — roughly $${rebuildConfirm.estimated_cost_usd.toFixed(2)} in API credits. Runs unattended once started.`}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="rounded bg-amber-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  disabled={rebuildStarting}
+                  onClick={startRebuild}
+                >
+                  Yes, rebuild
+                </button>
+                <button
+                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  onClick={() => setRebuildConfirm(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {descConfirm && (
+            <div className="mt-3 max-w-sm space-y-2 rounded border border-amber-300 p-3 text-left text-xs dark:border-amber-800">
+              <p className="text-neutral-700 dark:text-neutral-300">
+                {descConfirm === 'unknown'
+                  ? "Couldn't estimate this run, but it will write model blurbs for books still missing one (uses API credits)."
+                  : `About ${descConfirm.books_missing} book${
+                      descConfirm.books_missing === 1 ? '' : 's'
+                    } still lack a description. This run writes up to ${descConfirm.will_process} model blurbs — roughly $${descConfirm.estimated_cost_usd.toFixed(
+                      2,
+                    )}. Re-run to continue in batches of ${descConfirm.cap}.`}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="rounded bg-amber-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  disabled={descStarting}
+                  onClick={() => startDescriptions(true)}
+                >
+                  Yes, run it
+                </button>
+                <button
+                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  onClick={() => setDescConfirm(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
 
           {confirmingClear && (

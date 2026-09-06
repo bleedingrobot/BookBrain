@@ -6,21 +6,25 @@ from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.provider import DriveProvider
 from app.schemas.covers import CoverJobStatus
-from app.schemas.descriptions import DescriptionJobStatus
-from app.schemas.library import LibraryExportResult
+from app.schemas.descriptions import DescriptionBackfillEstimate, DescriptionJobStatus
+from app.schemas.library import LibraryExportResult, RebuildEstimate
 from app.schemas.metadata_writeback import MetadataWritebackJobStatus
 from app.schemas.scan import ScanJobStatus
 from app.services import library_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
-from app.services.description_service import DescriptionService, get_description_service
+from app.services.description_service import (
+    DescriptionService,
+    estimate_description_backfill,
+    get_description_service,
+)
 from app.services.drive_service import DriveService
 from app.services.metadata_writeback_service import (
     MetadataWritebackService,
     get_metadata_writeback_service,
 )
 from app.services.library_index_service import regenerate_library_index
-from app.services.scan_service import ScanService, get_scan_service
+from app.services.scan_service import ScanService, estimate_rebuild, get_scan_service
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -49,6 +53,19 @@ async def rebuild_library(
     job = service.create_job()
     background_tasks.add_task(service.run_rebuild, job.job_id, creds, library.folder_id)
     return job
+
+
+@router.get("/rebuild/estimate", response_model=RebuildEstimate)
+async def rebuild_estimate(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> RebuildEstimate:
+    """~N library-tree files a rebuild would re-identify + a rough $ figure.
+    One Drive listing, zero AI calls; `estimated=false` if it can't list."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    library = await DriveService.get_library_folder_config(settings_repo)
+    return await estimate_rebuild(creds, library.folder_id if library else None)
 
 
 @router.get("/rebuild/{job_id}", response_model=ScanJobStatus)
@@ -129,6 +146,14 @@ async def start_description_backfill(
     job = service.create_job()
     background_tasks.add_task(service.run, job.job_id, use_ai=ai)
     return job
+
+
+@router.get("/descriptions/estimate", response_model=DescriptionBackfillEstimate)
+async def description_backfill_estimate() -> DescriptionBackfillEstimate:
+    """~N description-less books the AI backfill would process this run (an
+    upper bound — the free provider pass may cover some) + a rough $ figure.
+    Pure DB count, zero AI calls."""
+    return await estimate_description_backfill()
 
 
 @router.get("/descriptions/{job_id}", response_model=DescriptionJobStatus)
