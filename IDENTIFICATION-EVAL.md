@@ -177,13 +177,48 @@ Corpus is flat — the harness scores one file at a time, so a batch consensus
 never forms. Unit-tested in `test_batch_prior_service.py` (the plan's 4-Discworld
 + 1-thin case, no-consensus, conflict, idempotency). No AI cost.
 
-## Tier 3 (I remains)
+### Stage I — "recently auto-organized" tray + soft-hold (`prompts/15` Stage I)
 
-J and K are shipped and deterministic (no AI cost). The corpus is structurally
-blind to both — J's win is *dedup* on a populated library (the harness starts
-empty), K's is a *batch* consensus (the harness scores one book at a time).
-Stage I (recently-auto-organized tray + soft-hold) is frontend + API + a running
-app to verify against — best as its own session.
+Finding F6: everything `>= confidence_auto_flagged` (85) auto-organizes with zero
+human eyes. Stage I is the safety net, not a scoring change:
+
+- `GET /api/library/recently-organized?since=48h` → `recently_organized_service`:
+  one row per file auto-organized in the window (its latest move `Operation`),
+  each with the confidence it moved at, a one-line `evidence_summary`, current
+  status, and a `confirmed` flag. `since` = `24h`/`48h`/`7d`, clamped to 30d.
+- **Confirm** (`POST /api/files/{id}/confirm` → `file_service.confirm_file`):
+  idempotent `Review(status=approved)` row carrying the confirmed
+  title/author/series (`proposed_json.confirmed=true`). Never moves the file,
+  never an `Operation`. A future `build_truth.py` mode can harvest these as free
+  ground truth — **hook noted, harvester not built** (the corpus number here is
+  unchanged; the value is future ground-truth growth from real confirmations).
+- **Correct** reuses `CorrectFileForm` → the existing `/files/{id}/correct`.
+- Soft-hold `settings.organize_hold_hours` (default **0** = today's exact
+  behaviour): when > 0, `organize_eligible_files` adds one
+  `File.discovered_at <= now - hold` WHERE clause, so a just-eligible file waits
+  that long — long enough to catch a miss in the tray before any Drive move. A
+  held file simply isn't eligible yet; it flows next pass (can't stall nightly).
+- `organize_service._organize_file` now stamps `Operation.confidence` /
+  `Operation.model` from the file's latest `AIDecision` (nullable, unset before).
+
+**Corpus flat by construction** — the eval harness has no organize pass, no
+`operations` table activity, and no Dashboard. Tested in
+`test_recently_organized_service.py` (window filter, dry-run exclusion, evidence
+summary shape, confirm idempotency, held list) + `test_organize_service.py`
+(hold=0 byte-identical, hold=24 delays a fresh file then releases a back-dated
+one, a tray correction pre-empts the move, Operation confidence/model stamped).
+No AI cost anywhere.
+
+## Push complete (2026-09-07)
+
+All of prompts/15 (0, A–D, E–H, I–K) is shipped. Offline per-field precision is
+flat across every stage by the frozen-AI construction of the harness; the one
+measurable offline movement in the whole push is **Stage C's
+`wrong_auto_organized` 2 → 1**. The real gains (grounding on post-cutoff books,
+richer evidence, junk-metadata catches, ISBN-trust, batch priors, author dedup,
+the human-glance safety net) need a `--live` run or a re-snapshot to show — most
+of that is free of AI cost. See `SPEC.md` § "Identification pipeline (2026)" for
+the final shape.
 
 ## Per-stage log
 

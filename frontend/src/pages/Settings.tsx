@@ -78,8 +78,9 @@ export function Settings() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['library-folder'] }),
   })
 
-  const updateDryRun = useMutation({
-    mutationFn: (dryRun: boolean) => api.updateOrganizeSettings(dryRun),
+  const updateOrganize = useMutation({
+    mutationFn: ({ dryRun, holdHours }: { dryRun: boolean; holdHours: number }) =>
+      api.updateOrganizeSettings(dryRun, holdHours),
     onSuccess: (data) => {
       queryClient.setQueryData(['organize-settings'], data)
       setConfirmingLiveMoves(false)
@@ -256,8 +257,13 @@ export function Settings() {
                     <div className="flex gap-2">
                       <button
                         className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
-                        disabled={updateDryRun.isPending}
-                        onClick={() => updateDryRun.mutate(false)}
+                        disabled={updateOrganize.isPending}
+                        onClick={() =>
+                          updateOrganize.mutate({
+                            dryRun: false,
+                            holdHours: organizeSettings.data!.hold_hours,
+                          })
+                        }
                       >
                         Yes, enable live moves
                       </button>
@@ -279,13 +285,63 @@ export function Settings() {
                 <div>
                   <button
                     className="mt-3 rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
-                    onClick={() => updateDryRun.mutate(true)}
+                    onClick={() =>
+                      updateOrganize.mutate({
+                        dryRun: true,
+                        holdHours: organizeSettings.data!.hold_hours,
+                      })
+                    }
                   >
                     Switch back to dry run
                   </button>
                 </div>
               </>
             )}
+
+            <div className="mt-5 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={organizeSettings.data.hold_hours > 0}
+                  disabled={updateOrganize.isPending}
+                  onChange={(e) =>
+                    updateOrganize.mutate({
+                      dryRun: organizeSettings.data!.dry_run,
+                      holdHours: e.target.checked ? 24 : 0,
+                    })
+                  }
+                />
+                Hold new books before auto-organizing
+              </label>
+              <p className="mt-1 text-xs text-neutral-500">
+                When on, a book that clears the confidence bar waits before it's moved, so
+                you can catch a rare wrong identification in the “Recently auto-organized”
+                list on the Dashboard first. Off = organize straight away (current
+                behaviour).
+              </p>
+              {organizeSettings.data.hold_hours > 0 && (
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <span className="text-neutral-500">Wait</span>
+                  <select
+                    className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                    value={organizeSettings.data.hold_hours}
+                    disabled={updateOrganize.isPending}
+                    onChange={(e) =>
+                      updateOrganize.mutate({
+                        dryRun: organizeSettings.data!.dry_run,
+                        holdHours: Number(e.target.value),
+                      })
+                    }
+                  >
+                    {[6, 12, 24, 48, 72].map((h) => (
+                      <option key={h} value={h}>
+                        {h} hours
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
           </div>
         )}
       </section>

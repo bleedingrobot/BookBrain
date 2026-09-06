@@ -146,6 +146,66 @@ async def correct_file(session: AsyncSession, file_id: int, body: CorrectReviewR
     return file_row
 
 
+async def confirm_file(session: AsyncSession, file_id: int) -> File:
+    """prompts/15 Stage I — a human glanced at an auto-organized file in the
+    "Recently auto-organized" tray and it's right. Records a lightweight
+    positive signal (a `Review(status=approved)` row carrying the confirmed
+    title/author/series) so a future ground-truth harvester
+    (`build_truth.py` / `snapshot_book.py`) can grow the identification corpus
+    from real human confirmations — see `recently_organized_service`.
+
+    Idempotent: a second confirm on the same file is a no-op. Never moves the
+    file or touches its book — a Confirm is deliberately *not* an `Operation`.
+    """
+    file_row = (
+        await session.execute(
+            select(File)
+            .where(File.id == file_id)
+            .options(selectinload(File.book).selectinload(Book.author))
+            .options(selectinload(File.book).selectinload(Book.series))
+        )
+    ).scalar_one_or_none()
+    if file_row is None:
+        raise FileRecordNotFoundError(f"file {file_id} not found")
+    if file_row.book_id is None:
+        raise FileNotIdentifiedError(
+            "this file hasn't been identified yet — there's nothing to confirm"
+        )
+
+    existing = (
+        await session.execute(
+            select(Review).where(
+                Review.file_id == file_id, Review.status == ReviewStatus.approved
+            )
+        )
+    ).scalars().all()
+    if any((r.proposed_json or {}).get("confirmed") for r in existing):
+        return file_row  # already confirmed — no-op
+
+    book = file_row.book
+    session.add(
+        Review(
+            file_id=file_id,
+            status=ReviewStatus.approved,
+            proposed_json={
+                "confirmed": True,
+                "source": "recently_organized_tray",
+                "title": book.canonical_title if book else None,
+                "author": book.author.name if book and book.author else None,
+                "series": book.series.name if book and book.series else None,
+                "series_number": book.series_number if book else None,
+            },
+            resolved_at=datetime.now(UTC),
+        )
+    )
+    # Same commit-lock discipline as correct_file — a Confirm landing while the
+    # organize pass is mid-commit must serialise with it (book_repository's
+    # process-wide write lock), even though it writes no book rows itself.
+    async with get_book_write_lock():
+        await session.commit()
+    return file_row
+
+
 async def _isbns_for_book(
     session: AsyncSession, book_id: int
 ) -> tuple[str | None, str | None]:

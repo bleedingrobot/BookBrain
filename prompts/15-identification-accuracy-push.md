@@ -583,6 +583,34 @@ agree/disagree/route-to-review branches.
 
 #### Stage I — "Recently auto-organized" tray + optional soft-hold
 
+> **DONE 2026-09-07.** `GET /api/library/recently-organized?since=48h`
+> (`recently_organized_service` + `schemas/recently_organized.py`): every file
+> auto-organized in the window, newest first, deduped to one row per file (its
+> latest move `Operation`), each with the confidence it moved at, a one-line
+> `evidence_summary` (AI reasoning + `ISBN in file` / `N provider matches` /
+> `web-search verified` / `batch` / `double-checked`), current status, and a
+> `confirmed` flag. `since` accepts `24h`/`48h`/`7d`, clamped to 30d.
+> **Confirm** = `POST /api/files/{id}/confirm` → `file_service.confirm_file`
+> writes an idempotent `Review(status=approved)` row carrying the confirmed
+> title/author/series (`proposed_json.confirmed=true`,
+> `source="recently_organized_tray"`) — never moves the file, never an
+> `Operation`; a future `build_truth.py` / `snapshot_book.py` mode can harvest
+> these as free ground truth (hook noted, harvester not built).
+> **Correct** reuses the existing `CorrectFileForm` → `/files/{id}/correct`.
+> Soft-hold: `settings.organize_hold_hours` (`ORGANIZE_HOLD_HOURS`,
+> `get_organize_hold_hours`, clamped [0, 720], **default 0 = today's exact
+> behaviour**), surfaced on the Settings page folded into `OrganizeSettings`
+> (the `/settings/organize` GET/PUT pair). When > 0,
+> `organize_service.organize_eligible_files` adds a single
+> `File.discovered_at <= now - hold` WHERE clause — a held file just isn't
+> eligible yet and flows on the next pass, so the nightly job can't stall.
+> `organize_service._organize_file` now also stamps `Operation.confidence` /
+> `Operation.model` from the file's latest `AIDecision` (they were nullable and
+> unset before). Frontend: `RecentlyOrganized.tsx` composed into the Dashboard,
+> with a 24h/48h/7d toggle and (when the hold is on) a "held, waiting Nh"
+> sub-list. Corpus flat by construction (the eval harness has no organize pass
+> and no Dashboard). No AI cost anywhere. **Whole prompts/15 push complete.**
+
 **Why.** F6. Makes *effective* accuracy ~100% — a human glance within a day
 catches the rare miss — without adding a step to the happy path.
 
@@ -740,7 +768,15 @@ there's no batch consensus.
 │                                  settings.ai_verify_enabled defaults OFF (cost).
 │                                  Tier 2 COMPLETE.
 │
-├─ I  recently-organized tray   ── Tier 3
+├─ I  recently-organized tray   ── DONE (2026-09-07). GET /api/library/recently-
+│                                  organized + Dashboard tray (Confirm/Correct) +
+│                                  POST /api/files/{id}/confirm (idempotent
+│                                  Review(approved) signal) + settings.organize_
+│                                  hold_hours soft-hold (default 0 = no-op, a
+│                                  single discovered_at WHERE clause). Operation.
+│                                  confidence/model now populated by organize.
+│                                  Corpus flat by construction. No AI cost.
+│                                  WHOLE PUSH COMPLETE.
 ├─ J  author canonicalisation   ── DONE (2026-09-07). normalize_person_name match
 │                                  key (initials / Last,First / co-author-first) +
 │                                  Author.sort_name populated + series match
@@ -769,10 +805,13 @@ down) doesn't merge — reconsider it.
 - Update the memories `project_bookbrain_ai_series_hallucination` and
   `project_bookbrain_review_followups`.
 
-## When the whole push is done
+## When the whole push is done — DONE 2026-09-07
 
-- `IDENTIFICATION-EVAL.md` shows the cumulative first-pass accuracy gain.
-- Fold anything that became dead code (old `filename_matches_title`, the
-  never-used `SeriesAlias` note, etc.) out.
-- Write a short "identification pipeline, 2026" section in `SPEC.md` or
-  `README.md` describing the final shape, since §5 will be well out of date.
+- `IDENTIFICATION-EVAL.md` shows the cumulative first-pass accuracy gain
+  (offline per-field flat by the frozen-AI construction; the measurable
+  movement is Stage C's `wrong_auto_organized` 2 → 1 — see that file's summary).
+- Dead-code sweep: nothing safely removable. The old substring
+  `filename_matches_title` is still the live fallback for
+  `reident_audit_service._recompute_confidence` (which doesn't parse filenames);
+  `SeriesAlias` went from unused to load-bearing in Stage J. Left as-is.
+- "Identification pipeline (2026)" section written in `SPEC.md` (after §5).

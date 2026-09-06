@@ -9,8 +9,9 @@ from app.schemas.covers import CoverJobStatus
 from app.schemas.descriptions import DescriptionBackfillEstimate, DescriptionJobStatus
 from app.schemas.library import LibraryExportResult, RebuildEstimate
 from app.schemas.metadata_writeback import MetadataWritebackJobStatus
+from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
-from app.services import library_service
+from app.services import library_service, recently_organized_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
 from app.services.description_service import (
@@ -204,6 +205,20 @@ async def get_embedded_metadata_status(
     if status is None:
         raise HTTPException(status_code=404, detail="metadata writeback job not found")
     return status
+
+
+@router.get("/recently-organized", response_model=RecentlyOrganizedResponse)
+async def get_recently_organized(
+    since: str = "48h", db: AsyncSession = Depends(get_db)
+) -> RecentlyOrganizedResponse:
+    """prompts/15 Stage I — every file auto-organized in the window (newest
+    first) with the confidence it moved at, a one-line evidence summary, its
+    current status, and whether a human has confirmed it. When
+    `settings.organize_hold_hours > 0`, also the files currently held back
+    from the organize pass. `since` accepts `24h` / `48h` / `7d`; clamped to
+    30 days. No AI calls."""
+    since_hours = recently_organized_service.parse_since(since)
+    return await recently_organized_service.recently_organized(db, since_hours=since_hours)
 
 
 @router.post("/export", response_model=LibraryExportResult)

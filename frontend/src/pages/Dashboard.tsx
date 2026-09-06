@@ -5,6 +5,7 @@ import { ProgressBar } from '../components/ProgressBar'
 import { api, ApiError } from '../services/api'
 import { useOrganizeStatus } from '../hooks/useOrganizeStatus'
 import { useScanStatus } from '../hooks/useScanStatus'
+import { RecentlyOrganized } from '../components/RecentlyOrganized'
 import { Duplicates } from './Duplicates'
 import { ReviewQueue } from './ReviewQueue'
 
@@ -652,6 +653,9 @@ export function Dashboard() {
           )}
         </div>
       )}
+
+      {/* The safety net: what auto-organized without review, for a quick glance. */}
+      <RecentlyOrganized />
 
       {torrentsCount === 0 &&
         reviewCount === 0 &&

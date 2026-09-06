@@ -130,8 +130,20 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     consensus lifts a `review` file in the same scan whose filename names it
     (+12, cap 92, drops the pending Review if it clears 85); a disagreement is
     logged, not acted on. Never rewrites an identification; all changes under
-    `ai_decisions.raw_response_json["batch_prior"]`. **Stage I** (recently-organized
-    tray + `organize_hold_hours` soft-hold) is the last piece — frontend + API.
+    `ai_decisions.raw_response_json["batch_prior"]`.
+  - **Tier 3 — I shipped** (2026-09-07) — recently-auto-organized tray + soft-hold
+    (F6). `GET /api/library/recently-organized` (`recently_organized_service`) +
+    the `RecentlyOrganized.tsx` Dashboard panel: what auto-organized in the last
+    24h/48h/7d, each row with confidence + a one-line evidence summary + Confirm
+    / Correct. `POST /api/files/{id}/confirm` writes an idempotent
+    `Review(status=approved)` positive signal (harvestable later as ground
+    truth). `settings.organize_hold_hours` (folded into `/settings/organize`,
+    default 0 = byte-identical no-op) delays an auto-eligible file that many
+    hours via a single `File.discovered_at` WHERE clause in
+    `organize_eligible_files` — a held file flows next pass, never stalls
+    nightly. `Operation.confidence`/`model` now populated by organize. No AI
+    cost. **prompts/15 push COMPLETE** — see `SPEC.md` § "Identification
+    pipeline (2026)".
 - **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
   **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
   `resolved_title` / `resolved_author`, so the audit's display recompute matches

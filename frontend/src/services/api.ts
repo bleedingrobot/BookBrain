@@ -9,6 +9,7 @@ import type {
   LibraryExportResult,
   MetadataWritebackJobStatus,
   RebuildEstimate,
+  RecentlyOrganizedResponse,
 } from '../types/library'
 import type {
   AuditClusterKind,
@@ -107,10 +108,10 @@ export const api = {
     }),
 
   getOrganizeSettings: () => request<OrganizeSettings>('/settings/organize'),
-  updateOrganizeSettings: (dryRun: boolean) =>
+  updateOrganizeSettings: (dryRun: boolean, holdHours: number) =>
     request<OrganizeSettings>('/settings/organize', {
       method: 'PUT',
-      body: JSON.stringify({ dry_run: dryRun }),
+      body: JSON.stringify({ dry_run: dryRun, hold_hours: holdHours }),
     }),
   startOrganize: () => request<OrganizeJobStatus>('/organize', { method: 'POST' }),
   getOrganizeStatus: (jobId: string) => request<OrganizeJobStatus>(`/organize/${jobId}`),
@@ -192,6 +193,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  confirmFile: (id: number) =>
+    request<FileSummary>(`/files/${id}/confirm`, { method: 'POST' }),
+  getRecentlyOrganized: (since: string) =>
+    request<RecentlyOrganizedResponse>(
+      `/library/recently-organized?since=${encodeURIComponent(since)}`,
+    ),
 
   clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
   rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),

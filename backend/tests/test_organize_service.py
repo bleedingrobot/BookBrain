@@ -1,9 +1,11 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
+from app.core.settings_keys import ORGANIZE_HOLD_HOURS
 from app.data.db import Base
 from app.data.models import (
     Author,
@@ -14,12 +16,14 @@ from app.data.models import (
     IdentifierType,
     Operation,
     Series,
+    Setting,
 )
 
 from app.services.organize_service import (
     FolderPathCache,
     OrganizeService,
     build_target_path,
+    get_organize_hold_hours,
     get_organize_service,
 )
 
@@ -391,6 +395,127 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
         assert all(s == FileStatus.organised for s in statuses)
 
     await engine.dispose()
+
+
+def _patch_session_factory(monkeypatch, db_session) -> None:
+    import app.services.organize_service as organize_module
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+
+async def test_get_organize_hold_hours_defaults_and_clamps(db_session) -> None:
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db_session)
+    assert await get_organize_hold_hours(repo) == 0  # missing -> 0
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="garbage"))
+    await db_session.commit()
+    assert await get_organize_hold_hours(repo) == 0
+    (await db_session.get(Setting, ORGANIZE_HOLD_HOURS)).value = "99999"
+    await db_session.commit()
+    assert await get_organize_hold_hours(repo) == 720  # clamped
+
+
+async def test_organize_hold_zero_is_a_noop(db_session, monkeypatch) -> None:
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="0"))
+    await db_session.commit()
+    await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+
+    counts, _ = await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    assert counts == {"organized": 1, "failed": 0}
+    assert len(provider.move_calls) == 1
+
+
+async def test_organize_hold_delays_a_fresh_file_then_releases_it(db_session, monkeypatch) -> None:
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="24"))
+    file_row = await _seed_file(db_session)  # discovered_at defaults to now
+    provider = _FakeMoveProvider()
+    service = OrganizeService()
+
+    counts, _ = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert counts == {"organized": 0, "failed": 0}
+    assert provider.move_calls == []
+    assert (await db_session.execute(select(Operation))).scalars().all() == []
+
+    # 25h later — the hold has elapsed.
+    file_row.discovered_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
+    await db_session.commit()
+
+    counts, _ = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert counts == {"organized": 1, "failed": 0}
+    assert len(provider.move_calls) == 1
+
+
+async def test_organize_hold_lets_a_tray_correction_preempt_the_move(db_session, monkeypatch) -> None:
+    from app.schemas.reviews import CorrectReviewRequest
+    from app.services import file_service
+
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="24"))
+    file_row = await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+
+    # Organize pass runs while the file is still held — nothing moves.
+    await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert provider.move_calls == []
+
+    # Human corrects it in the tray before any Drive move happened.
+    await file_service.correct_file(
+        db_session,
+        file_row.id,
+        CorrectReviewRequest(title="Dune", author="Frank Herbert", series=None),
+    )
+    await db_session.refresh(file_row)
+    assert file_row.status == FileStatus.inbox
+    # No move operation was ever logged for this file.
+    ops = (await db_session.execute(select(Operation).where(Operation.file_id == file_row.id))).scalars().all()
+    assert all(o.action.value not in ("move", "rename", "move_and_rename") for o in ops)
+
+
+async def test_organize_records_confidence_and_model_on_the_operation(db_session, monkeypatch) -> None:
+    from app.data.models import AIDecision
+
+    _patch_session_factory(monkeypatch, db_session)
+    file_row = await _seed_file(db_session)
+    db_session.add(
+        AIDecision(
+            file_id=file_row.id,
+            model="claude-opus-5",
+            prompt_hash="p",
+            evidence_hash="e",
+            raw_response_json={},
+            computed_confidence=91,
+        )
+    )
+    await db_session.commit()
+    provider = _FakeMoveProvider()
+
+    await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    op = (await db_session.execute(select(Operation))).scalars().one()
+    assert op.confidence == 91
+    assert op.model == "claude-opus-5"
 
 
 class _FakeFailingMoveProvider(_FakeFolderProvider):

@@ -4,6 +4,7 @@ import re
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 
 from google.oauth2.credentials import Credentials
@@ -11,9 +12,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.settings_keys import ORGANIZE_DRY_RUN
+from app.core.settings_keys import ORGANIZE_DRY_RUN, ORGANIZE_HOLD_HOURS
 from app.data.db import async_session_factory
-from app.data.models import Book, File, FileStatus, Operation, OperationAction, OperationStatus
+from app.data.models import (
+    AIDecision,
+    Book,
+    File,
+    FileStatus,
+    Operation,
+    OperationAction,
+    OperationStatus,
+)
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
@@ -31,6 +40,26 @@ async def get_organize_dry_run(settings_repo: SettingsRepository) -> bool:
     "false" means dry-run. Centralized so the three call sites that need
     this can't drift on what "missing" means."""
     return (await settings_repo.get(ORGANIZE_DRY_RUN)) != "false"
+
+
+# prompts/15 Stage I. Anything above ~a month would just be a footgun (files
+# piling up unorganised forever); the tray is meant for a same-day glance.
+_MAX_HOLD_HOURS = 720
+
+
+async def get_organize_hold_hours(settings_repo: SettingsRepository) -> int:
+    """prompts/15 Stage I soft-hold, in hours. 0 (the default, and what a
+    missing/garbage value means) is a genuine no-op — the organize pass behaves
+    exactly as it did before this setting existed. Clamped to
+    [0, _MAX_HOLD_HOURS]."""
+    raw = await settings_repo.get(ORGANIZE_HOLD_HOURS)
+    if raw is None:
+        return 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(value, _MAX_HOLD_HOURS))
 
 # Comma is included alongside the OS-reserved characters because it's also
 # the delimiter build_target_path joins title/author/series/part with below
@@ -238,9 +267,21 @@ class OrganizeService:
         failures: list[OrganizeFailure] = []
 
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(File.id).where(File.status == FileStatus.inbox, File.book_id.is_not(None))
+            hold_hours = await get_organize_hold_hours(SettingsRepository(session))
+            query = select(File.id).where(
+                File.status == FileStatus.inbox, File.book_id.is_not(None)
             )
+            if hold_hours > 0:
+                # prompts/15 Stage I soft-hold — a file that cleared the
+                # confidence bar isn't eligible until it has sat in `inbox`
+                # for `hold_hours`, giving a human time to catch a rare miss
+                # in the "Recently auto-organized" tray first. Just a WHERE:
+                # a held file flows on the next pass once its time is up, so
+                # the hold can never stall the nightly job. `discovered_at` is
+                # a naive-UTC server default, so compare against a naive now.
+                cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=hold_hours)
+                query = query.where(File.discovered_at <= cutoff)
+            result = await session.execute(query)
             file_ids = [row[0] for row in result.all()]
 
         if not file_ids:
@@ -329,6 +370,21 @@ class OrganizeService:
         book = file_row.book
         author_name = book.author.name if book.author else None
         series_name = book.series.name if book.series else None
+
+        # The identification confidence + model this file is being moved at —
+        # so the Activity trail and the "Recently auto-organized" tray
+        # (prompts/15 Stage I) can show why it was auto-filed without joining
+        # back to ai_decisions. A rule-matched / rebuilt file may have none.
+        latest_decision = (
+            await session.execute(
+                select(AIDecision)
+                .where(AIDecision.file_id == file_row.id)
+                .order_by(AIDecision.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        op_confidence = latest_decision.computed_confidence if latest_decision else None
+        op_model = latest_decision.model if latest_decision else None
         folders, filename = build_target_path(
             title=book.canonical_title,
             author_name=author_name,
@@ -347,6 +403,8 @@ class OrganizeService:
                 original_parent_id=file_row.drive_parent_id,
                 new_name=filename,
                 new_parent_id="/".join(folders) or "(library root)",
+                confidence=op_confidence,
+                model=op_model,
                 status=OperationStatus.done,
                 dry_run=True,
                 reason="dry run — no Drive changes made",
@@ -376,6 +434,8 @@ class OrganizeService:
             original_parent_id=file_row.drive_parent_id,
             new_name=filename,
             new_parent_id=target_folder_id,
+            confidence=op_confidence,
+            model=op_model,
             status=OperationStatus.done,
             dry_run=False,
         )

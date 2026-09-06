@@ -34,6 +34,41 @@ export interface RebuildEstimate {
   estimated: boolean
 }
 
+export interface RecentlyOrganizedItem {
+  file_id: number
+  operation_id: number
+  organized_at: string
+  filename: string
+  title: string | null
+  author: string | null
+  series: string | null
+  series_number: number | null
+  confidence: number | null
+  current_status: string
+  evidence_summary: string
+  confirmed: boolean
+}
+
+export interface HeldFileItem {
+  file_id: number
+  filename: string
+  title: string | null
+  author: string | null
+  series: string | null
+  series_number: number | null
+  confidence: number | null
+  evidence_summary: string
+  held_since: string
+  eligible_at: string
+}
+
+export interface RecentlyOrganizedResponse {
+  since_hours: number
+  hold_hours: number
+  organized: RecentlyOrganizedItem[]
+  held: HeldFileItem[]
+}
+
 export interface MetadataWritebackJobStatus {
   job_id: string
   status: 'running' | 'done' | 'failed'

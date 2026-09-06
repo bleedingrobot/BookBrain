@@ -52,3 +52,20 @@ async def correct_file(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     rows = await file_service.list_files(db)
     return next(r for r in rows if r.id == file_id)
+
+
+@router.post("/{file_id}/confirm", response_model=FileSummary)
+async def confirm_file(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> FileSummary:
+    """Mark an auto-organized file's identification as human-verified (from the
+    "Recently auto-organized" tray). Idempotent; does not move the file."""
+    try:
+        await file_service.confirm_file(db, file_id)
+    except file_service.FileRecordNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except file_service.FileNotIdentifiedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    rows = await file_service.list_files(db)
+    return next(r for r in rows if r.id == file_id)

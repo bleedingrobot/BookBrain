@@ -100,6 +100,60 @@ Nothing in `api/` talks to `google_drive/` or `ai/` directly — always through 
 8. Threshold routing on `computed_confidence`: ≥95 auto-organize, 85–94 auto + flagged in audit log, 70–84 review queue, <70 left alone/unidentified.
 9. Cache the decision keyed by `sha256 + evidence_hash`; invalidated on manual correction (§1).
 
+## 5a. Identification pipeline (2026)
+
+§5 above is the v1 skeleton and still describes the shape. The `prompts/15`
+accuracy push (Stages 0 + A–K, complete 2026-09-07) hardened every stage of it
+without changing that shape. What actually runs now, per new file
+(`scan_service._process_file` → `identification_service.identify`):
+
+**Deterministic evidence.** `providers/epub/parser.py` walks the spine (skips
+cover/nav/titlepage + sub-200-char docs) for a `[front matter]` + `[body sample]`
+snippet, and pulls `description`, `publisher`, `pub_date`, `subjects`, and
+**every** ISBN (`all_isbns`). `providers/filename/parser.py::parse_book_filename`
+turns a tracker/Calibre filename into a structured `FilenameGuess` — a labelled
+prompt block, a `filename_corroborates` verdict, and a
+`BookCandidate(source="filename")`. A trailing Calibre `_1234` is never a series
+number.
+
+**Providers.** Google Books + Open Library now populate
+`MetadataCandidate.series` / `series_number` / `genre` (so series is
+corroboratable and `SERIES_DISAGREEMENT_PENALTY` requires a ≥2-candidate
+consensus).
+
+**Fast path.** ISBN match still short-circuits, but now also requires
+`title_similarity >= 0.80` with the ISBN-matched candidate (a wrong-but-valid
+ISBN falls through to AI), and is skipped entirely when the EPUB title/author
+`looks_like_placeholder_*` ("Unknown", "Calibre", "book1", a publisher name…).
+
+**AI path.** `_build_prompt` carries the description, publisher, pub date,
+subjects, all ISBNs, the filename parse, and a few-shot block of recent human
+`/correct` pairs. `should_ground()` turns on the Anthropic `web_search` server
+tool for books with a recent-year signal (filename or provider pub date within
+~2 years) — the post-training-cutoff case, ~3% of AI calls, `settings.
+ai_web_search_enabled`. `settings.ai_verify_enabled` (**off by default**, cost)
+adds one adversarial `audit_book_identity` follow-up for the 70–95 band.
+
+**Confidence** (`confidence_service.score`, still authoritative over
+`ai_confidence`): `PLACEHOLDER_METADATA_PENALTY` / `TITLE_IS_FILENAME_ONLY_PENALTY`,
+positive `DESCRIPTION_CORROBORATES` / `PUBYEAR_PLAUSIBLE` / `FILENAME_CORROBORATES`.
+
+**Resolution.** `text_match.normalize_person_name` is the author match key
+(initials joined, "Last, First" reordered, co-author-first); `Author.sort_name`
+is populated; series match ignores a leading article and consults `SeriesAlias`
+(which series-merge now writes).
+
+**Batch + safety net.** `batch_prior_service` runs between a scan batch and the
+auto-organize pass: a ≥3-file author/series consensus lifts a thin `review` file
+in the same batch whose filename names it (+12, cap 92). After organize,
+`GET /api/library/recently-organized` + the Dashboard tray show what was
+auto-filed with no review, one-click **Confirm** (idempotent `Review(approved)`
+signal) / **Correct**. `settings.organize_hold_hours` (default 0) optionally
+delays an auto-eligible file so a tray correction lands before any Drive move.
+
+The eval harness (`pytest -m corpus`, `IDENTIFICATION-EVAL.md`) gates all of
+this against a triangulated 74-book corpus.
+
 ## 6. Database schema (v1)
 
 ```

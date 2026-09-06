@@ -11,6 +11,16 @@ DRIVE_LIBRARY_FOLDER_CREATED_BY_APP = "drive_library_folder_created_by_app"
 # SPEC.md §1: dry-run defaults true until explicitly flipped (Milestone 6a gate).
 ORGANIZE_DRY_RUN = "organize_dry_run"
 
+# prompts/15 Stage I — optional soft-hold before an auto-eligible file is
+# organized. Default "0" == today's exact behaviour (organize the instant a
+# file clears the confidence bar). When > 0, a file that cleared the bar waits
+# this many hours in `inbox` (measured from `files.discovered_at`) before the
+# organize pass will move it — long enough for a human to glance at the
+# "Recently auto-organized" tray and correct a rare miss before any Drive move.
+# It is a plain WHERE filter, not a queue: a held file simply isn't eligible
+# yet and flows on the next organize/nightly pass once its time is up.
+ORGANIZE_HOLD_HOURS = "organize_hold_hours"
+
 # Nightly unattended pipeline run (scan -> auto-organize -> covers -> index).
 # Off until James turns it on in Settings. Hour is 0-23 in the machine's
 # local time.

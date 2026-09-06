@@ -14,4 +14,5 @@ export interface OrganizeJobStatus {
 
 export interface OrganizeSettings {
   dry_run: boolean
+  hold_hours: number
 }
