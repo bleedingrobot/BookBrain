@@ -193,8 +193,14 @@ mis-identification guards). The rest of that session's ideas, for later:
 
 - **Viewer as a reading tool, not just a shelf.** The family-facing app is
   "browse what we own"; the payoff features are about *reading*:
+  - **In-browser EPUB reader** — *scoped, `prompts/17-library-viewer-epub-reader.md`*.
+    Vendored `foliate-js` (no npm dep), full-screen paginated reader, font/theme/
+    TOC, IndexedDB offline byte-cache, reading position in `localStorage`, and a
+    "Continue reading" strip on the home screen. EPUB only. §D (word-count →
+    time-left, small backend field) and §E (cross-device reading-state Drive
+    sidecar → `prompts/18`) are deferred.
   - Reading state per person — want-to-read / reading / finished. Even manual
-    toggles unlock everything below.
+    toggles unlock everything below. (§E of prompt 17 is the first slice.)
   - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,
     you own #2" on the home screen; "you own #3 but not #1–2" → offer to add to
     the wishlist.
