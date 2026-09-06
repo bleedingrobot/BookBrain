@@ -29,6 +29,7 @@ export interface FoliateRelocateDetail {
 
 export interface FoliateRenderer extends HTMLElement {
   setStyles?: (css: string) => void
+  render?: () => void
   next: () => Promise<void>
   prev: () => Promise<void>
   getContents: () => { doc: Document; index: number }[]

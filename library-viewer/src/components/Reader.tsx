@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '../vendor/foliate/view.js'
-import type { FoliateTOCItem, FoliateView } from '../vendor/foliate/view.js'
+import type {
+  FoliateRenderer,
+  FoliateTOCItem,
+  FoliateView,
+} from '../vendor/foliate/view.js'
 import type { BookRow } from '../lib/books'
 import { getCachedBook, putCachedBook } from '../lib/bookCache'
 import { downloadFile, fetchDriveBlob, isAuthError, looksLikeZip } from '../lib/drive'
@@ -26,6 +30,22 @@ interface Props {
 const SAVE_DEBOUNCE_MS = 1000
 const CHROME_HIDE_MS = 2800
 const EDGE_GUARD_PX = 24
+
+// foliate's paginator reads these as CSS custom properties / JS parseFloat —
+// lengths MUST carry a unit or `grid-template-rows: minmax(0, var(--_max-block-size))`
+// becomes invalid and the text column collapses.
+function applyLayout(renderer: FoliateRenderer, prefs: ReaderPrefs) {
+  renderer.setAttribute('flow', 'paginated')
+  renderer.setAttribute('margin', `${prefs.margin}px`)
+  renderer.setAttribute('max-inline-size', '760px')
+  // one page in portrait, a spread on a wide screen (foliate's own
+  // max-column-count-portrait handles the switch)
+  renderer.setAttribute('max-column-count', '2')
+  // default 1440px leaves a dead band above and below the text on a tall
+  // screen — let the column fill the viewport, bounded only by `margin`
+  renderer.setAttribute('max-block-size', '4000px')
+  renderer.render?.()
+}
 
 function tocFlat(items: FoliateTOCItem[], depth = 0): { item: FoliateTOCItem; depth: number }[] {
   const out: { item: FoliateTOCItem; depth: number }[] = []
@@ -118,16 +138,7 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
         if (cancelled) return
 
         const p = prefsRef.current
-        view.renderer.setAttribute('flow', 'paginated')
-        view.renderer.setAttribute('margin', String(p.margin))
-        view.renderer.setAttribute('max-inline-size', '720')
-        // Two pages on a wide screen, one in portrait (foliate's own
-        // max-column-count-portrait handles the switch).
-        view.renderer.setAttribute('max-column-count', '2')
-        // Default is 1440px, which leaves a big empty band above and below the
-        // text on a tall phone — let the column fill the screen (bounded only
-        // by `margin`).
-        view.renderer.setAttribute('max-block-size', '4000')
+        applyLayout(view.renderer, p)
         view.renderer.setStyles?.(readerCss(p))
         setToc(view.book.toc ?? [])
 
@@ -173,7 +184,8 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
     const view = viewRef.current
     if (!view) return
     view.renderer.setStyles?.(readerCss(prefs))
-    view.renderer.setAttribute('margin', String(prefs.margin))
+    view.renderer.setAttribute('margin', `${prefs.margin}px`)
+    view.renderer.render?.()
     saveReaderPrefs(prefs)
   }, [prefs, status])
 
