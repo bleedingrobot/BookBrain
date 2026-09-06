@@ -35,7 +35,7 @@ class _EchoAI:
     def __init__(self, evidence: EpubEvidence) -> None:
         self._ev = evidence
 
-    async def identify(self, prompt: str):
+    async def identify(self, prompt: str, *, ground: bool = False):
         return (
             AIIdentificationResult(
                 title=self._ev.title or "Unknown",

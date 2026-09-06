@@ -1,3 +1,5 @@
+import datetime as _dt
+
 import anthropic
 from anthropic import DefaultAioHttpClient
 
@@ -8,6 +10,7 @@ from app.providers.ai.schema import (
     IDENTIFY_SERIES_TOOL,
     PROPOSE_SERIES_MERGE_TOOL,
     RESOLVE_BOOK_REQUEST_TOOL,
+    WEB_SEARCH_TOOL,
 )
 from app.providers.ai.types import (
     AIAuditResult,
@@ -20,6 +23,29 @@ from app.providers.ai.types import (
 
 class AIIdentificationError(Exception):
     pass
+
+
+def _collect_grounding(response, grounding: dict) -> None:
+    """Pull the web_search queries the model ran and the titles it saw out of
+    a grounded response, into ``grounding`` for the review UI ("verified
+    against: …"). Best-effort — never raises on an unexpected block shape."""
+    for block in getattr(response, "content", []) or []:
+        btype = getattr(block, "type", None)
+        if btype == "server_tool_use" and getattr(block, "name", None) == "web_search":
+            query = (getattr(block, "input", None) or {}).get("query")
+            if query:
+                grounding["queries"].append(query)
+        elif btype == "web_search_tool_result":
+            content = getattr(block, "content", None)
+            if isinstance(content, list):
+                for item in content:
+                    title = getattr(item, "title", None)
+                    if title:
+                        grounding["results"].append(title)
+            else:
+                code = getattr(content, "error_code", None)
+                if code:
+                    grounding.setdefault("errors", []).append(code)
 
 
 class AnthropicIdentificationClient:
@@ -36,13 +62,31 @@ class AnthropicIdentificationClient:
         )
         self.model_name = model or settings.anthropic_model
 
-    async def identify(self, prompt: str) -> tuple[AIIdentificationResult, dict]:
+    async def identify(
+        self, prompt: str, *, ground: bool = False
+    ) -> tuple[AIIdentificationResult, dict]:
+        """Identify a book from the assembled evidence prompt.
+
+        ``ground=True`` (prompts/15 Stage A) lets the model call the web_search
+        server tool to verify its answer against the live web before committing
+        — the caller (``identification_service.should_ground``) decides when
+        that's worth the per-search cost. A refusal or an unusable search on the
+        grounded path falls back to a plain forced identification rather than
+        erroring.
+        """
+        if ground:
+            return await self._identify_grounded(prompt)
+        return await self._identify_forced(prompt)
+
+    async def _identify_forced(
+        self, prompt: str, messages: list[dict] | None = None
+    ) -> tuple[AIIdentificationResult, dict]:
         response = await self._client.messages.create(
             model=self.model_name,
             max_tokens=1024,
             tools=[IDENTIFY_BOOK_TOOL],
             tool_choice={"type": "tool", "name": "identify_book"},
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages or [{"role": "user", "content": prompt}],
         )
 
         if response.stop_reason == "refusal":
@@ -53,6 +97,79 @@ class AnthropicIdentificationClient:
                 return AIIdentificationResult.from_tool_input(block.input), response.to_dict()
 
         raise AIIdentificationError("model did not return the identify_book tool call")
+
+    async def _identify_grounded(
+        self, prompt: str
+    ) -> tuple[AIIdentificationResult, dict]:
+        settings = get_settings()
+        today = _dt.date.today().isoformat()
+        system = (
+            f"Today's date is {today}. Some of the books you are asked to identify "
+            "were published after your training cutoff, so your own memory of them "
+            "may be wrong or absent. Before you call identify_book, use web_search "
+            "to verify the title, the author, the first-publication year, and — "
+            "most importantly — whether the book belongs to a series and its "
+            "number in it. Do not assert a series from memory: confirm it with a "
+            "search, and if you cannot confirm it, report series as null rather "
+            "than guessing. If search is unavailable or the results are "
+            "inconclusive, identify the book from the evidence alone and set "
+            "needs_human_review accordingly."
+        )
+        web_search = {**WEB_SEARCH_TOOL, "max_uses": settings.ai_web_search_max_uses}
+        messages: list[dict] = [{"role": "user", "content": prompt}]
+        grounding: dict = {"queries": [], "results": []}
+
+        for _ in range(4):
+            response = await self._client.messages.create(
+                model=self.model_name,
+                max_tokens=4096,
+                system=system,
+                tools=[IDENTIFY_BOOK_TOOL, web_search],
+                messages=messages,
+            )
+
+            if response.stop_reason == "refusal":
+                result, raw = await self._identify_forced(prompt)
+                raw["grounding"] = {**grounding, "fell_back": "refusal"}
+                return result, raw
+
+            _collect_grounding(response, grounding)
+
+            identify_block = next(
+                (
+                    b
+                    for b in response.content
+                    if b.type == "tool_use" and b.name == "identify_book"
+                ),
+                None,
+            )
+            if identify_block is not None:
+                raw = response.to_dict()
+                raw["grounding"] = grounding
+                return AIIdentificationResult.from_tool_input(identify_block.input), raw
+
+            messages.append({"role": "assistant", "content": response.content})
+
+            if response.stop_reason == "pause_turn":
+                continue  # server tool hit its internal limit — resume the turn
+
+            # end_turn / max_tokens / a stray tool_use: the model finished (or
+            # stalled) without committing. Force the structured answer now,
+            # keeping the searched-up context.
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Now call identify_book with your final answer.",
+                }
+            )
+            result, raw = await self._identify_forced(prompt, messages=messages)
+            raw["grounding"] = grounding
+            return result, raw
+
+        # Loop exhausted without a committed answer — fall back to a plain pass.
+        result, raw = await self._identify_forced(prompt)
+        raw["grounding"] = {**grounding, "fell_back": "max_iterations"}
+        return result, raw
 
     async def resolve_book_request(self, text: str) -> AIBookRequestResult:
         response = await self._client.messages.create(

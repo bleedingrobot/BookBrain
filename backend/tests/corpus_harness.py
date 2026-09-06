@@ -161,7 +161,9 @@ class FrozenAIClient:
         self.identify_calls = 0
         self.series_calls = 0
 
-    async def identify(self, prompt: str) -> tuple[AIIdentificationResult, dict]:
+    async def identify(
+        self, prompt: str, *, ground: bool = False
+    ) -> tuple[AIIdentificationResult, dict]:
         self.identify_calls += 1
         rec = self._entry.recorded_ai
         if rec is None:

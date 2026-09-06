@@ -121,3 +121,33 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | stage | date | title | author | series | series-# | exact | notes |
 |---|---|---|---|---|---|---|---|
 | 0 | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | harness + triangulation + invariants + mutation. 59/74 scored (15 still Wikidata-only, credit ran out). This is the regression floor for Tier 1. |
+| A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
+
+### Stage A — web-search grounding (`prompts/15` Stage A)
+
+`AnthropicIdentificationClient.identify(prompt, ground=True)` runs the identify
+turn with the `web_search_20260209` server tool + a system prompt that states
+today's date and tells the model to *verify* title / author / series / first-pub
+year before answering (especially before asserting a series). `tool_choice` is
+`auto` (you can't force `identify_book` and allow search in one turn); if the
+model answers in text instead of committing, a second forced call pins the
+structured answer using the searched-up context. Refusal / exhausted-loop →
+falls back to the plain forced call. Search queries + result titles land in
+`raw_response["grounding"]` for the review UI.
+
+Gated per-call by `identification_service.should_ground(...)`: skipped only for
+the safe case (no recent-year signal **and** ≥2 providers corroborate each other
+**and** an ISBN is present); everything thinner or newer grounds. Toggle with
+`settings.ai_web_search_enabled` (default on). `config.ai_identify_cost_usd`
+padded 0.03 → 0.06 (web_search ≈ $0.01/search × up to 3, plus the larger prompt).
+
+**Live measurement — still to run** (needs Anthropic credit; offline CI never
+hits the network):
+
+```
+cd backend && python scripts/eval_identification.py --live --tag post-cutoff
+cd backend && python scripts/eval_identification.py --live --tag standalone-series-risk
+```
+
+Compare per-field series precision + the confusion list on those slices against
+the Stage 0 baseline, and record cost/identify here.

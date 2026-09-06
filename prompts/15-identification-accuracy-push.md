@@ -212,6 +212,19 @@ ground truth and carry the "never confidently wrong" guarantee. See
 
 #### Stage A — Web-search grounding for the identify call
 
+> **DONE 2026-09-06.** `AnthropicIdentificationClient.identify(prompt, ground=)`
+> — `ground=True` runs the identify turn with the `web_search_20260209` server
+> tool + `tool_choice:auto` + a system prompt giving today's date and telling
+> the model to verify title/author/series/pub-year before answering; a text
+> answer triggers one forced follow-up; refusal / exhausted loop falls back to
+> the plain forced call; queries + result titles stored in
+> `raw_response["grounding"]`. Per-call gate `identification_service.should_ground`
+> (skip only: no recent year **and** ≥2 corroborating providers **and** an ISBN).
+> `settings.ai_web_search_enabled` (default true), `ai_web_search_max_uses` (3).
+> `ai_identify_cost_usd` 0.03 → 0.06. Offline corpus is unchanged by construction
+> (frozen `identify_book` reply); live measurement on the recent/standalone
+> slices is still to run — see `IDENTIFICATION-EVAL.md` § Stage A.
+
 **Why.** F3. Directly kills the post-cutoff-book failure mode.
 
 **What exists.** `AnthropicIdentificationClient.identify(prompt)` does one
@@ -552,7 +565,11 @@ there's no batch consensus.
 │               (credit ran out) — `build_truth.py --all --write` after top-up
 │               finishes them and re-stamps. Gate = `pytest -m corpus`.
 │
-├─ A  web-search grounding      ┐
+├─ A  web-search grounding      ── DONE (2026-09-06). `identify(prompt, ground=)`
+│                                  + `web_search_20260209` + `should_ground()` gate
+│                                  + `settings.ai_web_search_enabled`. Offline corpus
+│                                  unchanged by construction; live measurement pending
+│                                  credit (see IDENTIFICATION-EVAL.md § Stage A).
 ├─ B  provider series           │ Tier 1 — do all three, any order
 ├─ C  filename parser           │
 ├─ D  richer text/evidence      ┘

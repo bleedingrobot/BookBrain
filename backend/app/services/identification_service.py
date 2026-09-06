@@ -1,7 +1,10 @@
+import datetime as _dt
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 
+from app.core.config import get_settings
 from app.providers.ai.anthropic_client import AIIdentificationError, AnthropicIdentificationClient
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
@@ -121,8 +124,9 @@ class IdentificationService:
         prompt = _build_prompt(filename, evidence, candidates, corrections)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
+        ground = should_ground(filename=filename, evidence=evidence, candidates=candidates)
         try:
-            ai_result, raw_response = await self._ai_client.identify(prompt)
+            ai_result, raw_response = await self._ai_client.identify(prompt, ground=ground)
         except AIIdentificationError as exc:
             breakdown = score(
                 evidence=evidence,
@@ -179,6 +183,58 @@ class IdentificationService:
             evidence_hash=evidence_hash,
             raw_response=merged_raw,
         )
+
+
+_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
+
+
+def _recent_year_present(filename: str, candidates: list[MetadataCandidate]) -> bool:
+    """A publication year in the last two calendar years is a strong hint the
+    book may be past the model's training cutoff — exactly when unaided recall
+    invents a series. Reads the filename and any provider ``first_published``;
+    the EPUB itself carries no parsed date until Stage D."""
+    cutoff = _dt.date.today().year - 1
+    for match in _YEAR_RE.finditer(filename or ""):
+        if int(match.group(0)) >= cutoff:
+            return True
+    for candidate in candidates:
+        published = getattr(candidate, "first_published", None)
+        if published:
+            match = _YEAR_RE.search(str(published))
+            if match and int(match.group(0)) >= cutoff:
+                return True
+    return False
+
+
+def _candidates_corroborate(candidates: list[MetadataCandidate]) -> bool:
+    """>=2 provider candidates that agree with each other on the title — the
+    case where the AI isn't really guessing and web search adds little."""
+    titled = [c for c in candidates if c.title]
+    if len(titled) < 2:
+        return False
+    return all(titles_match(titled[0].title, c.title) for c in titled[1:])
+
+
+def should_ground(
+    *,
+    filename: str,
+    evidence: EpubEvidence,
+    candidates: list[MetadataCandidate],
+) -> bool:
+    """prompts/15 Stage A. Whether the AI-path identify call should be allowed
+    to web-search before answering. Grounding is the biggest single lever
+    against post-cutoff "invented series" errors, but it costs per search — so
+    skip it only for the safe case: a recent-enough date is absent *and* two
+    or more providers already corroborate each other *and* there is an ISBN.
+    Everything thinner or newer grounds.
+    """
+    if not get_settings().ai_web_search_enabled:
+        return False
+    if _recent_year_present(filename, candidates):
+        return True
+    if not _candidates_corroborate(candidates):
+        return True
+    return not bool(evidence.isbn13 or evidence.isbn10)
 
 
 def _first_author(candidate: MetadataCandidate) -> str | None:

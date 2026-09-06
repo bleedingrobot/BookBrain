@@ -1,3 +1,13 @@
+# prompts/15 Stage A. Anthropic-hosted web search, declared alongside
+# identify_book on the grounded identify turn. `max_uses` is overwritten at
+# call time from settings.ai_web_search_max_uses. Requires a model that
+# supports the _20260209 variant (claude-opus-5 does); no beta header.
+WEB_SEARCH_TOOL = {
+    "type": "web_search_20260209",
+    "name": "web_search",
+    "max_uses": 3,
+}
+
 IDENTIFY_BOOK_TOOL = {
     "name": "identify_book",
     "description": (

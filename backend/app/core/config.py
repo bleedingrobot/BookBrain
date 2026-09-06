@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5"
     google_books_api_key: str = ""
 
+    # prompts/15 Stage A — web-search grounding for the identify call. When on
+    # (default), the AI identification path may call the Anthropic web_search
+    # server tool to verify title/author/series/first-publication year against
+    # the live web before answering — directly targeting the post-training-cutoff
+    # "invented a plausible series" failure. Gated per-call by
+    # identification_service.should_ground so a clean multi-provider match with
+    # an ISBN doesn't pay for a search. Turn off to keep identification fully
+    # offline (tests never hit the network regardless).
+    ai_web_search_enabled: bool = True
+    ai_web_search_max_uses: int = 3
+
     frontend_origin: str = "http://localhost:5173"
 
     # EPUB safe-parsing limits (SPEC.md §1)
@@ -36,7 +47,10 @@ class Settings(BaseSettings):
     # click, not to bill anything.
     ai_description_cap: int = 200  # max model-written blurbs per backfill run
     ai_description_cost_usd: float = 0.01  # describe(): ~150 in + ~400 out
-    ai_identify_cost_usd: float = 0.03  # a full forced-tool identify pass
+    # a full identify pass. Padded upward from 0.03 for prompts/15 Stage A:
+    # most AI-path identifies now ground (web_search, ~$0.01/search x up to 3,
+    # plus the larger grounded prompt + result tokens).
+    ai_identify_cost_usd: float = 0.06
 
     # Calibre CLI conversion (mobi/rtf/txt -> epub before processing)
     ebook_convert_binary: str = "ebook-convert"

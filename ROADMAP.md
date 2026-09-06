@@ -53,6 +53,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   detector, ISBN trust check, positive confidence components, a verification
   pass for the uncertain band, a "recently auto-organized" review tray +
   optional soft-hold, author canonicalisation, batch priors.
+  - **Stage 0 shipped** (2026-09-06) — triangulated 74-book corpus,
+    `pytest -m corpus` gate, `IDENTIFICATION-EVAL.md`.
+  - **Stage A shipped** (2026-09-06) — web-search grounding on the AI identify
+    turn: `AnthropicIdentificationClient.identify(prompt, ground=)` uses the
+    `web_search_20260209` server tool to verify title/author/series/pub-year
+    (told today's date), gated per-call by `identification_service.should_ground`
+    (thin/conflicting providers or a recent-year signal), toggle
+    `settings.ai_web_search_enabled`. Offline corpus unchanged by construction;
+    live slice measurement still pending Anthropic credit.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

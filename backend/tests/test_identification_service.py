@@ -2,7 +2,11 @@ from app.providers.ai.anthropic_client import AIIdentificationError
 from app.providers.ai.types import AIIdentificationResult, AISeriesResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
-from app.services.identification_service import IdentificationService, _build_prompt
+from app.services.identification_service import (
+    IdentificationService,
+    _build_prompt,
+    should_ground,
+)
 
 
 class _FakeAIClient:
@@ -20,10 +24,12 @@ class _FakeAIClient:
         self._series_result = series_result or AISeriesResult(series=None, series_number=None)
         self._series_raises = series_raises
         self.prompts: list[str] = []
+        self.ground_flags: list[bool] = []
         self.series_calls: list[tuple[str, str | None]] = []
 
-    async def identify(self, prompt: str):
+    async def identify(self, prompt: str, *, ground: bool = False):
         self.prompts.append(prompt)
+        self.ground_flags.append(ground)
         if self._raises:
             raise AIIdentificationError("simulated failure")
         return self._result, {"stop_reason": "tool_use"}
@@ -363,6 +369,82 @@ async def test_identify_feeds_corrections_into_the_prompt() -> None:
     )
 
     assert "standalone, no series" in fake_client.prompts[0]
+
+
+def _candidate(**overrides) -> MetadataCandidate:
+    defaults = dict(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="gb")
+    defaults.update(overrides)
+    return MetadataCandidate(**defaults)
+
+
+def test_should_ground_skips_clean_multi_provider_isbn_match() -> None:
+    assert not should_ground(
+        filename="dune.epub",
+        evidence=_evidence(),
+        candidates=[_candidate(source="gb"), _candidate(source="ol")],
+    )
+
+
+def test_should_ground_when_providers_are_thin() -> None:
+    assert should_ground(filename="dune.epub", evidence=_evidence(), candidates=[])
+    assert should_ground(
+        filename="dune.epub", evidence=_evidence(), candidates=[_candidate()]
+    )
+
+
+def test_should_ground_when_providers_disagree_on_title() -> None:
+    assert should_ground(
+        filename="x.epub",
+        evidence=_evidence(),
+        candidates=[_candidate(title="Dune"), _candidate(title="Children of Dune", source="ol")],
+    )
+
+
+def test_should_ground_when_no_isbn_anywhere() -> None:
+    assert should_ground(
+        filename="x.epub",
+        evidence=_evidence(isbn13=None),
+        candidates=[
+            _candidate(isbn13=None, source="gb"),
+            _candidate(isbn13=None, source="ol"),
+        ],
+    )
+
+
+def test_should_ground_on_a_recent_filename_year_even_with_clean_providers() -> None:
+    import datetime as _dt
+
+    year = _dt.date.today().year
+    assert should_ground(
+        filename=f"Some New Book ({year}).epub",
+        evidence=_evidence(),
+        candidates=[_candidate(source="gb"), _candidate(source="ol")],
+    )
+
+
+def test_should_ground_disabled_by_settings(monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_WEB_SEARCH_ENABLED", "false")
+    try:
+        assert not should_ground(filename="x.epub", evidence=_evidence(), candidates=[])
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_ai_path_passes_ground_flag_to_client() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    await service.identify(filename="dune.epub", evidence=_evidence(), candidates=[])
+
+    assert fake_client.ground_flags == [True]  # thin evidence → grounded
 
 
 async def test_evidence_hash_is_stable_for_identical_input() -> None:

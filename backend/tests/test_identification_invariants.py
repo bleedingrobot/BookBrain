@@ -111,7 +111,7 @@ async def test_no_confident_identification_from_pure_junk():
 class _StubAI:
     model_name = "stub"
 
-    async def identify(self, prompt: str):
+    async def identify(self, prompt: str, *, ground: bool = False):
         from app.providers.ai.types import AIIdentificationResult
 
         return (
