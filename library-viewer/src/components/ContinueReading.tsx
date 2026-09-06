@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { BookRow } from '../lib/books'
-import { allProgress, continueReadingIds } from '../lib/readingProgress'
+import { allProgress, clearProgress, continueReadingIds } from '../lib/readingProgress'
 import { Cover } from './Cover'
 
 interface Props {
@@ -24,6 +24,11 @@ export function ContinueReading({ rows, token, tick, onRead }: Props) {
 
   if (items.length === 0) return null
 
+  const dismiss = (fileId: string) => {
+    clearProgress(fileId)
+    setMap(allProgress())
+  }
+
   return (
     <section className="mb-4">
       <h2 className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
@@ -31,10 +36,10 @@ export function ContinueReading({ rows, token, tick, onRead }: Props) {
       </h2>
       <ul className="flex gap-2 overflow-x-auto pb-1">
         {items.map(({ row, pct }) => (
-          <li key={row.id} className="shrink-0">
+          <li key={row.id} className="relative shrink-0">
             <button
               type="button"
-              className="flex w-52 items-center gap-2.5 rounded-lg border border-neutral-200 bg-white p-2 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+              className="flex w-52 items-center gap-2.5 rounded-lg border border-neutral-200 bg-white p-2 pr-6 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
               onClick={() => onRead(row.id)}
             >
               <Cover token={token} driveId={row.id} isbn={row.isbn} />
@@ -53,6 +58,15 @@ export function ContinueReading({ rows, token, tick, onRead }: Props) {
                 </div>
                 <p className="mt-0.5 text-[11px] text-neutral-400">{Math.round(pct * 100)}%</p>
               </div>
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove ${row.title} from Continue reading`}
+              title="Remove from Continue reading"
+              className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+              onClick={() => dismiss(row.id)}
+            >
+              <span className="text-sm leading-none">×</span>
             </button>
           </li>
         ))}
