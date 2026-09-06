@@ -144,6 +144,56 @@ def test_filename_match_is_case_and_punctuation_insensitive() -> None:
     assert breakdown.components["filename_matches_title"] == 5
 
 
+def test_placeholder_resolved_title_is_penalized() -> None:
+    b = score(
+        evidence=_evidence(),
+        candidates=[],
+        filename="whatever.epub",
+        resolved_title="Unknown",
+        resolved_author="Frank Herbert",
+    )
+    assert b.conflicts["placeholder_metadata"] == -30
+
+
+def test_publisher_name_as_author_is_penalized() -> None:
+    b = score(
+        evidence=_evidence(),
+        candidates=[],
+        filename="dune.epub",
+        resolved_title="Dune",
+        resolved_author="Tor Books",
+    )
+    assert b.conflicts["placeholder_metadata"] == -30
+
+
+def test_short_real_title_with_isbn_is_not_a_placeholder() -> None:
+    b = score(
+        evidence=_evidence(title="It"),
+        candidates=[],
+        filename="it.epub",
+        resolved_title="It",
+        resolved_author="Stephen King",
+    )
+    assert "placeholder_metadata" not in b.conflicts
+
+
+def test_resolved_title_equal_to_filename_stem_with_no_corroboration_is_penalized() -> None:
+    b = score(
+        evidence=_evidence(isbn13=None, title=None),
+        candidates=[],
+        filename="some-obscure-upload.epub",
+        resolved_title="some obscure upload",
+        resolved_author="A. Writer",
+    )
+    assert b.conflicts["title_is_filename_only"] == -10
+
+
+def test_no_placeholder_penalty_for_reident_callers_not_passing_resolved_fields() -> None:
+    b = score(evidence=_evidence(), candidates=[], filename="unknown.epub")
+    assert "placeholder_metadata" not in b.conflicts
+    assert "title_is_filename_only" not in b.conflicts
+
+
 def test_filename_corroborates_flag_overrides_the_substring_test() -> None:
     # prompts/15 Stage C: when identification passes an explicit
     # filename_corroborates verdict, it drives the component — not the old

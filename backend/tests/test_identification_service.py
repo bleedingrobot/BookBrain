@@ -233,6 +233,50 @@ async def test_fast_path_series_from_provider_is_not_penalized() -> None:
     assert "uncorroborated_series" not in conflicts
 
 
+async def test_placeholder_epub_title_skips_the_fast_path() -> None:
+    # prompts/15 Stage E: ISBN + provider + EPUB "agree", but the EPUB title is
+    # "Unknown" — the AI path must run to recover the real title.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=88, reasoning_summary="recovered", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Unknown", authors=["Frank Herbert"], isbn13="9780441172719", source="a"
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub",
+        evidence=_evidence(title="Unknown"),
+        candidates=candidates,
+    )
+
+    assert result.model == "fake-model"
+    assert len(fake_client.prompts) == 1
+    assert result.title == "Dune"
+
+
+async def test_placeholder_resolved_metadata_forces_review() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Calibre", author="Unknown", series=None, series_number=None,
+            ai_confidence=90, reasoning_summary="could not identify", needs_human_review=True,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="junk.epub", evidence=_evidence(), candidates=[]
+    )
+
+    assert result.raw_response["confidence_breakdown"]["conflicts"]["placeholder_metadata"] == -30
+    assert result.needs_human_review is True
+
+
 async def test_ai_path_series_corroborated_by_a_provider_is_not_penalized() -> None:
     # prompts/15 Stage B: providers now return series, so an AI-supplied series
     # that a provider candidate also carries no longer takes the

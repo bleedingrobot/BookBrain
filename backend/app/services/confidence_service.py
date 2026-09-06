@@ -2,6 +2,10 @@ from dataclasses import dataclass, field
 
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
+from app.services.metadata_sanity import (
+    looks_like_placeholder_author,
+    looks_like_placeholder_title,
+)
 from app.services.text_match import normalize, normalize_title, normalize_words
 
 ISBN_PRESENT = 40
@@ -21,6 +25,16 @@ SERIES_DISAGREEMENT_PENALTY = -10
 # from the 2026-09-06 review: a clean ISBN+provider match (~90) minus this
 # lands an invented-series book in the review queue instead of the library.
 UNCORROBORATED_SERIES_PENALTY = -15
+# prompts/15 Stage E. The *resolved* title or author still looks like a stub
+# ("Unknown", "Calibre", "book1", a publisher's name) — identification never
+# actually landed on a real book. Large, because such a row must not
+# auto-organise regardless of what else added up (a complete-looking EPUB with
+# an ISBN can otherwise reach 55+ before the model is even consulted).
+PLACEHOLDER_METADATA_PENALTY = -30
+# The resolved title is just the filename stem and nothing (provider or AI)
+# independently says so — we effectively failed to identify it and kept the
+# filename as a guess.
+TITLE_IS_FILENAME_ONLY_PENALTY = -10
 
 
 @dataclass
@@ -31,6 +45,11 @@ class ConfidenceBreakdown:
 
     def as_dict(self) -> dict:
         return {"total": self.total, "components": self.components, "conflicts": self.conflicts}
+
+
+def _filename_stem(filename: str) -> str:
+    stem = filename.rsplit("/", 1)[-1]
+    return stem.rsplit(".", 1)[0] if "." in stem else stem
 
 
 def _series_in_a_source(
@@ -55,6 +74,8 @@ def score(
     ai_corroborates: bool = False,
     resolved_series: str | None = None,
     filename_corroborates: bool | None = None,
+    resolved_title: str | None = None,
+    resolved_author: str | None = None,
 ) -> ConfidenceBreakdown:
     """SPEC.md §13's point table, filled in as part of this build — the
     original numbered spec's literal breakdown was never available to this
@@ -139,6 +160,22 @@ def score(
     # (reident_audit_service._recompute_confidence, existing tests) unchanged.
     if resolved_series and not _series_in_a_source(resolved_series, evidence, candidates):
         conflicts["uncorroborated_series"] = UNCORROBORATED_SERIES_PENALTY
+
+    # prompts/15 Stage E — placeholder / filename-stub resolved metadata.
+    # Opt-in via resolved_title/resolved_author; reident + old callers unchanged.
+    corroborated = has_isbn or provider_matches_epub or ai_corroborates
+    if resolved_title is not None or resolved_author is not None:
+        if looks_like_placeholder_title(
+            resolved_title, corroborated=corroborated
+        ) or looks_like_placeholder_author(resolved_author):
+            conflicts["placeholder_metadata"] = PLACEHOLDER_METADATA_PENALTY
+        elif (
+            resolved_title
+            and normalize_title(resolved_title) == normalize_title(_filename_stem(filename))
+            and not ai_corroborates
+            and normalize_title(resolved_title) not in candidate_titles
+        ):
+            conflicts["title_is_filename_only"] = TITLE_IS_FILENAME_ONLY_PENALTY
 
     total = max(0, min(100, sum(components.values()) + sum(conflicts.values())))
     return ConfidenceBreakdown(total=total, components=components, conflicts=conflicts)

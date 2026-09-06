@@ -10,7 +10,11 @@ from app.providers.epub.parser import EpubEvidence
 from app.providers.filename.parser import FilenameGuess, parse_book_filename
 from app.providers.metadata.types import MetadataCandidate
 from app.services.confidence_service import score
-from app.services.metadata_sanity import clamp_series_number
+from app.services.metadata_sanity import (
+    clamp_series_number,
+    looks_like_placeholder_author,
+    looks_like_placeholder_title,
+)
 from app.services.text_match import normalize, normalize_words, texts_match, titles_match
 
 
@@ -57,7 +61,13 @@ class IdentificationService:
         evidence_hash = hash_evidence(filename, evidence, candidates)
         filename_guess = parse_book_filename(filename)
 
+        # prompts/15 Stage E: a placeholder title/author in the EPUB must never
+        # ride the deterministic fast path, even on an ISBN match — force the AI
+        # path so the real title/author can be recovered (the candidate is still
+        # passed to it).
         fast_match = _find_isbn_match(evidence, candidates)
+        if fast_match is not None and _has_placeholder_epub_metadata(evidence):
+            fast_match = None
         if fast_match is not None:
             title = fast_match.title or evidence.title or ""
             author = _first_author(fast_match) or _first_author_evidence(evidence)
@@ -102,6 +112,8 @@ class IdentificationService:
                 filename=filename,
                 resolved_series=series,
                 filename_corroborates=_filename_corroborates(filename_guess, title, author),
+                resolved_title=title,
+                resolved_author=author,
             )
             raw_response["confidence_breakdown"] = breakdown.as_dict()
             if filename_guess.usable:
@@ -141,6 +153,8 @@ class IdentificationService:
                 filename_corroborates=_filename_corroborates(
                     filename_guess, evidence.title, _first_author_evidence(evidence)
                 ),
+                resolved_title=evidence.title or filename,
+                resolved_author=_first_author_evidence(evidence),
             )
             fallback_raw: dict = {"error": str(exc), "confidence_breakdown": breakdown.as_dict()}
             series_number = clamp_series_number(
@@ -173,6 +187,8 @@ class IdentificationService:
             filename_corroborates=_filename_corroborates(
                 filename_guess, ai_result.title, ai_result.author
             ),
+            resolved_title=ai_result.title,
+            resolved_author=ai_result.author,
         )
 
         merged_raw: dict = {**raw_response, "confidence_breakdown": breakdown.as_dict()}
@@ -240,6 +256,14 @@ def should_ground(
     if not get_settings().ai_web_search_enabled:
         return False
     return _recent_year_present(filename, candidates)
+
+
+def _has_placeholder_epub_metadata(evidence: EpubEvidence) -> bool:
+    # An ISBN in the EPUB is enough corroboration to trust a genuinely short
+    # title ("It", "V.") — the fast path only runs on an ISBN match anyway.
+    return looks_like_placeholder_title(
+        evidence.title, corroborated=bool(evidence.isbn13 or evidence.isbn10)
+    ) or looks_like_placeholder_author(_first_author_evidence(evidence))
 
 
 def _first_author(candidate: MetadataCandidate) -> str | None:
