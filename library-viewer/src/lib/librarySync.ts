@@ -63,7 +63,7 @@ async function fullRebuild(token: string, libraryFolderId: string): Promise<Libr
   return cache
 }
 
-function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
+export function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
   const filesById = new Map(cache.files.map((f) => [f.id, f]))
   const folderIds = new Set(cache.folderIds)
 
@@ -104,7 +104,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   }
   for (const change of folderChanges) {
     const file = change.file!
-    if (!(file.parents ?? []).some((p) => folderIds.has(p))) {
+    // `parents` absent (not `[]`) means the change record carries no
+    // placement info — Drive doesn't send `parents` on every delta. Don't
+    // evict a folder we already know over that; only an explicit
+    // removed/trashed (handled above) or a populated `parents` with no known
+    // ancestor means it genuinely left the tree.
+    if (file.parents === undefined) continue
+    if (!file.parents.some((p) => folderIds.has(p))) {
       folderIds.delete(file.id) // not ours, or moved out of the tree
     }
   }
@@ -112,7 +118,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   for (const change of live) {
     const file = change.file!
     if (file.mimeType === FOLDER_MIME_TYPE) continue
-    const parentKnown = (file.parents ?? []).some((p) => folderIds.has(p))
+    // Same missing-`parents` guard as the folder pass: a change with no
+    // `parents` key tells us nothing about where the file is — leave any
+    // existing cache entry alone rather than dropping it until the 24h
+    // rebuild. `parents: []` (explicitly empty) still means "not in our
+    // tree" and is handled by the `.some` below.
+    if (file.parents === undefined) continue
+    const parentKnown = file.parents.some((p) => folderIds.has(p))
     if (parentKnown && isSupportedEbook(file.name)) {
       filesById.set(file.id, { id: file.id, name: file.name })
     } else {

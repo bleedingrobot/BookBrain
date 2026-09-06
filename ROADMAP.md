@@ -30,6 +30,16 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **library-viewer: incremental sync dropped a file on a `parents`-less change**
+  (2026-09-06, review batch #2 / finding 07, P1) — `applyChanges` computed
+  `(file.parents ?? []).some(...)` and evicted the cache entry when false — which
+  is true both when a file genuinely moved out *and* when Drive simply omitted
+  `parents` from the change delta (it doesn't send it on every one). A still-in-
+  library file then stayed invisible until the 24h auto-rebuild. Fix: treat
+  `file.parents === undefined` as "no placement info" — skip, leave the cache
+  entry alone — distinct from `[]`/populated (existing evict logic). Same guard
+  on the folder-removal pass. New `src/lib/librarySync.test.ts`.
+
 - **Alembic enum drift + `alembic check` gate** (2026-09-06, review batch #2 /
   finding 08, P2) — `files.status` gained `rejected` and `files.status_reason`
   gained `previously_rejected` / `same_book` in the models with no migration, so
