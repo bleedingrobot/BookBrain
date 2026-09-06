@@ -202,10 +202,11 @@ mis-identification guards). The rest of that session's ideas, for later:
     (`lib/bookCache.ts`, LRU 300 MB / 20). "Read" button on `.epub` rows;
     "Continue reading" strip on the home screen (`components/ContinueReading.tsx`);
     "Clear downloaded books (N)" in the header menu. James-verified on real
-    devices (`2ad7e40` failed-open recovery, `c9c4c6b` vertical fill). §D
-    (word-count → time-left) deferred. **§E (cross-device position sync via a
-    Drive sidecar) and a "sync from Kobo" button — James decided not to pursue
-    these; position stays per-device.**
+    devices (`2ad7e40` failed-open recovery, `c9c4c6b` vertical fill).
+    **Considered complete.** Dropped: §D (word-count → "~45 min left"), §E
+    (cross-device position sync via a Drive sidecar), a "sync from Kobo"
+    button — James doesn't want them; position stays per-device, progress is
+    shown as `%` only.
   - ~~Reading state per person — want-to-read / reading / finished~~ — **not
     planned** (was going to piggy-back on §E; James doesn't want the sync).
   - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,

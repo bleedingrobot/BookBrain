@@ -144,7 +144,12 @@ A horizontal strip at the top of the library list (above or beside
 This is the change that turns the app from a catalogue into a reading app; ship
 it in the same PR as §B.
 
-## D. (optional) word count → time-left estimate
+## D. word count → time-left estimate — DROPPED
+
+> **2026-09-07: James decided not to pursue this.** The reader shows `%` and
+> page counts, no "~45 min left". Section kept for context.
+
+## D (original). (optional) word count → time-left estimate
 
 Skippable for v1 — without it the reader shows `%` and page counts, just not
 "~45 min left". If you do it:
