@@ -1,0 +1,50 @@
+{
+  "id": "a-j-nguyen-heir-of-the-shattered-flame",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: A. J. Nguyen / Heir of the Shattered Flame / series=The Eye of the Beholder #3.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2615,
+    "drive_file_id": "1rflUWToGxHmIHjVgKwYQsGUMThTBSqR-",
+    "filename": "Heir of the Shattered Flame - A. J. Nguyen.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Heir of the Shattered Flame - A. J. Nguyen.epub",
+  "evidence": {
+    "title": "Heir of the Shattered Flame (The Eye of the Beholder Book 3)",
+    "authors": [
+      "Nguyen",
+      "A. J."
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "c6P9"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Heir of the Shattered Flame",
+    "author": "A. J. Nguyen",
+    "series": "The Eye of the Beholder",
+    "series_number": 3,
+    "ai_confidence": 70,
+    "reasoning_summary": "Filename and EPUB metadata agree on title 'Heir of the Shattered Flame' and author A. J. Nguyen. The EPUB title field includes the parenthetical series indicator '(The Eye of the Beholder Book 3)', giving series name and number even though the dedicated series field is empty. No metadata provider candidates were returned and the copyright-page text was garbage ('c6P9'), so no external corroboration exists — likely a self-published/obscure title. Identification rests entirely on internal file metadata, which is self-consistent.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Heir of the Shattered Flame",
+    "author": "A. J. Nguyen",
+    "series": "The Eye of the Beholder",
+    "series_number": 3.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

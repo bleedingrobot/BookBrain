@@ -1,0 +1,53 @@
+{
+  "id": "jay-kristoff-nevernight",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Jay Kristoff / Nevernight / series=The Nevernight Chronicle #1.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 2100,
+    "drive_file_id": "1gNki-CQxC3bMsa8_6jfrOeHJp8kl8F3S",
+    "filename": "Nevernight - Jay Kristoff.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Nevernight - Jay Kristoff.epub",
+  "evidence": {
+    "title": "Nevernight",
+    "authors": [
+      "Jay Kristoff"
+    ],
+    "language": "en",
+    "description": "<div><p><em>Nevernight</em> is the first in an epic new fantasy series from the <em>New York Times</em> bestselling author, Jay Kristoff.</p> <p>In a land where three suns almost never set, a fledgling killer joins a school of assassins, seeking vengeance against the powers who destroyed her family.</p> <p>Daughter of an executed traitor, Mia Corvere is barely able to escape her father’s failed rebellion with her life. Alone and friendless, she hides in a city built from the bones of a dead god, hunted by the Senate and her father’s former comrades. But her gift for speaking with the shadows leads her to the door of a retired killer, and a future she never imagined.</p> <p>Now, a sixteen year old Mia is apprenticed to the deadliest flock of assassins in the entire Republic ― the Red Church. Treachery and trials await her with the Church’s halls, and to fail is to die. But if she survives to initiation, Mia will be inducted among the chosen of the Lady of Blessed Murder, and one step closer to the only thing she desires.</p> <p>Revenge.</p> <p>**</p><h3>About the Author</h3> <p>Jay Kristoff is the award-winning author of The Lotus War series and Illuminae. He spent most of his formative years locked in his bedroom with piles of books, or gathered around dimly-lit tables rolling polyhedral dice. Being the holder of an Arts degree, he has no education to speak of. He is 6'7 and has approximately 13,520 days to live. He abides in Melbourne with his secret agent kung-fu assassin wife, and the world's laziest Jack Russell. He does not believe in happy endings. </p></div>",
+    "isbn10": "1250073022",
+    "isbn13": "9781466885035",
+    "series": "The Nevernight Chronicle",
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Nevernight",
+      "authors": [
+        "Jay Kristoff"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9781466885035",
+      "isbn10": "1250073022"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Nevernight",
+    "author": "Jay Kristoff",
+    "series": "The Nevernight Chronicle",
+    "series_number": 1.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

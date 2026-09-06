@@ -1,0 +1,60 @@
+{
+  "id": "tony-diterlizzi-h-the-wrath-of-mulgarath",
+  "case_tags": [
+    "clean-control"
+  ],
+  "notes": "clean-control; stored: Tony DiTerlizzi, Holly Black / The Wrath of Mulgarath / series=The Spiderwick Chronicles #5.0 (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 1997,
+    "drive_file_id": "1His84uDemkZwvalyJIkwUx3HfpPdC9oP",
+    "filename": "DiTerlizzi, Tony & Black, Holly - [Spiderwick Chronicles 5] - The Wrath of Mulgarath.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "DiTerlizzi, Tony & Black, Holly - [Spiderwick Chronicles 5] - The Wrath of Mulgarath.epub",
+  "evidence": {
+    "title": "The Wrath of Mulgarath",
+    "authors": [
+      "Holly Black"
+    ],
+    "language": "en",
+    "description": "<p>Three ordinary kids, Jared, Simon, and Wallory Grace, have entered another world -- without leaving this one! Two remarkable talents, New York Times best-sellers Tony DiTerlizzi and Holly Black, have risked everything to bring this remarkable account to light. Five books -- one thrilling adventure -- the Spiderwick Chronicles! <p>Their world is closer than you think.",
+    "isbn10": null,
+    "isbn13": "9781442496255",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "The Wrath of Mulgarath"
+  },
+  "candidates": [
+    {
+      "title": "Wrath of Mulgarath",
+      "authors": [
+        "Tony DiTerlizzi",
+        "Holly Black"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Wrath of Mulgarath",
+    "author": "Tony DiTerlizzi; Holly Black",
+    "series": "The Spiderwick Chronicles",
+    "series_number": 5,
+    "ai_confidence": 97,
+    "reasoning_summary": "Filename, EPUB title, and Open Library candidate all agree on 'The Wrath of Mulgarath' by Tony DiTerlizzi and Holly Black, with matching ISBN-13 9781442496255. Series info (Spiderwick Chronicles, book 5) comes from the filename and is consistent with the known publication order of the series.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Wrath of Mulgarath",
+    "author": "Tony DiTerlizzi, Holly Black",
+    "series": "The Spiderwick Chronicles",
+    "series_number": 5.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "id": "lee-child-nothing-to-lose",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Lee Child / Nothing to Lose / series=Jack Reacher #12.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1739,
+    "drive_file_id": "1hH1p2kvgK5ExprTJY9w2W5xjjCRamjuY",
+    "filename": "Nothing to Lose - Lee Child.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Nothing to Lose - Lee Child.epub",
+  "evidence": {
+    "title": "Nothing to Lose",
+    "authors": [
+      "Lee Child"
+    ],
+    "language": "en",
+    "description": "SUMMARY: Two lonely towns in Colorado: Hope and Despair. Between them, twelve miles of empty road. Jack Reacher never turns back. It's not in his nature. All he wants is a cup of coffee. What he gets is big trouble. So in Lee Child’s electrifying new novel, Reacher—a man with no fear, no illusions, and nothing to lose—goes to war against a town that not only wants him gone, it wants him dead. It wasn’t the welcome Reacher expected. He was just passing through, minding his own business. But within minutes of his arrival a deputy is in the hospital and Reacher is back in Hope, setting up a base of operations against Despair, where a huge, seething walled-off industrial site does something nobody is supposed to see . . . where a small plane takes off every night and returns seven hours later . . . where a garrison of well-trained and well-armed military cops—the kind of soldiers Reacher once commanded—waits and watches . . . where above all two young men have disappeared and two frightened young women wait and hope for their return.Joining forces with a beautiful cop who runs Hope with a cool hand, Reacher goes up against Despair—against the deputies who try to break him and the rich man who tries to scare him—and starts to crack open the secrets, starts to expose the terrifying connection to a distant war that’s killing Americans by the thousand.Now, between a town and the man who owns it, between Reacher and his conscience, something has to give. And Reacher never gives an inch.",
+    "isbn10": null,
+    "isbn13": "9780385340564",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Nothing to Lose",
+      "authors": [
+        "Lee Child"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780385340564",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": "Jack Reacher",
+    "series_number": 12
+  },
+  "answer": {
+    "title": "Nothing to Lose",
+    "author": "Lee Child",
+    "series": "Jack Reacher",
+    "series_number": 12.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

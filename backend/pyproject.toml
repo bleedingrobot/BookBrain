@@ -41,3 +41,11 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The `corpus` suite is the identification ground-truth eval (prompts/15 Stage 0).
+# It is offline and deterministic but slow-ish and noisy (prints a score table),
+# so it is NOT part of the default `pytest` run — invoke it explicitly:
+#   pytest -m corpus
+addopts = "-m 'not corpus'"
+markers = [
+    "corpus: ground-truth first-pass identification eval; offline, run with `pytest -m corpus`",
+]

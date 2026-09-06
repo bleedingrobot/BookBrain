@@ -1,0 +1,50 @@
+{
+  "id": "cormac-mccarthy-cities-of-the-plain",
+  "case_tags": [
+    "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Cormac McCarthy / Cities of the Plain / series=The Border Trilogy #3.0 (model=claude-opus-5, conf=20)",
+  "source": {
+    "file_id": 976,
+    "drive_file_id": "1qJ-fnym5f4zU9Vk22gLT1D2ha4VN56I2",
+    "filename": "Border Trilogy 3 - Cities of The Plain - McCarthy_ Cormac.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 20
+  },
+  "filename": "Border Trilogy 3 - Cities of The Plain - McCarthy_ Cormac.epub",
+  "evidence": {
+    "title": "Border Trilogy 3 - Cities of The Plain",
+    "authors": [
+      "McCarthy",
+      "Cormac"
+    ],
+    "language": "UND",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Cities of the Plain",
+    "author": "Cormac McCarthy",
+    "series": "The Border Trilogy",
+    "series_number": 3,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename and EPUB title both explicitly state \"Border Trilogy 3 - Cities of The Plain\" with author \"McCarthy, Cormac\". This matches the well-known novel Cities of the Plain (1998), the third book of Cormac McCarthy's Border Trilogy. No provider candidates were available, but the internal metadata is unambiguous; only the copyright-page text was uninformative (CSS boilerplate).",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Cities of the Plain",
+    "author": "Cormac McCarthy",
+    "series": "The Border Trilogy",
+    "series_number": 3.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

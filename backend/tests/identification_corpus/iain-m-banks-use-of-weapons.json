@@ -1,0 +1,59 @@
+{
+  "id": "iain-m-banks-use-of-weapons",
+  "case_tags": [
+    "clean-control"
+  ],
+  "notes": "clean-control; stored: Iain M. Banks / Use of Weapons / series=Culture #3.0 (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 1938,
+    "drive_file_id": "1gpaQ0maQEsv0G5TYnXPI2n3LOX0H2IHH",
+    "filename": "Use of weapons - Iain M. Banks.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "Use of weapons - Iain M. Banks.epub",
+  "evidence": {
+    "title": "Use of weapons",
+    "authors": [
+      "Iain M. Banks"
+    ],
+    "language": "en",
+    "description": "<div><h3>Review</h3><p>'There is now no British SF writer to whose work I look forward with greater keenness' The Times </p><h3>Product Description</h3><p>The man known as Cheradenine Zakalwe was one of Special Circumstances' foremost agents, changing the destiny of planets to suit the Culture through intrigue, dirty tricks and military action.  </p><p>The woman known as Diziet Sma had plucked him from obscurity and pushed him towards his present eminence, but despite all their dealings she did not know him as well as she thought.  </p><p>The drone known as Skaffen-Amtiskaw knew both of these people. It had once saved the woman's life by massacring her attackers in a particularly bloody manner. It believed the man to be a lost cause. But not even its machine could see the horrors in his past.   </p><p>Ferociously intelligent, both witty and horrific, USE OF WEAPONS is a masterpiece of science fiction. </p>\n\n</div>",
+    "isbn10": null,
+    "isbn13": "9780316030571",
+    "series": "Culture",
+    "series_number": 3.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Use of Weapons",
+      "authors": [
+        "Iain Banks"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Use of Weapons",
+    "author": "Iain M. Banks",
+    "series": "Culture",
+    "series_number": 3,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename, EPUB title/author, and ISBN 9780316030571 all agree with the Open Library match 'Use of Weapons' by Iain (M.) Banks. EPUB metadata states series 'Culture'; Use of Weapons is the third Culture novel (1990).",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Use of Weapons",
+    "author": "Iain M. Banks",
+    "series": "Culture",
+    "series_number": 3.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "katharine-kerr-spirit-stone",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Katharine Kerr / Spirit Stone / series=Act 3 : The Dragon Mage #5.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 108,
+    "drive_file_id": "1HhiRi8zaRM9_v-zguPi5vqII42i7eeWp",
+    "filename": "The Spirit Stone - Katharine Kerr.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "The Spirit Stone - Katharine Kerr.epub",
+  "evidence": {
+    "title": "The Spirit Stone",
+    "authors": [
+      "Katharine Kerr"
+    ],
+    "language": "en",
+    "description": "<span class=\"Apple-style-span\" style=\"font-family: verdana, arial, helvetica, sans-serif; font-size: small; \">Elven prince Dar has called upon his allies, the dwarven folk of the Northern mountains and the human men of Deverry in the East, to take arms against their mutual enemy, the fanatical Horsekin, whose imminent invasion of the Westlands will place the entire realm in danger...</span>",
+    "isbn10": null,
+    "isbn13": "9780007371167",
+    "series": "Act 3 : The Dragon Mage",
+    "series_number": 5.0,
+    "text_snippet": "The Spirit Stone"
+  },
+  "candidates": [
+    {
+      "title": "Spirit Stone",
+      "authors": [
+        "Katharine Kerr"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780007371167",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Spirit Stone",
+    "author": "Katharine Kerr",
+    "series": "Act 3 : The Dragon Mage",
+    "series_number": 5.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

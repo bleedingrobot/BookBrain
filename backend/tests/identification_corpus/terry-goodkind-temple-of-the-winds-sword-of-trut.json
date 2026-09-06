@@ -1,0 +1,53 @@
+{
+  "id": "terry-goodkind-temple-of-the-winds-sword-of-trut",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Terry Goodkind / Temple of the Winds (Sword of Truth) / series=Sword of Truth #4.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 210,
+    "drive_file_id": "1FP6tdao84IWv47Lv97e1Q0xYXRbSW0OD",
+    "filename": "Terry Goodkind - Sword of Truth 04 - Temple of the Winds.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Terry Goodkind - Sword of Truth 04 - Temple of the Winds.epub",
+  "evidence": {
+    "title": "Temple of the Winds",
+    "authors": [
+      "Terry Goodkind"
+    ],
+    "language": "en",
+    "description": "SUMMARY:\nOn the red moon will come the firestorm...Wielding the Sword of Truth, Richard Rahl has battled death itself and come to the defense of the D'Haran people. But now the power-mad Emperor Jagang confronts Richard with a swift and inexorable foe: a mystical plague cutting a deadly swath across the land and slaying thousands of innocent victims.To quench the inferno, he must seek remedy in the wind...To fight it Richard and his beloved Kahlan Amnell will risk everything to uncover the source of the terrible plague-the magic sealed away for three millennia in the Temple of the Winds.Lightning will find him on that path...But when prophecy throws the shadow of betrayal across their mission and threatens to destroy them, Richard must accept the Truth and find a way to pay the price the winds demand...or he and his world will perish.",
+    "isbn10": "0613224779",
+    "isbn13": null,
+    "series": "Sword of Truth",
+    "series_number": 4.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Temple of the Winds (Sword of Truth)",
+      "authors": [
+        "Terry Goodkind"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": null,
+      "isbn10": "0613224779"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Temple of the Winds (Sword of Truth)",
+    "author": "Terry Goodkind",
+    "series": "Sword of Truth",
+    "series_number": 4.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

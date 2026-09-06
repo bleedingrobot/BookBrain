@@ -1,0 +1,41 @@
+{
+  "id": "j-a-sutherland-wronged-a-story-of-the-dark",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: J.A. Sutherland / Wronged: A Story of the Dark / series=Alexis Carew #None (model=None, conf=None)",
+  "source": {
+    "file_id": 2004,
+    "drive_file_id": "1Ig7I_aaS-PVQof0o1VLdKJNPwjvxFeNR",
+    "filename": "Wronged - A Story of the Dark ( - J.A. Sutherland.epub",
+    "captured_from": "db",
+    "stored_model": null,
+    "stored_confidence": null
+  },
+  "filename": "Wronged - A Story of the Dark ( - J.A. Sutherland.epub",
+  "evidence": {
+    "title": "Wronged - A Story of the Dark (Alexis Carew #301)",
+    "authors": [
+      "J.A. Sutherland"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Wronged: A Story of the Dark",
+    "author": "J.A. Sutherland",
+    "series": "Alexis Carew",
+    "series_number": null,
+    "verified": true,
+    "source": "human_correction"
+  }
+}

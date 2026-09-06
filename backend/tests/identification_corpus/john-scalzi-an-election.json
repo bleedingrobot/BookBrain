@@ -1,0 +1,50 @@
+{
+  "id": "john-scalzi-an-election",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: John Scalzi / An Election / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2182,
+    "drive_file_id": "1kgvUNAiIJndrEs3_H7S-NrSCLxwKSDdW",
+    "filename": "Scalzi, John--An Election.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Scalzi, John--An Election.epub",
+  "evidence": {
+    "title": "An Election",
+    "authors": [
+      "Scalzi",
+      "John"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "An Election",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 72,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"An Election\" by John Scalzi. This is a short story/novelette by John Scalzi (part of his \"The Human Division\" serialized Old Man's War universe series — episode 6, \"The Back Channel\"? uncertain) — actually \"An Election\" is a standalone short story Scalzi published (2007, later collected). No metadata provider candidates were returned, so series affiliation is unverified; I left series null. Confidence in title/author is high; series/edition details unconfirmed, so flagging for human review.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "An Election",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

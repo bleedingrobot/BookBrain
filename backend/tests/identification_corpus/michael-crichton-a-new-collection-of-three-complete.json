@@ -1,0 +1,59 @@
+{
+  "id": "michael-crichton-a-new-collection-of-three-complete",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: Michael Crichton / A New Collection of Three Complete Novels: Congo / Sphere / Eaters of the Dead / series=None #None (model=claude-opus-5, conf=50)",
+  "source": {
+    "file_id": 780,
+    "drive_file_id": "1NEiRw0NOmHZ77f20_nuNHeynkRIzIK9m",
+    "filename": "Michael Crichton - A New Collection of Three Complete Novels_ Congo_ Sphere_ Eaters of the Dead - Michael Crichton.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 50
+  },
+  "filename": "Michael Crichton - A New Collection of Three Complete Novels_ Congo_ Sphere_ Eaters of the Dead - Michael Crichton.epub",
+  "evidence": {
+    "title": "A New Collection of Three Complete Novels: Congo/ Sphere/ Eaters of the Dead",
+    "authors": [
+      "Michael Crichton"
+    ],
+    "language": "UND",
+    "description": "SUMMARY:\n\"Congo\" Deep in the jungle, near the legendary ruins of a lost city, eight members of an expedition are brutally destroyed, leaving behind only a grainy videotape of a blurred shape. Across the globe, Amy, an extraordinary research gorilla reveals a mysterious link to the scene of the crime. Immediately, a new field team is dispatched to the Congo, entering a secret world where the only escape may come through the grisliest death. \"Sphere\" A thousand feet below the surface of the South Pacific, a huge vessel is discovered resting on the ocean floor. A group of American scientists descends to the depths of the sea to investigate. What they find defies the imagination and mocks all attempts at logical explanation--a spaceship of phenomenal dimensions that appears to be at least three hundred years old. \"Eaters of the Dead\" In A.D. 922 Ibn Fadlan, representative of the ruler of Bagdad, embarks on a journey to the barbaric North with Buliwyf, a powerful Viking chieftain who has been summoned to save his countrymen from a dread and nameless terror. Ibn Fadlan is appalled by the Viking customs--their wanton sexuality and cold-blooded human sacrifices. But he discovers an even more horrifying truth: he must join with Buliwyf in mortal combat against the dark, hairy monsters who threaten them.",
+    "isbn10": null,
+    "isbn13": "9780517101353",
+    "series": null,
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; } div { margin: 0pt; padding: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "A new collection",
+      "authors": [
+        "Michael Crichton"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "A New Collection of Three Complete Novels: Congo / Sphere / Eaters of the Dead",
+    "author": "Michael Crichton",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 93,
+    "reasoning_summary": "Filename, EPUB title, and author all agree: an omnibus collection of three Michael Crichton novels (Congo, Sphere, Eaters of the Dead), published by Wings Books/Crown (ISBN 9780517101353). Open Library candidate 'A new collection' by Michael Crichton corroborates. It is a single-volume omnibus, not part of a series.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "A New Collection of Three Complete Novels: Congo / Sphere / Eaters of the Dead",
+    "author": "Michael Crichton",
+    "series": null,
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "id": "richard-awlinson-shadowdale",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Richard Awlinson / Shadowdale / series=Forgotten Realms: Avatar Series #1.0 (model=claude-opus-5, conf=45)",
+  "source": {
+    "file_id": 1533,
+    "drive_file_id": "1-j9jMERXyUsa8XR_Y7WGx27_UIdJBcun",
+    "filename": "Richard Awlinson - Forgotten Realms.Avatar Series.Forgotten Realms.1 of 5._.ICB Best - Shadowdale.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 45
+  },
+  "filename": "Richard Awlinson - Forgotten Realms.Avatar Series.Forgotten Realms.1 of 5._.ICB Best - Shadowdale.epub",
+  "evidence": {
+    "title": "Shadowdale",
+    "authors": [
+      "Richard Awlinson"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": "Forgotten Realms.Avatar Series.Forgotten Realms.1 of 5._.ICB Best",
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Shadowdale",
+      "authors": [
+        "Scott Ciencin",
+        "Scott Ciencin "
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Shadowdale",
+    "author": "Richard Awlinson",
+    "series": "Forgotten Realms: Avatar Series",
+    "series_number": 1,
+    "ai_confidence": 93,
+    "reasoning_summary": "Filename and EPUB metadata clearly identify \"Shadowdale,\" book 1 of the Forgotten Realms Avatar Series, credited to the house pseudonym Richard Awlinson. Open Library's attribution to Scott Ciencin is consistent — Ciencin wrote this volume under the Awlinson pen name — so the sources agree on the same work. Series number 1 confirmed by \"1 of 5\" in the filename.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Shadowdale",
+    "author": "Richard Awlinson",
+    "series": "Forgotten Realms: Avatar Series",
+    "series_number": 1.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

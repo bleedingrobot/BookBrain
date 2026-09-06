@@ -1,0 +1,56 @@
+{
+  "id": "charles-stross-wireless",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Charles Stross / Wireless / series=None #None (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 905,
+    "drive_file_id": "1wvNdSrQXgsJ6fuf5v6r2XmtbjKcoj83_",
+    "filename": "Stross, Charles - Wireless (2009, Ace Books, 9780441017195).epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Stross, Charles - Wireless (2009, Ace Books, 9780441017195).epub",
+  "evidence": {
+    "title": "Wireless",
+    "authors": [
+      "Charles Stross"
+    ],
+    "language": "en",
+    "description": "EDITORIAL REVIEW: **Science fiction guru Charles Stross \"sizzles with ideas\" (*Denver Post*) in his first major short story collection.** The Hugo Award-winning author of such groundbreaking and innovative novels as *Accelerando, Halting State*, and *Saturn's Children* delivers a rich selection of speculative fiction- including a novella original to this volume- brought together for the first time in one collection, showcasing the limitless imagination of one of the twenty-first century's most daring visionaries.",
+    "isbn10": null,
+    "isbn13": "9780441017195",
+    "series": null,
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Wireless",
+      "authors": [
+        "Charles Stross"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780441017195",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": null,
+    "series_number": null
+  },
+  "answer": {
+    "title": "Wireless",
+    "author": "Charles Stross",
+    "series": null,
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

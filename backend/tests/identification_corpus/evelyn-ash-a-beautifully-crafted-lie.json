@@ -1,0 +1,50 @@
+{
+  "id": "evelyn-ash-a-beautifully-crafted-lie",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Evelyn Ash / A Beautifully Crafted Lie / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2397,
+    "drive_file_id": "1tF56gQ7FAL_2pP0p4pc3qoO821ovz17M",
+    "filename": "A Beautifully Crafted Lie - Evelyn Ash.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "A Beautifully Crafted Lie - Evelyn Ash.epub",
+  "evidence": {
+    "title": "A Beautifully Crafted Lie",
+    "authors": [
+      "Ash",
+      "Evelyn"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "c0"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "A Beautifully Crafted Lie",
+    "author": "Evelyn Ash",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 55,
+    "reasoning_summary": "The only evidence available is the filename and EPUB metadata, which agree: title \"A Beautifully Crafted Lie\" by Evelyn Ash. No ISBN, no series info, and the first-chapter/copyright text is empty (\"c0\"), so nothing corroborates or contradicts. No metadata provider candidates were returned, meaning the identification rests entirely on unverified embedded metadata (possibly a self-published or obscure title). Flagging for human review due to lack of external confirmation.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "A Beautifully Crafted Lie",
+    "author": "Evelyn Ash",
+    "series": null,
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

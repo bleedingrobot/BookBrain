@@ -1,0 +1,53 @@
+{
+  "id": "r-a-salvatore-the-lone-drow",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: R. A. Salvatore / The Lone Drow / series=Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best #1.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1420,
+    "drive_file_id": "1wBQGySRCt_gxKRmnMSbzCrEXEBdGvOBn",
+    "filename": "R. A. Salvatore - Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best - Lone Drow, The.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "R. A. Salvatore - Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best - Lone Drow, The.epub",
+  "evidence": {
+    "title": "The Lone Drow",
+    "authors": [
+      "R. A. Salvatore"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": "9780786954155",
+    "series": "Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best",
+    "series_number": 1.0,
+    "text_snippet": "Cover /* */"
+  },
+  "candidates": [
+    {
+      "title": "The Lone Drow",
+      "authors": [
+        "R. A. Salvatore"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780786954155",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Lone Drow",
+    "author": "R. A. Salvatore",
+    "series": "Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best",
+    "series_number": 1.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

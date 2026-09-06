@@ -1,0 +1,53 @@
+{
+  "id": "derek-landy-playing-with-fire",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Derek Landy / Playing with fire / series=Skulduggery Pleasant #2.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1594,
+    "drive_file_id": "1DT9YdSvedsDxJs_vQBvL0y_Xd1k29OgR",
+    "filename": "2 Playing With Fire - Derek Landy.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "2 Playing With Fire - Derek Landy.epub",
+  "evidence": {
+    "title": "Playing With Fire",
+    "authors": [
+      "Derek Landy"
+    ],
+    "language": "en",
+    "description": "<div><p>Skulduggery and Valkyrie are facing a new enemy: Baron Vengeous, who is determined to bring back the terrifying Faceless Ones and is crafting an army of evil to help him. Added to that, Vengeous is about to enlist a new ally (<em>if</em> he can raise it from the dead): the horrible Grotesquery, a <em>very</em> unlikable monster of legend.<br></p><p>Once Vengeous is on the loose, dead bodies and vampires start showing up all over Ireland. Now pretty much everybody is out to kill Valkyrie, and the daring detective duo faces its biggest challenge yet.<br></p><p>But what if the greatest threat to Valkyrie is just a little closer to home?<br></p><p>Look for Scepter of the Ancients<br></p></div>",
+    "isbn10": null,
+    "isbn13": "9780061240881",
+    "series": "Skulduggery Pleasant",
+    "series_number": 2.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Playing with fire",
+      "authors": [
+        "Derek Landy"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780061240881",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Playing with fire",
+    "author": "Derek Landy",
+    "series": "Skulduggery Pleasant",
+    "series_number": 2.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

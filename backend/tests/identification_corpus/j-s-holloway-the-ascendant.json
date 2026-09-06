@@ -1,0 +1,50 @@
+{
+  "id": "j-s-holloway-the-ascendant",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: J.S. Holloway / The Ascendant / series=The Veil Trilogy #2.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2361,
+    "drive_file_id": "1fWfQM67rIYqUDI_FPsVEcL4r0bQrIGcr",
+    "filename": "The Ascendant - J.S. Holloway.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "The Ascendant - J.S. Holloway.epub",
+  "evidence": {
+    "title": "The Ascendant: A Cyberpunk Thriller (The Veil Trilogy Book 2)",
+    "authors": [
+      "Holloway",
+      "J.S."
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "c0"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Ascendant",
+    "author": "J.S. Holloway",
+    "series": "The Veil Trilogy",
+    "series_number": 2,
+    "ai_confidence": 62,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"The Ascendant\" and author J.S. Holloway. The EPUB title field includes the subtitle \"A Cyberpunk Thriller\" and series designation \"The Veil Trilogy Book 2\", so series and number were parsed from there. No ISBN, no copyright-page text (only \"c0\"), and no third-party metadata candidates were found to corroborate, so the identification rests solely on embedded file metadata.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Ascendant",
+    "author": "J.S. Holloway",
+    "series": "The Veil Trilogy",
+    "series_number": 2.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

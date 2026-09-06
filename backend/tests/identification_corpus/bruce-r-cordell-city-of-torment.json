@@ -1,0 +1,53 @@
+{
+  "id": "bruce-r-cordell-city-of-torment",
+  "case_tags": [
+    "fast-path-isbn-junk-series"
+  ],
+  "notes": "fast-path-isbn-junk-series; stored: Bruce R. Cordell / City of Torment / series=Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best #2.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1558,
+    "drive_file_id": "1xjEkQk3Ze7icqIpzT9Bt0vJmikrkLtjT",
+    "filename": "Bruce R. Cordell - Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best - City of Torment.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Bruce R. Cordell - Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best - City of Torment.epub",
+  "evidence": {
+    "title": "City of Torment",
+    "authors": [
+      "Bruce R. Cordell"
+    ],
+    "language": "en",
+    "description": "<p class=\"description\">SUMMARY:<br>Raidon Kane travels to the subterranean fortress of the somnambulant aboleths, bent on killing the Eldest in its sleep. But Kane isn't the only one bound for the hidden city. A warlock, an arch fey, a pirate, and a high priestess of the Abolethic Sovereignty all have designs of their own on the Eldest--if they don't kill each other first. Original.</p>",
+    "isbn10": null,
+    "isbn13": "9780786956142",
+    "series": "Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best",
+    "series_number": 2.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "City of Torment",
+      "authors": [
+        "Bruce R. Cordell"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780786956142",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "City of Torment",
+    "author": "Bruce R. Cordell",
+    "series": "Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best",
+    "series_number": 2.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

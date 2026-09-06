@@ -1,0 +1,113 @@
+{
+  "id": "robert-jackson-ben-the-tainted-cup",
+  "case_tags": [
+    "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: Robert Jackson Bennett / The Tainted Cup / series=The Shadow of the Leviathan #1.0 (model=claude-opus-5, conf=20)",
+  "source": {
+    "file_id": 2553,
+    "drive_file_id": "1ToEQxLJLG6XdZraEzyDyDQ3JYuhlXnsa",
+    "filename": "The Tainted Cup -- Robert Jackson Bennett -- 2024 -- Random House Worlds -- 9781984820709 -- f589eb327d77b490fe240cad8a954c78 -- Anna’s Archive.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 20
+  },
+  "filename": "The Tainted Cup -- Robert Jackson Bennett -- 2024 -- Random House Worlds -- 9781984820709 -- f589eb327d77b490fe240cad8a954c78 -- Anna’s Archive.epub",
+  "evidence": {
+    "title": "The Tainted Cup",
+    "authors": [
+      "Robert Jackson Bennett"
+    ],
+    "language": "en",
+    "description": "<b>A Holmes and Watson&ndash;style detective duo take the stage in this fantasy with a mystery twist, from the Edgar-winning, multiple Hugo-nominated Robert Jackson Bennett<br>&ldquo;Superbly blends mystery and fantasy . . . Give me more of this world and these characters ASAP!&rdquo;&mdash;#1 <i>New York Times</i> bestselling author Meg Gardiner</b><br>In Daretana&rsquo;s greatest mansion, a high imperial officer lies dead&mdash;killed, to all appearances, when a tree erupted from his body. Even here at the Empire&rsquo;s borders, where contagions abound and the blood of the leviathans works strange magical changes, it&rsquo;s a death both terrifying and impossible.<br>Assigned to investigate is Ana Dolabra, a detective whose reputation for brilliance is matched only by her eccentricities. Rumor has it that she wears a blindfold at all times, and that she can solve impossible cases without even stepping outside the walls of her home.<br> At her side is her new assistant, Dinios...",
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "The Tainted Cup",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books"
+    },
+    {
+      "title": "The Tainted Cup",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books"
+    },
+    {
+      "title": "Foundryside",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books"
+    },
+    {
+      "title": "The Tainted Cup บันทึกคดีถ้วยเปื้อนมลทิน",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books"
+    },
+    {
+      "title": "The Tainted Cup: An Exceptional Fantasy Mystery with a Classic Detective Duo",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books"
+    },
+    {
+      "title": "The Tainted Cup",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    },
+    {
+      "title": "The Tainted Cup",
+      "authors": [
+        "Robert Jackson Bennett"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Tainted Cup",
+    "author": "Robert Jackson Bennett",
+    "series": "Shadow of the Leviathan",
+    "series_number": 1,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename, EPUB metadata, and multiple providers all agree on 'The Tainted Cup' by Robert Jackson Bennett (2024). Series metadata is absent from the file and providers, but this title is well known as book 1 of the Shadow of the Leviathan series.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Tainted Cup",
+    "author": "Robert Jackson Bennett",
+    "series": "The Shadow of the Leviathan",
+    "series_number": 1.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

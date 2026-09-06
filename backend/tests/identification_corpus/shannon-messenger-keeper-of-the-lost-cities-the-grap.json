@@ -1,0 +1,39 @@
+{
+  "id": "shannon-messenger-keeper-of-the-lost-cities-the-grap",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: Shannon Messenger / Keeper of the Lost Cities The Graphic Novel Part 2 / series=Keeper of the Lost Cities: The Graphic Novel #2.0 (model=None, conf=None)",
+  "source": {
+    "file_id": 2484,
+    "drive_file_id": "1AzXubW1Ci72KlNi2zT6-5ijJxlW8rIrK",
+    "filename": "Keeper of the Lost Cities - 02 - Shannon Messenger.cbz",
+    "captured_from": "db",
+    "stored_model": null,
+    "stored_confidence": null
+  },
+  "filename": "Keeper of the Lost Cities - 02 - Shannon Messenger.cbz",
+  "evidence": {
+    "title": null,
+    "authors": [],
+    "language": null,
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": ""
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Keeper of the Lost Cities The Graphic Novel Part 2",
+    "author": "Shannon Messenger",
+    "series": "Keeper of the Lost Cities: The Graphic Novel",
+    "series_number": 2.0,
+    "verified": true,
+    "source": "human_correction"
+  }
+}

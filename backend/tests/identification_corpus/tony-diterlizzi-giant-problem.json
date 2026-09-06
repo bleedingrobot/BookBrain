@@ -1,0 +1,57 @@
+{
+  "id": "tony-diterlizzi-giant-problem",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Tony DiTerlizzi / Giant Problem / series=Beyond the Spiderwick Chronicles #2.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1999,
+    "drive_file_id": "19PonspRlWSEZw8NXCQoBfoo12wOTLYFZ",
+    "filename": "DiTerlizzi, Tony & Black, Holly - [Beyond the Spiderwick Chronicles 2] - A Giant Problem.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "DiTerlizzi, Tony & Black, Holly - [Beyond the Spiderwick Chronicles 2] - A Giant Problem.epub",
+  "evidence": {
+    "title": "A Giant Problem",
+    "authors": [
+      "Tony DiTerlizzi"
+    ],
+    "language": "EN",
+    "description": "BOOK TWO OF THREE",
+    "isbn10": null,
+    "isbn13": "9781442403581",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "A Giant Problem div#book-inner p, div#book-inner div { font-size: 1.0em; } a { color: black; } a:link, a:visited, a:hover, a:active { color: blue; } div#book-inner * { margin-top: 0 !important; margin-bottom: 0 !important;}"
+  },
+  "candidates": [
+    {
+      "title": "Giant Problem",
+      "authors": [
+        "Tony DiTerlizzi",
+        "Holly Black"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9781442403581",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": "Beyond the Spiderwick Chronicles",
+    "series_number": 2
+  },
+  "answer": {
+    "title": "Giant Problem",
+    "author": "Tony DiTerlizzi",
+    "series": "Beyond the Spiderwick Chronicles",
+    "series_number": 2.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

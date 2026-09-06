@@ -1,0 +1,50 @@
+{
+  "id": "sarah-lin-depthless-hunger-3",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Sarah Lin / Depthless Hunger 3 / series=Depthless Hunger #3.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 807,
+    "drive_file_id": "1XRrhyP9t3Vem7BbMOkC50asNjwADQfFW",
+    "filename": "Depthless Hunger 3.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Depthless Hunger 3.epub",
+  "evidence": {
+    "title": "Depthless Hunger 3",
+    "authors": [
+      "Sarah Lin",
+      "Cognosticon"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Depthless Hunger 3",
+    "author": "Sarah Lin",
+    "series": "Depthless Hunger",
+    "series_number": 3,
+    "ai_confidence": 55,
+    "reasoning_summary": "Only evidence is the filename and EPUB metadata, which agree: title \"Depthless Hunger 3\" by Sarah Lin (with co-credit \"Cognosticon\", possibly a cover artist or co-author). The trailing \"3\" indicates volume 3 of a \"Depthless Hunger\" series (likely a LitRPG/progression fantasy serial, consistent with Sarah Lin's body of work). No metadata provider candidates were found and no ISBN is present, so the canonical title/subtitle and exact author attribution cannot be verified.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Depthless Hunger 3",
+    "author": "Sarah Lin",
+    "series": "Depthless Hunger",
+    "series_number": 3.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

@@ -530,7 +530,9 @@ there's no batch consensus.
 ## Sequencing
 
 ```
-0  (harness)  ── must be first
+0  (harness)  ── ~done: harness + scripts + 74-book corpus landed
+│               (IDENTIFICATION-EVAL.md); baseline number pending James's
+│               answer-key verification, then `eval_identification.py --write-baseline`
 │
 ├─ A  web-search grounding      ┐
 ├─ B  provider series           │ Tier 1 — do all three, any order

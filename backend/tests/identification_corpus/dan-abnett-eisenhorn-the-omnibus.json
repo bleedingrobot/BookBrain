@@ -1,0 +1,49 @@
+{
+  "id": "dan-abnett-eisenhorn-the-omnibus",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: Dan Abnett / Eisenhorn: The Omnibus / series=Warhammer 40,000: Eisenhorn #None (model=claude-opus-5, conf=60)",
+  "source": {
+    "file_id": 1036,
+    "drive_file_id": "1AvL0VWswXpMKxcFqtQZeCrQxOGxUR9XV",
+    "filename": "Eisenhorn - The Omnibus (Retail).epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 60
+  },
+  "filename": "Eisenhorn - The Omnibus (Retail).epub",
+  "evidence": {
+    "title": "Eisenhorn The Omnibus",
+    "authors": [
+      "Dan Abnett"
+    ],
+    "language": "en-GB",
+    "description": "<p>From investigating strange murders to facing off against a vast interstellar organisation, Gregor Eisenhorn is an Inquisitor who is willing to pursue dubious means to guarantee success. Follow his journey as he becomes entangled in the fate of the alien text known as the Necroteuch, and draws the ire of the Imperium to him as he becomes embroiled in cat and mouse games and double-crossing with powerful friends and foes.CONTENTSRegia Occulta - a short story by Dan AbnettXenos - a novel by Dan AbnettMissing in Action - a short story by Dan AbnettMalleus - a novel by Dan AbnettBackcloth for a Crown Additional - a short story by Dan AbnettHereticus - a novel by Dan AbnettThe Keeler Image - a short story by Dan AbnettThe Magos - a novel by Dan Abnett",
+    "isbn10": null,
+    "isbn13": "9781800269187",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "cover"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Eisenhorn: The Omnibus",
+    "author": "Dan Abnett",
+    "series": "Warhammer 40,000: Eisenhorn",
+    "series_number": null,
+    "ai_confidence": 92,
+    "reasoning_summary": "Filename and EPUB metadata both clearly indicate \"Eisenhorn: The Omnibus\" by Dan Abnett, a Black Library (Warhammer 40,000) collection of the Eisenhorn trilogy (Xenos, Malleus, Hereticus) plus short stories. ISBN 9781800269187 is consistent with a Black Library edition. No provider candidates were returned, but the internal evidence is unambiguous; as an omnibus it has no single series number.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Eisenhorn: The Omnibus",
+    "author": "Dan Abnett",
+    "series": "Warhammer 40,000: Eisenhorn",
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

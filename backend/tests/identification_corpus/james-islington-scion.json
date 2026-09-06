@@ -1,0 +1,51 @@
+{
+  "id": "james-islington-scion",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: James Islington / Scion / series=None #None (model=None, conf=None)",
+  "source": {
+    "file_id": 2368,
+    "drive_file_id": "1jWIlHLs4E11JBeDLja--b4lpvZyCi7qG",
+    "filename": "Scion - James Islington.epub",
+    "captured_from": "db",
+    "stored_model": null,
+    "stored_confidence": null
+  },
+  "filename": "Scion - James Islington.epub",
+  "evidence": {
+    "title": "Scion",
+    "authors": [
+      "James Islington"
+    ],
+    "language": "EN-US",
+    "description": "<b>John Wick meets <I>Ghost in the Shell </I>in this fast-paced cyberpunk thriller by the #1 <i>New York Times </i>bestselling author of <i>The Will of the Many </i>and <i>The Strength of the Few.</i></b><BR>My job, when you think about it, isn't so different from a lot of people's.<BR> <BR> The more old-fashioned crowd do still get hung up on the \"killing people\" part of it, I guess, but that's a them problem: it's been perfectly legal to take out lifers for ages. Besides, once ultrawealthy morons realised they had a way to live forever&#8212;limited resources be damned&#8212;there was only ever going to be one genuinely practical deterrent.<BR> <BR> So, sure, I have to deal with a ton of boring planning. Inconvenient hours. Some pretty awkward face-to-face interactions. And like most of us, I'm really only clocking in to try to crawl out from beneath my debts. But someone's got to do it.<BR> <BR> Luckily, my genetic compatibilities make me really, <i>really </i>good at doing...",
+    "isbn10": null,
+    "isbn13": "9781668239261",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover"
+  },
+  "candidates": [
+    {
+      "title": "Scion",
+      "authors": [
+        "James Islington"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Scion",
+    "author": "James Islington",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "human_correction"
+  }
+}

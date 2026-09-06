@@ -1,0 +1,49 @@
+{
+  "id": "charles-stross-halo",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Charles Stross / Halo / series=Accelerando #4.0 (model=claude-opus-5, conf=15)",
+  "source": {
+    "file_id": 897,
+    "drive_file_id": "1BXac31acdPC1hSr21qQibznsT6yKQfyV",
+    "filename": "Stross, Charles - [Lobsters 04] - Halo (2011).epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 15
+  },
+  "filename": "Stross, Charles - [Lobsters 04] - Halo (2011).epub",
+  "evidence": {
+    "title": "Charles Stross - Lobsters 04",
+    "authors": [
+      "Halo"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Halo",
+    "author": "Charles Stross",
+    "series": "Accelerando",
+    "series_number": 4,
+    "ai_confidence": 72,
+    "reasoning_summary": "The filename gives \"Stross, Charles - [Lobsters 04] - Halo (2011)\", and the EPUB title/author fields are swapped (\"Charles Stross - Lobsters 04\" as title, \"Halo\" as author), confirming author Charles Stross and title \"Halo\". \"Halo\" is the fourth section/novella of Stross's Accelerando (the first section being \"Lobsters\"), so this appears to be a fan-made split of Accelerando into its nine constituent novellas, with the collection informally labeled the \"Lobsters\" series. No ISBNs or provider matches were available to confirm a standalone edition, so the series naming and standalone-vs-excerpt status warrant human review.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Halo",
+    "author": "Charles Stross",
+    "series": "Accelerando",
+    "series_number": 4.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

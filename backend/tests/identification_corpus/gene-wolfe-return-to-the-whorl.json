@@ -1,0 +1,53 @@
+{
+  "id": "gene-wolfe-return-to-the-whorl",
+  "case_tags": [
+    "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Gene Wolfe / Return to the Whorl / series=The Book of the Short Sun #3.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1856,
+    "drive_file_id": "1yxa0Pc2G63Q1X6kxe4-hvLPZFpGoxG7p",
+    "filename": "Return to the Whorl - Gene Wolfe.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Return to the Whorl - Gene Wolfe.epub",
+  "evidence": {
+    "title": "Return to the Whorl",
+    "authors": [
+      "Gene Wolfe"
+    ],
+    "language": "UND",
+    "description": "EDITORIAL REVIEW:\n\nGene Wolfe''s \"Return to the Whorl\" is the third volume, after\"On Blue's Waters\" and \"In Green's Jungles\", of his ambitious SF trilogy The Book of the Short Sun . . . It is again narrated by Horn, who has embarked on a quest in search of the heroic leader Patera Silk. Horn has traveled from his home on the planet Blue, reached the mysterious planet Green, and visited the great starship, the Whorl and even, somehow, the distant planet Urth. But Horn's identity has become ambiguous, a complex question embedded in the story, whose telling is itself complex, shifting from place to place, present to past. Perhaps Horn and Silk are now one being. *Return to the Whorl* brings Wolfe's major new fiction, The Book of the Short Sun, to a strange and seductive climax.",
+    "isbn10": null,
+    "isbn13": "9780312873646",
+    "series": "The Book of the Short Sun",
+    "series_number": 3.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Return to the Whorl",
+      "authors": [
+        "Gene Wolfe"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780312873646",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Return to the Whorl",
+    "author": "Gene Wolfe",
+    "series": "The Book of the Short Sun",
+    "series_number": 3.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

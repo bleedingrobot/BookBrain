@@ -1,0 +1,49 @@
+{
+  "id": "j-k-rowling-harry-potter-og-f-niksordenen",
+  "case_tags": [
+    "foreign-edition"
+  ],
+  "notes": "foreign-edition; stored: J. K. Rowling / Harry Potter og Føniksordenen / series=Harry Potter #5.0 (model=claude-opus-5, conf=60)",
+  "source": {
+    "file_id": 2125,
+    "drive_file_id": "1juHoGn3XQ-LKi19Za8ZWBgylTrQH5L0x",
+    "filename": "Harry Potter og Foniksordenen - J. K. Rowling.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 60
+  },
+  "filename": "Harry Potter og Foniksordenen - J. K. Rowling.epub",
+  "evidence": {
+    "title": "Harry Potter og Føniksordenen",
+    "authors": [
+      "J. K. Rowling"
+    ],
+    "language": "no",
+    "description": "<p><i>«Mye kan tyde på at du enkelte ganger, når du er mest avslappet og sårbar&#8212;i søvne, for eksempel&#8212;deler hans tanker og følelser. Rektor mener det er utilrådelig å la dette fortsette.Han vil jeg skal lære deg å stenge sinnet ditt for Mørkets herre.»</i><p>Det er mørke tider i vente for Galtvort. Etter desperantenes angrep på fetteren Dudleif, vet Harry Potter at Voldemort vil gjøre alt for å finne ham. Det er mange som avviser tilbakekomsten til Mørkets herre, men Harry er ikke alene: en hemmelig orden samles på Grimoldsplassen for å bekjempe de mørke kreftene. Harry må la professor Slur lære ham hvordan han kan beskytte seg selv mot to Voldemorts grusomme angrep på tankene hans. Men de blir sterkere for hver dag som går, og tiden løper ut for Harry...",
+    "isbn10": null,
+    "isbn13": "9781781101766",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Harry Potter og Føniksordenen"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Harry Potter og Føniksordenen",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 5,
+    "ai_confidence": 96,
+    "reasoning_summary": "Filename, EPUB title and first-page text all agree: the Norwegian (language code 'no') edition of 'Harry Potter og Føniksordenen' (Harry Potter and the Order of the Phoenix), book 5 of the Harry Potter series by J. K. Rowling. The ISBN 9781781101766 belongs to a Pottermore digital Harry Potter edition, consistent with this. No provider candidates were returned, but the internal evidence is unambiguous.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Harry Potter og Føniksordenen",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 5.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

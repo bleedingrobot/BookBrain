@@ -1,0 +1,49 @@
+{
+  "id": "david-dalglish-the-paladins-omnibus",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: David Dalglish / The Paladins Omnibus / series=The Paladins #None (model=claude-opus-5, conf=20)",
+  "source": {
+    "file_id": 787,
+    "drive_file_id": "1mUj4o3VQ8jtPPTkFrVTpHGL3BIKdWdZg",
+    "filename": "The Paladins Omnibus (Night Wolves; Clash of Faiths; The Old Ways; The Broken Pieces) (v5.0).epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 20
+  },
+  "filename": "The Paladins Omnibus (Night Wolves; Clash of Faiths; The Old Ways; The Broken Pieces) (v5.0).epub",
+  "evidence": {
+    "title": "The Paladins",
+    "authors": [
+      "David Dalglish"
+    ],
+    "language": "en",
+    "description": "<div><p>Join Darius and Jerico, faithful paladins of opposing deities, as they struggle against monsters invading from the Vile Wedge, a civil war in the North, and a growing unrest fed by prophets and madmen that would tear apart the land for their insidious goals.<br></p><p>This bundle contains the following four novels:<br></p><p>Night of Wolves<br>Clash of Faiths<br>The Old Ways<br>The Broken Pieces<br></p><hr><p>About the Author:<br></p><p>David Dalglish currently lives in rural Missouri with his wife Samantha, and daughters Morgan and Katherine. He graduated from Missouri Southern State University in 2006 with a degree in Mathematics and currently spends his free time playing way too much Warhammer 40k</p></div>",
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Paladins Omnibus",
+    "author": "David Dalglish",
+    "series": "The Paladins",
+    "series_number": null,
+    "ai_confidence": 88,
+    "reasoning_summary": "Filename and EPUB metadata both point to David Dalglish's \"The Paladins\" series, bundled as an omnibus containing the four books Night Wolves, Clash of Faiths, The Old Ways, and The Broken Pieces. No provider candidates were returned, and the copyright/first-chapter text contained only cover CSS, so identification rests on filename + embedded title/author, which agree. Omnibus editions often lack ISBNs, consistent with the missing identifiers. Series number left null since this is a collected volume spanning books 1-4.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Paladins Omnibus",
+    "author": "David Dalglish",
+    "series": "The Paladins",
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

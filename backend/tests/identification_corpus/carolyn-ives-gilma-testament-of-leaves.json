@@ -1,0 +1,49 @@
+{
+  "id": "carolyn-ives-gilma-testament-of-leaves",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Carolyn Ives Gilman / Testament of Leaves / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2156,
+    "drive_file_id": "1SoiDrsxSV2hU_rPGCq2S_l8WA_antBts",
+    "filename": "Testament of Leaves by Carolyn Ives Gilman.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Testament of Leaves by Carolyn Ives Gilman.epub",
+  "evidence": {
+    "title": "Testament of Leaves",
+    "authors": [
+      "Carolyn Ives Gilman"
+    ],
+    "language": "en",
+    "description": "<div>\n<p>​​In the isolated thickets of a faraway planet, a linguist lies dead. Inscrutinator Shameesh Kulkarni must find out why. But no one wants to talk: not the prospectors searching for mineral wealth, not the archaeologists trying to piece together a ruined city, not the local schoolteacher, and certainly not the indigenous people whose language the dead woman was researching.&#160;Only two beings are interested in helping Shameesh solve the murder: a digital replica of the victim herself, and the inquisitive octopod who befriended her. Three brains are better than one, even if one is a bot and another is an invertebrate, because there is more than one mystery here to solve.&#160;Here, the landscape itself hides layers of centuries-old secrets—secrets that the inhabitants must protect at all costs. Shameesh’s job is to reveal the truth—on a planet where the truth cannot be spoken.</p></div>",
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; } div#book-inner p, div#book-inner div { font-size: 1.0em; } a { color: black; } a:link, a:visited, a:hover, a:active { color: blue; } div#book-inner * { margin-top: 0 !important; margin-bottom: 0 !important;}"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Testament of Leaves",
+    "author": "Carolyn Ives Gilman",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 80,
+    "reasoning_summary": "Filename and EPUB metadata agree exactly on title \"Testament of Leaves\" and author \"Carolyn Ives Gilman\"; no ISBN or series info present, and the copyright-page text is only boilerplate CSS with no corroborating detail. No provider candidates were returned to confirm, but the consistent internal metadata supports this identification. \"Testament of Leaves\" is a known novella by Carolyn Ives Gilman, not part of a series.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Testament of Leaves",
+    "author": "Carolyn Ives Gilman",
+    "series": null,
+    "series_number": null,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}

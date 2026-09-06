@@ -1,0 +1,47 @@
+{
+  "id": "tui-t-sutherland-winter-turning",
+  "case_tags": [
+    "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: Tui T. Sutherland / Winter Turning / series=Wings of Fire #7.0 (model=claude-opus-5, conf=0)",
+  "source": {
+    "file_id": 2623,
+    "drive_file_id": "1cnAfBTYS_ebhVuGur8KfOACKR4-A1jXH",
+    "filename": "Wings of Fire 07 - Winter Turning (2024) (Digital Rip) (Hourman-DCP).cbr",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 0
+  },
+  "filename": "Wings of Fire 07 - Winter Turning (2024) (Digital Rip) (Hourman-DCP).cbr",
+  "evidence": {
+    "title": null,
+    "authors": [],
+    "language": null,
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": ""
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Winter Turning",
+    "author": "Tui T. Sutherland",
+    "series": "Wings of Fire",
+    "series_number": 7,
+    "ai_confidence": 88,
+    "reasoning_summary": "The only evidence is the filename, which clearly states \"Wings of Fire 07 - Winter Turning\". Winter Turning is indeed book 7 of Tui T. Sutherland's Wings of Fire series. No EPUB metadata or provider candidates were available to confirm. Note the file is a .cbr (comic archive), so this may actually be the graphic novel adaptation of Winter Turning (illustrated by Mike Holmes), and the (2024) date is consistent with the graphic novel release rather than the 2015 prose novel — a human should verify which edition/format this is.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Winter Turning",
+    "author": "Tui T. Sutherland",
+    "series": "Wings of Fire",
+    "series_number": 7.0,
+    "verified": false,
+    "source": "stored_identification"
+  }
+}
