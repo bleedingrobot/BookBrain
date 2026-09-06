@@ -8,17 +8,32 @@ Before Stage J, `_find_or_create_author` matched on a plain word set, so
 row. New scans no longer fork them; this repairs the ones already forked.
 
 Conservative, per the Stage J gotcha ("two different authors can share
-initials"): a group is only merged when every name in it shares the same
-`normalize_person_name` key AND the group's books share at least one ISBN or a
-normalised title — evidence they're really one person, not "J. Smith" vs
-"John Smith". Books are repointed to the row with the most complete display
-name; the emptied rows are deleted. Mirrors title_merge_repair_service.
+initials"): a group is only merged when
+
+  * every name in it shares the same `normalize_person_name` key,
+  * every name resolves to the same *full* set of people — so a solo credit
+    ("Dean Koontz") is never merged with a collaboration that merely starts
+    with that person ("Dean Koontz, Kevin J. Anderson"); the primary-author
+    key collides but they are different credits, and
+  * the group's books share at least one ISBN or a normalised title — evidence
+    they're really one person, not "J. Smith" vs "John Smith".
+
+Books are repointed to the row with the most complete display name; the
+emptied rows are deleted. Mirrors title_merge_repair_service.
+
+KNOWN LIMITATION: the "most complete display name" pick is crude (longest
+string wins), and the mixed-credit guard above means genuine forks that also
+carry a stray collaboration row are skipped wholesale rather than
+sub-grouped. For the pre-Stage-J library this leaves ~a handful of real forks
+(e.g. "Dean R. Koontz" vs "Dean Koontz") for hand cleanup via Library Audit →
+Split records. Rework the grouping before leaning on this for bulk merges.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -37,10 +52,32 @@ from app.data.db import async_session_factory  # noqa: E402
 from app.data.models import Author, Book, Identifier  # noqa: E402
 from app.services.book_repository import get_book_write_lock  # noqa: E402
 from app.services.text_match import (  # noqa: E402
+    _COAUTHOR_SPLIT_RE,
     normalize_person_name,
     normalize_title_strict,
     person_sort_name,
+    primary_author_name,
 )
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+# tokens primary_author_name legitimately drops from an editor credit
+_CREDIT_NOISE = {"editors", "editor", "eds", "ed"}
+
+
+def _looks_solo(name: str) -> bool:
+    """True only for a single-person credit. A collaboration ("A & B",
+    "A; B", "Weis, Margaret & Hickman, Tracy") is not solo — its primary
+    author shares a normalize_person_name key with the solo "A", but merging
+    them would relabel A's solo books as the collaboration.
+
+    Detection: no co-author separator, and primary_author_name() keeps every
+    significant word of the name (for a real solo it only reorders
+    "Last, First"; for a collaboration it truncates to the first author)."""
+    if _COAUTHOR_SPLIT_RE.search(name):
+        return False
+    all_words = set(_WORD_RE.findall(name.lower()))
+    primary_words = set(_WORD_RE.findall(primary_author_name(name).lower()))
+    return primary_words >= (all_words - _CREDIT_NOISE)
 
 
 def _book_keys(books: list[Book], isbns: dict[int, set[str]]) -> set[str]:
@@ -72,6 +109,15 @@ async def main(write: bool) -> None:
         merges = 0
         for key, group in by_key.items():
             if len(group) < 2:
+                continue
+            # only ever unify clean solo-name variants ("J.R.R. Tolkien" /
+            # "Tolkien, J.R.R."). A group that also carries a collaboration
+            # credit sharing the same primary author ("Dean Koontz" +
+            # "Dean Koontz, Kevin J. Anderson") is skipped wholesale — see the
+            # module docstring's KNOWN LIMITATION.
+            if not all(_looks_solo(a.name) for a in group):
+                non_solo = [a.name for a in group if not _looks_solo(a.name)]
+                print(f"  SKIP {key!r}: {[a.name for a in group]} — mixed with a collaboration credit ({non_solo})")
                 continue
             # require book-level corroboration: at least two rows in the group
             # share a book (same ISBN or same strict-normalised title). Without

@@ -74,6 +74,31 @@ async def test_does_not_merge_when_no_book_is_shared(db_session) -> None:
     assert len((await db_session.execute(select(Author))).scalars().all()) == 2
 
 
+async def test_does_not_merge_a_solo_row_with_a_collaboration_credit(db_session) -> None:
+    # "Dean Koontz" and "Dean Koontz, Kevin J. Anderson" share the
+    # normalize_person_name key "dean koontz" and a book — but merging them
+    # would relabel every solo Koontz novel as a collaboration.
+    await _add(db_session, "Dean Koontz", "Prodigal Son", isbn="9780553593334")
+    await _add(db_session, "Dean Koontz", "Watchers")
+    await _add(db_session, "Dean Koontz & Kevin J. Anderson", "Prodigal Son", isbn="9780553593334")
+    await db_session.commit()
+
+    await repair.main(write=True)
+
+    authors = {a.name for a in (await db_session.execute(select(Author))).scalars().all()}
+    assert authors == {"Dean Koontz", "Dean Koontz & Kevin J. Anderson"}
+
+
+def test_looks_solo() -> None:
+    assert repair._looks_solo("J.R.R. Tolkien")
+    assert repair._looks_solo("Tolkien, J.R.R.")
+    assert repair._looks_solo("Dean R. Koontz")
+    assert not repair._looks_solo("Dean Koontz & Kevin J. Anderson")
+    assert not repair._looks_solo("Dean Koontz; Queenie Chan")
+    assert not repair._looks_solo("Dean Koontz, Kevin J. Anderson")
+    assert not repair._looks_solo("George R. R. Martin, Gardner Dozois (eds.)")
+
+
 async def test_dry_run_changes_nothing(db_session) -> None:
     await _add(db_session, "Iain M. Banks", "Consider Phlebas", isbn="9781857231380")
     await _add(db_session, "Iain Banks", "Consider Phlebas", isbn="9781857231380")

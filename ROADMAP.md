@@ -124,6 +124,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     writes a `SeriesAlias` per merged-away name (closes the re-fork loop —
     resolves the item below). `scripts/backfill_author_sort_names.py` +
     `scripts/repair_forked_authors.py`, both dry-run default.
+    - **2026-09-07: run against the real DB.** `backfill_author_sort_names.py
+      --write` applied — 446/446 authors now have a `sort_name`.
+      `repair_forked_authors.py` was **not** applied: on the live library it
+      wanted to merge "Dean Koontz" (118 solo books) + "George R. R. Martin"
+      (40) into collaboration rows, because it grouped solo + collab credits
+      that share a primary-author key and picked the longest string as
+      canonical. Added a `_looks_solo` guard so it now skips any group mixing a
+      solo row with a collaboration credit — makes it a safe no-op on this
+      library (0 merges). The grouping/canonical-name heuristic needs a rework
+      before it's useful for bulk merges; do author-dedup by hand via Library
+      Audit → Split records for now (a handful of real forks remain, e.g.
+      "Dean R. Koontz" vs "Dean Koontz", and one duplicate author row for
+      "Prodigal Son").
   - **Tier 3 — K shipped** (2026-09-07) — batch priors (F6).
     `app/services/batch_prior_service.apply_batch_priors`, called by `run_scan`
     between the batch and the auto-organize pass. A ≥3-file author/series
