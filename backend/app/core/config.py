@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     ai_web_search_enabled: bool = True
     ai_web_search_max_uses: int = 2
 
+    # prompts/15 Stage H — a second, adversarial AI call ("confirm this exactly
+    # or correct it") for AI-path identifications that land in the uncertain
+    # band (70 <= computed_confidence < confidence_auto_organize). OFF by
+    # default: it is one extra ~$0.03 model call per uncertain new book, and
+    # James is hard budget-limited. Turn on only when the review queue is
+    # noisier than the spend. When on: an agreeing verifier lifts confidence a
+    # little (double-checked); a disagreeing one takes the correction AND forces
+    # the review queue (two AI opinions differed — a human should look).
+    ai_verify_enabled: bool = False
+    ai_verify_cost_usd: float = 0.03
+
     frontend_origin: str = "http://localhost:5173"
 
     # EPUB safe-parsing limits (SPEC.md §1)

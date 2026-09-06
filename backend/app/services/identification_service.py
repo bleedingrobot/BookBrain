@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.core.config import get_settings
 from app.providers.ai.anthropic_client import AIIdentificationError, AnthropicIdentificationClient
+from app.providers.ai.types import AIAuditResult, AIIdentificationResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.filename.parser import FilenameGuess, parse_book_filename
 from app.providers.metadata.types import MetadataCandidate
@@ -27,6 +28,11 @@ from app.services.text_match import (
 # title and an ISBN-matched provider title, the ISBN is not trusted for a
 # deterministic result — the AI path decides instead.
 _ISBN_TITLE_SIMILARITY_MIN = 0.80
+
+# prompts/15 Stage H. How much a *confirming* verification lifts the computed
+# confidence. Capped at 94 by the caller so a verified book still shows in the
+# auto-organize audit log rather than sailing through silently at ≥95.
+_VERIFY_AGREE_BONUS = 10
 
 
 @dataclass
@@ -205,24 +211,72 @@ class IdentificationService:
         merged_raw: dict = {**raw_response, "confidence_breakdown": breakdown.as_dict()}
         if filename_guess.usable:
             merged_raw["filename_guess"] = filename_guess.as_prompt_line()
-        series_number = clamp_series_number(
-            ai_result.series, ai_result.series_number, merged_raw
-        )
+
+        title, author = ai_result.title, ai_result.author
+        series, series_num = ai_result.series, ai_result.series_number
+        confidence = breakdown.total
+        needs_review = confidence < 85
+        reasoning = ai_result.reasoning_summary
+
+        # prompts/15 Stage H — one adversarial verification call for the
+        # uncertain band. Off unless settings.ai_verify_enabled.
+        settings = get_settings()
+        if (
+            settings.ai_verify_enabled
+            and 70 <= breakdown.total < settings.confidence_auto_organize
+        ):
+            verdict = await self._verify(
+                filename=filename, evidence=evidence, candidates=candidates, proposed=ai_result
+            )
+            if verdict is not None:
+                merged_raw["verification"] = _verification_summary(verdict)
+                if verdict.verdict == "stored_is_correct" and (
+                    ai_result.series is None or verdict.series_is_real
+                ):
+                    confidence = min(confidence + _VERIFY_AGREE_BONUS, 94)
+                    needs_review = confidence < 85
+                    reasoning = (reasoning or "") + " A second adversarial check confirmed it."
+                elif verdict.verdict == "stored_is_wrong":
+                    title = verdict.corrected_title or title
+                    author = verdict.corrected_author or author
+                    series = verdict.corrected_series
+                    series_num = verdict.corrected_series_number
+                    needs_review = True  # two AI opinions differed
+                    reasoning = f"Verification disagreed and corrected it: {verdict.explanation}"
+                else:  # uncertain
+                    needs_review = True
+                    reasoning = (reasoning or "") + f" Verification was uncertain: {verdict.explanation}"
+
+        series_number = clamp_series_number(series, series_num, merged_raw)
 
         return IdentificationResult(
-            title=ai_result.title,
-            author=ai_result.author,
-            series=ai_result.series,
+            title=title,
+            author=author,
+            series=series,
             series_number=series_number,
-            computed_confidence=breakdown.total,
+            computed_confidence=confidence,
             ai_reported_confidence=ai_result.ai_confidence,
-            needs_human_review=breakdown.total < 85,
-            reasoning_summary=ai_result.reasoning_summary,
+            needs_human_review=needs_review,
+            reasoning_summary=reasoning,
             model=self._ai_client.model_name,
             prompt_hash=prompt_hash,
             evidence_hash=evidence_hash,
             raw_response=merged_raw,
         )
+
+    async def _verify(
+        self,
+        *,
+        filename: str,
+        evidence: EpubEvidence,
+        candidates: list[MetadataCandidate],
+        proposed: "AIIdentificationResult",
+    ) -> "AIAuditResult | None":
+        prompt = _build_verification_prompt(filename, evidence, candidates, proposed)
+        try:
+            return await self._ai_client.audit_book_identity(prompt)
+        except AIIdentificationError:
+            return None
 
 
 _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
@@ -312,6 +366,64 @@ def _find_isbn_match(
             continue
         return candidate
     return None
+
+
+def _verification_summary(verdict: AIAuditResult) -> dict:
+    return {
+        "verdict": verdict.verdict,
+        "series_is_real": verdict.series_is_real,
+        "explanation": verdict.explanation,
+        "corrected": {
+            k: v
+            for k, v in (
+                ("title", verdict.corrected_title),
+                ("author", verdict.corrected_author),
+                ("series", verdict.corrected_series),
+                ("series_number", verdict.corrected_series_number),
+            )
+            if v is not None
+        },
+    }
+
+
+def _build_verification_prompt(
+    filename: str,
+    evidence: EpubEvidence,
+    candidates: list[MetadataCandidate],
+    proposed: AIIdentificationResult,
+) -> str:
+    series = proposed.series or "(none / standalone)"
+    if proposed.series and proposed.series_number is not None:
+        series = f"{proposed.series} #{_fmt_number(proposed.series_number)}"
+    lines = [
+        "A first identification pass proposed the following for a book being "
+        "added to a personal library. Check it adversarially: what would make "
+        "this wrong? Confirm it exactly, or correct it. Treat the proposed "
+        "series with particular suspicion — a standalone wrongly given a series "
+        "is the most common error here.",
+        "",
+        f"Proposed title: {proposed.title}",
+        f"Proposed author: {proposed.author}",
+        f"Proposed series: {series}",
+        "",
+        f"Filename: {filename}",
+        f"EPUB title: {evidence.title or '(none)'}",
+        f"EPUB author(s): {', '.join(evidence.authors) or '(none)'}",
+        f"EPUB ISBN-13: {evidence.isbn13 or '(none)'}",
+    ]
+    if evidence.description:
+        lines.append(f"EPUB description: {evidence.description[:500]}")
+    for c in candidates:
+        lines.append(
+            f"- provider [{c.source}] title={c.title!r} authors={c.authors!r} "
+            f"series={c.series!r} isbn13={c.isbn13!r}"
+        )
+    lines.append(
+        "\nReport verdict=stored_is_correct only if the title, author AND series "
+        "are all right. If the series is the only problem, that is still "
+        "stored_is_wrong (give corrected_series=null for a standalone)."
+    )
+    return "\n".join(lines)
 
 
 def _filename_corroborates(

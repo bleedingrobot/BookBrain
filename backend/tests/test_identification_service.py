@@ -1,5 +1,7 @@
+import pytest
+
 from app.providers.ai.anthropic_client import AIIdentificationError
-from app.providers.ai.types import AIIdentificationResult, AISeriesResult
+from app.providers.ai.types import AIAuditResult, AIIdentificationResult, AISeriesResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.identification_service import (
@@ -18,14 +20,25 @@ class _FakeAIClient:
         raises: bool = False,
         series_result: AISeriesResult | None = None,
         series_raises: bool = False,
+        audit_result=None,
+        audit_raises: bool = False,
     ) -> None:
         self._result = result
         self._raises = raises
         self._series_result = series_result or AISeriesResult(series=None, series_number=None)
         self._series_raises = series_raises
+        self._audit_result = audit_result
+        self._audit_raises = audit_raises
         self.prompts: list[str] = []
         self.ground_flags: list[bool] = []
         self.series_calls: list[tuple[str, str | None]] = []
+        self.audit_prompts: list[str] = []
+
+    async def audit_book_identity(self, prompt: str):
+        self.audit_prompts.append(prompt)
+        if self._audit_raises:
+            raise AIIdentificationError("simulated verify failure")
+        return self._audit_result
 
     async def identify(self, prompt: str, *, ground: bool = False):
         self.prompts.append(prompt)
@@ -629,6 +642,87 @@ async def test_ai_path_grounds_only_for_a_recent_book() -> None:
         filename=f"Brand New ({_THIS_YEAR}).epub", evidence=_evidence(), candidates=[]
     )
     assert recent.ground_flags == [True]
+
+
+@pytest.fixture
+def _verify_on(monkeypatch):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_VERIFY_ENABLED", "true")
+    yield
+    get_settings.cache_clear()
+
+
+def _midband_setup(audit_result=None, audit_raises=False):
+    # ISBN present but the candidate has none -> fast path skipped, AI path
+    # lands at computed_confidence 80 (in the [70, 95) verification band).
+    fake = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=75, reasoning_summary="text analysis", needs_human_review=False,
+        ),
+        audit_result=audit_result,
+        audit_raises=audit_raises,
+    )
+    service = IdentificationService(ai_client=fake)
+    candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], source="a")]
+    return fake, service, candidates
+
+
+def _audit(verdict, **kw) -> AIAuditResult:
+    base = dict(
+        verdict=verdict, series_is_real=True, corrected_title=None, corrected_author=None,
+        corrected_series=None, corrected_series_number=None, explanation="checked",
+    )
+    base.update(kw)
+    return AIAuditResult(**base)
+
+
+async def test_verification_off_by_default_makes_no_extra_call() -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("stored_is_correct"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert fake.audit_prompts == []
+    assert 70 <= result.computed_confidence < 95  # confirms the band, so the fixture is valid
+
+
+async def test_verification_agree_lifts_confidence(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("stored_is_correct"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert len(fake.audit_prompts) == 1
+    assert result.computed_confidence == 90  # 80 + 10
+    assert result.needs_human_review is False
+    assert result.raw_response["verification"]["verdict"] == "stored_is_correct"
+
+
+async def test_verification_disagree_takes_correction_and_forces_review(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(
+        audit_result=_audit(
+            "stored_is_wrong", corrected_title="Dune Messiah", corrected_series=None,
+            explanation="This is actually the second book.",
+        )
+    )
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert result.title == "Dune Messiah"
+    assert result.series is None
+    assert result.needs_human_review is True
+    assert "Verification disagreed" in result.reasoning_summary
+
+
+async def test_verification_uncertain_forces_review(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("uncertain"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert result.needs_human_review is True
+    assert result.title == "Dune"  # original kept
+
+
+async def test_verification_failure_keeps_the_original(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_raises=True)
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert result.title == "Dune"
+    assert "verification" not in result.raw_response
 
 
 async def test_evidence_hash_is_stable_for_identical_input() -> None:

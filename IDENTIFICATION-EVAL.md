@@ -128,6 +128,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | E | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | placeholder/junk-metadata detector (`metadata_sanity.looks_like_placeholder_title` / `_author` — "Unknown"/"Calibre"/"book1"/bare-number/publisher-name-as-author; short titles need an ISBN or provider match). Fast path is **skipped** when the EPUB title/author is a placeholder (forces the AI path); `PLACEHOLDER_METADATA_PENALTY` (-30) and `TITLE_IS_FILENAME_ONLY_PENALTY` (-10) fire on the *resolved* metadata. No corpus case exercises it (the 59 scored books all have real metadata) so per-field + `wrong_auto_organized` are flat; `pytest -m corpus` green. No AI cost. |
 | F | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | ISBN-trust check: the fast path now also requires `text_match.title_similarity` (difflib ratio on the *strict*-normalised titles) ≥ 0.80 between the EPUB title and the ISBN-matched provider title — `titles_match` alone strips everything after a `:` so "Mistborn: The Final Empire" and "Mistborn: The Well of Ascension" passed it. On failure it falls through to the AI path (candidate still supplied). **Fast-path hit-rate on the corpus unchanged at 25.4%** — no legit deterministic win lost. Per-field flat; `pytest -m corpus` green. No AI cost. |
 | G | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | positive corroboration components: `DESCRIPTION_CORROBORATES` (+3, a blurb mentions the resolved title/author/series) and `PUBYEAR_PLAUSIBLE` (+2, a real ≤-current year present and sources within 5y). Additive, opt-in via `resolved_title`/`resolved_author`, so reident + old callers unchanged. `resolved_series`/`_title`/`_author` now threaded through `reident_audit_service._recompute_confidence` so the display recompute matches a fresh scan. **Thresholds kept at 85/95** — see sweep below. Corpus flat (first cut at +5/+3 tipped one series-only-wrong book over 85 → dialed to +3/+2, which crosses no threshold in the corpus); `pytest -m corpus` green. No AI cost. |
+| H | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | verification pass for the uncertain band (`70 ≤ computed_confidence < 95`): one adversarial `audit_book_identity` call — agree → +10 confidence (capped 94, so it still shows in the audit log), disagree → take the correction **and** force review (two AI opinions differed), uncertain → force review. **`settings.ai_verify_enabled` defaults OFF** (one extra ~$0.03 call per uncertain new book; James is budget-limited), so the corpus doesn't exercise it and the number is flat. Branch tests in `test_identification_service.py`. |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -363,3 +364,43 @@ clean provider match and legitimately auto-organise. **Kept at 85/95.** The
 +3/+2 bonuses are small enough that they cross no threshold in the corpus (a
 first cut at +5/+3 tipped one series-only-wrong book over 85 and was dialed
 back). Corpus numbers unchanged; `pytest -m corpus` green.
+
+### Stage H — verification pass for the uncertain band (`prompts/15` Stage H)
+
+When the AI path lands at `70 ≤ computed_confidence < confidence_auto_organize`,
+`IdentificationService.identify` makes **one** adversarial follow-up call
+(`_build_verification_prompt` → the existing `audit_book_identity` tool, reused
+— it already has the "confirm exactly or correct it, series especially" shape):
+
+- `stored_is_correct` (and the series checks out) → `+10` confidence, capped at
+  94 so a verified book still appears in the auto-organize audit log rather than
+  sailing through silently at ≥95.
+- `stored_is_wrong` → take the `corrected_*` fields **and** force the review
+  queue — two AI opinions differed, a human should see it.
+- `uncertain` → keep the original but force review.
+- The verifier failing (refusal / error) → keep the original, no change.
+
+**`settings.ai_verify_enabled` defaults `False`.** It is one extra ~$0.03 model
+call per uncertain *new* book (`settings.ai_verify_cost_usd`), and steady-state
+spend is the constraint here — turn it on only if the review queue is noisier
+than the budget allows. Off by default means the offline corpus never calls it
+and the number is unmoved; the agree / disagree / uncertain / failure branches
+are unit-tested with `AI_VERIFY_ENABLED=true` and a fake client.
+
+Not grounded (no `web_search` on the verify call) — a deliberate cost choice;
+adding grounding here is a candidate follow-up if the verifier itself proves
+stale-prone.
+
+---
+
+## Tier 2 summary
+
+E–H are shipped. E/F/G are deterministic (no AI cost); H adds an opt-in call
+that is off by default. The offline corpus per-field numbers are unchanged
+across all four — the frozen `identify_book` reply caps what a scoring / routing
+change can demonstrate offline (same limitation noted for Tier 1 A–D). The
+measurable offline movement in the whole push so far remains Stage C's
+`wrong_auto_organized` 2 → 1. Real gains from E–H (junk metadata caught, wrong
+ISBNs not fast-pathed, borderline-correct books lifted, uncertain-band books
+double-checked) need a `--live` run or a re-snapshot — both free of AI cost for
+E/F/G, and H needs `ai_verify_enabled` on for its slice.
