@@ -142,7 +142,7 @@ async def run_nightly(
         cover_counts = await regenerate_covers(creds, library_folder_id)
         steps.append(
             f"covers: {cover_counts['done']} new, {cover_counts['nocover']} no-cover, "
-            f"{cover_counts['failed']} failed"
+            f"{cover_counts.get('rehashed', 0)} re-hashed, {cover_counts['failed']} failed"
         )
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(

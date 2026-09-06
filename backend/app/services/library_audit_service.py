@@ -5,14 +5,29 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.data.models import AuditClusterKind, Author, Book, DismissedAuditCluster, Series
+from app.data.models import (
+    AuditClusterKind,
+    Author,
+    Book,
+    DismissedAuditCluster,
+    File,
+    FileStatus,
+    Series,
+)
 from app.schemas.library_audit import (
     DismissedClusterInfo,
     LibraryAuditResult,
+    SimilarCoverPair,
     SimilarNameCluster,
     SimilarNameMember,
 )
 from app.services.text_match import normalize, normalize_words
+
+# Two covers within this Hamming distance (out of 64 pHash bits) are treated
+# as "probably the same image". Kept tight on purpose: publisher-template and
+# plain-text covers (Tor, Baen, much self-pub) pHash-collide, so a loose
+# threshold floods the panel with unrelated books that share a cover style.
+_COVER_HAMMING_THRESHOLD = 6
 
 # Anything reaching this check already failed the exact word-set match that
 # resolve_book/_find_or_create_series use to dedupe at identification time
@@ -152,6 +167,48 @@ async def _dismissed_keys(session: AsyncSession, kind: AuditClusterKind) -> set[
     return set(rows)
 
 
+def _hamming(a: str, b: str) -> int | None:
+    try:
+        return bin(int(a, 16) ^ int(b, 16)).count("1")
+    except ValueError:
+        return None
+
+
+def _similar_covers(
+    rows: list[tuple[int, str, int, str]], titles: dict[int, str]
+) -> list[SimilarCoverPair]:
+    """rows: (file_id, filename, book_id, cover_phash). O(n²) over a few
+    thousand short hex strings — a plain nested loop is fine. Collapsed to one
+    entry per *book* pair (its closest file pair)."""
+    best: dict[tuple[int, int], tuple[int, str, str]] = {}
+    for i in range(len(rows)):
+        _, name_i, book_i, phash_i = rows[i]
+        for j in range(i + 1, len(rows)):
+            _, name_j, book_j, phash_j = rows[j]
+            if book_i == book_j:
+                continue
+            dist = _hamming(phash_i, phash_j)
+            if dist is None or dist > _COVER_HAMMING_THRESHOLD:
+                continue
+            key = (book_i, book_j) if book_i < book_j else (book_j, book_i)
+            names = (name_i, name_j) if book_i < book_j else (name_j, name_i)
+            if key not in best or dist < best[key][0]:
+                best[key] = (dist, *names)
+
+    return [
+        SimilarCoverPair(
+            book_a_id=a,
+            book_a_title=titles.get(a, "(unknown)"),
+            file_a_name=name_a,
+            book_b_id=b,
+            book_b_title=titles.get(b, "(unknown)"),
+            file_b_name=name_b,
+            distance=dist,
+        )
+        for (a, b), (dist, name_a, name_b) in sorted(best.items(), key=lambda kv: kv[1][0])
+    ]
+
+
 async def audit_library(session: AsyncSession) -> LibraryAuditResult:
     """Read-only: flags Series/Author rows whose names look like they might
     be the same thing split across two records (and, by construction of
@@ -180,12 +237,30 @@ async def audit_library(session: AsyncSession) -> LibraryAuditResult:
     dismissed_series = await _dismissed_keys(session, AuditClusterKind.series)
     dismissed_authors = await _dismissed_keys(session, AuditClusterKind.author)
 
+    cover_rows = (
+        await session.execute(
+            select(File.id, File.filename, File.book_id, File.cover_phash).where(
+                File.status == FileStatus.organised,
+                File.book_id.is_not(None),
+                File.cover_phash.is_not(None),
+            )
+        )
+    ).all()
+    book_titles = {
+        b_id: title
+        for b_id, title in (await session.execute(select(Book.id, Book.canonical_title))).all()
+    }
+    similar_covers = _similar_covers(
+        [(r[0], r[1], r[2], r[3]) for r in cover_rows], book_titles
+    )
+
     def _not_dismissed(cluster: SimilarNameCluster, dismissed: set[str]) -> bool:
         return _cluster_key([m.id for m in cluster.members]) not in dismissed
 
     return LibraryAuditResult(
         similar_series=[c for c in _cluster(series_tuples) if _not_dismissed(c, dismissed_series)],
         similar_authors=[c for c in _cluster(author_tuples) if _not_dismissed(c, dismissed_authors)],
+        similar_covers=similar_covers,
     )
 
 

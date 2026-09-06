@@ -157,6 +157,13 @@ class File(Base):
     # writeback job skips a file whose key already matches, so re-runs cause
     # no hash churn; a later correction changes the key and it's picked up.
     embedded_metadata_key: Mapped[str | None] = mapped_column(String)
+    # Hex string of a 64-bit perceptual hash (imagehash.phash) of this file's
+    # organised cover thumbnail — 16 hex chars, NULL until a cover has been
+    # generated and NULL for a .nocover file. Used by Library Audit to flag
+    # different-identified files with near-identical cover art (a re-upload
+    # with rewritten metadata that sha256 dedup can't catch). Not indexed:
+    # the audit is a full O(n²) scan of a few thousand short strings.
+    cover_phash: Mapped[str | None] = mapped_column(String)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"))
     status: Mapped[FileStatus] = mapped_column(

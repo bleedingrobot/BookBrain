@@ -16,15 +16,26 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   in `confidence_service.score()` that fires when the resolved series appears
   in neither the EPUB nor any provider candidate — closing structural gap #1
   (invented series auto-organising silently).
-- **Identification learning + cover dedup (`prompts/14`)** — C shipped:
-  `review_service.recent_corrections()` pulls recent human `/correct` pairs
-  (author/series-relevant ones ranked first, no-ops dropped, cap 5), and
-  `scan_service._process_file` feeds them into the AI identify prompt as
-  few-shot "what a human fixed last time" examples — AI path only, fast path
-  and `identify_series` untouched. Worst-case prompt-size delta measured at
-  **+838 chars / ~209 tokens** for a full 5-example set (well under the
-  ~400-token cap). `prompt_hash` now varies with correction history — fine, it
-  was never a cache key. Still to do: (D) perceptual-hash cover dedup.
+- **Identification learning + cover dedup (`prompts/14`)** — both shipped.
+  - **C**: `review_service.recent_corrections()` pulls recent human `/correct`
+    pairs (author/series-relevant ones ranked first, no-ops dropped, cap 5),
+    and `scan_service._process_file` feeds them into the AI identify prompt as
+    few-shot "what a human fixed last time" examples — AI path only, fast path
+    and `identify_series` untouched. Worst-case prompt-size delta measured at
+    **+838 chars / ~209 tokens** for a full 5-example set (well under the
+    ~400-token cap). `prompt_hash` now varies with correction history — fine,
+    it was never a cache key.
+  - **D**: new nullable `files.cover_phash` (16-hex pHash of the cover
+    thumbnail, `imagehash` dep — pulls numpy+scipy), computed in
+    `cover_service._make_one` and written back in bulk after the gather;
+    `regenerate_covers` also backfills it from existing Drive `.jpg`s without
+    re-downloading books. Library Audit → Split records gets a read-only
+    "Near-identical cover art" panel listing different-identified file pairs
+    whose covers are within Hamming ≤ 6 (`_COVER_HAMMING_THRESHOLD`). No
+    auto-action — the human uses `/correct`. Follow-ups: a one-click merge
+    button on the panel; a dismiss mechanism for publisher-template
+    false-positives (tighten the threshold first if it's noisy on the real
+    library).
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

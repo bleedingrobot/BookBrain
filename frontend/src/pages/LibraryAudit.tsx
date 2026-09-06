@@ -2,8 +2,49 @@ import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SeriesMergePanel } from '../components/SeriesMergePanel'
 import { ReidentAuditPanel } from '../components/ReidentAuditPanel'
-import type { AuditClusterKind, SimilarNameCluster } from '../types/libraryAudit'
+import type {
+  AuditClusterKind,
+  SimilarCoverPair,
+  SimilarNameCluster,
+} from '../types/libraryAudit'
 import { api } from '../services/api'
+
+function SimilarCoversPanel({ pairs }: { pairs: SimilarCoverPair[] }) {
+  return (
+    <div className="mt-6">
+      <h2 className="text-sm font-medium text-neutral-500">Near-identical cover art</h2>
+      <p className="mt-1 max-w-2xl text-xs text-neutral-400">
+        These pairs were identified as different books but have almost the same cover image —
+        often the same book re-uploaded with rewritten metadata, which the exact-content
+        duplicate check can't catch. Lower distance = more alike. Review each; if they really
+        are the same book, use “Correct” on the Library page to point one at the other. Some
+        publishers reuse a cover template, so a few of these will be genuine different books.
+      </p>
+      {pairs.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-500">Nothing flagged.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {pairs.map((p) => (
+            <li
+              key={`${p.book_a_id}-${p.book_b_id}`}
+              className="rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-medium">
+                  {p.book_a_title} <span className="text-neutral-400">↔</span> {p.book_b_title}
+                </span>
+                <span className="shrink-0 text-xs text-neutral-400">distance {p.distance}</span>
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">
+                {p.file_a_name} · {p.file_b_name}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function ClusterList({
   clusters,
@@ -244,6 +285,8 @@ export function LibraryAudit() {
             <h2 className="text-sm font-medium text-neutral-500">Possibly-split authors</h2>
             <ClusterList clusters={audit.data.similar_authors} noun="authors" kind="author" />
           </div>
+
+          <SimilarCoversPanel pairs={audit.data.similar_covers} />
         </>
       )}
 

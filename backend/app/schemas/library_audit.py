@@ -15,9 +15,24 @@ class SimilarNameCluster(BaseModel):
     members: list[SimilarNameMember]
 
 
+class SimilarCoverPair(BaseModel):
+    """Two organised files that resolved to different books but whose cover
+    thumbnails are within a small perceptual-hash distance — likely the same
+    book re-uploaded with rewritten metadata (which sha256 dedup misses)."""
+
+    book_a_id: int
+    book_a_title: str
+    file_a_name: str
+    book_b_id: int
+    book_b_title: str
+    file_b_name: str
+    distance: int
+
+
 class LibraryAuditResult(BaseModel):
     similar_series: list[SimilarNameCluster]
     similar_authors: list[SimilarNameCluster]
+    similar_covers: list[SimilarCoverPair] = []
 
 
 class DismissClusterRequest(BaseModel):

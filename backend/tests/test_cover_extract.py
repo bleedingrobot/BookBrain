@@ -87,11 +87,13 @@ def test_extract_cover_survives_garbage() -> None:
 
 
 def test_thumbnail_shrinks_and_reencodes() -> None:
-    thumb = _thumbnail(_png(size=(1200, 1800)))
-    assert thumb is not None
+    result = _thumbnail(_png(size=(1200, 1800)))
+    assert result is not None
+    thumb, phash = result
     img = Image.open(io.BytesIO(thumb))
     assert img.format == "JPEG"
     assert max(img.size) <= 320
+    assert len(phash) == 16 and int(phash, 16) >= 0
 
 
 def test_thumbnail_none_on_bad_bytes() -> None:
@@ -116,7 +118,9 @@ def test_make_one_writes_a_jpg_when_the_epub_has_a_cover() -> None:
 
     epub = _epub(_OPF_EPUB3, {"OEBPS/cover.png": _png(), "OEBPS/c1.xhtml": b"x"})
     p = _FakeCoverProvider(epub)
-    assert _make_one(p, "covers-folder", "drive-1", "book.epub") == "done"
+    status, phash = _make_one(p, "covers-folder", "drive-1", "book.epub")
+    assert status == "done"
+    assert len(phash) == 16
     assert p.uploaded == [("drive-1.jpg", p.uploaded[0][1])]
     assert p.uploaded[0][1] > 0
 
@@ -126,7 +130,7 @@ def test_make_one_writes_a_nocover_marker_when_there_is_no_cover() -> None:
 
     epub = _epub(_OPF_NOCOVER, {"OEBPS/c1.xhtml": b"x"})
     p = _FakeCoverProvider(epub)
-    assert _make_one(p, "covers-folder", "drive-2", "book.epub") == "nocover"
+    assert _make_one(p, "covers-folder", "drive-2", "book.epub") == ("nocover", None)
     assert p.uploaded == [("drive-2.nocover", 0)]
 
 
@@ -141,6 +145,8 @@ def test_make_one_pulls_first_page_as_cover_for_a_cbz() -> None:
         zf.writestr("000.jpg", _png("blue"))
         zf.writestr("001.jpg", _png("green"))
     p = _FakeCoverProvider(buf.getvalue())
-    assert _make_one(p, "covers-folder", "drive-3", "Batman 001.cbz") == "done"
+    status, phash = _make_one(p, "covers-folder", "drive-3", "Batman 001.cbz")
+    assert status == "done"
+    assert len(phash) == 16
     assert p.uploaded == [("drive-3.jpg", p.uploaded[0][1])]
     assert p.uploaded[0][1] > 0

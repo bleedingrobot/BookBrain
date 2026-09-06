@@ -1,5 +1,10 @@
 # Task 14 — Learn from corrections; catch re-uploads by cover art
 
+> **Status: shipped.** C in `c309245` (few-shot corrections, +~209 tok worst
+> case). D in a follow-up commit (`files.cover_phash` + Library Audit
+> "Near-identical cover art" panel, Hamming ≤ 6). See ROADMAP + the
+> `project_bookbrain_ai_series_hallucination` memory.
+
 Read `prompts/README.md` first for shared context. This is the **C + D**
 split-off from `prompts/13-trustworthy-identification.md` — A and B shipped in
 commit `351850e` (series_number clamp + `UNCORROBORATED_SERIES_PENALTY`). Read

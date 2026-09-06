@@ -10,9 +10,10 @@ import logging
 import uuid
 from collections.abc import Callable
 
+import imagehash
 from google.oauth2.credentials import Credentials
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import case, select, update
 
 from app.core.config import get_settings
 from app.data.db import async_session_factory
@@ -32,7 +33,10 @@ _COVER_CONCURRENCY = 4
 _NO_COVER_EXT = ".nocover"  # 0-byte marker: this EPUB has no extractable cover
 
 
-def _thumbnail(raw: bytes) -> bytes | None:
+def _thumbnail(raw: bytes) -> tuple[bytes, str] | None:
+    """(JPEG thumbnail bytes, perceptual-hash hex) or None if `raw` isn't a
+    usable image. The pHash is computed from the same decoded image, so it
+    costs nothing beyond one small DCT."""
     try:
         img = Image.open(io.BytesIO(raw))
         img.load()
@@ -41,7 +45,19 @@ def _thumbnail(raw: bytes) -> bytes | None:
         img.thumbnail((_COVER_MAX_PX, _COVER_MAX_PX))
         out = io.BytesIO()
         img.save(out, format="JPEG", quality=82, optimize=True)
-        return out.getvalue()
+        return out.getvalue(), str(imagehash.phash(img))
+    except Exception:
+        return None
+
+
+def _phash_of_jpg(raw: bytes) -> str | None:
+    """pHash of an already-rendered cover JPEG — for backfilling cover_phash
+    on files whose thumbnail exists in Drive but predates this column,
+    without re-downloading the whole book."""
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        return str(imagehash.phash(img))
     except Exception:
         return None
 
@@ -58,7 +74,11 @@ def _ensure_covers_folder(provider: DriveProvider, library_folder_id: str) -> st
 
 def _make_one(
     provider: DriveProvider, covers_folder_id: str, drive_file_id: str, filename: str
-) -> str:
+) -> tuple[str, str | None]:
+    """(status, cover_phash) — status is "done" or "nocover"; phash is the
+    thumbnail's perceptual hash for a "done" cover, None otherwise. Runs in a
+    worker thread with no DB session — the caller writes the hash back after
+    the gather."""
     settings = get_settings()
     raw_book = provider.download_file(drive_file_id)
     extract = extract_comic_cover if is_comic_archive(filename) else extract_cover
@@ -78,14 +98,15 @@ def _make_one(
             parent_id=covers_folder_id,
             mime_type="text/plain",
         )
-        return "nocover"
+        return "nocover", None
+    thumb_bytes, phash = thumb
     provider.upload_new_file(
         name=f"{drive_file_id}.jpg",
-        data=thumb,
+        data=thumb_bytes,
         parent_id=covers_folder_id,
         mime_type=_COVER_MIME,
     )
-    return "done"
+    return "done", phash
 
 
 async def regenerate_covers(
@@ -100,7 +121,7 @@ async def regenerate_covers(
     away); the manual endpoint leaves it None for a full backfill.
     `on_progress(counts, total)` fires after each file so a long backfill
     can report progress. Best-effort — never raises into the caller."""
-    counts = {"done": 0, "nocover": 0, "failed": 0, "remaining": 0}
+    counts = {"done": 0, "nocover": 0, "failed": 0, "remaining": 0, "rehashed": 0}
     if creds is None or not library_folder_id:
         return counts
     try:
@@ -109,25 +130,41 @@ async def regenerate_covers(
             _ensure_covers_folder, lister, library_folder_id
         )
         # A book is "handled" once it has either a .jpg thumbnail or a
-        # .nocover marker.
-        have = {
-            f["name"].removesuffix(".jpg").removesuffix(_NO_COVER_EXT)
-            for f in await asyncio.to_thread(lister.list_files_in_folder, covers_folder_id)
-        }
+        # .nocover marker. `jpg_ids` also maps drive-id -> the thumbnail's
+        # own Drive file id, so an existing cover can be re-hashed in place.
+        handled: set[str] = set()
+        jpg_ids: dict[str, str] = {}
+        for f in await asyncio.to_thread(lister.list_files_in_folder, covers_folder_id):
+            name = f["name"]
+            if name.endswith(".jpg"):
+                drive_id = name[:-4]
+                jpg_ids[drive_id] = f["id"]
+                handled.add(drive_id)
+            elif name.endswith(_NO_COVER_EXT):
+                handled.add(name[: -len(_NO_COVER_EXT)])
 
         async with async_session_factory() as session:
-            rows = await session.execute(
-                select(File.drive_file_id, File.filename).where(
-                    File.status == FileStatus.organised, File.book_id.is_not(None)
+            rows = (
+                await session.execute(
+                    select(File.drive_file_id, File.filename, File.cover_phash).where(
+                        File.status == FileStatus.organised, File.book_id.is_not(None)
+                    )
                 )
-            )
-            missing = [(r[0], r[1]) for r in rows.all() if r[0] not in have]
+            ).all()
+
+        missing = [(r[0], r[1]) for r in rows if r[0] not in handled]
+        # Covers that exist but predate the cover_phash column — re-hash from
+        # the thumbnail already in Drive, no book download.
+        rehash = [r[0] for r in rows if r[2] is None and r[0] in jpg_ids]
 
         todo = missing if limit is None else missing[:limit]
         counts["remaining"] = len(missing) - len(todo)
         total = len(todo)
+        rehash_budget = None if limit is None else max(0, limit - len(todo))
+        rehash_todo = rehash if rehash_budget is None else rehash[:rehash_budget]
 
         sem = asyncio.Semaphore(_COVER_CONCURRENCY)
+        hashed: dict[str, str] = {}
 
         async def run(entry: tuple[str, str]) -> None:
             drive_id, filename = entry
@@ -136,18 +173,42 @@ async def regenerate_covers(
                 # across the threads asyncio.to_thread hands work to.
                 provider = DriveProvider(build_drive_service(creds))
                 try:
-                    counts[
-                        await asyncio.to_thread(
-                            _make_one, provider, covers_folder_id, drive_id, filename
-                        )
-                    ] += 1
+                    status, phash = await asyncio.to_thread(
+                        _make_one, provider, covers_folder_id, drive_id, filename
+                    )
+                    counts[status] += 1
+                    if phash is not None:
+                        hashed[drive_id] = phash
                 except Exception:
                     logger.exception("cover generation failed for %s", drive_id)
                     counts["failed"] += 1
                 if on_progress is not None:
                     on_progress(counts, total)
 
+        async def rehash_one(drive_id: str) -> None:
+            async with sem:
+                provider = DriveProvider(build_drive_service(creds))
+                try:
+                    raw = await asyncio.to_thread(provider.download_file, jpg_ids[drive_id])
+                    phash = await asyncio.to_thread(_phash_of_jpg, raw)
+                    if phash is not None:
+                        hashed[drive_id] = phash
+                        counts["rehashed"] += 1
+                except Exception:
+                    logger.exception("cover re-hash failed for %s", drive_id)
+
         await asyncio.gather(*(run(d) for d in todo))
+        await asyncio.gather(*(rehash_one(d) for d in rehash_todo))
+
+        if hashed:
+            async with async_session_factory() as session:
+                await session.execute(
+                    update(File)
+                    .where(File.drive_file_id.in_(list(hashed)))
+                    .values(cover_phash=case(hashed, value=File.drive_file_id))
+                )
+                await session.commit()
+
         logger.info("covers pass: %s", counts)
     except Exception:
         logger.exception("cover regeneration failed")

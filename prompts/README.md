@@ -39,12 +39,12 @@ commit per stage. SHAs + details in `REVIEW-2026-09-06.md` §"Shipped 2026-09-06
 staged, commit-per-stage prompt that works through all six in one session
 (order: 06 → 08 → 07 → 10 → 09 → 11).
 
-## Open
+## Trustworthy identification (`prompts/13` + `14`) — all shipped
 
 | # | File | Kind | One line |
 |---|------|------|----------|
-| 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | **A + B done** (`351850e`): `series_number` clamp + `UNCORROBORATED_SERIES_PENALTY` (structural gap #1). C + D split to prompt 14 |
-| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C done**: recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D open**: perceptual-hash cover dedup surfaced in Library Audit |
+| 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | **A + B** (`351850e`): `series_number` clamp + `UNCORROBORATED_SERIES_PENALTY` (structural gap #1). C + D split to prompt 14 |
+| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C** (`c309245`): recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D**: `files.cover_phash` + "Near-identical cover art" panel in Library Audit |
 
 ## Shared context (every session should know this)
 
