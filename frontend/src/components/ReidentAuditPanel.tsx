@@ -148,6 +148,21 @@ function DivergenceRow({ d }: { d: ReidentDivergence }) {
       {correcting && (
         <CorrectFileForm
           file={asFileSummary(d)}
+          initial={
+            dc === 'stored_is_wrong'
+              ? {
+                  title: d.deep_check_suggested_title ?? d.stored_title,
+                  author: d.deep_check_suggested_author ?? d.stored_author,
+                  series: d.deep_check_suggested_series,
+                  seriesNumber: d.deep_check_suggested_series_number,
+                }
+              : undefined
+          }
+          initialNote={
+            dc === 'stored_is_wrong'
+              ? 'Pre-filled from the deep re-check suggestion — check it before saving.'
+              : undefined
+          }
           busy={correct.isPending}
           error={correctError}
           onSubmit={(body) => correct.mutate(body)}

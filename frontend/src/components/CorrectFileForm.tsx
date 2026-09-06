@@ -17,28 +17,47 @@ function preview(title: string, author: string, series: string, num: string): st
   return parts.join(' › ') + (series.trim() && num.trim() ? ` #${num.trim()}` : '')
 }
 
+// When provided, the form opens with these values instead of the file's
+// stored ones — e.g. the deep re-check's suggested fix. A present `initial`
+// fully specifies all four fields, so a null series here means "standalone"
+// rather than "fall back to the stored series".
+export interface CorrectFormInitial {
+  title: string
+  author: string | null
+  series: string | null
+  seriesNumber: number | null
+}
+
 export function CorrectFileForm({
   file,
+  initial,
+  initialNote,
   busy,
   error,
   onSubmit,
   onCancel,
 }: {
   file: FileSummary
+  initial?: CorrectFormInitial
+  initialNote?: string
   busy: boolean
   error: string | null
   onSubmit: (body: CorrectReviewRequest) => void
   onCancel: () => void
 }) {
-  const [title, setTitle] = useState(file.book_title ?? '')
-  const [author, setAuthor] = useState(file.book_author ?? '')
-  const [series, setSeries] = useState(file.book_series ?? '')
-  const [num, setNum] = useState(
-    file.book_series_number !== null ? String(file.book_series_number) : '',
+  const [title, setTitle] = useState(initial?.title ?? file.book_title ?? '')
+  const [author, setAuthor] = useState(
+    (initial ? initial.author : file.book_author) ?? '',
   )
+  const [series, setSeries] = useState((initial ? initial.series : file.book_series) ?? '')
+  const [num, setNum] = useState(() => {
+    const n = initial ? initial.seriesNumber : file.book_series_number
+    return n !== null && n !== undefined ? String(n) : ''
+  })
 
   return (
     <div className="mt-2 space-y-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      {initialNote && <p className="text-xs text-amber-700 dark:text-amber-400">{initialNote}</p>}
       <label className="block text-xs text-neutral-500">
         Title
         <input
