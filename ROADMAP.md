@@ -36,6 +36,23 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     button on the panel; a dismiss mechanism for publisher-template
     false-positives (tighten the threshold first if it's noisy on the real
     library).
+- **First-pass identification accuracy push (`prompts/15`)** — umbrella
+  multi-session plan to get first-scan identify/name/file accuracy toward
+  ~100%. Deep-dive findings: providers never return a series (so the
+  uncorroborated-series penalty is noise + a fast-path branch is dead code);
+  the AI call is single-shot + ungrounded (post-cutoff books → invented
+  series); `text_snippet` is usually just the cover page; `description` is
+  parsed but never sent to the model; no filename parsing; no junk/placeholder
+  metadata detection; the fast path trusts a possibly-wrong EPUB ISBN
+  completely; `resolve_book` forks authors on "J.R.R." vs "J. R. R." and
+  series on a leading article; `SeriesAlias` + `Author.sort_name` exist and
+  are unused; nothing auto-organized ever gets a human glance. Stage 0 is a
+  ground-truth eval harness (`pytest -m corpus` + `IDENTIFICATION-EVAL.md`) —
+  every later stage must move the number. Then: web-search grounding, real
+  provider series, filename→candidate parser, copyright-page text, placeholder
+  detector, ISBN trust check, positive confidence components, a verification
+  pass for the uncertain band, a "recently auto-organized" review tray +
+  optional soft-hold, author canonicalisation, batch priors.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

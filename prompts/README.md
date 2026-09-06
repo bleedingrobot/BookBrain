@@ -44,7 +44,13 @@ staged, commit-per-stage prompt that works through all six in one session
 | # | File | Kind | One line |
 |---|------|------|----------|
 | 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | **A + B** (`351850e`): `series_number` clamp + `UNCORROBORATED_SERIES_PENALTY` (structural gap #1). C + D split to prompt 14 |
-| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C** (`c309245`): recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D**: `files.cover_phash` + "Near-identical cover art" panel in Library Audit |
+| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C** (`c309245`): recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D** (`edff935`): `files.cover_phash` + "Near-identical cover art" panel in Library Audit |
+
+## Open — first-pass identification accuracy push
+
+| # | File | Kind | One line |
+|---|------|------|----------|
+| 15 | [`15-identification-accuracy-push.md`](15-identification-accuracy-push.md) | umbrella / multi-session | Get first-scan identify+name+file accuracy toward ~100%. Stage 0 = a ground-truth eval harness (mandatory first); then web-search grounding, real provider series, filename parsing, richer evidence, junk-metadata + ISBN-trust checks, a verification pass, a "recently organized" tray, author canonicalisation, batch priors. One commit/stage, `pytest -m corpus` gates every stage. |
 
 ## Shared context (every session should know this)
 
