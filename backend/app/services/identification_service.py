@@ -7,7 +7,7 @@ from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.confidence_service import score
 from app.services.metadata_sanity import clamp_series_number
-from app.services.text_match import texts_match, titles_match
+from app.services.text_match import normalize, texts_match, titles_match
 
 
 @dataclass
@@ -43,7 +43,12 @@ class IdentificationService:
         self._ai_client = ai_client or AnthropicIdentificationClient()
 
     async def identify(
-        self, *, filename: str, evidence: EpubEvidence, candidates: list[MetadataCandidate]
+        self,
+        *,
+        filename: str,
+        evidence: EpubEvidence,
+        candidates: list[MetadataCandidate],
+        corrections: list[dict] | None = None,
     ) -> IdentificationResult:
         evidence_hash = hash_evidence(filename, evidence, candidates)
 
@@ -110,7 +115,10 @@ class IdentificationService:
                 raw_response=raw_response,
             )
 
-        prompt = _build_prompt(filename, evidence, candidates)
+        # corrections feed the full identify_book prompt only. The fast path
+        # and the identify_series lookup above don't call the model with a
+        # free-text prompt, so there's nothing to teach there.
+        prompt = _build_prompt(filename, evidence, candidates, corrections)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
         try:
@@ -201,7 +209,16 @@ def _find_isbn_match(
     return None
 
 
-def _build_prompt(filename: str, evidence: EpubEvidence, candidates: list[MetadataCandidate]) -> str:
+_MAX_CORRECTION_EXAMPLES = 5
+_MAX_CORRECTION_FIELD_CHARS = 120
+
+
+def _build_prompt(
+    filename: str,
+    evidence: EpubEvidence,
+    candidates: list[MetadataCandidate],
+    corrections: list[dict] | None = None,
+) -> str:
     lines = [
         "Identify the book described by this evidence. Evidence comes from an "
         "EPUB file and third-party metadata lookups; sources may disagree.",
@@ -230,7 +247,74 @@ def _build_prompt(filename: str, evidence: EpubEvidence, candidates: list[Metada
         lines.append("")
         lines.append("No metadata provider candidates were found.")
 
+    # Appended last, and only when there's something to show, so a call with
+    # no corrections produces the byte-identical prompt (and prompt_hash) as
+    # before this section existed.
+    if corrections:
+        lines.extend(_render_corrections(corrections))
+
     return "\n".join(lines)
+
+
+def _render_corrections(corrections: list[dict]) -> list[str]:
+    """A short 'here's what a human fixed before' block. Titles and author/
+    series names only — never reasoning text or confidence numbers. Capped at
+    _MAX_CORRECTION_EXAMPLES rows and each field clipped, to keep the section
+    well under ~400 tokens even with long titles."""
+    lines = [
+        "",
+        "Corrections a human has previously made to identifications like this "
+        "one. Learn from them — in particular, do NOT invent a series for a "
+        "standalone book:",
+    ]
+    for pair in corrections[:_MAX_CORRECTION_EXAMPLES]:
+        said, fixed = pair["proposed"], pair["corrected"]
+        lines.append(f"- You said: {_describe_book(said)}")
+        lines.append(f"  Corrected to: {_describe_correction(said, fixed)}")
+    return lines
+
+
+def _describe_book(fields: dict) -> str:
+    text = f'"{_clip(fields.get("title")) or "(unknown title)"}"'
+    if fields.get("author"):
+        text += f" by {_clip(fields['author'])}"
+    if fields.get("series"):
+        text += ", " + _series_phrase(fields["series"], fields.get("series_number"))
+    return text
+
+
+def _describe_correction(said: dict, fixed: dict) -> str:
+    """Only the fields the human actually changed. A correction that nulled
+    the series is the whole point of this feature — spell it out."""
+    changed: list[str] = []
+    if normalize(said.get("title")) != normalize(fixed.get("title")):
+        changed.append(f'title "{_clip(fixed.get("title")) or "(unknown)"}"')
+    if normalize(said.get("author")) != normalize(fixed.get("author")):
+        changed.append(f"author {_clip(fixed.get('author')) or '(unknown)'}")
+    if normalize(said.get("series")) != normalize(fixed.get("series")) or said.get(
+        "series_number"
+    ) != fixed.get("series_number"):
+        if fixed.get("series"):
+            changed.append(_series_phrase(fixed["series"], fixed.get("series_number")))
+        else:
+            changed.append("standalone, no series")
+    return ", ".join(changed) if changed else "(no change)"
+
+
+def _series_phrase(series: str, number: object) -> str:
+    phrase = f'series "{_clip(series)}"'
+    if number is not None:
+        phrase += f" #{int(number) if isinstance(number, float) and number.is_integer() else number}"
+    return phrase
+
+
+def _clip(text: str | None) -> str:
+    if not text:
+        return ""
+    text = text.strip()
+    if len(text) <= _MAX_CORRECTION_FIELD_CHARS:
+        return text
+    return text[: _MAX_CORRECTION_FIELD_CHARS - 1] + "…"
 
 
 def hash_evidence(

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -84,8 +85,12 @@ class _FakeIdentificationService:
 
     def __init__(self, result: IdentificationResult | None = None) -> None:
         self._result = result
+        self.corrections_seen: list[list[dict]] = []
 
-    async def identify(self, *, filename, evidence, candidates) -> IdentificationResult:
+    async def identify(
+        self, *, filename, evidence, candidates, corrections=None
+    ) -> IdentificationResult:
+        self.corrections_seen.append(corrections or [])
         if self._result is not None:
             return self._result
         return IdentificationResult(
@@ -758,6 +763,73 @@ async def test_process_file_library_rule_skips_candidates_and_ai(db_session) -> 
     book = (await db_session.execute(select(Book).where(Book.id == file_row.book_id))).scalar_one()
     author = (await db_session.execute(select(Author).where(Author.id == book.author_id))).scalar_one()
     assert author.name == "Jane A. Author"
+
+
+async def test_process_file_feeds_recent_corrections_to_identify(db_session) -> None:
+    # A human previously corrected an invented series off another book by the
+    # same author. That worked example must be fetched and handed to identify().
+    prior = File(
+        drive_file_id="corrected-1",
+        drive_parent_id="p",
+        filename="prior.epub",
+        sha256="prior-sha",
+        size_bytes=100,
+        status=FileStatus.inbox,
+    )
+    db_session.add(prior)
+    await db_session.flush()
+    db_session.add(
+        Review(
+            file_id=prior.id,
+            status=ReviewStatus.corrected,
+            proposed_json={
+                "title": "Scion",
+                "author": "Jane Author",
+                "series": "The Hierarchy",
+                "series_number": 2,
+            },
+            correction_json={
+                "title": "Scion",
+                "author": "Jane Author",
+                "series": None,
+                "series_number": None,
+            },
+            resolved_at=datetime.now(UTC),
+        )
+    )
+    await db_session.commit()
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(build_epub())  # default author "Jane Author"
+    raw = {"id": "drive-corr", "name": "foo.epub", "parents": ["p"], "size": "100"}
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    seen = service._identification_service.corrections_seen[-1]
+    assert [row["corrected"]["series"] for row in seen] == [None]
+    assert seen[0]["proposed"]["series"] == "The Hierarchy"
+
+
+async def test_process_file_library_rule_path_skips_correction_fetch(db_session) -> None:
+    # find_rule_match resolves the book before identify() is reached, so the
+    # correction lookup must be skipped entirely (identify is never called).
+    db_session.add(
+        LibraryRule(
+            rule_type=RuleType.author_alias,
+            pattern="Jane Author",
+            resolution_json={"author": "Jane A. Author"},
+        )
+    )
+    await db_session.commit()
+
+    fake_identify = _FakeIdentificationService()
+    service = ScanService(candidate_service=CandidateService(providers=[]), identification_service=fake_identify)
+    provider = _FakeDriveProvider(build_epub())
+    raw = {"id": "drive-rule-corr", "name": "foo.epub", "parents": ["p"], "size": "100"}
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    assert fake_identify.corrections_seen == []
 
 
 async def test_process_file_detects_plain_duplicate_and_copies_primary(db_session) -> None:

@@ -2,7 +2,7 @@ from app.providers.ai.anthropic_client import AIIdentificationError
 from app.providers.ai.types import AIIdentificationResult, AISeriesResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
-from app.services.identification_service import IdentificationService
+from app.services.identification_service import IdentificationService, _build_prompt
 
 
 class _FakeAIClient:
@@ -281,6 +281,88 @@ async def test_ai_failure_falls_back_to_low_confidence_result() -> None:
     assert result.model == "unavailable"
     assert result.needs_human_review is True
     assert "simulated failure" in result.reasoning_summary
+
+
+def _standalone_correction() -> list[dict]:
+    return [
+        {
+            "proposed": {
+                "title": "Scion",
+                "author": "James Islington",
+                "series": "The Hierarchy",
+                "series_number": 2,
+            },
+            "corrected": {
+                "title": "Scion",
+                "author": "James Islington",
+                "series": None,
+                "series_number": None,
+            },
+        }
+    ]
+
+
+def test_build_prompt_byte_identical_without_corrections() -> None:
+    evidence = _evidence()
+    baseline = _build_prompt("dune.epub", evidence, [])
+    assert _build_prompt("dune.epub", evidence, [], None) == baseline
+    assert _build_prompt("dune.epub", evidence, [], []) == baseline
+
+
+def test_build_prompt_renders_a_standalone_correction() -> None:
+    prompt = _build_prompt("scion.epub", _evidence(), [], _standalone_correction())
+
+    assert "Corrections a human has previously made" in prompt
+    assert 'You said: "Scion" by James Islington, series "The Hierarchy" #2' in prompt
+    assert "Corrected to: standalone, no series" in prompt
+
+
+def test_build_prompt_correction_only_shows_changed_fields() -> None:
+    corrections = [
+        {
+            "proposed": {
+                "title": "The Wrong Title",
+                "author": "A. Author",
+                "series": "Some Series",
+                "series_number": 4,
+            },
+            "corrected": {
+                "title": "The Right Title",
+                "author": "A. Author",
+                "series": "Some Series",
+                "series_number": 4,
+            },
+        }
+    ]
+
+    prompt = _build_prompt("x.epub", _evidence(), [], corrections)
+
+    assert 'Corrected to: title "The Right Title"' in prompt
+    assert "Some Series" not in prompt.split("Corrected to:")[1]
+
+
+async def test_identify_feeds_corrections_into_the_prompt() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Scion",
+            author="James Islington",
+            series=None,
+            series_number=None,
+            ai_confidence=70,
+            reasoning_summary="standalone",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    await service.identify(
+        filename="scion.epub",
+        evidence=_evidence(isbn13=None, title="Scion"),
+        candidates=[],
+        corrections=_standalone_correction(),
+    )
+
+    assert "standalone, no series" in fake_client.prompts[0]
 
 
 async def test_evidence_hash_is_stable_for_identical_input() -> None:

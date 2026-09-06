@@ -15,9 +15,16 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   identification return path, and a new `UNCORROBORATED_SERIES_PENALTY` (-15)
   in `confidence_service.score()` that fires when the resolved series appears
   in neither the EPUB nor any provider candidate — closing structural gap #1
-  (invented series auto-organising silently). Still to do: (C) feed recent
-  `/correct` pairs into the identify prompt as few-shot examples; (D)
-  perceptual-hash cover dedup — both filed for a follow-up prompt.
+  (invented series auto-organising silently).
+- **Identification learning + cover dedup (`prompts/14`)** — C shipped:
+  `review_service.recent_corrections()` pulls recent human `/correct` pairs
+  (author/series-relevant ones ranked first, no-ops dropped, cap 5), and
+  `scan_service._process_file` feeds them into the AI identify prompt as
+  few-shot "what a human fixed last time" examples — AI path only, fast path
+  and `identify_series` untouched. Worst-case prompt-size delta measured at
+  **+838 chars / ~209 tokens** for a full 5-example set (well under the
+  ~400-token cap). `prompt_hash` now varies with correction history — fine, it
+  was never a cache key. Still to do: (D) perceptual-hash cover dedup.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

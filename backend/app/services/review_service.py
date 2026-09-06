@@ -166,6 +166,86 @@ async def correct(session: AsyncSession, review_id: int, body: CorrectReviewRequ
     return review
 
 
+# How many recent corrected rows to pull before ranking/filtering in Python.
+# The table is small (one row per human correction ever made) and we only
+# ever surface `limit` of them; 200 is comfortably more than enough history
+# to find author/series-relevant examples without loading the whole table.
+_RECENT_CORRECTIONS_SCAN = 200
+_CORRECTION_KEYS = ("title", "author", "series", "series_number")
+
+
+async def recent_corrections(
+    session: AsyncSession,
+    *,
+    limit: int = 5,
+    author: str | None = None,
+    series: str | None = None,
+) -> list[dict]:
+    """Recent human `/correct` edits as ``{"proposed": {...}, "corrected":
+    {...}}`` pairs (each inner dict has title/author/series/series_number),
+    newest first, for feeding the identify prompt a few worked examples of
+    "what a human fixed last time".
+
+    Rows whose proposed **or** corrected author/series matches the book being
+    identified (normalized) sort ahead of the rest; within each group the
+    newest-first order is kept. No-op corrections — where nothing actually
+    changed — are dropped (they teach nothing). At most ``limit`` returned.
+
+    Both `/correct` writers land here: `review_service.correct` (proposed =
+    the AI's original proposal) and `file_service.correct_file` (proposed =
+    the previous book state). Either is a valid wrong→right pair.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(Review)
+                .where(Review.status == ReviewStatus.corrected)
+                .order_by(Review.resolved_at.desc())
+                .limit(_RECENT_CORRECTIONS_SCAN)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    want_author, want_series = normalize(author), normalize(series)
+    ranked: list[tuple[bool, dict]] = []
+    for review in rows:
+        corrected = _correction_fields(review.correction_json)
+        if corrected is None:
+            continue
+        proposed = _correction_fields(review.proposed_json) or dict.fromkeys(_CORRECTION_KEYS)
+        if _correction_is_noop(proposed, corrected):
+            continue
+        relevant = (
+            bool(want_author)
+            and want_author in {normalize(proposed["author"]), normalize(corrected["author"])}
+        ) or (
+            bool(want_series)
+            and want_series in {normalize(proposed["series"]), normalize(corrected["series"])}
+        )
+        ranked.append((relevant, {"proposed": proposed, "corrected": corrected}))
+
+    # Stable sort: relevant rows first, newest-first order preserved within each.
+    ranked.sort(key=lambda pair: not pair[0])
+    return [pair[1] for pair in ranked[:limit]]
+
+
+def _correction_fields(payload: dict | None) -> dict | None:
+    if not payload:
+        return None
+    return {key: payload.get(key) for key in _CORRECTION_KEYS}
+
+
+def _correction_is_noop(proposed: dict, corrected: dict) -> bool:
+    return (
+        normalize(proposed["title"]) == normalize(corrected["title"])
+        and normalize(proposed["author"]) == normalize(corrected["author"])
+        and normalize(proposed["series"]) == normalize(corrected["series"])
+        and proposed["series_number"] == corrected["series_number"]
+    )
+
+
 async def _create_alias_rules(session: AsyncSession, review: Review, body: CorrectReviewRequest) -> None:
     proposed_author = review.proposed_json.get("author")
     if body.author and proposed_author and normalize(body.author) != normalize(proposed_author):

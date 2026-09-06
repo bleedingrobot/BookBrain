@@ -44,7 +44,7 @@ staged, commit-per-stage prompt that works through all six in one session
 | # | File | Kind | One line |
 |---|------|------|----------|
 | 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | **A + B done** (`351850e`): `series_number` clamp + `UNCORROBORATED_SERIES_PENALTY` (structural gap #1). C + D split to prompt 14 |
-| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | C: feed recent `/correct` pairs into the identify prompt as few-shot. D: perceptual-hash cover dedup surfaced in Library Audit |
+| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C done**: recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D open**: perceptual-hash cover dedup surfaced in Library Audit |
 
 ## Shared context (every session should know this)
 

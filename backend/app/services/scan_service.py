@@ -33,6 +33,7 @@ from app.providers.epub.errors import EpubParseError
 from app.providers.epub.parser import EpubEvidence, parse_epub_safely
 from app.schemas.library import RebuildEstimate
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
+from app.services import review_service
 from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.drive_service import DriveService
@@ -540,9 +541,19 @@ class ScanService:
         # handled by the duplicate branch above (resolve_corrected_book_id)
         # — by construction, if a correction exists for this sha256, some
         # other File already has it, so the duplicate check already fired.
+        corrections: list[dict] = []
         with _timed(timings, "db"):
             async with db_lock, async_session_factory() as session:
                 identification = await find_rule_match(session, raw["name"], evidence)
+                if identification is None:
+                    # Only the AI path uses these — find_rule_match short-circuits
+                    # before identify() is ever called. Fetched under the session
+                    # we already hold here; identify() itself stays session-free.
+                    corrections = await review_service.recent_corrections(
+                        session,
+                        author=evidence.authors[0] if evidence.authors else None,
+                        series=evidence.series,
+                    )
 
         candidate_rows: list[BookCandidate] = []
         if identification is None:
@@ -566,7 +577,10 @@ class ScanService:
             ]
             with _timed(timings, "ai_identify"):
                 identification = await self._identification_service.identify(
-                    filename=raw["name"], evidence=evidence, candidates=candidates
+                    filename=raw["name"],
+                    evidence=evidence,
+                    candidates=candidates,
+                    corrections=corrections,
                 )
 
         # Sanity clamp on every path, including find_rule_match (which carries
