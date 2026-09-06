@@ -1,11 +1,17 @@
 # Work prompts
 
-Four features from the 2026-09-06 project review, each meant to be run as its
-**own fresh Claude Code session** (start a new chat, paste the file's contents
-or say "follow `prompts/NN-*.md`").
+Each file is meant to be run as its **own fresh Claude Code session** (start a
+new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
 
-Run them in this order — 3 and 5 both lean on things 1 and 2 make cleaner, but
-none is a hard dependency:
+## Recurring
+
+- [`review.md`](review.md) — a full read-only project review. Produces a written
+  assessment and a fresh batch of numbered work-prompts. Run it every few weeks
+  or after a burst of feature work.
+
+## 2026-09-06 review batch (all shipped)
+
+Ran in this order — 3 and 5 leaned on 1 and 2, but none was a hard dependency:
 
 | # | File | One line |
 |---|------|----------|
