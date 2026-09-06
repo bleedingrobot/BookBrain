@@ -19,9 +19,12 @@ interface Props {
   onSelectMany: (ids: string[], on: boolean) => void
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
+  onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
 }
+
+const isEpub = (name: string) => name.toLowerCase().endsWith('.epub')
 
 export function BookRow({
   row,
@@ -38,6 +41,7 @@ export function BookRow({
   onSelectMany,
   onSend,
   onDownload,
+  onRead,
   onFilterAuthor,
   onFilterSeries,
 }: Props) {
@@ -105,6 +109,11 @@ export function BookRow({
           </div>
         </div>
         <div className="flex w-full shrink-0 flex-wrap items-center gap-1 pl-7 sm:w-auto sm:pl-0">
+          {isEpub(row.filename) && (
+            <button className="btn btn-primary btn-xs" onClick={() => onRead(row)}>
+              Read
+            </button>
+          )}
           <button className="btn btn-ghost btn-xs" onClick={() => onDownload(row.file)}>
             Download
           </button>

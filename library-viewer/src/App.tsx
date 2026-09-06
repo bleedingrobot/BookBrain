@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityScreen } from './components/ActivityScreen'
 import { BookList } from './components/BookList'
+import { ContinueReading } from './components/ContinueReading'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
+import { Reader } from './components/Reader'
 import { RecentMarquee } from './components/RecentMarquee'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
 import { WhoAmI } from './components/WhoAmI'
 import { WishlistScreen } from './components/WishlistScreen'
 import { logActivity } from './lib/activityLog'
+import { cacheStats, clearBookCache } from './lib/bookCache'
 import {
   buildRows,
   matchesFilter,
@@ -76,6 +79,11 @@ export default function App() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [readingBookId, setReadingBookId] = useState<string | null>(null)
+  // Bumped when the reader closes so the "Continue reading" strip re-reads
+  // the (localStorage-backed) reading progress.
+  const [progressTick, setProgressTick] = useState(0)
+  const [offlineCount, setOfflineCount] = useState(0)
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
@@ -107,6 +115,10 @@ export default function App() {
     if (!token || !settings || !viewerName) return
     void logActivity(token, settings.libraryFolderId, viewerName, 'kobo-send', `${file.name} → ${device.label}`)
   }
+
+  useEffect(() => {
+    void cacheStats().then((s) => setOfflineCount(s.count))
+  }, [progressTick])
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
   const recentBooks = useMemo(() => pickRecentBooks(allRows), [allRows])
@@ -415,6 +427,22 @@ export default function App() {
     )
   }
 
+  if (readingBookId && token) {
+    const readingBook = allRows.find((r) => r.id === readingBookId)
+    if (readingBook) {
+      return (
+        <Reader
+          token={token}
+          book={readingBook}
+          onClose={() => {
+            setReadingBookId(null)
+            setProgressTick((t) => t + 1)
+          }}
+        />
+      )
+    }
+  }
+
   if (showActivity) {
     return (
       <ActivityScreen
@@ -477,10 +505,23 @@ export default function App() {
         onEditSettings={() => setEditingSettings(true)}
         onShowSetup={() => setShowSetup(true)}
         onForget={handleForget}
+        offlineCount={offlineCount}
+        onClearDownloads={() => {
+          void clearBookCache().then(() => setOfflineCount(0))
+        }}
       />
 
       {!lib.loading && (
         <RecentMarquee books={recentBooks} token={token} onPick={jumpToRecent} />
+      )}
+
+      {!lib.loading && token && (
+        <ContinueReading
+          rows={allRows}
+          token={token}
+          tick={progressTick}
+          onRead={(id) => setReadingBookId(id)}
+        />
       )}
 
       {lib.sessionExpired && (
@@ -619,6 +660,7 @@ export default function App() {
                 setDownloadError(err.message)
               })
           }
+          onRead={(row) => setReadingBookId(row.id)}
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}
         />

@@ -254,14 +254,21 @@ export async function copyFileToFolder(token: string, file: DriveFile, destinati
   }
 }
 
-export async function downloadFile(token: string, file: DriveFile): Promise<void> {
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+// Raw file bytes from Drive. Shared by downloadFile (save-to-disk) and the
+// EPUB reader (which caches the blob in IndexedDB, see lib/bookCache.ts).
+export async function fetchDriveBlob(token: string, fileId: string): Promise<Blob> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!response.ok) {
-    throw new Error(`Failed to download ${file.name} (${response.status})`)
+    if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+    throw new Error(`Failed to download file (${response.status})`)
   }
-  const blob = await response.blob()
+  return response.blob()
+}
+
+export async function downloadFile(token: string, file: DriveFile): Promise<void> {
+  const blob = await fetchDriveBlob(token, file.id)
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

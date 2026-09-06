@@ -13,6 +13,8 @@ interface Props {
   onEditSettings: () => void
   onShowSetup: () => void
   onForget: () => void
+  offlineCount: number
+  onClearDownloads: () => void
 }
 
 export function LibraryHeader({
@@ -28,6 +30,8 @@ export function LibraryHeader({
   onEditSettings,
   onShowSetup,
   onForget,
+  offlineCount,
+  onClearDownloads,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -35,6 +39,9 @@ export function LibraryHeader({
     { label: 'Activity', fn: onShowActivity },
     { label: 'Wishlist', fn: onShowWishlist },
     { label: 'Rebuild library', fn: onRebuild, disabled: busy },
+    ...(offlineCount > 0
+      ? [{ label: `Clear downloaded books (${offlineCount})`, fn: onClearDownloads }]
+      : []),
     { label: 'Share…', fn: onShare },
     { label: 'Copy link', fn: onCopyLink },
     { label: 'Change settings', fn: onEditSettings },

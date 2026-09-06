@@ -26,6 +26,7 @@ interface Props {
   onExpand: (id: string) => void
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
+  onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
 }
@@ -48,6 +49,7 @@ export function BookList({
   onExpand,
   onSend,
   onDownload,
+  onRead,
   onFilterAuthor,
   onFilterSeries,
 }: Props) {
@@ -133,6 +135,7 @@ export function BookList({
                 onSelectMany={onSelectMany}
                 onSend={onSend}
                 onDownload={onDownload}
+                onRead={onRead}
                 onFilterAuthor={onFilterAuthor}
                 onFilterSeries={onFilterSeries}
               />
