@@ -339,6 +339,36 @@ async def test_grounded_identify_forces_the_tool_when_model_answers_in_text() ->
 
 
 @respx.mock
+async def test_grounded_identify_falls_back_when_web_search_tool_is_rejected() -> None:
+    # e.g. Haiku doesn't support the server tool — API returns 400. Must not
+    # fail the identification, just do it un-grounded.
+    responses = [
+        httpx.Response(400, json={"type": "error", "error": {"type": "invalid_request_error", "message": "web_search unsupported"}}),
+        httpx.Response(200, json=_tool_use_response(_IDENTIFY_INPUT)),
+    ]
+    respx.post(MESSAGES_URL).mock(side_effect=responses)
+
+    async with httpx.AsyncClient() as http_client:
+        client = AnthropicIdentificationClient(
+            client=anthropic.AsyncAnthropic(api_key="test-key", http_client=http_client),
+            model="claude-haiku-4-5",
+        )
+        result, raw = await client.identify("some prompt", ground=True)
+
+    assert result.title == "Scion"
+    assert "grounding" not in raw  # un-grounded fallback
+
+
+def test_web_search_tool_variant_by_model() -> None:
+    from app.providers.ai.anthropic_client import _web_search_tool
+
+    assert _web_search_tool("claude-opus-5", 2)["type"] == "web_search_20260209"
+    assert _web_search_tool("claude-sonnet-5", 3)["type"] == "web_search_20260209"
+    assert _web_search_tool("claude-haiku-4-5", 2)["type"] == "web_search_20250305"
+    assert _web_search_tool("claude-haiku-4-5", 2)["max_uses"] == 2
+
+
+@respx.mock
 async def test_ungrounded_identify_is_a_single_forced_call() -> None:
     route = respx.post(MESSAGES_URL).mock(
         return_value=httpx.Response(200, json=_tool_use_response(_IDENTIFY_INPUT))

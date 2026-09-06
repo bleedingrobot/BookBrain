@@ -11,6 +11,7 @@ from app.providers.ai.schema import (
     PROPOSE_SERIES_MERGE_TOOL,
     RESOLVE_BOOK_REQUEST_TOOL,
     WEB_SEARCH_TOOL,
+    WEB_SEARCH_TOOL_BASIC,
 )
 from app.providers.ai.types import (
     AIAuditResult,
@@ -23,6 +24,18 @@ from app.providers.ai.types import (
 
 class AIIdentificationError(Exception):
     pass
+
+
+def _web_search_tool(model: str, max_uses: int) -> dict:
+    """The web_search server-tool block for this model. The dynamic-filtering
+    `_20260209` variant needs Opus 4.6+ / Sonnet 4.6+ / *-5; Haiku 4.5 and
+    older take the basic `_20250305`. An unknown/newer id is assumed capable."""
+    m = model.lower()
+    basic = ("haiku" in m) or any(
+        m.startswith(p) for p in ("claude-3", "claude-2", "claude-instant")
+    )
+    tool = WEB_SEARCH_TOOL_BASIC if basic else WEB_SEARCH_TOOL
+    return {**tool, "max_uses": max_uses}
 
 
 def _collect_grounding(response, grounding: dict) -> None:
@@ -75,7 +88,12 @@ class AnthropicIdentificationClient:
         erroring.
         """
         if ground:
-            return await self._identify_grounded(prompt)
+            try:
+                return await self._identify_grounded(prompt)
+            except anthropic.APIStatusError:
+                # e.g. the model doesn't support the web_search server tool —
+                # don't fail the identification, just do it un-grounded.
+                pass
         return await self._identify_forced(prompt)
 
     async def _identify_forced(
@@ -115,7 +133,7 @@ class AnthropicIdentificationClient:
             "inconclusive, identify the book from the evidence alone and set "
             "needs_human_review accordingly."
         )
-        web_search = {**WEB_SEARCH_TOOL, "max_uses": settings.ai_web_search_max_uses}
+        web_search = _web_search_tool(self.model_name, settings.ai_web_search_max_uses)
         messages: list[dict] = [{"role": "user", "content": prompt}]
         grounding: dict = {"queries": [], "results": []}
 

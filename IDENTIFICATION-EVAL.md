@@ -143,7 +143,10 @@ under the first, too-broad gate — thin/conflicting providers no longer trigger
 it; they just get a normal un-grounded call and, if the score is low, the review
 queue). Toggle with `settings.ai_web_search_enabled` (default on),
 `ai_web_search_max_uses` = 2. `config.ai_identify_cost_usd` 0.03 → 0.035 (the
-blended figure — most calls don't ground).
+blended figure — most calls don't ground). The `web_search` tool variant is
+picked per model (`_web_search_tool`): `_20260209` for Opus/Sonnet, basic
+`_20250305` for Haiku 4.5; if the model rejects it entirely the grounded call
+falls back to a plain un-grounded identify rather than erroring.
 
 **Live measurement — still to run** (needs Anthropic credit; offline CI never
 hits the network):
