@@ -193,12 +193,19 @@ mis-identification guards). The rest of that session's ideas, for later:
 
 - **Viewer as a reading tool, not just a shelf.** The family-facing app is
   "browse what we own"; the payoff features are about *reading*:
-  - **In-browser EPUB reader** — *scoped, `prompts/17-library-viewer-epub-reader.md`*.
-    Vendored `foliate-js` (no npm dep), full-screen paginated reader, font/theme/
-    TOC, IndexedDB offline byte-cache, reading position in `localStorage`, and a
-    "Continue reading" strip on the home screen. EPUB only. §D (word-count →
-    time-left, small backend field) and §E (cross-device reading-state Drive
-    sidecar → `prompts/18`) are deferred.
+  - **In-browser EPUB reader** — ~~*scoped, `prompts/17`*~~ **§A–C shipped
+    2026-09-07** (`e08b700` vendor foliate-js, `511d2cf` reader). `components/
+    Reader.tsx` over vendored `foliate-js` (EPUB path only, no npm dep):
+    full-screen paginated reader, tap/key/swipe turns, Contents drawer, Display
+    panel (size/typeface/spacing/margin/theme in `localStorage`), position saved
+    to `localStorage` and restored on reopen, opened books cached in IndexedDB
+    (`lib/bookCache.ts`, LRU 300 MB / 20). "Read" button on `.epub` rows;
+    "Continue reading" strip on the home screen (`components/ContinueReading.tsx`);
+    "Clear downloaded books (N)" in the header menu. **Full render + page-turn +
+    restore is still manual-QA** (foliate paginates into iframes; headless Chrome
+    can't drive them — verified the upstream reference reader behaves the same
+    headless). §D (word-count → time-left) and §E (cross-device reading-state
+    Drive sidecar → `prompts/18`) deferred.
   - Reading state per person — want-to-read / reading / finished. Even manual
     toggles unlock everything below. (§E of prompt 17 is the first slice.)
   - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,

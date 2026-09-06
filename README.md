@@ -5,7 +5,14 @@ Auto-organizing Google Drive EPUB library manager. See [SPEC.md](SPEC.md) for th
 ## Layout
 
 - `backend/` — FastAPI + SQLAlchemy + Alembic (async), layered `api/ → services/ → providers/ → data/`
-- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4
+- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4 (local admin UI)
+- `library-viewer/` — React + Vite + Tailwind, the family-facing browser. Reads the
+  `bookbrain-index.json` sidecar + covers straight from Drive (no backend). Deployed
+  to GitHub Pages on push to `main`. Includes an in-browser EPUB reader built on a
+  **vendored** copy of [foliate-js](https://github.com/johnfactotum/foliate-js)
+  (`src/vendor/foliate/`, EPUB path only, no npm dependency — see its `VERSION`).
+  Reader typography/theme and per-book reading position live in `localStorage`;
+  opened books are cached in IndexedDB for offline reading.
 
 ## Backend
 
