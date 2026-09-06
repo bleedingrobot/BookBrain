@@ -305,6 +305,30 @@ async def test_reconstructed_evidence_hash_matches_what_identification_stored(db
     assert hash_evidence(f.filename, reconstructed, []) == hash_evidence(f.filename, ev, [])
 
 
+def test_stage_d_evidence_fields_round_trip_through_metadata_sources() -> None:
+    ev = EpubEvidence(
+        title="Ancillary Justice",
+        authors=["Ann Leckie"],
+        language="en",
+        description="A soldier seeks revenge.",
+        isbn13="9780316246620",
+        isbn10="031624662X",
+        publisher="Orbit Books",
+        pub_date="2013-10-01",
+        subjects=["Science Fiction", "Space Opera"],
+        all_isbns=["9780316246620", "031624662X"],
+        text_snippet="[front matter] first published 2013",
+    )
+
+    rebuilt = svc.evidence_from_sources(_evidence_to_metadata_sources("x.epub", ev))
+
+    assert rebuilt.publisher == "Orbit Books"
+    assert rebuilt.pub_date == "2013-10-01"
+    assert rebuilt.subjects == ["Science Fiction", "Space Opera"]
+    assert rebuilt.all_isbns == ["9780316246620", "031624662X"]
+    assert rebuilt.description == "A soldier seeks revenge."
+
+
 async def test_dismiss_filters_the_report_without_a_rebuild(db_session):
     ev = EpubEvidence(title="Elantris", authors=["Brandon Sanderson"], language="en")
     book, _ = await _make_book(

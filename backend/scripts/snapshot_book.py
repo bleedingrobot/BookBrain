@@ -103,6 +103,10 @@ def _evidence_from_rows(rows: list[sqlite3.Row]) -> dict:
         "series": by_field.get("series"),
         "series_number": num,
         "text_snippet": (by_field.get("text_snippet") or "")[:_SNIPPET_CAP],
+        "publisher": by_field.get("publisher"),
+        "pub_date": by_field.get("pub_date"),
+        "subjects": by_field["subjects"].split(" | ") if by_field.get("subjects") else [],
+        "all_isbns": by_field["all_isbns"].split(" ") if by_field.get("all_isbns") else [],
     }
 
 
@@ -336,6 +340,10 @@ async def snapshot_from_drive(
             "series": ev.series,
             "series_number": ev.series_number,
             "text_snippet": ev.text_snippet[:_SNIPPET_CAP],
+            "publisher": ev.publisher,
+            "pub_date": ev.pub_date,
+            "subjects": ev.subjects,
+            "all_isbns": ev.all_isbns,
         },
         "candidates": [_candidate_to_dict(c) for c in cands],
         "candidate_fidelity": "fresh",

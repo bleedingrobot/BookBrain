@@ -392,6 +392,23 @@ def _standalone_correction() -> list[dict]:
     ]
 
 
+def test_build_prompt_includes_stage_d_evidence() -> None:
+    ev = _evidence(
+        description="A soldier seeks revenge across a galactic empire.",
+        publisher="Orbit Books",
+        pub_date="2013-10-01",
+        subjects=["Science Fiction", "Space Opera"],
+        all_isbns=["9780316246620", "031624662X"],
+    )
+    prompt = _build_prompt("x.epub", ev, [])
+
+    assert "EPUB description: A soldier seeks revenge" in prompt
+    assert "EPUB publisher: Orbit Books" in prompt
+    assert "EPUB publication date: 2013-10-01" in prompt
+    assert "EPUB subjects/genre: Science Fiction, Space Opera" in prompt
+    assert "All ISBNs found in the EPUB: 9780316246620, 031624662X" in prompt
+
+
 def test_build_prompt_byte_identical_without_corrections() -> None:
     evidence = _evidence()
     baseline = _build_prompt("dune.epub", evidence, [])

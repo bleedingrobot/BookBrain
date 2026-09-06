@@ -108,6 +108,10 @@ class CorpusEntry:
                 series=ev.get("series"),
                 series_number=ev.get("series_number"),
                 text_snippet=ev.get("text_snippet", ""),
+                publisher=ev.get("publisher"),
+                pub_date=ev.get("pub_date"),
+                subjects=list(ev.get("subjects", [])),
+                all_isbns=list(ev.get("all_isbns", [])),
             ),
             candidates=[
                 MetadataCandidate(

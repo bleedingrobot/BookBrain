@@ -124,6 +124,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn, **recent-books-only gate (~3% of calls)** after a first cut grounded 95% and tripled per-identify cost. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
 | B | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | real provider series + genre from Google Books / Open Library; series-disagreement penalty now needs a **provider consensus**, not one lone provider, so a messy provider string can't tank a correct EPUB series. **Offline number unchanged by construction** — the 74 corpus fixtures were snapshotted before providers returned series, so every recorded candidate still has `series: null`; the effect is only visible live / on a re-snapshot. No regression; `pytest -m corpus` green. No AI-cost change (pure provider/HTTP work). |
 | C | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | structured inbound-filename parser (`providers/filename/parser.py`) → labelled prompt block + `FILENAME_MATCHES_TITLE` now driven by the parse agreeing with the *resolved* title/author (the old "title is a substring of the filename anywhere" test — `"It"` matched everything — demoted to a fallback for callers that don't parse the name). Per-field precision flat (frozen AI), but **`wrong_auto_organized` on the corpus dropped 2 → 1** — one book that got a spurious substring +5 and auto-organized wrong now scores under the bar. `pytest -m corpus` green, review-queue volume unchanged. No AI cost (deterministic). |
+| D | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | richer EPUB evidence: `_extract_text_snippet` walks the spine (skips cover/nav/titlepage + sub-200-char docs, takes 2 substantive front-matter docs + one body sample ~20% in, each labelled); new `EpubEvidence.publisher` / `pub_date` / `subjects` / `all_isbns` (scans every `<dc:identifier>` + `<dc:source>`); `description` + all four now in `_build_prompt`. `hash_evidence` deliberately **unchanged** — the ~2200 cached AI decisions stay valid, the richer evidence only reaches genuinely-new files. Per-field flat (frozen AI); `pytest -m corpus` green. No AI cost. |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -244,3 +245,37 @@ answer, so a prompt hint / confidence tweak can't move title/author/series).
 What *did* move: `wrong_auto_organized` on the corpus **2 → 1** — a book that
 picked up a spurious substring +5 and auto-organized wrong now lands under the
 bar. Review-queue volume unchanged. `pytest -m corpus` green; no AI cost.
+
+### Stage D — copyright-page + real-prose text extraction (`prompts/15` Stage D)
+
+Finding F2: `_extract_text_snippet` returned only the first spine document —
+almost always `cover.xhtml` / `titlepage.xhtml`, near-useless — and `description`
+was parsed but never sent to the model.
+
+- **`providers/epub/parser.py::_extract_text_snippet`** now walks the spine
+  (bounded to 10 reads for the parse timeout): skips docs whose manifest
+  `properties` include `nav` / `cover-image`, whose basename looks like
+  cover/titlepage/toc/halftitle, or whose stripped text is < 200 chars; takes
+  the first 2 substantive docs as `[front matter]` (the copyright page —
+  publisher, "first published", ISBN — lands here) plus one doc ~20% into the
+  spine as `[body sample]` (first-chapter prose, a strong fingerprint), total
+  still capped at 4000 chars. Falls back to the old first-doc behaviour when
+  nothing substantive is found (very short books).
+- **New `EpubEvidence` fields** (all defaulted): `publisher` (`<dc:publisher>`),
+  `pub_date` (`<dc:date>`, preferring `opf:event="publication"`), `subjects`
+  (`list[str]` from `<dc:subject>`), `all_isbns` (`list[str]` — every valid ISBN
+  across all `<dc:identifier>` **and** `<dc:source>`, deduped, document order).
+  `isbn13` / `isbn10` are now the first of each length from `all_isbns` (was
+  "last `<dc:identifier>` wins").
+- **`_build_prompt`** now includes `EPUB description`, `EPUB publisher`,
+  `EPUB publication date`, `EPUB subjects/genre`, and the full ISBN list when
+  there's more than one.
+- **`hash_evidence` is deliberately unchanged** — it does not include the new
+  fields (or `text_snippet`), so the ~2200 cached `ai_decisions` stay valid and
+  are not re-billed. The richer evidence reaches only genuinely-new files.
+- Round-trip: `scan_service._evidence_to_metadata_sources` /
+  `reident_audit_service.evidence_from_sources` / `scripts/snapshot_book.py`
+  updated for the new fields; fidelity test in `test_reident_audit_service.py`.
+
+**Per-field corpus precision flat** (frozen AI). `pytest -m corpus` green; no AI
+cost (deterministic parse).

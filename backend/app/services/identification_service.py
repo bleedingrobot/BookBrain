@@ -311,8 +311,18 @@ def _build_prompt(
         f"EPUB ISBN-10: {evidence.isbn10 or '(none)'}",
         f"EPUB series: {evidence.series or '(none)'}",
     ]
+    if len(evidence.all_isbns) > 1:
+        lines.append(f"All ISBNs found in the EPUB: {', '.join(evidence.all_isbns)}")
+    if evidence.description:
+        lines.append(f"EPUB description: {evidence.description[:600]}")
+    if evidence.publisher:
+        lines.append(f"EPUB publisher: {evidence.publisher}")
+    if evidence.pub_date:
+        lines.append(f"EPUB publication date: {evidence.pub_date}")
+    if evidence.subjects:
+        lines.append(f"EPUB subjects/genre: {', '.join(evidence.subjects[:12])}")
     if evidence.text_snippet:
-        lines.append(f"First-chapter/copyright-page text: {evidence.text_snippet[:2000]}")
+        lines.append(f"EPUB text (front matter + a body sample): {evidence.text_snippet[:2600]}")
 
     if candidates:
         lines.append("")

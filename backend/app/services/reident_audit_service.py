@@ -123,6 +123,10 @@ def evidence_from_sources(rows: list[MetadataSource]) -> EpubEvidence:
         series=by_field.get("series"),
         series_number=series_number,
         text_snippet=by_field.get("text_snippet", ""),
+        publisher=by_field.get("publisher"),
+        pub_date=by_field.get("pub_date"),
+        subjects=by_field["subjects"].split(" | ") if by_field.get("subjects") else [],
+        all_isbns=by_field["all_isbns"].split(" ") if by_field.get("all_isbns") else [],
     )
 
 

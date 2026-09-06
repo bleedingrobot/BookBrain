@@ -792,6 +792,14 @@ def _evidence_to_metadata_sources(
         fields.append(("series", evidence.series, source))
     if evidence.series_number is not None:
         fields.append(("series_number", str(evidence.series_number), source))
+    if evidence.publisher:
+        fields.append(("publisher", evidence.publisher, source))
+    if evidence.pub_date:
+        fields.append(("pub_date", evidence.pub_date, source))
+    if evidence.subjects:
+        fields.append(("subjects", " | ".join(evidence.subjects), source))
+    if evidence.all_isbns:
+        fields.append(("all_isbns", " ".join(evidence.all_isbns), source))
     if evidence.text_snippet:
         fields.append(("text_snippet", evidence.text_snippet, source))
     return [

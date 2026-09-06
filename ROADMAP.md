@@ -87,6 +87,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     `BookCandidate(source="filename")` for the audit (filtered out of the
     provider-consensus maths). Corpus `wrong_auto_organized` 2 → 1; per-field
     flat (frozen AI). No AI cost.
+  - **Stage D shipped** (2026-09-06) — richer EPUB evidence (F2). Completes
+    Tier 1. `_extract_text_snippet` walks the spine (skips cover/nav/titlepage +
+    < 200-char docs; `[front matter]` = first 2 substantive docs, `[body sample]`
+    = one doc ~20% in; 4000-char cap; old fallback for tiny books). New
+    `EpubEvidence.publisher` / `pub_date` / `subjects` / `all_isbns` (every ISBN
+    across all `<dc:identifier>` + `<dc:source>`). `description` + all four into
+    `_build_prompt`. **`hash_evidence` deliberately unchanged** so the ~2200
+    cached `ai_decisions` stay valid — richer evidence reaches only new files.
+    Round-trip + fidelity test updated. No AI cost.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

@@ -381,6 +381,22 @@ or demoted.
 
 #### Stage D — Copyright-page + real-prose text extraction
 
+> **DONE 2026-09-06.** `_extract_text_snippet` walks the spine (bounded to 10
+> reads): skips `nav`/`cover-image` properties, cover/titlepage/toc basenames,
+> and < 200-char docs; emits `[front matter] …` (first 2 substantive docs) +
+> `[body sample] …` (one doc ~20% into the spine), 4000-char cap, old first-doc
+> fallback for tiny books. New `EpubEvidence.publisher` / `pub_date` /
+> `subjects` / `all_isbns` (every ISBN across all `<dc:identifier>` + `<dc:source>`;
+> `isbn13`/`isbn10` = first of each length). `_build_prompt` gained
+> `EPUB description` / `publisher` / `publication date` / `subjects/genre` +
+> the full ISBN list. **`hash_evidence` untouched** — new fields aren't in it,
+> so the cached `ai_decisions` stay valid and unbilled; richer evidence reaches
+> only new files. Round-trip (`_evidence_to_metadata_sources` /
+> `evidence_from_sources` / `snapshot_book.py`) + fidelity test updated. Tests:
+> `test_epub_parser.py` (+4, new `build_rich_epub` fixture), plus
+> `test_reident_audit_service.py` / `test_identification_service.py`. Per-field
+> corpus precision flat (frozen AI); `pytest -m corpus` green; no AI cost.
+
 **Why.** F2. The current snippet is usually the cover page.
 
 **What exists.** `providers/epub/parser.py::_extract_text_snippet` — returns
@@ -620,7 +636,12 @@ there's no batch consensus.
 │                                  filename_corroborates verdict replaces the
 │                                  weak substring test; corpus wrong_auto_organized
 │                                  2→1. Per-field flat (frozen AI).
-├─ D  richer text/evidence      ── Tier 1 — D remains
+├─ D  richer text/evidence      ── DONE (2026-09-06). Spine-walking text snippet
+│                                  ([front matter] + [body sample], skips cover/nav);
+│                                  EpubEvidence.publisher/pub_date/subjects/all_isbns;
+│                                  description + all four into _build_prompt.
+│                                  hash_evidence unchanged (cache stays valid).
+│                                  Tier 1 COMPLETE.
 │
 ├─ E  placeholder detector      ┐
 ├─ F  ISBN trust check          │ Tier 2 — E/F/G before H
