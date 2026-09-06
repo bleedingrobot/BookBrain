@@ -20,11 +20,10 @@ Ran in this order — 3 and 5 leaned on 1 and 2, but none was a hard dependency:
 | 3 | [`03-epub-metadata-writeback.md`](03-epub-metadata-writeback.md) | Write the resolved title/author/series + cover into the EPUB itself |
 | 5 | [`05-bulk-reidentify-audit.md`](05-bulk-reidentify-audit.md) | Re-check every organised book's identification, report what changed |
 
-## 2026-09-06 review batch #2 (`REVIEW-2026-09-06.md`)
+## 2026-09-06 review batch #2 (`REVIEW-2026-09-06.md`) — all shipped
 
-Recommended order: **06 first** (only data-loss finding), then 07 (independent,
-viewer-only), then 08 before 06 lands if 06 adds a migration, then 09, then
-10 / 11 (polish).
+Worked in one session via `prompts/12` (order 06 → 08 → 07 → 10 → 09 → 11),
+commit per stage. SHAs + details in `REVIEW-2026-09-06.md` §"Shipped 2026-09-06".
 
 | # | File | Sev | One line |
 |---|------|-----|----------|
