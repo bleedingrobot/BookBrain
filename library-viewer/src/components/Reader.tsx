@@ -121,7 +121,13 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
         view.renderer.setAttribute('flow', 'paginated')
         view.renderer.setAttribute('margin', String(p.margin))
         view.renderer.setAttribute('max-inline-size', '720')
-        view.renderer.setAttribute('max-column-count', '1')
+        // Two pages on a wide screen, one in portrait (foliate's own
+        // max-column-count-portrait handles the switch).
+        view.renderer.setAttribute('max-column-count', '2')
+        // Default is 1440px, which leaves a big empty band above and below the
+        // text on a tall phone — let the column fill the screen (bounded only
+        // by `margin`).
+        view.renderer.setAttribute('max-block-size', '4000')
         view.renderer.setStyles?.(readerCss(p))
         setToc(view.book.toc ?? [])
 
