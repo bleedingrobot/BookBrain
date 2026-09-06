@@ -1,4 +1,5 @@
 import re
+from difflib import SequenceMatcher
 
 _NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 _LEADING_ARTICLE_RE = re.compile(r"^(the|a|an)\s+")
@@ -80,3 +81,17 @@ def texts_match(a: str | None, b: str | None) -> bool:
 def titles_match(a: str | None, b: str | None) -> bool:
     na, nb = normalize_title(a), normalize_title(b)
     return bool(na) and na == nb
+
+
+def title_similarity(a: str | None, b: str | None) -> float:
+    """0..1 character-level similarity (difflib ratio) of two titles, compared
+    with the *strict* normaliser — leading article folded, but the subtitle
+    kept. Used where ``titles_match``'s "strip everything after a colon" is too
+    loose to trust: "Mistborn: The Final Empire" and "Mistborn: The Well of
+    Ascension" both pass ``titles_match`` but score ~0.6 here."""
+    na, nb = normalize_title_strict(a), normalize_title_strict(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    return SequenceMatcher(None, na, nb).ratio()

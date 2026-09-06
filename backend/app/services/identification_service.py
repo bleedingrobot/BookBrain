@@ -15,7 +15,18 @@ from app.services.metadata_sanity import (
     looks_like_placeholder_author,
     looks_like_placeholder_title,
 )
-from app.services.text_match import normalize, normalize_words, texts_match, titles_match
+from app.services.text_match import (
+    normalize,
+    normalize_words,
+    texts_match,
+    title_similarity,
+    titles_match,
+)
+
+# prompts/15 Stage F. Below this character-level agreement between the EPUB
+# title and an ISBN-matched provider title, the ISBN is not trusted for a
+# deterministic result — the AI path decides instead.
+_ISBN_TITLE_SIMILARITY_MIN = 0.80
 
 
 @dataclass
@@ -286,7 +297,16 @@ def _find_isbn_match(
         )
         if not isbn_matches:
             continue
+        # prompts/15 Stage F — an ISBN in an EPUB is often wrong (a print ISBN
+        # on an ebook, an OCR'd digit, the wrong edition). titles_match alone
+        # is too weak a check to then trust it deterministically: it strips
+        # everything after a ':' so "Mistborn: The Final Empire" and "Mistborn:
+        # The Well of Ascension" pass it. Require real character-level title
+        # agreement as well, else fall through to the AI path (the candidate is
+        # still passed along).
         if not titles_match(candidate.title, evidence.title):
+            continue
+        if title_similarity(candidate.title, evidence.title) < _ISBN_TITLE_SIMILARITY_MIN:
             continue
         if not texts_match(_first_author(candidate), _first_author_evidence(evidence)):
             continue

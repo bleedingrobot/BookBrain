@@ -140,6 +140,41 @@ async def test_fast_path_not_taken_when_isbn_mismatched() -> None:
     assert len(fake_client.prompts) == 1
 
 
+async def test_wrong_isbn_with_a_subtitle_collision_falls_through_to_ai() -> None:
+    # prompts/15 Stage F: a wrong-but-valid ISBN resolves to a different book in
+    # the same series. titles_match passes (it strips after the colon); the
+    # edit-distance check does not, so the AI path runs.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Mistborn: The Final Empire", author="Brandon Sanderson",
+            series="Mistborn", series_number=1, ai_confidence=85,
+            reasoning_summary="text analysis", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Mistborn: The Well of Ascension",
+            authors=["Brandon Sanderson"],
+            isbn13="9780765316882",
+            source="google_books",
+        )
+    ]
+
+    result = await service.identify(
+        filename="mistborn1.epub",
+        evidence=_evidence(
+            title="Mistborn: The Final Empire",
+            authors=["Brandon Sanderson"],
+            isbn13="9780765316882",
+        ),
+        candidates=candidates,
+    )
+
+    assert result.model == "fake-model"  # not "deterministic"
+    assert len(fake_client.prompts) == 1
+
+
 async def test_ai_path_used_when_no_isbn_match() -> None:
     fake_client = _FakeAIClient(
         result=AIIdentificationResult(

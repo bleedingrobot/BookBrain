@@ -3,8 +3,25 @@ from app.services.text_match import (
     normalize_title,
     normalize_title_strict,
     texts_match,
+    title_similarity,
     titles_match,
 )
+
+
+def test_title_similarity_separates_same_series_different_book() -> None:
+    # Both pass titles_match (colon-strip) but are different books.
+    assert titles_match("Mistborn: The Final Empire", "Mistborn: The Well of Ascension")
+    assert title_similarity("Mistborn: The Final Empire", "Mistborn: The Well of Ascension") < 0.8
+
+
+def test_title_similarity_tolerates_a_leading_article() -> None:
+    assert title_similarity("The Hobbit", "Hobbit") == 1.0
+    assert title_similarity("Dune", "Dune") == 1.0
+
+
+def test_title_similarity_empty() -> None:
+    assert title_similarity(None, "x") == 0.0
+    assert title_similarity("x", "") == 0.0
 
 
 def test_normalize_strips_punctuation_and_case() -> None:
