@@ -13,4 +13,5 @@ export interface OperationSummary {
   reason: string | null
   status: string
   dry_run: boolean
+  undoable: boolean
 }

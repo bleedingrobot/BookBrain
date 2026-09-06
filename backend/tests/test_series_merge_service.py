@@ -1,6 +1,15 @@
 from sqlalchemy import select
 
-from app.data.models import Author, Book, File, FileStatus, Operation, OperationStatus, Series
+from app.data.models import (
+    Author,
+    Book,
+    File,
+    FileStatus,
+    Operation,
+    OperationAction,
+    OperationStatus,
+    Series,
+)
 from app.providers.ai.types import AISeriesMergeResult
 from app.services.series_merge_service import (
     SeriesMergeValidationError,
@@ -241,6 +250,9 @@ async def test_apply_series_merge_moves_files_and_repoints_books(db_session) -> 
     assert len(ops) == 1
     assert ops[0].status == OperationStatus.done
     assert ops[0].file_id == moved_file.id
+    # Logged as series_merge, not move_and_rename — so undo_operation refuses
+    # it (undoing would land the file in the deleted source folder).
+    assert ops[0].action == OperationAction.series_merge
 
 
 async def test_apply_series_merge_leaves_excluded_series_untouched(db_session) -> None:

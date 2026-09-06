@@ -50,6 +50,11 @@ class OperationAction(str, enum.Enum):
     # in place. Not app-undoable — we don't keep the original bytes (Drive's
     # own revision history is the fallback). See operation_service.undo_operation.
     write_metadata = "write_metadata"
+    # A file moved as part of a series merge. Logged for the Activity trail
+    # but deliberately NOT auto-undoable: the merge deletes the emptied source
+    # Series row + folder, so a naive "move it back" lands the file in a
+    # deleted folder with a stale book.series. See operation_service.
+    series_merge = "series_merge"
 
 
 class OperationStatus(str, enum.Enum):

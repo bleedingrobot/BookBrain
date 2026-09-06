@@ -30,6 +30,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **Series-merge operations are honestly non-undoable** (2026-09-06, review batch
+  #2 / finding 10, P2) — `apply_series_merge` logged each moved file as
+  `Operation(move_and_rename)`, which `undo_operation` treated as auto-undoable
+  and Activity showed an Undo button for — but undoing one moves the file back to
+  the folder the merge just deleted, with `book.series` still pointing at
+  canonical. New `OperationAction.series_merge` (migration `f0e1d2c3b4a5`,
+  batch-alter + a data UPDATE converting existing `move_and_rename` rows whose
+  `reason` starts `series merge:`). `undo_operation` raises with a message
+  pointing at the real remedy. `OperationSummary.undoable` (bool) computed from
+  `_UNDOABLE_ACTIONS`; Activity gates Undo on it — which also correctly hides the
+  never-worked Undo on `write_metadata` rows — and shows an action label +
+  explanatory note for merges.
+
 - **library-viewer: incremental sync dropped a file on a `parents`-less change**
   (2026-09-06, review batch #2 / finding 07, P1) — `applyChanges` computed
   `(file.parents ?? []).some(...)` and evicted the cache entry when false — which

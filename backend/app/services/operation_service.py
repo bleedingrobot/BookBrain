@@ -16,6 +16,25 @@ class OperationNotUndoableError(Exception):
     pass
 
 
+# Only a plain organize move/rename can be reversed by moving the file back.
+# write_metadata doesn't keep the original bytes; series_merge deletes the
+# emptied source Series row + folder, so "move it back" lands the file in a
+# deleted folder with a stale book.series.
+_UNDOABLE_ACTIONS = {
+    OperationAction.move,
+    OperationAction.rename,
+    OperationAction.move_and_rename,
+}
+
+
+def _is_undoable(operation: Operation) -> bool:
+    return (
+        not operation.dry_run
+        and operation.status == OperationStatus.done
+        and operation.action in _UNDOABLE_ACTIONS
+    )
+
+
 async def list_operations(session: AsyncSession, limit: int = 200) -> list[OperationSummary]:
     result = await session.execute(
         select(Operation, File.filename)
@@ -51,16 +70,13 @@ async def undo_operation(
     operation = await session.get(Operation, operation_id)
     if operation is None:
         raise OperationNotFoundError(f"operation {operation_id} not found")
-    _UNDOABLE_ACTIONS = {
-        OperationAction.move,
-        OperationAction.rename,
-        OperationAction.move_and_rename,
-    }
-    if (
-        operation.dry_run
-        or operation.status != OperationStatus.done
-        or operation.action not in _UNDOABLE_ACTIONS
-    ):
+    if not _is_undoable(operation):
+        if operation.action == OperationAction.series_merge:
+            raise OperationNotUndoableError(
+                f"operation {operation_id} is a series merge — it can't be auto-undone. "
+                "Re-run the merge with the other name as canonical, or split the series "
+                "in Library Audit."
+            )
         raise OperationNotUndoableError(
             f"operation {operation_id} is not an undoable completed move"
         )
@@ -104,4 +120,5 @@ def _to_summary(operation: Operation, filename: str) -> OperationSummary:
         reason=operation.reason,
         status=operation.status.value,
         dry_run=operation.dry_run,
+        undoable=_is_undoable(operation),
     )

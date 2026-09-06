@@ -264,7 +264,7 @@ async def apply_series_merge(
                     session.add(
                         Operation(
                             file_id=file_row.id,
-                            action=OperationAction.move_and_rename,
+                            action=OperationAction.series_merge,
                             original_name=file_row.filename,
                             original_parent_id=file_row.drive_parent_id,
                             new_name=filename,
