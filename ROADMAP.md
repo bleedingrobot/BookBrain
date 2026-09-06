@@ -96,7 +96,29 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     `_build_prompt`. **`hash_evidence` deliberately unchanged** so the ~2200
     cached `ai_decisions` stay valid — richer evidence reaches only new files.
     Round-trip + fidelity test updated. No AI cost.
-- **Reident recompute + uncorroborated-series penalty** —
+  - **Tier 2 shipped** (2026-09-06) — E/F/G/H.
+    - **E** placeholder/junk-metadata detector: `metadata_sanity.looks_like_placeholder_title`
+      / `_author` ("Unknown"/"Calibre"/"book1"/bare-number/publisher-as-author;
+      short titles need ISBN/provider corroboration). Fast path skipped on a
+      placeholder EPUB; `PLACEHOLDER_METADATA_PENALTY` -30 +
+      `TITLE_IS_FILENAME_ONLY_PENALTY` -10 on the *resolved* metadata (opt-in
+      via `resolved_title`/`resolved_author`).
+    - **F** ISBN-trust check: `text_match.title_similarity` (difflib, strict
+      normaliser); the fast path needs ≥ 0.80 title agreement with the
+      ISBN-matched candidate, else falls through to the AI path.
+    - **G** positive confidence: `DESCRIPTION_CORROBORATES` +3 /
+      `PUBYEAR_PLAUSIBLE` +2 (additive, opt-in). `resolved_series`/`_title`/
+      `_author` now threaded through `_recompute_confidence` (resolves the item
+      below). Thresholds kept 85/95 (sweep in IDENTIFICATION-EVAL.md).
+    - **H** verification pass: one adversarial `audit_book_identity` call for
+      the 70–95 band — agree → +10 (cap 94), disagree → take-correction + force
+      review, uncertain → force review. `settings.ai_verify_enabled` **defaults
+      OFF** (one extra ~$0.03 call per uncertain new book).
+- **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
+  **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
+  `resolved_title` / `resolved_author`, so the audit's display recompute matches
+  what a fresh scan of the book scores today. (Original note kept below for
+  history.)
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.
   Deciding to apply it there (probably yes) is its own change + test.

@@ -438,6 +438,19 @@ round-trip test green.
 
 #### Stage E — Junk / placeholder metadata detector
 
+> **DONE 2026-09-06.** `metadata_sanity.looks_like_placeholder_title` /
+> `looks_like_placeholder_author` (+ `has_placeholder_metadata`): curated stub
+> list, `book N` / `volume N`, all-digits, and — only without ISBN/provider
+> corroboration — ≤ 2 alnum chars (so "It"/"1984"/"S." survive with an ISBN).
+> Publisher names count as a placeholder author. `IdentificationService.identify`
+> skips `_find_isbn_match` when the EPUB title/author is a placeholder.
+> `confidence_service`: `PLACEHOLDER_METADATA_PENALTY` -30 (resolved title/author
+> still a stub) + `TITLE_IS_FILENAME_ONLY_PENALTY` -10 (resolved title == the
+> filename stem, uncorroborated), both opt-in via `resolved_title`/
+> `resolved_author` so reident + old callers unchanged. No scored corpus book
+> has junk metadata (triangulation needs real data), so the number is flat; the
+> invariant/mutation tests already carry "junk must not reach high confidence".
+
 **Why.** F4. A junk-titled file must never fast-path and should never
 auto-organize on EPUB metadata alone.
 
@@ -464,6 +477,15 @@ precision on that slice up.
 
 #### Stage F — ISBN trust check (stop blind fast-pathing)
 
+> **DONE 2026-09-06.** New `text_match.title_similarity(a, b)` — difflib ratio
+> on the *strict*-normalised titles (article folded, subtitle kept).
+> `_find_isbn_match` now also requires `title_similarity >= 0.80` between the
+> EPUB title and the ISBN-matched provider title (catches "Mistborn: The Final
+> Empire" vs "…The Well of Ascension", which `titles_match` collapses); on
+> failure the AI path runs with the candidate still supplied. Parse-time ISBN
+> checksum validation was already done in Stage D. Corpus fast-path hit-rate
+> unchanged at 25.4% — no legit deterministic win lost.
+
 **Why.** F4. A wrong ISBN currently yields a wrong book at deterministic
 confidence.
 
@@ -489,6 +511,19 @@ doesn't collapse (>, say, 80% of its previous value).
 
 #### Stage G — Confidence: positive corroboration components
 
+> **DONE 2026-09-06.** `DESCRIPTION_CORROBORATES` (+3 — an EPUB/provider blurb
+> contains the resolved title, author, or series) and `PUBYEAR_PLAUSIBLE` (+2 —
+> a real ≤-current year in `pub_date`/`first_published`, all such years within
+> 5). **Additive, not rebalanced** — small enough that the [0,100] clamp
+> protects the top and they can't cross a threshold alone; opt-in via
+> `resolved_title`/`resolved_author` so reident + old callers are unchanged (no
+> mass test-number churn). `FILENAME_CORROBORATES` already landed in Stage C.
+> `resolved_series`/`_title`/`_author` now threaded through
+> `reident_audit_service._recompute_confidence` (the ROADMAP item).
+> **Thresholds kept at 85/95** — the sweep in `IDENTIFICATION-EVAL.md` is
+> hard-case-weighted + frozen-AI, can't justify a change. A first cut at +5/+3
+> tipped one series-only-wrong book over 85; dialed back to +3/+2. Corpus flat.
+
 **Why.** F4. Reward the signals that actually predict correctness.
 
 **Goal.** Add to `confidence_service.score` (keep the sum-to-100 shape by
@@ -511,6 +546,18 @@ chosen thresholds + the precision/recall at each in `IDENTIFICATION-EVAL.md`.
 materially worse. Documented threshold sweep.
 
 #### Stage H — Verification pass for the uncertain band
+
+> **DONE 2026-09-06.** For an AI-path result at `70 <= computed_confidence <
+> confidence_auto_organize`, `IdentificationService.identify` makes ONE
+> adversarial follow-up call. **Reused the existing `audit_book_identity` tool**
+> (its "confirm exactly or correct it, series especially" shape already fits)
+> via `_build_verification_prompt` rather than adding a new schema. Agree
+> (+ series real) → `+10` confidence capped at 94 (still shows in the audit
+> log); `stored_is_wrong` → take `corrected_*` **and** force review; `uncertain`
+> → force review; verifier error → keep original. `settings.ai_verify_enabled`
+> **defaults False** — one extra ~$0.03 call per uncertain new book, and
+> steady-state spend is the constraint. Not grounded (cost). Branch tests with
+> `AI_VERIFY_ENABLED=true` + a fake client. Corpus flat (feature off).
 
 **Why.** F3. A second look at exactly the books most likely to be wrong.
 
@@ -643,10 +690,26 @@ there's no batch consensus.
 │                                  hash_evidence unchanged (cache stays valid).
 │                                  Tier 1 COMPLETE.
 │
-├─ E  placeholder detector      ┐
-├─ F  ISBN trust check          │ Tier 2 — E/F/G before H
-├─ G  positive confidence       │
-├─ H  verification pass         ┘
+├─ E  placeholder detector      ── DONE (2026-09-06). metadata_sanity placeholder
+│                                  title/author detectors; fast path skipped on a
+│                                  placeholder EPUB; PLACEHOLDER_METADATA_PENALTY -30
+│                                  + TITLE_IS_FILENAME_ONLY_PENALTY -10 on resolved
+│                                  metadata. No scored corpus case; per-field flat.
+├─ F  ISBN trust check          ── DONE (2026-09-06). text_match.title_similarity
+│                                  (difflib, strict-normalised); fast path needs
+│                                  >= 0.80 title agreement w/ the ISBN-matched
+│                                  candidate. Fast-path hit-rate 25.4% unchanged.
+├─ G  positive confidence       ── DONE (2026-09-06). DESCRIPTION_CORROBORATES +3 /
+│                                  PUBYEAR_PLAUSIBLE +2 (additive, opt-in);
+│                                  resolved_series/_title/_author threaded through
+│                                  reident recompute. Thresholds kept 85/95 (sweep
+│                                  in IDENTIFICATION-EVAL.md). Corpus flat.
+├─ H  verification pass         ── DONE (2026-09-06). One adversarial
+│                                  audit_book_identity call for the 70–95 band;
+│                                  agree +10 (cap 94), disagree take-correction +
+│                                  force review, uncertain force review.
+│                                  settings.ai_verify_enabled defaults OFF (cost).
+│                                  Tier 2 COMPLETE.
 │
 ├─ I  recently-organized tray   ┐
 ├─ J  author canonicalisation   │ Tier 3 — independent
