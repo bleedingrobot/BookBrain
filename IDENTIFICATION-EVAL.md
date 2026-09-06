@@ -73,40 +73,45 @@ python scripts/build_truth.py --only <fixture-id> --write         # triangulate 
 
 ## Baseline
 
-**Partial — 35 of 74 books scored.** The Anthropic API ran out of credit
-partway through the first `build_truth` run, so only ~5 books have the
-web-search-grounded Claude voices; the rest are triangulated from Wikidata +
-EPUB + provider only, which rarely confirms a *series* independently (series
-coverage is 9/35). Top up API credit and re-run
-`python scripts/build_truth.py --all --write` (~$8, ~40 min) to fill in the
-grounded voices — coverage should jump to ~55-65/74 and the baseline can be
-re-stamped. The number below is the regression floor until then.
+**59 of 74 books scored** (title/author ~59, series 47, series-# 43). ~48 books
+have the full web-grounded Claude voices; the API ran out of credit before the
+last ~15, which are Wikidata-only and mostly land `unresolved`. Re-running
+`python scripts/build_truth.py --all --write` after a further top-up fills those
+in (it resumes from `_truth_cache/`, ~$6 for the remainder).
 
-Standing findings the harness already surfaces (all Stage J / author
-canonicalisation): `Iain M. Banks` vs `Iain Banks`, co-author lists
-(`Weis, Hickman` vs `Weis`), and house pseudonyms (`Richard Awlinson` vs
-`Scott Ciencin`) — 4 of the 4 current misses, 2 of them auto-organising.
+What the harness already catches (the failure modes `prompts/15` targets):
+- **invented series**: `christopher-rowe-sandstorm` — pipeline puts a standalone
+  in "Forgotten Realms"; `cassandra-clare-the-course-of-true-love` — pipeline
+  says "Tales from the Shadowhunter Academy", it's "The Bane Chronicles";
+  `charles-stross-halo` — "Accelerando" vs "Macx Family".
+- **missed series**: `dean-koontz-ashley-bell`, `carolyn-ives-gilman-testament-of-leaves`,
+  `evolvedraccoon-retired-archmage` — pipeline says standalone, they're book 1 of something.
+- **author canonicalisation** (Stage J): co-author lists (`Weis, Hickman` vs
+  `Weis`), house pseudonyms (`Richard Awlinson` vs `Scott Ciencin`) — 2 of these
+  auto-organise wrong today.
+- **omnibus title padding**: `The Paladins Omnibus` vs `The Paladins`,
+  `Wool Omnibus Edition (Wool 1 - 5)` vs `Wool Omnibus`.
 
 <!-- eval-baseline:begin -->
 ```json
 {
   "corpus_size": 74,
-  "scored": 35,
+  "scored": 59,
   "generated": "2026-09-06",
   "include_weak": true,
   "coverage": {
-    "title": 35,
-    "author": 33,
-    "series": 9,
-    "series_number": 9
+    "title": 59,
+    "author": 58,
+    "series": 47,
+    "series_number": 43
   },
   "precision": {
-    "title": 1.0,
-    "author": 0.8788,
-    "series": 1.0,
-    "series_number": 1.0
+    "title": 0.9492,
+    "author": 0.9483,
+    "series": 0.8723,
+    "series_number": 0.9535
   },
-  "exact_match": 0.8857
+  "exact_match": 0.8136
 }
 ```
 <!-- eval-baseline:end -->
@@ -115,4 +120,4 @@ canonicalisation): `Iain M. Banks` vs `Iain Banks`, co-author lists
 
 | stage | date | title | author | series | series-# | exact | notes |
 |---|---|---|---|---|---|---|---|
-| 0 | 2026-09-06 | 100% (35) | 87.9% (33) | 100% (9) | 100% (9) | 88.6% | harness + triangulation + invariants + mutation landed. Partial baseline — API credit exhausted mid-`build_truth`; re-run to complete. |
+| 0 | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | harness + triangulation + invariants + mutation. 59/74 scored (15 still Wikidata-only, credit ran out). This is the regression floor for Tier 1. |

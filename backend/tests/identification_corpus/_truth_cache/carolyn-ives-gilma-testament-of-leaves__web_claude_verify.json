@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Testament of Leaves",
+  "author": "Carolyn Ives Gilman",
+  "series": "Twenty Planets",
+  "series_number": null,
+  "url": "https://locusmag.com/review/testament-of-leaves-by-carolyn-ives-gilman-review-by-paul-di-filippo/",
+  "note": "conf=0.72; Title and author confirmed: novella published by Fairwood Press, August 2026, ISBN 978-1958880302, 120pp. The proposed series=None appears incorrect. The Locus review by Paul Di Filippo states the book belongs to Gilman's Twenty Planets sequence (sharing the First/Second Diaspora background with Halfway Human), and author bios for the launch event describe her SF as ranging from \"the far-future Twenty Planets universe.\" Twenty Planets is a real, catalogued series (Goodreads series 164361) comprising Halfway Human, Arkfall, The Ice Owl, and Dark Orbit; it is explicitly a shared-universe grouping whose entries are \"not directly connected,\" so there is no reliable installment number for this book — series_number left null. Caveat: the Locus attribution is somewhat hedged (\"sufficient googling seems to reveal\"), hence confidence below 0.8; no publisher page found that prints \"Twenty Planets\" on the book itself."
+}

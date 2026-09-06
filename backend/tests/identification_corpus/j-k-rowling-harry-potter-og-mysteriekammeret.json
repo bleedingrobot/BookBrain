@@ -49,17 +49,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Harry Potter og Mysteriekammeret",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 2.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -89,10 +89,27 @@
       "series_number": 2.0,
       "url": "https://www.wikidata.org/wiki/Q47209",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 2.0,
+      "url": "https://elibraryhh.overdrive.com/media/2938075",
+      "note": "conf=0.97; ISBN 9781781107461 matches the Norwegian-language ebook edition of Harry Potter og Mysteriekammeret (Pottermore Publishing, 23 Aug 2016), the Norwegian translation (by Torstein Bugge Høverstad) of Harry Potter and the Chamber of Secrets — book 2 of the Harry Potter series. Ark.no lists it under the Harry Potter series. Filename drops the final -t (\"Mysteriekammere\"); canonical title per metadata/retailers is \"Harry Potter og Mysteriekammeret\"."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 2.0,
+      "url": "https://www.ark.no/produkt/boker/barneboker/harry-potter-og-mysteriekammeret-9781781107461",
+      "note": "conf=0.97; ISBN 9781781107461 resolves to the Norwegian (bokmål) ebook edition of Harry Potter and the Chamber of Secrets, published by Pottermore Publishing (release 23 Aug 2016), translated by Torstein Bugge Høverstad. OverDrive lists series \"Harry Potter\"; it is book 2 of the seven-volume series. Filename's \"Mysteriekammere\" is a typo; correct title per EPUB metadata and retailer listings is \"Harry Potter og Mysteriekammeret\". Proposed record had all fields null, so all were filled in/corrected."
     }
   ],
   "truth_disagreements": [
-    "title: epub='Harry Potter og Mysteriekammeret'; provider='Harry Potter og mysteriekammeret'; wikidata='Harry Potter and the Chamber of Secrets'",
-    "author: epub='J. K. Rowling'; provider='J. K. Rowling'"
+    "title: chose 'Harry Potter og Mysteriekammeret', wikidata said 'Harry Potter and the Chamber of Secrets'"
   ]
 }

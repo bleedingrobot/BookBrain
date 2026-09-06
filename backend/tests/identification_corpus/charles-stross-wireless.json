@@ -55,8 +55,8 @@
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -86,6 +86,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q8026812",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://archive.org/details/wireless00stro",
+      "note": "conf=0.95; Wireless (Ace Books, 2009, ISBN 9780441017195) is Charles Stross's first major short-story collection, not a novel in a series. UK/other editions carry the subtitle \"The Essential Charles Stross\". It contains nine pieces including the original novella \"Palimpsest\" and \"Down on the Farm\", a Laundry Files (Bob Howard) story — but the collection itself is a standalone volume, not a numbered entry in the Laundry Files or any other series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://openlibrary.org/works/OL2465681W/Wireless",
+      "note": "conf=0.95; Verified: ISBN 9780441017195 = Wireless by Charles Stross, Ace Books, July 2009 (US 1st ed.). It is a standalone single-author short-story collection (contents: Missile Gap, Rogue Farm, A Colder War, MAXOS, Down on the Farm, Unwirer with Cory Doctorow, Snowball's Chance, Trunk and Disorderly, Palimpsest). UK Orbit edition adds the subtitle \"The Essential Charles Stross\" — a subtitle, not a series. Although one story (\"Down on the Farm\") belongs to the Laundry Files universe, the book itself is not part of that or any numbered series, so series = null. Proposed identification confirmed unchanged."
     }
   ],
   "truth_disagreements": []

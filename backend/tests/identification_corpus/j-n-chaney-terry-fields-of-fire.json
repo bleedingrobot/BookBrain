@@ -40,17 +40,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Fields of Fire",
+    "author": "J.N. Chaney, Terry Maggert",
+    "series": "Backyard Starship",
+    "series_number": 9.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -62,6 +62,24 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Fields of Fire",
+      "author": "J.N. Chaney & Terry Maggert",
+      "series": "Backyard Starship",
+      "series_number": 9.0,
+      "url": "https://www.fantasticfiction.com/c/j-n-chaney/fields-of-fire.htm",
+      "note": "conf=0.97; FantasticFiction lists it as the ninth book in the Backyard Starship series (2022), co-authored by J N Chaney and Terry Maggert; Amazon's audiobook edition confirms \"Backyard Starship, Book 9\". EPUB metadata lists only J.N. Chaney, but Terry Maggert is a confirmed co-author."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Fields of Fire",
+      "author": "J.N. Chaney, Terry Maggert",
+      "series": "Backyard Starship",
+      "series_number": 9.0,
+      "url": "https://www.fantasticfiction.com/c/j-n-chaney/fields-of-fire.htm",
+      "note": "conf=0.97; Proposed record was entirely empty; all fields supplied from verification. Title and series/number in the EPUB metadata are correct: Fields of Fire is Backyard Starship #9 (published 21 Aug 2022). The one correction is authorship — the EPUB credits only J.N. Chaney, but the book is co-written with Terry Maggert, who is credited on Amazon, Audible (Podium Audio, narrator Jeffrey Kafer), Goodreads, and Fantastic Fiction. Backyard Starship is a genuine, numbered, ongoing series (17+ volumes), not a fabricated grouping."
     }
   ],
   "truth_disagreements": []

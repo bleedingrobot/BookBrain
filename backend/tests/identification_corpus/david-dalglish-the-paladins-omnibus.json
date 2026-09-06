@@ -39,16 +39,16 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
+    "title": "The Paladins",
+    "author": "David Dalglish",
+    "series": "The Paladins",
     "series_number": null,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
       "series_number": "unresolved"
     }
   },
@@ -61,7 +61,27 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Paladins Omnibus",
+      "author": "David Dalglish",
+      "series": "The Paladins",
+      "series_number": null,
+      "url": "https://play.google.com/store/books/details/David_Dalglish_The_Paladins_Omnibus?id=eH7CAwAAQBAJ",
+      "note": "conf=0.93; Collected edition (also sold as \"The Paladins 4-Book Bundle\" / \"The Paladins Collection\" / \"The Paladins: Books 1-4\") containing all four novels of David Dalglish's Paladins series: Night of Wolves (#1, 2011), Clash of Faiths (#2, 2011), The Old Ways (#3, 2011/2012), and The Broken Pieces (#4, 2012). Note the filename abbreviates book 1 as \"Night Wolves\"; the actual title is \"Night of Wolves.\" Because it is an omnibus spanning volumes 1-4, it has no single series number (Goodreads lists it as The Paladins #1-4). The Paladins is set in Dalglish's wider Dezrel/Half-Orcs universe, but The Paladins is the tight sub-series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Paladins",
+      "author": "David Dalglish",
+      "series": "The Paladins",
+      "series_number": null,
+      "url": "https://www.fantasticfiction.com/d/david-dalglish/paladins/",
+      "note": "conf=0.93; Verified: this is the omnibus/bundle edition collecting David Dalglish's four Paladins novels — Night of Wolves (2011), Clash of Faiths (2011), The Old Ways (2011), The Broken Pieces (2012). Note the filename's \"Night Wolves\" is a slight corruption of \"Night of Wolves\". The bundle is titled \"The Paladins\" (also marketed as \"The Paladins 4-Book Bundle\" / \"The Paladins Omnibus\" / \"The Paladins: Books 1-4\"). Series is the real, published \"The Paladins\" series (a spin-off within Dalglish's Half-Orcs/Dezrel universe); since this volume collects books 1-4 rather than occupying a single numbered slot, series_number is null."
     }
   ],
-  "truth_disagreements": []
+  "truth_disagreements": [
+    "title: chose 'The Paladins', web_claude_identify said 'The Paladins Omnibus'"
+  ]
 }

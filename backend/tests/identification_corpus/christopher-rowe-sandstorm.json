@@ -49,17 +49,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
+    "title": "Sandstorm",
+    "author": "Christopher Rowe",
     "series": null,
     "series_number": null,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -80,10 +80,25 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Sandstorm",
+      "author": "Christopher Rowe",
+      "series": null,
+      "series_number": null,
+      "url": "https://forgottenrealms.fandom.com/wiki/Sandstorm_(novel)",
+      "note": "conf=0.93; Full title on print edition: \"Sandstorm: A Forgotten Realms Novel\" (Wizards of the Coast, March 2011, ISBN 9780786957422). The Forgotten Realms Wiki explicitly describes it as a stand-alone novel; it belongs to the shared Forgotten Realms setting but not to any numbered sub-series. It was Rowe's debut novel. The filename's \"Not A Series ... 0 of 0\" is consistent with standalone status."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Sandstorm",
+      "author": "Christopher Rowe",
+      "series": null,
+      "series_number": null,
+      "url": "https://forgottenrealms.fandom.com/wiki/Sandstorm_(novel)",
+      "note": "conf=0.93; Title and author from metadata confirmed. Sandstorm (Wizards of the Coast, March 2011, ISBN 978-0786957422) is explicitly described by the Forgotten Realms Wiki and Goodreads as a stand-alone novel — Rowe's debut. \"Forgotten Realms\" is a shared-world imprint/setting, not a tight numbered series, so series is reported as null (consistent with the filename's own \"Not A Series\" marker and \"0 of 0\" numbering). No sub-series (e.g., no trilogy or Sundering-style arc) is associated with this book."
     }
   ],
-  "truth_disagreements": [
-    "title: epub='Sandstorm'; provider='Sandstorm'",
-    "author: epub='Christopher Rowe'; provider='Christopher Rowe'"
-  ]
+  "truth_disagreements": []
 }

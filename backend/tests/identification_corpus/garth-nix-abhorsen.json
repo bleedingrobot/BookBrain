@@ -48,15 +48,15 @@
   "answer": {
     "title": "Abhorsen",
     "author": "Garth Nix",
-    "series": null,
-    "series_number": null,
+    "series": "Old Kingdom",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -86,6 +86,24 @@
       "series_number": 3.0,
       "url": "https://www.wikidata.org/wiki/Q1473891",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Abhorsen",
+      "author": "Garth Nix",
+      "series": "Old Kingdom",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Abhorsen-OLD-KINGDOM-Book-3-ebook/dp/B003U2SKTI",
+      "note": "conf=0.97; ISBN 9781741769579 matches an Australian (Allen & Unwin) ebook edition of Abhorsen per Goodreads/Booktopia. Amazon lists it as \"Old Kingdom Book 3\"; it is the concluding volume of the original trilogy after Sabriel (1) and Lirael (2). Series sometimes called \"Abhorsen Trilogy\"; \"Old Kingdom\" is the canonical/publisher series name and matches the filename."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Abhorsen",
+      "author": "Garth Nix",
+      "series": "Old Kingdom",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Abhorsen-OLD-KINGDOM-Book-3-ebook/dp/B003U2SKTI",
+      "note": "conf=0.97; Title and author confirmed. The proposed series=None is wrong: Abhorsen is the third book of Garth Nix's Old Kingdom series (also known as the Abhorsen trilogy, comprising Sabriel, Lirael, Abhorsen, later extended with Clariel and Goldenhand). Filename and listings both place it as Old Kingdom #3. ISBN 9781741769579 corresponds to an Allen & Unwin (Australian) ebook edition."
     }
   ],
   "truth_disagreements": []

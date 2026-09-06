@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "The Urth of the New Sun",
+  "author": "Gene Wolfe",
+  "series": "The Book of the New Sun",
+  "series_number": 5.0,
+  "url": "https://isfdb.org/cgi-bin/title.cgi?936=",
+  "note": "conf=0.93; Refuted the proposed series=None. ISFDB (title record #936) and Goodreads both assign it Book of the New Sun #5 (the 1987 coda to the 1980-83 tetralogy). ISBN 9780312863944 = Orb Books 1997 paperback of this title, confirming the file. Broader umbrella is the Solar Cycle, but the tight sub-series is The Book of the New Sun. Title and author as proposed are correct; the EPUB metadata subtitle is publisher padding."
+}

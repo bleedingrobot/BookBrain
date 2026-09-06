@@ -58,17 +58,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "The Prophet",
+    "author": "Jerry Ahern",
+    "series": "The Survivalist",
+    "series_number": 7.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "weak",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -80,6 +80,24 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Prophet",
+      "author": "Jerry Ahern",
+      "series": "The Survivalist",
+      "series_number": 7.0,
+      "url": "https://www.fantasticfiction.com/a/jerry-ahern/prophet.htm",
+      "note": "conf=0.97; Fantastic Fiction lists The Prophet (1984) as the seventh book in Jerry Ahern's Survivalist series; Zebra mass-market edition ISBN 9780821713396 titled \"The Prophet (Survivalist, No. 7)\"; Kindle edition \"The Prophet (The Survivalist Book 7)\". Post-apocalyptic John Thomas Rourke series. Not to be confused with A. American's unrelated \"The Survivalist\" series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Prophet",
+      "author": "Jerry Ahern",
+      "series": "The Survivalist",
+      "series_number": 7.0,
+      "url": "https://www.fantasticfiction.com/a/jerry-ahern/prophet.htm",
+      "note": "conf=0.97; Verified: The Prophet is the seventh book in Jerry Ahern's post-apocalyptic \"The Survivalist\" series (originally published 1984, Zebra; reissued by Speaking Volumes as \"Book 7 of 36 - The Survivalist\"). Canonical title drops the metadata's series padding (\"The Survivalist 7 - Prophet\"). Series confirmed as a real published series; number 7 confirmed by Fantastic Fiction, Goodreads, and AbeBooks/Speaking Volumes listings."
     }
   ],
   "truth_disagreements": []

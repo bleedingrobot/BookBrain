@@ -39,17 +39,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Retired Archmage Starts a Town",
+    "author": "EvolvedRaccoon",
+    "series": "Retired Archmage",
+    "series_number": 1.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "weak",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -61,6 +61,24 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Retired Archmage Starts a Town",
+      "author": "EvolvedRaccoon",
+      "series": "Retired Archmage",
+      "series_number": 1.0,
+      "url": "https://us.amazon.com/Retired-Archmage-Starts-Town-Litrpg-ebook/dp/B0GX311PC3",
+      "note": "conf=0.9; Amazon lists a \"Retired Archmage\" series by EvolvedRaccoon: Book 1 is \"Retired Archmage Starts a Town: OP MC Cozy Slice of Life Litrpg\" (ASIN B0GX311PC3, no numeral in title), followed by \"Retired Archmage Starts a Town 2\" (Book 2) and \"...Town 3\" (Book 3). The EPUB's title metadata matches Book 1 exactly (no numeral), so this is volume 1. Caution: an Audible edition of Book 2 is listed without the numeral in its display title, but its blurb (Rune Hollow eight months later, imperial assessor) belongs to Book 2, not this file."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Retired Archmage Starts a Town",
+      "author": "EvolvedRaccoon",
+      "series": "Retired Archmage",
+      "series_number": 1.0,
+      "url": "https://us.amazon.com/Retired-Archmage-Starts-Town-Litrpg-ebook/dp/B0GX311PC3",
+      "note": "conf=0.93; All proposed fields were null and are now filled. Amazon lists \"Retired Archmage\" as a real 4-book series by EvolvedRaccoon (self-published, virtual-voice audiobooks). The unnumbered title \"Retired Archmage Starts a Town\" (ASIN B0GX311PC3; paperback ISBN 9798190517620) is explicitly marked \"Book 1 of 2: Retired Archmage\" on Amazon.in and carries the origin-story blurb (archmage takes the name James, settles with Celeste, begins building a town). Sequels are distinctly titled \"Retired Archmage Starts a Town 2/3/4\" with continuation blurbs (Rune Hollow eight months / one year later), so this unnumbered file is volume 1. Canonical title strips the marketing subtitle \"OP MC Cozy Slice of Life Litrpg\". One Audible listing (B0H34K4678) confusingly reuses the unnumbered title while tagging it Book 2 — that is the audio edition of book 2, not this file."
     }
   ],
   "truth_disagreements": []

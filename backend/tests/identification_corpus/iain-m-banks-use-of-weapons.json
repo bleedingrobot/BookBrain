@@ -50,7 +50,7 @@
   "recorded_series_ai": null,
   "answer": {
     "title": "Use of Weapons",
-    "author": "Iain Banks",
+    "author": "Iain M. Banks",
     "series": "Culture series",
     "series_number": 3.0,
     "verified": true,
@@ -89,7 +89,27 @@
       "series_number": 3.0,
       "url": "https://www.wikidata.org/wiki/Q339923",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Use of Weapons",
+      "author": "Iain M. Banks",
+      "series": "Culture",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Use-Weapons-Culture-Iain-Banks/dp/0316030570",
+      "note": "conf=0.96; ISBN 9780316030571 matches the Orbit/Hachette edition of Use of Weapons, described as the third entry in the Culture series by Iain M. Banks."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Use of Weapons",
+      "author": "Iain M. Banks",
+      "series": "Culture",
+      "series_number": 3.0,
+      "url": "https://forbiddenplanet.com/400454-the-culture-book-3-use-of-weapons/",
+      "note": "conf=0.95; Series confirmed as the Culture (publisher lists it as \"The Culture: Book 3\"); corrected series name from \"Culture series\" to \"Culture\". Author corrected to the SF byline Iain M. Banks (Iain Banks was used for his mainstream fiction; this Orbit edition credits Iain M. Banks). ISBN 9780316030571 matches the 2008 Orbit trade paperback of Use of Weapons."
     }
   ],
-  "truth_disagreements": []
+  "truth_disagreements": [
+    "author: chose 'Iain M. Banks', wikidata said 'Iain Banks'"
+  ]
 }

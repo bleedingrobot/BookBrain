@@ -40,17 +40,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "The Valhalla Call",
+    "author": "Evan Currie",
+    "series": "Hayden War Cycle",
+    "series_number": 4.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "weak",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -62,6 +62,24 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Valhalla Call",
+      "author": "Evan Currie",
+      "series": "Hayden War Cycle",
+      "series_number": 4.0,
+      "url": "https://www.goodreads.com/book/show/18103837-the-valhalla-call",
+      "note": "conf=0.95; Goodreads lists it as \"The Valhalla Call (Hayden War Cycle, #4)\". Publisher blurb (AbeBooks/LibraryThing) states it is \"book four of the Hayden's War Arc of the Warrior's Wings series\" — the series was rebranded \"Warrior's Wings\" (also listed by some retailers as \"On Silver Wings, 4\") on later 47North editions, matching the EPUB metadata \"The Valhalla Call (Warrior's Wings)\". It concludes the Hayden War arc begun in On Silver Wings. Author metadata \"Currie\" = Evan Currie."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Valhalla Call",
+      "author": "Evan Currie",
+      "series": "Hayden War Cycle",
+      "series_number": 4.0,
+      "url": "https://www.goodreads.com/series/85249-hayden-war-cycle",
+      "note": "conf=0.93; Author metadata \"Currie\" expanded to Evan Currie (verified). Book 4 of the series listed on Goodreads/FantasticFiction as \"Hayden War Cycle\" (also marketed as \"On Silver Wings\" and, after the 47North rebrand, as the \"Warrior's Wings\" series — publisher blurbs call it \"book four of the Hayden's War Arc of the Warrior's Wings series\"). Kept the tight arc name Hayden War Cycle, #4; first published 2013. No ISBN in file; print edition ISBN 9781522659488 exists."
     }
   ],
   "truth_disagreements": []

@@ -58,8 +58,8 @@
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -89,6 +89,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q7736902",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://fantasyliterature.com/reviews/the-god-engines/",
+      "note": "conf=0.95; Dark fantasy/SF novella, Subterranean Press, December 2009, ISBN 9781596062801. Hugo and Nebula Best Novella nominee 2010. Confirmed standalone: Scalzi himself stated on his blog that it is a stand-alone novella; it is not connected to the Old Man's War universe or any other Scalzi series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_God_Engines",
+      "note": "conf=0.96; Verified: 2009 dark fantasy/SF novella by John Scalzi, published by Subterranean Press (ISBN 978-1-59606-299-3, 136 pp), Nebula nominee. It is a genuine standalone — not part of Old Man's War or any other Scalzi series; Wikidata/ISFDB list it as an unaffiliated novella. Proposed identification is correct as given."
     }
   ],
   "truth_disagreements": []

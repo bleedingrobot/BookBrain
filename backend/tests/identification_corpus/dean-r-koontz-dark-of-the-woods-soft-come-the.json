@@ -49,17 +49,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
+    "title": "Dark of the Woods / Soft Come the Dragons",
+    "author": "Dean R. Koontz",
     "series": null,
     "series_number": null,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "weak",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -80,10 +80,25 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Dark of the Woods / Soft Come the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.goodreads.com/book/show/3335519-dark-of-the-woods-soft-comes-the-dragons",
+      "note": "conf=0.9; This ebook reproduces the 1970 Ace Double (Ace #13793), a dos-à-dos volume pairing Koontz's short novel \"Dark of the Woods\" with his story collection \"Soft Come the Dragons\" (the file's metadata mis-renders it as \"Soft Comes the Dragons\"). Both works are independent early SF by Koontz; neither belongs to a numbered fiction series. \"Ace Double\" is a publisher/publication series (catalog number 13793), not a story series, so no series is assigned."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Dark of the Woods / Soft Come the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "http://www.isfdb.org/cgi-bin/pl.cgi?8905=",
+      "note": "conf=0.92; Verified: this is the 1970 Ace Double (Ace 13793) pairing the novel \"Dark of the Woods\" with the short-story collection \"Soft Come the Dragons,\" both by Dean R. Koontz, bound dos-a-dos. The EPUB metadata's \"Soft Comes the Dragons\" is a common misrendering; ISFDB and dealer listings give the correct title as \"Soft Come the Dragons.\" ISFDB catalogs the volume as an omnibus titled \"Dark of the Woods / Soft Come the Dragons\" (1970). No genuine fiction series: neither work belongs to a Koontz series, and \"Ace Double\" is a publisher format/numbered publication series, not a story series, so series is reported as null. Author name as published is Dean R. Koontz (later editions of Dark of the Woods appear as by Dean Koontz)."
     }
   ],
-  "truth_disagreements": [
-    "title: epub='Dark of the Woods/Soft Comes the Dragons'; provider='Soft Come the Dragons ; Dark of the Woods'",
-    "author: epub='Dean R. Koontz'; provider='Dean Koontz'"
-  ]
+  "truth_disagreements": []
 }

@@ -43,17 +43,17 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Playing with Fire",
+    "author": "Derek Landy",
+    "series": "Skulduggery Pleasant",
+    "series_number": 2.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -74,10 +74,25 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Playing with Fire",
+      "author": "Derek Landy",
+      "series": "Skulduggery Pleasant",
+      "series_number": 2.0,
+      "url": "https://www.amazon.com/Playing-Fire-Skulduggery-Pleasant-Book/dp/0061240885",
+      "note": "conf=0.97; ISBN 9780061240881 matches the HarperCollins US edition of \"Playing with Fire (Skulduggery Pleasant, Book 2)\" by Derek Landy (2008), the sequel to Skulduggery Pleasant (2007), featuring Valkyrie Cain and Baron Vengeous."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Playing with Fire",
+      "author": "Derek Landy",
+      "series": "Skulduggery Pleasant",
+      "series_number": 2.0,
+      "url": "https://www.amazon.com/Playing-Fire-Skulduggery-Pleasant-Book/dp/0061240885",
+      "note": "conf=0.97; Proposal had all fields null; filled in and verified. ISBN 9780061240881 = HarperCollins US edition (ISBN-10 0061240885) of \"Playing with Fire (Skulduggery Pleasant, Book 2)\" by Derek Landy, 2008. Multiple sources (Fantastic Fiction, B&N, series wiki) confirm it is the second volume of the Skulduggery Pleasant series, consistent with the \"2\" prefix in the filename. Canonical title is \"Playing with Fire\"; some editions prefix it \"Skulduggery Pleasant: Playing with Fire\" (series padding, omitted). Note the American editions sometimes number differently in later volumes, but book 2 is uncontested."
     }
   ],
-  "truth_disagreements": [
-    "title: epub='Playing With Fire'; provider='Playing with fire'",
-    "author: epub='Derek Landy'; provider='Derek Landy'"
-  ]
+  "truth_disagreements": []
 }

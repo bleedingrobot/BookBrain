@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "The Ascendant",
+  "author": "J.S. Holloway",
+  "series": "The Veil Trilogy",
+  "series_number": 2.0,
+  "url": "https://www.amazon.com/Ascendant-Cyberpunk-Thriller-Veil-Trilogy-ebook/dp/B0GHRSGDDV",
+  "note": "conf=0.95; Proposed identification had all fields null; all are now filled. The Veil Trilogy is a verified real series by J.S. Holloway: Book 1 Neon Veil, Book 2 The Ascendant, Book 3 Analogue Dreams (described on the listing as the finale to the trilogy that began with Neon Veil). Canonical title is \"The Ascendant\"; \"A Cyberpunk Thriller\" in the EPUB metadata is a marketing subtitle and was stripped. EPUB author field \"Holloway\" is a surname only; full credited name is J.S. Holloway. No ISBN in file; the Kindle edition ASIN is B0GHRSGDDV. Recent self-published/indie title, so verification rests on retailer listings rather than library catalogs."
+}

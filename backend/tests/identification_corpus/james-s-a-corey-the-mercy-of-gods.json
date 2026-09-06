@@ -94,6 +94,24 @@
       "series_number": 1.0,
       "url": "https://www.wikidata.org/wiki/Q128801941",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Mercy of Gods",
+      "author": "James S. A. Corey",
+      "series": "The Captive's War",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/series/337839-the-captive-s-war",
+      "note": "conf=0.98; Published 2024. The filename ISBN 9780356517803 is the Orbit (UK) paperback, explicitly titled \"The Mercy of Gods: Book One of the Captive's War\"; the EPUB metadata ISBN 9780316525558 corresponds to the US Orbit edition. Goodreads lists it as The Captive's War #1, a planned trilogy (book 2: Livesuit novella / The Faith of Beasts). Set in a different universe from The Expanse."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Mercy of Gods",
+      "author": "James S. A. Corey",
+      "series": "The Captive's War",
+      "series_number": 1.0,
+      "url": "https://www.amazon.com/Mercy-Gods-Captives-War-Book-ebook/dp/B0CN6NCV7P",
+      "note": "conf=0.97; Verified: The Mercy of Gods is the first novel of The Captive's War trilogy by James S. A. Corey (pseudonym of Daniel Abraham & Ty Franck), published by Orbit, August 2024. Amazon lists it as \"The Captive's War Book 1\"; Goodreads lists it as The Captive's War #1. Filename's \"Circle Production\" is a scanner/packager artifact, not the publisher; the 9780356517803 ISBN corresponds to the Orbit UK edition while the EPUB metadata ISBN 9780316525558 is the Orbit US edition. No fields required correction."
     }
   ],
   "truth_disagreements": []

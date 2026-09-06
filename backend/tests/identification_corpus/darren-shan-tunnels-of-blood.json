@@ -39,17 +39,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Tunnels of Blood",
+    "author": "Darren Shan",
+    "series": "Cirque du Freak",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "weak",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -61,6 +61,24 @@
       "series_number": 3.0,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Tunnels of Blood",
+      "author": "Darren Shan",
+      "series": "Cirque du Freak",
+      "series_number": 3.0,
+      "url": "https://www.goodreads.com/book/show/8957.Tunnels_of_Blood",
+      "note": "conf=0.97; Verified as book 3 of the Cirque du Freak series (also marketed as \"The Saga of Darren Shan\"), by Darren Shan. Goodreads lists it as \"Tunnels of Blood (Cirque du Freak, #3)\"; US editions are subtitled \"Book 3 in the Saga of Darren Shan\" (ISBN 9780316606080). Canonical title is simply \"Tunnels of Blood\"; the \"Cirque Du Freak:\" prefix is a US publisher series branding."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Tunnels of Blood",
+      "author": "Darren Shan",
+      "series": "Cirque du Freak",
+      "series_number": 3.0,
+      "url": "https://en.wikipedia.org/wiki/Tunnels_of_Blood",
+      "note": "conf=0.96; The proposed record was entirely null; every field is now filled and verified. Title is \"Tunnels of Blood\" (the metadata string \"Cirque Du Freak 03 - Tunnels of Blood\" is series padding, not the canonical title). Author Darren Shan confirmed. It is a real numbered volume: book 3 of the 12-book saga, published in the UK by HarperCollins as \"The Saga of Darren Shan\" and in the US by Little, Brown as \"Cirque Du Freak: The Saga of Darren Shan\" — I recorded the widely used series name \"Cirque du Freak\" (identical series, alternate regional title). Preceded by The Vampire's Assistant, followed by Vampire Mountain. Books 1-3 were also bundled as the \"Vampire Blood Trilogy\" omnibus, but that is a collection rather than the numbering scheme for this volume. No ISBN in the file; UK first edition ISBN 0-00-675514-3."
     }
   ],
   "truth_disagreements": []

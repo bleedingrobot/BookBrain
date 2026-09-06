@@ -69,15 +69,15 @@
   "answer": {
     "title": "Blood Rites",
     "author": "Jim Butcher",
-    "series": null,
-    "series_number": null,
+    "series": "The Dresden Files",
+    "series_number": 6.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -107,6 +107,24 @@
       "series_number": 6.0,
       "url": "https://www.wikidata.org/wiki/Q4927691",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": "The Dresden Files",
+      "series_number": 6.0,
+      "url": "https://www.kobo.com/ww/en/ebook/blood-rites-book-six-of-the-dresden-files",
+      "note": "conf=0.98; Kobo lists it explicitly as \"Book 6 - Dresden Files\" (Ace/Penguin, ISBN 9781101146668), and Penguin Random House's Dresden Files Collection 1-6 lists Blood Rites as the sixth title after Storm Front, Fool Moon, Grave Peril, Summer Knight, and Death Masks. Originally published 2004."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": "The Dresden Files",
+      "series_number": 6.0,
+      "url": "https://en.wikipedia.org/wiki/Blood_Rites_(novel)",
+      "note": "conf=0.98; Proposed series=None is incorrect. Blood Rites is book 6 of The Dresden Files (Roc, Aug 2004), featuring Harry Dresden and Thomas Raith. Title and author confirmed as proposed."
     }
   ],
   "truth_disagreements": []

@@ -41,14 +41,14 @@
   "answer": {
     "title": "Testament of Leaves",
     "author": "Carolyn Ives Gilman",
-    "series": null,
+    "series": "Twenty Planets",
     "series_number": null,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
+      "series": "weak",
       "series_number": "unresolved"
     }
   },
@@ -70,6 +70,15 @@
       "series_number": null,
       "url": "https://carolynivesgilman.com/fiction/novels/",
       "note": "conf=0.9; SF mystery novella (120pp) published by Fairwood Press, 2026-08-18, ISBN 978-1958880302. The author's own bibliography page lists it under \"The Twenty Planets Universe\" alongside Halfway Human, Arkfall, The Ice Owl, and Dark Orbit; a Locus review also notes it belongs to the Twenty Planets sequence. The Twenty Planets is a shared-universe sequence of standalone, unnumbered works (Goodreads notes the stories are not directly connected), so no series number applies. Plot: inscrutinator Shameesh Kulkarni investigates a linguist's death on the planet Hant, aided by a digital replica of the victim and an octopod."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Testament of Leaves",
+      "author": "Carolyn Ives Gilman",
+      "series": "Twenty Planets",
+      "series_number": null,
+      "url": "https://locusmag.com/review/testament-of-leaves-by-carolyn-ives-gilman-review-by-paul-di-filippo/",
+      "note": "conf=0.72; Title and author confirmed: novella published by Fairwood Press, August 2026, ISBN 978-1958880302, 120pp. The proposed series=None appears incorrect. The Locus review by Paul Di Filippo states the book belongs to Gilman's Twenty Planets sequence (sharing the First/Second Diaspora background with Halfway Human), and author bios for the launch event describe her SF as ranging from \"the far-future Twenty Planets universe.\" Twenty Planets is a real, catalogued series (Goodreads series 164361) comprising Halfway Human, Arkfall, The Ice Owl, and Dark Orbit; it is explicitly a shared-universe grouping whose entries are \"not directly connected,\" so there is no reliable installment number for this book — series_number left null. Caveat: the Locus attribution is somewhat hedged (\"sufficient googling seems to reveal\"), hence confidence below 0.8; no publisher page found that prints \"Twenty Planets\" on the book itself."
     }
   ],
   "truth_disagreements": []

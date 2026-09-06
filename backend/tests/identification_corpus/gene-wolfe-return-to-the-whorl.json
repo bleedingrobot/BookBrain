@@ -45,15 +45,15 @@
   "answer": {
     "title": "Return to the Whorl",
     "author": "Gene Wolfe",
-    "series": null,
-    "series_number": null,
+    "series": "The Book of the Short Sun",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -83,6 +83,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q131381214",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": "The Book of the Short Sun",
+      "series_number": 3.0,
+      "url": "https://www.goodreads.com/book/show/618260.Return_to_the_Whorl",
+      "note": "conf=0.97; Third and final volume of Gene Wolfe's Book of the Short Sun trilogy, following On Blue's Waters and In Green's Jungles. ISBN 9780312873646 corresponds to the Tor hardcover edition (2001). The trilogy sits within the wider \"Solar Cycle\" (New Sun/Long Sun/Short Sun), but the tight sub-series is The Book of the Short Sun, #3."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": "The Book of the Short Sun",
+      "series_number": 3.0,
+      "url": "https://www.barnesandnoble.com/w/return-to-the-whorl-gene-wolfe/1100356784",
+      "note": "conf=0.97; Title, author and ISBN check out (Tor, ISBN 0312873646/9780312873646, 2002 paperback). The proposed series=None is refuted: publisher copy describes it as \"the third volume, after On Blue's Waters and In Green's Jungles, of his ambitious SF trilogy The Book of the Short Sun,\" and B&N lists it as Book of the Short Sun Series #3. The tighter sub-series (Short Sun trilogy) is given rather than the broader \"Solar Cycle\"/Book of the New Sun universe."
     }
   ],
   "truth_disagreements": []

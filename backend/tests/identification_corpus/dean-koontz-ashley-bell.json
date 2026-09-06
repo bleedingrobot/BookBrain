@@ -51,15 +51,15 @@
   "answer": {
     "title": "Ashley Bell",
     "author": "Dean Koontz",
-    "series": null,
-    "series_number": null,
+    "series": "Ashley Bell",
+    "series_number": 1.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -89,6 +89,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q107420846",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Ashley Bell",
+      "author": "Dean Koontz",
+      "series": "Ashley Bell",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/work/editions/44960908-ashley-bell",
+      "note": "conf=0.88; ISBN 9780345545978 confirmed on Goodreads editions page as the Bantam ebook of Ashley Bell (Dec 8, 2015, 576 pp). Full title on title page is \"Ashley Bell: A Novel\"; canonical title is \"Ashley Bell\". Series: Koontz released two ebook-original prequel novellas, Last Light and Final Hour, explicitly marketed as \"two standalone eBook original novellas leading in to Ashley Bell\" (Penguin Random House / Apple Books). Goodreads groups them as the \"Ashley Bell\" series: Last Light #0.25, Final Hour #0.5, Ashley Bell #1 (Darkest Desires: The Makani Trilogy is the collected omnibus). So the novel is #1 in the Ashley Bell series; it is also self-contained and often shelved as a standalone Koontz novel."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Ashley Bell",
+      "author": "Dean Koontz",
+      "series": "Ashley Bell",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/series/165167-ashley-bell",
+      "note": "conf=0.82; Title, author and ISBN all check out: 9780345545978 is the Bantam ebook edition (Dec 8, 2015) of Ashley Bell by Dean Koontz. Refuting the proposed series=None: the novel is the anchor volume of the \"Ashley Bell\" sequence, which also includes two publisher-branded tie-in eBook novellas featuring Makani Hisoka-O'Brien — Last Light (2015) and Final Hour (2015/2016), later collected as Darkest Desires: The Makani Trilogy. Fantastic Fiction numbers them 0.1, 0.2, 1; Goodreads numbers them 0.25, 0.5, 1. Ashley Bell is #1 in either scheme. Caveat: the novel is self-contained and often marketed as a standalone, so \"series\" here reflects the cataloguing convention rather than a multi-novel saga."
     }
   ],
   "truth_disagreements": []

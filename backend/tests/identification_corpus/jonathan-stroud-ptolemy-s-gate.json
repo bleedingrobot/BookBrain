@@ -60,15 +60,15 @@
   "answer": {
     "title": "Ptolemy's Gate",
     "author": "Jonathan Stroud",
-    "series": null,
-    "series_number": null,
+    "series": "Bartimaeus Sequence",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -98,6 +98,24 @@
       "series_number": 3.0,
       "url": "https://www.wikidata.org/wiki/Q2479243",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Ptolemy's Gate",
+      "author": "Jonathan Stroud",
+      "series": "Bartimaeus Trilogy",
+      "series_number": 3.0,
+      "url": "https://www.penguinrandomhouse.com/books/174883/the-bartimaeus-trilogy-book-three-ptolemys-gate-by-jonathan-stroud/",
+      "note": "conf=0.97; Penguin Random House lists it as \"The Bartimaeus Trilogy, Book Three: Ptolemy's Gate\" by Jonathan Stroud, the concluding volume of the trilogy (a later prequel, The Ring of Solomon, expands the wider \"Bartimaeus Sequence\", but the tight sub-series here is the trilogy, book 3). Matches filename and metadata."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Ptolemy's Gate",
+      "author": "Jonathan Stroud",
+      "series": "Bartimaeus",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Ptolemys-Gate-Bartimaeus-Trilogy-Book/dp/0807219819",
+      "note": "conf=0.97; Title and author confirmed. The proposed series=None is refuted: this is book 3 of Jonathan Stroud's Bartimaeus series (published as \"The Bartimaeus Trilogy,\" later extended by the prequel \"The Ring of Solomon\" and marketed as the Bartimaeus Sequence). Filename designation \"Bartimaeus 03\" matches the verified publisher listing."
     }
   ],
   "truth_disagreements": []

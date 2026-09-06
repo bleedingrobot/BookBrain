@@ -39,17 +39,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
+    "title": "The Private Life of Genghis Khan",
+    "author": "Douglas Adams",
     "series": null,
     "series_number": null,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -61,6 +61,24 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Private Life of Genghis Khan",
+      "author": "Douglas Adams",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Private_Life_of_Genghis_Khan",
+      "note": "conf=0.9; Standalone comic short story (1986), co-written by Douglas Adams and Graham Chapman from a sketch for the 1975 pilot \"Out of the Trees\"; EPUB metadata credits Adams alone. Published in The Utterly Utterly Merry Comic Relief Christmas Book and included in some editions of The Salmon of Doubt; also posted on douglasadams.com. ISFDB lists it as a standalone SHORTFICTION title with no series. It features a cameo by Wowbagger the Infinitely Prolonged from Life, the Universe and Everything, which links it loosely to the Hitchhiker's Guide universe, but no source assigns it a position in that (or any) numbered series, so reported as standalone."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Private Life of Genghis Khan",
+      "author": "Douglas Adams",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Private_Life_of_Genghis_Khan",
+      "note": "conf=0.93; Standalone comic short story (1986), derived from a sketch for the 1975 TV pilot 'Out of the Trees'. Co-written with Graham Chapman, though ISFDB, Goodreads and the EPUB metadata all credit Douglas Adams alone; Chapman should be regarded as co-author. First published in 'The Utterly Utterly Merry Comic Relief Christmas Book' (1986) and later included in some editions of 'The Salmon of Doubt'; also posted on douglasadams.com. SERIES = NULL: although Wowbagger the Infinitely Prolonged (from Hitchhiker's) cameos at the end, ISFDB does NOT assign this title to the Hitchhiker's Guide to the Galaxy series — in its contents listing for 'The Salmon of Doubt' the neighbouring 'Young Zaphod Plays It Safe' carries the [Hitchhiker's Guide to the Galaxy] series tag while this story carries none. A cameo does not make it a series volume, and it has no series number in any source."
     }
   ],
   "truth_disagreements": []

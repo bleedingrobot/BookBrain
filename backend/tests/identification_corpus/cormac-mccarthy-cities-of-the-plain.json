@@ -40,17 +40,17 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "Cities of the Plain",
+    "author": "Cormac McCarthy",
+    "series": "The Border Trilogy",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "weak",
+      "author": "weak",
+      "series": "weak",
+      "series_number": "weak"
     }
   },
   "truth_claims": [
@@ -62,6 +62,24 @@
       "series_number": 1.0,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Cities of the Plain",
+      "author": "Cormac McCarthy",
+      "series": "The Border Trilogy",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Cities-Plain-Book-Border-Trilogy-ebook/dp/B003YJEXRU",
+      "note": "conf=0.98; Verified as the third and concluding volume of Cormac McCarthy's Border Trilogy (after All the Pretty Horses and The Crossing), first published 1998. Publisher listings explicitly label it \"Book 3 of Border Trilogy.\""
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Cities of the Plain",
+      "author": "Cormac McCarthy",
+      "series": "The Border Trilogy",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/Cities-Plain-Book-Border-Trilogy-ebook/dp/B003YJEXRU",
+      "note": "conf=0.97; All proposed fields were null and are now filled. The EPUB metadata title contained series padding (\"Border Trilogy 3 - Cities of The Plain\"); canonical title is \"Cities of the Plain\". Author metadata gave only surname \"McCarthy\"; corrected to Cormac McCarthy. Verified as the third and concluding volume of McCarthy's Border Trilogy (1998), reuniting John Grady Cole (All the Pretty Horses) and Billy Parham (The Crossing)."
     }
   ],
   "truth_disagreements": []

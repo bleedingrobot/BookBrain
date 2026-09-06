@@ -58,8 +58,8 @@
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -89,6 +89,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q16241321",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Crow_Road",
+      "note": "conf=0.96; Standalone mainstream literary novel published 1992 by Iain Banks (writing without the middle initial, i.e., not one of his Iain M. Banks SF/Culture books). ISBN 9780349109077 matches an Abacus paperback edition of this title. No series affiliation found in any source; it stands alone among his non-SF novels."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.abebooks.com/9780349109077/Crow-Road-Iain-Banks-0349109079/plp",
+      "note": "conf=0.95; ISBN 9780349109077 = Abacus paperback edition of The Crow Road by Iain Banks (first published 1992, Scribner/Abacus). Author credited as \"Iain Banks\" (mainstream fiction), not \"Iain M. Banks\" (his SF/Culture byline). No series affiliation found in any source; it is a genuine standalone contemporary Scottish family novel featuring the McHoan family. Proposed identification confirmed as correct on all fields."
     }
   ],
   "truth_disagreements": []

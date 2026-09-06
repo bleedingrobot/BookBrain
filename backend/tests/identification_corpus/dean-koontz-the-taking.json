@@ -55,8 +55,8 @@
     "provenance": {
       "title": "consensus",
       "author": "consensus",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -86,6 +86,24 @@
       "series_number": null,
       "url": "https://www.wikidata.org/wiki/Q2438593",
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Taking_(novel)",
+      "note": "conf=0.95; 2004 horror/suspense novel by Dean Koontz (Bantam Books). ISBN 9780553593501 is the Bantam/Random House mass market paperback edition, confirmed via Penguin Random House and Books-A-Million. No source (Wikipedia, publisher, Kirkus, TV Tropes) associates it with any series; it is a genuine standalone, distinct from Koontz's Odd Thomas or Frankenstein series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Taking_(novel)",
+      "note": "conf=0.95; ISBN 9780553593501 (ISBN-10 0553593501) resolves to the Bantam August 2010 mass-market edition of \"The Taking\" by Dean Koontz, matching the EPUB metadata. Wikipedia confirms it is a 2004 Bantam horror/suspense novel (first hardcover ISBN 0-553-80250-X); retailer listings show no series designation (\"Book Series: N/A\"). No evidence of it belonging to any Koontz series (not Odd Thomas, Frankenstein, Jane Hawk, etc.). Proposed identification is correct as-is."
     }
   ],
   "truth_disagreements": []

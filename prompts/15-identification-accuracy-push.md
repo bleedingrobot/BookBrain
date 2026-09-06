@@ -542,13 +542,15 @@ there's no batch consensus.
 ## Sequencing
 
 ```
-0  (harness)  ── DONE: harness + 74-book corpus + IDENTIFICATION-EVAL.md.
-│               Answer keys are TRIANGULATED, not human-verified (James asked
-│               for zero manual steps): a field's ground truth is what >=2 of
-│               {Wikidata, web-grounded Claude x2, EPUB metadata, provider}
-│               agree on; disagreements are left "unresolved" and not scored.
-│               Plus structural-invariant + adversarial-mutation tests that
-│               need no ground truth. `scripts/build_truth.py` rebuilds the keys.
+0  (harness)  ── DONE. 74-book corpus + IDENTIFICATION-EVAL.md. Answer keys
+│               TRIANGULATED, not human-verified (James: zero manual steps):
+│               a field's truth = what >=2 of {Wikidata, web-grounded Claude x2,
+│               EPUB, provider} agree on; else "unresolved", not scored. Plus
+│               invariant + mutation tests (no ground truth needed).
+│               Baseline (2026-09-06, 59/74 scored): title 94.9% author 94.8%
+│               series 87.2% series-# 95.3%. 15 books still Wikidata-only
+│               (credit ran out) — `build_truth.py --all --write` after top-up
+│               finishes them and re-stamps. Gate = `pytest -m corpus`.
 │
 ├─ A  web-search grounding      ┐
 ├─ B  provider series           │ Tier 1 — do all three, any order

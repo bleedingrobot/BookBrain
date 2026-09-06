@@ -43,17 +43,17 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": null,
-    "author": null,
-    "series": null,
-    "series_number": null,
+    "title": "The Fire Dragon",
+    "author": "Katharine Kerr",
+    "series": "The Dragon Mage",
+    "series_number": 3.0,
     "verified": true,
     "source": "triangulated",
     "provenance": {
-      "title": "unresolved",
-      "author": "unresolved",
-      "series": "unresolved",
-      "series_number": "unresolved"
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
     }
   },
   "truth_claims": [
@@ -74,10 +74,16 @@
       "series_number": null,
       "url": null,
       "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Fire Dragon",
+      "author": "Katharine Kerr",
+      "series": "The Dragon Mage",
+      "series_number": 3.0,
+      "url": "https://www.fantasticfiction.com/k/katharine-kerr/fire-dragon.htm",
+      "note": "conf=0.95; Third and final book of the \"Deverry Act Three: The Dragon Mage\" sub-series (after The Red Wyvern and The Black Raven), and the 11th volume in the overall Deverry cycle. Tight sub-series reported per instructions; broader universe is Deverry (#11). First published 2000; ISBN 9780007375387 corresponds to the HarperVoyager UK ebook edition."
     }
   ],
-  "truth_disagreements": [
-    "title: epub='The Fire Dragon'; provider='Fire Dragon'",
-    "author: epub='Katharine Kerr'; provider='Katharine Kerr'"
-  ]
+  "truth_disagreements": []
 }
