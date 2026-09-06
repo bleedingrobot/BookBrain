@@ -1,3 +1,5 @@
+import datetime as _dt
+import re
 from dataclasses import dataclass, field
 
 from app.providers.epub.parser import EpubEvidence
@@ -14,6 +16,12 @@ PROVIDERS_AGREE = 15
 EPUB_METADATA_COMPLETE = 15
 FILENAME_MATCHES_TITLE = 5
 AI_CORROBORATES = 5
+# prompts/15 Stage G — positive corroboration bonuses. Small and additive: the
+# six components above still carry identification; these only lift a borderline
+# score when independent evidence agrees, and the [0,100] clamp keeps a clean
+# match from overflowing. Their absence never penalises.
+DESCRIPTION_CORROBORATES = 3
+PUBYEAR_PLAUSIBLE = 2
 
 PROVIDER_DISAGREEMENT_PENALTY = -25
 EPUB_PROVIDER_DISAGREEMENT_PENALTY = -15
@@ -45,6 +53,40 @@ class ConfidenceBreakdown:
 
     def as_dict(self) -> dict:
         return {"total": self.total, "components": self.components, "conflicts": self.conflicts}
+
+
+_YEAR_RE = re.compile(r"\b(1[4-9]\d{2}|20\d{2})\b")
+
+
+def _plausible_years(evidence: EpubEvidence, candidates: list[MetadataCandidate]) -> list[int]:
+    this_year = _dt.date.today().year
+    raw = [evidence.pub_date] + [c.first_published for c in candidates]
+    years: list[int] = []
+    for value in raw:
+        if not value:
+            continue
+        m = _YEAR_RE.search(str(value))
+        if m and 1450 <= int(m.group(1)) <= this_year:
+            years.append(int(m.group(1)))
+    return years
+
+
+def _description_corroborates(
+    evidence: EpubEvidence,
+    candidates: list[MetadataCandidate],
+    resolved_title: str | None,
+    resolved_author: str | None,
+    resolved_series: str | None,
+) -> bool:
+    blurbs = [evidence.description] + [c.description for c in candidates]
+    haystack = normalize(" ".join(b for b in blurbs if b))
+    if len(haystack) < 20:
+        return False
+    for needle in (resolved_title, resolved_author, resolved_series):
+        n = normalize(needle)
+        if n and len(n) >= 4 and n in haystack:
+            return True
+    return False
 
 
 def _filename_stem(filename: str) -> str:
@@ -131,6 +173,18 @@ def score(
     components["filename_matches_title"] = FILENAME_MATCHES_TITLE if filename_matches else 0
 
     components["ai_corroborates"] = AI_CORROBORATES if ai_corroborates else 0
+
+    # prompts/15 Stage G — positive corroboration. Only credited when the caller
+    # passes the resolved identification (identification_service does; reident +
+    # old callers don't, so their scores are unchanged).
+    if resolved_title is not None or resolved_author is not None:
+        if _description_corroborates(
+            evidence, candidates, resolved_title, resolved_author, resolved_series
+        ):
+            components["description_corroborates"] = DESCRIPTION_CORROBORATES
+        years = _plausible_years(evidence, candidates)
+        if years and max(years) - min(years) <= 5:
+            components["pubyear_plausible"] = PUBYEAR_PLAUSIBLE
 
     if provider_conflict:
         conflicts["provider_disagreement"] = PROVIDER_DISAGREEMENT_PENALTY

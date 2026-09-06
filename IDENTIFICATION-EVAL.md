@@ -127,6 +127,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | D | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | richer EPUB evidence: `_extract_text_snippet` walks the spine (skips cover/nav/titlepage + sub-200-char docs, takes 2 substantive front-matter docs + one body sample ~20% in, each labelled); new `EpubEvidence.publisher` / `pub_date` / `subjects` / `all_isbns` (scans every `<dc:identifier>` + `<dc:source>`); `description` + all four now in `_build_prompt`. `hash_evidence` deliberately **unchanged** — the ~2200 cached AI decisions stay valid, the richer evidence only reaches genuinely-new files. Per-field flat (frozen AI); `pytest -m corpus` green. No AI cost. |
 | E | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | placeholder/junk-metadata detector (`metadata_sanity.looks_like_placeholder_title` / `_author` — "Unknown"/"Calibre"/"book1"/bare-number/publisher-name-as-author; short titles need an ISBN or provider match). Fast path is **skipped** when the EPUB title/author is a placeholder (forces the AI path); `PLACEHOLDER_METADATA_PENALTY` (-30) and `TITLE_IS_FILENAME_ONLY_PENALTY` (-10) fire on the *resolved* metadata. No corpus case exercises it (the 59 scored books all have real metadata) so per-field + `wrong_auto_organized` are flat; `pytest -m corpus` green. No AI cost. |
 | F | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | ISBN-trust check: the fast path now also requires `text_match.title_similarity` (difflib ratio on the *strict*-normalised titles) ≥ 0.80 between the EPUB title and the ISBN-matched provider title — `titles_match` alone strips everything after a `:` so "Mistborn: The Final Empire" and "Mistborn: The Well of Ascension" passed it. On failure it falls through to the AI path (candidate still supplied). **Fast-path hit-rate on the corpus unchanged at 25.4%** — no legit deterministic win lost. Per-field flat; `pytest -m corpus` green. No AI cost. |
+| G | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | positive corroboration components: `DESCRIPTION_CORROBORATES` (+3, a blurb mentions the resolved title/author/series) and `PUBYEAR_PLAUSIBLE` (+2, a real ≤-current year present and sources within 5y). Additive, opt-in via `resolved_title`/`resolved_author`, so reident + old callers unchanged. `resolved_series`/`_title`/`_author` now threaded through `reident_audit_service._recompute_confidence` so the display recompute matches a fresh scan. **Thresholds kept at 85/95** — see sweep below. Corpus flat (first cut at +5/+3 tipped one series-only-wrong book over 85 → dialed to +3/+2, which crosses no threshold in the corpus); `pytest -m corpus` green. No AI cost. |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -281,3 +282,84 @@ was parsed but never sent to the model.
 
 **Per-field corpus precision flat** (frozen AI). `pytest -m corpus` green; no AI
 cost (deterministic parse).
+
+### Stage E — placeholder / junk metadata detector (`prompts/15` Stage E)
+
+`metadata_sanity.looks_like_placeholder_title` / `looks_like_placeholder_author`:
+a curated stub list ("unknown", "calibre", "untitled", "book"/"novel"/"cover",
+…), `book N` / `volume N` patterns, all-digits, and — only when *not*
+corroborated by an ISBN or a provider/AI match — a ≤ 2-alnum-char string, so
+real short titles ("It", "1984", "S.") survive with corroboration. A publisher
+name in the author field ("Tor Books", "Penguin", …) counts as a placeholder
+author.
+
+- **Fast path**: `IdentificationService.identify` skips `_find_isbn_match`
+  entirely when the EPUB title/author is a placeholder — the AI path runs and
+  the candidate is still passed to it.
+- **Confidence**: `PLACEHOLDER_METADATA_PENALTY` (-30) when the *resolved*
+  title/author still looks like a stub; `TITLE_IS_FILENAME_ONLY_PENALTY` (-10)
+  when the resolved title is exactly the filename stem and nothing (provider or
+  AI) says so. Both opt-in via new `resolved_title` / `resolved_author` params;
+  `reident_audit_service` and existing tests pass neither, so they're unchanged.
+
+No scored corpus book has junk metadata (the triangulation needs real
+bibliographic data to produce an answer key), so the corpus number is flat —
+but the invariant/mutation tests already cover "junk metadata must not reach
+high confidence".
+
+### Stage F — ISBN trust check (`prompts/15` Stage F)
+
+`_find_isbn_match` trusted an ISBN with only `titles_match` behind it, and
+`titles_match` strips everything after a `:` — so a wrong-but-valid EPUB ISBN
+pointing at another volume of the same series ("Mistborn: The Well of Ascension"
+where the book is "Mistborn: The Final Empire") passed and auto-organised as the
+wrong book.
+
+- New `text_match.title_similarity(a, b) -> float` — difflib ratio on the
+  *strict*-normalised titles (leading article folded, subtitle kept).
+- The fast path now also requires `title_similarity ≥ 0.80`; below that it
+  falls through to the AI path with the candidate still supplied.
+- ISBN checksum validation was already done at parse time
+  (`_classify_identifier` / `_collect_isbns`).
+
+**Fast-path hit-rate on the corpus: 25.4% before and after** — the stricter
+check cost no legitimate deterministic win. (The corpus's genuine ISBN matches
+all have real title agreement; a synthetic wrong-ISBN case is unit-tested in
+`test_identification_service.py`.)
+
+### Stage G — positive corroboration components (`prompts/15` Stage G)
+
+Two additive bonuses in `confidence_service.score`, credited only when the
+caller passes the resolved identification (identification_service does; reident
+and old callers don't):
+
+- `DESCRIPTION_CORROBORATES` (+3) — an EPUB or provider blurb contains the
+  resolved title, author, or series (normalised substring).
+- `PUBYEAR_PLAUSIBLE` (+2) — a real year ≤ the current year is present in the
+  EPUB `pub_date` or a provider `first_published`, and all such years agree
+  within 5.
+
+`FILENAME_CORROBORATES` already landed in Stage C (`FILENAME_MATCHES_TITLE`
+driven by the structured `filename_corroborates` verdict).
+`reident_audit_service._recompute_confidence` now threads `resolved_series` /
+`resolved_title` / `resolved_author` (the ROADMAP item), so the audit's display
+recompute equals what a fresh scan of that book scores today.
+
+**Threshold sweep** (offline corpus, 59 scored — hard-case-weighted and
+frozen-AI, so not representative of the real library's distribution, but the
+only data available):
+
+| `confidence_auto_flagged` | auto-organised | of which correct | precision | held for review |
+|---|---|---|---|---|
+| 75 | 20 | 18 | 0.90 | 39 |
+| 80 | 15 | 13 | 0.87 | 44 |
+| **85 (current)** | **6** | **5** | **0.83** | **53** |
+| 88 | 4 | 4 | 1.00 | 55 |
+| 90 | 1 | 1 | 1.00 | 58 |
+
+Raising the bar to 88 would buy precision on this slice but the slice is not
+representative — on the real ~2200-book library most books have an ISBN and a
+clean provider match and legitimately auto-organise. **Kept at 85/95.** The
++3/+2 bonuses are small enough that they cross no threshold in the corpus (a
+first cut at +5/+3 tipped one series-only-wrong book over 85 and was dialed
+back). Corpus numbers unchanged; `pytest -m corpus` green.

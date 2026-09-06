@@ -321,11 +321,19 @@ def _recompute_confidence(row: _BookRow) -> int:
         titles_match(row.stored_title, row.evidence.title)
         or any(titles_match(row.stored_title, c.title) for c in row.stored_candidates)
     )
+    # prompts/15 Stage G — thread the resolved identification through so the
+    # display recompute matches what a fresh scan of this book would score
+    # today (invented-series penalty, placeholder penalty, corroboration
+    # bonuses all included). This is a cross-check number only; the flag reads
+    # the authoritative stored_confidence (SPEC §1).
     return score(
         evidence=row.evidence,
         candidates=row.stored_candidates,
         filename=row.filename,
         ai_corroborates=ai_corroborates,
+        resolved_series=row.stored_series,
+        resolved_title=row.stored_title,
+        resolved_author=row.stored_author,
     ).total
 
 

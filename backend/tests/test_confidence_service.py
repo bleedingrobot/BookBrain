@@ -144,6 +144,56 @@ def test_filename_match_is_case_and_punctuation_insensitive() -> None:
     assert breakdown.components["filename_matches_title"] == 5
 
 
+def test_description_corroboration_bonus() -> None:
+    ev = _evidence(description="Dune is Frank Herbert's landmark science fiction novel.")
+    b = score(
+        evidence=ev,
+        candidates=[],
+        filename="dune.epub",
+        resolved_title="Dune",
+        resolved_author="Frank Herbert",
+    )
+    assert b.components["description_corroborates"] == 3
+
+    # A blurb that mentions neither the resolved title nor author.
+    b2 = score(
+        evidence=_evidence(description="A sprawling epic of politics and sandworms."),
+        candidates=[],
+        filename="dune.epub",
+        resolved_title="Dune",
+        resolved_author="Frank Herbert",
+    )
+    assert "description_corroborates" not in b2.components
+
+
+def test_pubyear_plausible_bonus_needs_agreement() -> None:
+    ev = _evidence(pub_date="1965")
+    cands = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], first_published="1965", source="a")]
+    b = score(
+        evidence=ev, candidates=cands, filename="dune.epub",
+        resolved_title="Dune", resolved_author="Frank Herbert",
+    )
+    assert b.components["pubyear_plausible"] == 2
+
+    # wildly disagreeing years -> no bonus
+    cands2 = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], first_published="2019", source="a")]
+    b2 = score(
+        evidence=_evidence(pub_date="1965"), candidates=cands2, filename="dune.epub",
+        resolved_title="Dune", resolved_author="Frank Herbert",
+    )
+    assert "pubyear_plausible" not in b2.components
+
+
+def test_stage_g_bonuses_absent_for_callers_not_passing_resolved_fields() -> None:
+    b = score(
+        evidence=_evidence(description="Dune by Frank Herbert", pub_date="1965"),
+        candidates=[],
+        filename="dune.epub",
+    )
+    assert "description_corroborates" not in b.components
+    assert "pubyear_plausible" not in b.components
+
+
 def test_placeholder_resolved_title_is_penalized() -> None:
     b = score(
         evidence=_evidence(),
