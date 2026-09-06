@@ -650,6 +650,19 @@ sane on the real DB; no new false author merges in tests.
 
 #### Stage K — Batch priors
 
+> **DONE 2026-09-07.** New `app/services/batch_prior_service.apply_batch_priors`,
+> called by `run_scan` after `_process_batch`, before the auto-organize pass.
+> Consensus = ≥ 3 confident (`>= confidence_auto_flagged`, `status=inbox`) files
+> in the batch sharing an author (`normalize_person_name` key) or series
+> (article-stripped word set). A `review` file in the batch whose *filename*
+> names a consensus author/series: **agrees** → `+12` (cap 92, never ≥95), moves
+> `review → inbox` + drops the pending `Review` if it clears 85;
+> **disagrees** → stays in review + a logged note. Never rewrites title/author/
+> series; every change under `ai_decisions.raw_response_json["batch_prior"]`,
+> re-run is a no-op. `test_batch_prior_service.py` (4-Discworld + thin, no
+> consensus, conflict, idempotency). Corpus flat (harness scores one file at a
+> time). No AI cost.
+
 **Why.** F6. A pile of one author's books is a strong prior for the
 stragglers.
 
@@ -735,7 +748,13 @@ there's no batch consensus.
 │                                  consulted & written on merge. Corpus flat
 │                                  (empty-DB harness can't show dedup). Repair +
 │                                  backfill scripts (dry-run default).
-└─ K  batch priors              ── Tier 3
+└─ K  batch priors              ── DONE (2026-09-07). batch_prior_service between
+                                   the scan batch and auto-organize: a >=3-file
+                                   author/series consensus lifts a review file
+                                   in the same batch whose filename names it
+                                   (+12, cap 92); disagreement logged. Never
+                                   rewrites an id. Corpus flat (no batch in the
+                                   harness).
 ```
 
 Re-run `pytest -m corpus` after **every** stage and paste the delta into

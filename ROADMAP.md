@@ -123,7 +123,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     ignores a leading article + consults `SeriesAlias`; `apply_series_merge`
     writes a `SeriesAlias` per merged-away name (closes the re-fork loop —
     resolves the item below). `scripts/backfill_author_sort_names.py` +
-    `scripts/repair_forked_authors.py`, both dry-run default. I and K remain.
+    `scripts/repair_forked_authors.py`, both dry-run default.
+  - **Tier 3 — K shipped** (2026-09-07) — batch priors (F6).
+    `app/services/batch_prior_service.apply_batch_priors`, called by `run_scan`
+    between the batch and the auto-organize pass. A ≥3-file author/series
+    consensus lifts a `review` file in the same scan whose filename names it
+    (+12, cap 92, drops the pending Review if it clears 85); a disagreement is
+    logged, not acted on. Never rewrites an identification; all changes under
+    `ai_decisions.raw_response_json["batch_prior"]`. **Stage I** (recently-organized
+    tray + `organize_hold_hours` soft-hold) is the last piece — frontend + API.
 - **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
   **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
   `resolved_title` / `resolved_author`, so the audit's display recompute matches

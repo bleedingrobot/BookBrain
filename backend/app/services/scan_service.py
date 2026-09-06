@@ -38,6 +38,7 @@ from app.services import review_service
 from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.drive_service import DriveService
+from app.services.batch_prior_service import apply_batch_priors
 from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
 from app.services.library_index_service import regenerate_library_index
@@ -194,6 +195,14 @@ class ScanService:
         batch_start = time.perf_counter()
         await self._process_batch(creds, raw_files, settings, counts, failures, timings=timings)
         batch_wall_seconds = time.perf_counter() - batch_start
+
+        # prompts/15 Stage K — before the auto-organize pass, let a batch
+        # consensus lift thin files in the same scan whose filenames name that
+        # author/series. Never rewrites an identification; only confidence +
+        # routing, all logged.
+        with _timed(timings, "db"):
+            async with async_session_factory() as session:
+                await apply_batch_priors(session, [f["id"] for f in raw_files])
 
         async with async_session_factory() as session:
             same_book_duplicates = await detect_same_book_duplicates(session)

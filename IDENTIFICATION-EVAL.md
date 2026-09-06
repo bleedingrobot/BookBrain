@@ -153,6 +153,38 @@ names — "Weis, Hickman" → "Weis" but "Chaney, Maggert" → both), so display
 rewriting was dropped. `wrong_auto_organized` back to 1; `pytest -m corpus`
 green. No AI cost.
 
+### Stage K — batch priors (`prompts/15` Stage K)
+
+Finding F6: 30 files from one author landing in a single scan is a strong prior
+that is never used — each file is identified in complete isolation.
+
+- New `app/services/batch_prior_service.apply_batch_priors(session,
+  drive_file_ids)`, called by `run_scan` after `_process_batch` and before the
+  auto-organize pass.
+- Consensus = ≥ 3 confidently-identified (`>= confidence_auto_flagged`,
+  `status=inbox`) files in the batch sharing an author (`normalize_person_name`
+  key) or a series (article-stripped word set).
+- For a `review` file in the same batch whose *filename* names a consensus
+  author/series:
+  - identification **agrees** → `+12` confidence (capped at 92, never the ≥95
+    tier), and if that clears 85 the file moves `review → inbox` and its pending
+    `Review` is dropped;
+  - identification **disagrees** → left in `review` with an explanatory note.
+- Never touches title/author/series; every change is recorded under
+  `ai_decisions.raw_response_json["batch_prior"]` (and re-running is a no-op).
+
+Corpus is flat — the harness scores one file at a time, so a batch consensus
+never forms. Unit-tested in `test_batch_prior_service.py` (the plan's 4-Discworld
++ 1-thin case, no-consensus, conflict, idempotency). No AI cost.
+
+## Tier 3 (I remains)
+
+J and K are shipped and deterministic (no AI cost). The corpus is structurally
+blind to both — J's win is *dedup* on a populated library (the harness starts
+empty), K's is a *batch* consensus (the harness scores one book at a time).
+Stage I (recently-auto-organized tray + soft-hold) is frontend + API + a running
+app to verify against — best as its own session.
+
 ## Per-stage log
 
 | stage | date | title | author | series | series-# | exact | notes |
@@ -165,6 +197,7 @@ green. No AI cost.
 | E | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | placeholder/junk-metadata detector (`metadata_sanity.looks_like_placeholder_title` / `_author` — "Unknown"/"Calibre"/"book1"/bare-number/publisher-name-as-author; short titles need an ISBN or provider match). Fast path is **skipped** when the EPUB title/author is a placeholder (forces the AI path); `PLACEHOLDER_METADATA_PENALTY` (-30) and `TITLE_IS_FILENAME_ONLY_PENALTY` (-10) fire on the *resolved* metadata. No corpus case exercises it (the 59 scored books all have real metadata) so per-field + `wrong_auto_organized` are flat; `pytest -m corpus` green. No AI cost. |
 | F | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | ISBN-trust check: the fast path now also requires `text_match.title_similarity` (difflib ratio on the *strict*-normalised titles) ≥ 0.80 between the EPUB title and the ISBN-matched provider title — `titles_match` alone strips everything after a `:` so "Mistborn: The Final Empire" and "Mistborn: The Well of Ascension" passed it. On failure it falls through to the AI path (candidate still supplied). **Fast-path hit-rate on the corpus unchanged at 25.4%** — no legit deterministic win lost. Per-field flat; `pytest -m corpus` green. No AI cost. |
 | G | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | positive corroboration components: `DESCRIPTION_CORROBORATES` (+3, a blurb mentions the resolved title/author/series) and `PUBYEAR_PLAUSIBLE` (+2, a real ≤-current year present and sources within 5y). Additive, opt-in via `resolved_title`/`resolved_author`, so reident + old callers unchanged. `resolved_series`/`_title`/`_author` now threaded through `reident_audit_service._recompute_confidence` so the display recompute matches a fresh scan. **Thresholds kept at 85/95** — see sweep below. Corpus flat (first cut at +5/+3 tipped one series-only-wrong book over 85 → dialed to +3/+2, which crosses no threshold in the corpus); `pytest -m corpus` green. No AI cost. |
+| K | 2026-09-07 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | batch priors: `batch_prior_service.apply_batch_priors` runs between the scan batch and auto-organize — a ≥3-file author/series consensus lifts a `review` file in the same batch whose filename names it (+12, cap 92, drops the pending Review if it clears 85); disagreement is logged, not acted on. Corpus flat (harness scores one file at a time — no batch). No AI cost. |
 | J | 2026-09-07 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | author canonicalisation: `normalize_person_name` match key (initials/`Last, First`/co-author) + `Author.sort_name` populated + `_find_or_create_series` article-insensitive + `SeriesAlias` consulted/written on merge. Corpus flat — the empty-DB harness can't show the dedup win; display-name rewriting was tried and dropped (regressed author 94.8→93.1 against inconsistent collaboration keys). Repair + backfill scripts, dry-run default. No AI cost. |
 | H | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | verification pass for the uncertain band (`70 ≤ computed_confidence < 95`): one adversarial `audit_book_identity` call — agree → +10 confidence (capped 94, so it still shows in the audit log), disagree → take the correction **and** force review (two AI opinions differed), uncertain → force review. **`settings.ai_verify_enabled` defaults OFF** (one extra ~$0.03 call per uncertain new book; James is budget-limited), so the corpus doesn't exercise it and the number is flat. Branch tests in `test_identification_service.py`. |
 
