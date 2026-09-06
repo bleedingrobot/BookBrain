@@ -39,6 +39,12 @@ commit per stage. SHAs + details in `REVIEW-2026-09-06.md` §"Shipped 2026-09-06
 staged, commit-per-stage prompt that works through all six in one session
 (order: 06 → 08 → 07 → 10 → 09 → 11).
 
+## Open
+
+| # | File | Kind | One line |
+|---|------|------|----------|
+| 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | Proactive guards on AI mis-identification: `series_number` clamp, confidence penalty for an uncorroborated series (structural gap #1), correction-memory few-shot, perceptual-hash cover dedup |
+
 ## Shared context (every session should know this)
 
 - **Repo:** `C:\Users\Giant\Documents\epub-librarian` — the directory keeps the

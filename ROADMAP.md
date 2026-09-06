@@ -28,6 +28,52 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 - **Populate `Book.description` for the ~950 still-blank books** — the
   free-source backfill (`POST /api/library/descriptions`) filled 109; the
   rest need the `ai=true` path (Claude), which costs credits.
+
+### Feature ideas from the 2026-09-06 "what would improve this?" think
+
+Prompt `13-trustworthy-identification.md` covers the #1 theme (proactive
+mis-identification guards). The rest of that session's ideas, for later:
+
+- **Viewer as a reading tool, not just a shelf.** The family-facing app is
+  "browse what we own"; the payoff features are about *reading*:
+  - Reading state per person — want-to-read / reading / finished. Even manual
+    toggles unlock everything below.
+  - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,
+    you own #2" on the home screen; "you own #3 but not #1–2" → offer to add to
+    the wishlist.
+  - Ratings + a one-line note per book, per reader.
+  - **Natural-language search** — "that sci-fi one about a generation ship."
+    Embed the descriptions locally (`sentence-transformers`, no API cost) and do
+    semantic search. The real daily use case for a personal library is "I know
+    we own it, I can't remember the title."
+  - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
+    reading position + time-spent; pull it back on the nightly job for real
+    "finished" detection and a year-end "reading wrapped".
+- **Observability + safety net.**
+  - **AI cost ledger** — batch-11 added *estimates*; there's no record of
+    *actual* spend. Wrap `AnthropicIdentificationClient` to log every call with
+    token counts + computed cost to a table; running month total on the
+    Dashboard.
+  - **DB backup to Drive on the nightly run** — `epub_librarian.db` is a single
+    point of failure holding 2,200 books of resolved metadata + human
+    corrections; the Sheets export is lossy. Copy the actual `.db` (or a full
+    JSON dump) into a Drive `backups/` folder nightly, keep the last 7.
+  - **Library-health panel** — mostly queries that already exist: N with no
+    cover, N with no description, N stuck in review > 30 days, N series with
+    gaps, N low-confidence auto-organised, folder-drift count. One screen for
+    "is the library in good shape?".
+- **Close the acquisition loop.**
+  - Auto-match a file landing in the torrents watch folder against a `wanted`
+    wishlist item → flag / auto-approve instead of cold identification.
+  - New-release watch for the most-read authors (Google Books / OpenLibrary) →
+    wishlist suggestions. Needs an author-frequency signal, which reading state
+    provides.
+- **Thin read-only backend for the viewer.** Today every family member who
+  signs in grants full `drive` read/write to their whole Google account (the
+  scary consent screen). A minimal proxy serving the sidecar JSON + covers via a
+  service account removes that — and is the gate on the viewer ever being more
+  than 2 users.
+
 ## Done (kept for context)
 
 - **AI spend guard rails on descriptions + rebuild** (2026-09-06, review batch #2
