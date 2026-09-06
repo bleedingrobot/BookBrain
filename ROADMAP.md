@@ -30,6 +30,27 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **Strict title match for book identity** (2026-09-06, review batch #2 / finding
+  06, P0) — `book_repository.resolve_book` matched incoming titles against
+  existing same-author books with the *loose* `normalize_title`, which strips a
+  `:`/`;` subtitle. For the very common "`<Series>: <Book Title>`" epub title
+  format that collapsed two genuinely different books onto one `Book` row;
+  `detect_same_book_duplicates` then flagged one as `same_book` (hiding it from
+  organize + the viewer) and the bulk "Clear duplicates" could trash it. Fix:
+  new `text_match.normalize_title_strict` (keeps the full title, still folds
+  case/article/trailing-parens) used **only** for the row-identity decision in
+  `resolve_book`; the loose `normalize_title` stays everywhere it's used for
+  confidence scoring / provider corroboration. Defense in depth: `clear_duplicates`
+  now skips `same_book` rows entirely — those clear one at a time via
+  `POST /api/duplicates/{id}/clear`, with a "Not a duplicate"
+  (`POST /api/duplicates/{id}/unflag`, splits the file onto a fresh book) option
+  on the Duplicates page, which now has a separate "Same book, different file"
+  section and a corrected header. Repair for existing casualties:
+  `POST /api/library-audit/repair-title-merges` + a "Repair falsely-merged books"
+  button on the Library Audit → Split records tab (DB-only, no Drive/AI, idempotent).
+  Accepted trade-off: "The Hobbit" and "The Hobbit: There and Back Again" now
+  resolve to two rows rather than one.
+
 - **library-viewer: drop guest/read-only mode + zero-setup defaults**
   (2026-09-06) — the `?clientId=&folderId=` share link used to set
   `readOnly: true`, which requested `drive.readonly` and hid Kobo devices,

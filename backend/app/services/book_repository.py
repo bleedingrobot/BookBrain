@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import Author, Book, Identifier, IdentifierType, Series
-from app.services.text_match import normalize_title, normalize_words
+from app.services.text_match import normalize_title_strict, normalize_words
 
 # Process-wide, not scoped to any one caller: every write path that can
 # fuzzy-match-or-create an Author/Series/Book (scan's per-file pipeline,
@@ -45,24 +45,33 @@ async def resolve_book(
     author_row = await _find_or_create_author(session, author) if author else None
     series_row = await _find_or_create_series(session, series) if series else None
 
-    # normalize_title, not exact string equality: different uploads of the
-    # same book routinely differ in casing/punctuation/subtitle formatting
-    # in the AI-extracted title ("The Hob's Bargain" vs "The Hob's bargain")
-    # — each variant must reuse the first-seen canonical row, same as the
-    # author/series matching above, or they fragment into separate Book
-    # records that then can't be recognized as the same book at all.
+    # normalize_title_strict, not exact string equality and not the loose
+    # normalize_title: different uploads of the same book routinely differ in
+    # casing/punctuation ("The Hob's Bargain" vs "The Hob's bargain") — each
+    # variant must reuse the first-seen canonical row, or they fragment into
+    # separate Book records. But the *loose* normalize_title strips a ':'/';'
+    # subtitle, which for the very common "<Series>: <Book Title>" title
+    # format ("Mistborn: The Final Empire" / "Mistborn: The Well of
+    # Ascension", both by the same author) collapses two genuinely different
+    # books onto one row — from there detect_same_book_duplicates flags the
+    # "extra" as a duplicate and the bulk clear can trash it. The strict
+    # normalizer keeps the full title so those stay distinct.
+    #
+    # Accepted trade-off: "The Hobbit" and "The Hobbit: There and Back Again"
+    # now resolve to two rows rather than one — a lesser harm (two visible
+    # records, nothing hidden or trashed) than merging two different books.
     query = select(Book)
     query = (
         query.where(Book.author_id == author_row.id)
         if author_row is not None
         else query.where(Book.author_id.is_(None))
     )
-    target_title = normalize_title(title)
+    target_title = normalize_title_strict(title)
     book_row = next(
         (
             b
             for b in (await session.execute(query)).scalars().all()
-            if normalize_title(b.canonical_title) == target_title
+            if normalize_title_strict(b.canonical_title) == target_title
         ),
         None,
     )

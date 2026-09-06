@@ -127,6 +127,52 @@ function DismissedClusters() {
   )
 }
 
+function TitleMergeRepairPanel() {
+  const queryClient = useQueryClient()
+  const repair = useMutation({
+    mutationFn: api.repairTitleMerges,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-audit'] })
+      queryClient.invalidateQueries({ queryKey: ['duplicates'] })
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+  })
+
+  return (
+    <div className="mt-8 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <h2 className="text-sm font-medium text-neutral-500">Repair falsely-merged books</h2>
+      <p className="mt-1 max-w-2xl text-xs text-neutral-400">
+        An earlier version matched titles too loosely, so two different books by the same author
+        whose titles shared a prefix before a colon (e.g. "Mistborn: The Final Empire" and
+        "Mistborn: The Well of Ascension") could end up sharing one record — and one of them
+        flagged as a duplicate. This re-derives each file's own title and splits any that don't
+        belong. Reads the database only; no Drive changes, no AI. Safe to run more than once.
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          disabled={repair.isPending}
+          onClick={() => repair.mutate()}
+        >
+          {repair.isPending ? 'Repairing…' : 'Run repair'}
+        </button>
+        {repair.data && (
+          <span className="text-xs text-neutral-500">
+            {repair.data.books_split === 0
+              ? 'Nothing to split — all records look right.'
+              : `Split ${repair.data.files_moved} file${
+                  repair.data.files_moved === 1 ? '' : 's'
+                } off ${repair.data.books_split} record${
+                  repair.data.books_split === 1 ? '' : 's'
+                }. Run Organize to re-file them.`}
+          </span>
+        )}
+        {repair.isError && <span className="text-xs text-red-600">Repair failed.</span>}
+      </div>
+    </div>
+  )
+}
+
 export function LibraryAudit() {
   const audit = useQuery({ queryKey: ['library-audit'], queryFn: api.getLibraryAudit })
   const [tab, setTab] = useState<'split' | 'reident'>('split')
@@ -200,6 +246,8 @@ export function LibraryAudit() {
           </div>
         </>
       )}
+
+          <TitleMergeRepairPanel />
 
           <DismissedClusters />
         </div>

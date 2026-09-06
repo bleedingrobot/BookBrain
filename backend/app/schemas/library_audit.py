@@ -30,3 +30,8 @@ class DismissedClusterInfo(BaseModel):
     kind: Literal["series", "author"]
     member_ids: list[int]
     created_at: datetime
+
+
+class TitleMergeRepairResult(BaseModel):
+    books_split: int
+    files_moved: int

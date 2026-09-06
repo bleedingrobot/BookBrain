@@ -22,3 +22,8 @@ export interface DismissedClusterInfo {
   member_ids: number[]
   created_at: string
 }
+
+export interface TitleMergeRepairResult {
+  books_split: number
+  files_moved: number
+}

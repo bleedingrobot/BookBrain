@@ -169,3 +169,56 @@ async def test_title_casing_variants_reuse_the_same_book(db_session) -> None:
     assert first.id == second.id
     books = (await db_session.execute(select(Book))).scalars().all()
     assert len(books) == 1
+
+
+async def test_same_author_series_prefix_titles_stay_separate_books(db_session) -> None:
+    # Regression (P0): "<Series>: <Book Title>" is a very common epub title
+    # format. The loose normalize_title stripped everything from the colon on,
+    # so two different books by the same author collapsed onto one Book row —
+    # from there detect_same_book_duplicates flags one as a duplicate and the
+    # bulk clear can trash it.
+    first = await resolve_book(
+        db_session,
+        title="Mistborn: The Final Empire",
+        author="Brandon Sanderson",
+        series="Mistborn",
+        series_number=1.0,
+        isbn13=None,
+        isbn10=None,
+    )
+    second = await resolve_book(
+        db_session,
+        title="Mistborn: The Well of Ascension",
+        author="Brandon Sanderson",
+        series="Mistborn",
+        series_number=2.0,
+        isbn13=None,
+        isbn10=None,
+    )
+
+    assert first.id != second.id
+    assert len((await db_session.execute(select(Book))).scalars().all()) == 2
+
+
+async def test_expanse_style_subtitles_still_resolve_separately(db_session) -> None:
+    # These already worked (the distinguishing word is before the colon) —
+    # make sure the strict matcher doesn't regress them either.
+    a = await resolve_book(
+        db_session,
+        title="Leviathan Wakes: Book One of The Expanse",
+        author="James S. A. Corey",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    b = await resolve_book(
+        db_session,
+        title="Caliban's War: Book Two of The Expanse",
+        author="James S. A. Corey",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    assert a.id != b.id

@@ -196,6 +196,29 @@ async def test_correct_resolves_new_book_and_promotes_status(db_session) -> None
     assert updated.correction_json["title"] == "Corrected Title"
 
 
+async def test_correct_does_not_merge_series_prefix_titles(db_session) -> None:
+    # Regression (P0): correcting a file to "<Series>: <Book B>" when a
+    # "<Series>: <Book A>" by the same author already exists must not resolve
+    # both onto one Book row.
+    author = Author(name="Brandon Sanderson")
+    db_session.add(author)
+    await db_session.flush()
+    existing = Book(canonical_title="Mistborn: The Final Empire", author_id=author.id)
+    db_session.add(existing)
+    await db_session.commit()
+
+    review = await _seed_review(db_session, proposed_author="Brandon Sanderson")
+    body = CorrectReviewRequest(
+        title="Mistborn: The Well of Ascension", author="Brandon Sanderson"
+    )
+
+    await review_service.correct(db_session, review.id, body)
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.book_id != existing.id
+    assert len((await db_session.execute(select(Book))).scalars().all()) == 2
+
+
 async def test_correct_preserves_isbn_from_prior_book(db_session) -> None:
     author = Author(name="Original Author")
     db_session.add(author)

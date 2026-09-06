@@ -2,9 +2,11 @@ from collections import defaultdict
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.data.models import (
     AIDecision,
+    Book,
     BookCandidate,
     File,
     FileStatus,
@@ -15,8 +17,15 @@ from app.data.models import (
 )
 from app.providers.drive.provider import DriveProvider
 from app.schemas.duplicates import ClearDuplicatesResult, DuplicateGroup
+from app.services.book_repository import get_book_write_lock, resolve_book
 
 _ACTIVE_STATUSES = (FileStatus.inbox, FileStatus.review, FileStatus.organised)
+_TITLE_SOURCES = {"epub", "comic"}
+
+
+class DuplicateNotClearableError(Exception):
+    """The file isn't a status=duplicate row, or (for the bulk path) it's a
+    same_book row that must be handled per-row, not swept."""
 
 
 async def detect_same_book_duplicates(session: AsyncSession) -> int:
@@ -101,12 +110,34 @@ async def list_duplicate_groups(session: AsyncSession) -> list[DuplicateGroup]:
     return groups
 
 
+async def _trash_and_delete(session: AsyncSession, provider: DriveProvider, dup: File) -> bool:
+    try:
+        provider.trash_file(dup.drive_file_id)
+    except Exception:
+        return False
+    for model in (Review, Operation, AIDecision, BookCandidate, MetadataSource):
+        await session.execute(delete(model).where(model.file_id == dup.id))
+    await session.execute(delete(File).where(File.id == dup.id))
+    return True
+
+
 async def clear_duplicates(session: AsyncSession, provider: DriveProvider) -> ClearDuplicatesResult:
-    """Trashes each duplicate's Drive file (recoverable via Drive's own
-    Trash, not a permanent delete) and drops its DB record. Never touches
-    the primary — only rows with status=duplicate are ever candidates."""
+    """Trashes each exact-content duplicate's Drive file (recoverable via
+    Drive's own Trash, not a permanent delete) and drops its DB record. Never
+    touches the primary — only rows with status=duplicate are candidates —
+    and never touches same_book rows: those are a *resolved-book* match, not a
+    byte match, so a bad identification could put a real, different book in
+    that bucket. They're cleared one at a time through clear_one_duplicate
+    after the user has seen the title."""
     duplicates = (
-        (await session.execute(select(File).where(File.status == FileStatus.duplicate)))
+        (
+            await session.execute(
+                select(File).where(
+                    File.status == FileStatus.duplicate,
+                    File.status_reason.is_distinct_from(FileStatusReason.same_book),
+                )
+            )
+        )
         .scalars()
         .all()
     )
@@ -114,16 +145,71 @@ async def clear_duplicates(session: AsyncSession, provider: DriveProvider) -> Cl
     cleared = 0
     failed = 0
     for dup in duplicates:
-        try:
-            provider.trash_file(dup.drive_file_id)
-        except Exception:
+        if await _trash_and_delete(session, provider, dup):
+            cleared += 1
+        else:
             failed += 1
-            continue
-
-        for model in (Review, Operation, AIDecision, BookCandidate, MetadataSource):
-            await session.execute(delete(model).where(model.file_id == dup.id))
-        await session.execute(delete(File).where(File.id == dup.id))
-        cleared += 1
 
     await session.commit()
     return ClearDuplicatesResult(cleared=cleared, failed=failed)
+
+
+async def clear_one_duplicate(
+    session: AsyncSession, provider: DriveProvider, file_id: int
+) -> ClearDuplicatesResult:
+    """Per-row trash for a single status=duplicate file (the only path that
+    clears a same_book row)."""
+    dup = (
+        await session.execute(select(File).where(File.id == file_id))
+    ).scalar_one_or_none()
+    if dup is None or dup.status != FileStatus.duplicate:
+        raise DuplicateNotClearableError(f"file {file_id} is not a duplicate")
+
+    ok = await _trash_and_delete(session, provider, dup)
+    await session.commit()
+    return ClearDuplicatesResult(cleared=1 if ok else 0, failed=0 if ok else 1)
+
+
+async def unflag_duplicate(session: AsyncSession, file_id: int) -> None:
+    """"Not a duplicate" — the file was flagged same_book against a book it
+    doesn't actually belong to (a stale false merge, or a bad identification).
+    Re-derive its own title and split it onto a fresh Book row, then send it
+    back through the pipeline. No AI, no Drive."""
+    file_row = (
+        await session.execute(
+            select(File)
+            .where(File.id == file_id)
+            .options(
+                selectinload(File.metadata_sources),
+                selectinload(File.book).selectinload(Book.author),
+                selectinload(File.book).selectinload(Book.series),
+            )
+        )
+    ).scalar_one_or_none()
+    if file_row is None or file_row.status != FileStatus.duplicate:
+        raise DuplicateNotClearableError(f"file {file_id} is not a flagged duplicate")
+
+    book = file_row.book
+    own_title = next(
+        (
+            s.value
+            for s in file_row.metadata_sources
+            if s.field_name == "title" and s.source in _TITLE_SOURCES and s.value
+        ),
+        None,
+    ) or (file_row.filename.rsplit(".", 1)[0].strip() or file_row.filename)
+
+    async with get_book_write_lock():
+        new_book = await resolve_book(
+            session,
+            title=own_title,
+            author=book.author.name if book and book.author else None,
+            series=book.series.name if book and book.series else None,
+            series_number=book.series_number if book else None,
+            isbn13=None,
+            isbn10=None,
+        )
+    file_row.book_id = new_book.id
+    file_row.status = FileStatus.inbox
+    file_row.status_reason = None
+    await session.commit()

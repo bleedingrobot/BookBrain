@@ -6,7 +6,12 @@ from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.provider import DriveProvider
 from app.data.models import AuditClusterKind
-from app.schemas.library_audit import DismissClusterRequest, DismissedClusterInfo, LibraryAuditResult
+from app.schemas.library_audit import (
+    DismissClusterRequest,
+    DismissedClusterInfo,
+    LibraryAuditResult,
+    TitleMergeRepairResult,
+)
 from app.schemas.reident_audit import (
     DeepCheckEstimate,
     DeepCheckRequest,
@@ -34,6 +39,7 @@ from app.services.reident_audit_service import (
     ReidentAuditService,
     get_reident_audit_service,
 )
+from app.services.title_merge_repair_service import repair_title_merges
 from app.services.series_merge_service import (
     SeriesMergeValidationError,
     apply_series_merge,
@@ -46,6 +52,13 @@ router = APIRouter(prefix="/library-audit", tags=["library-audit"])
 @router.get("", response_model=LibraryAuditResult)
 async def get_library_audit(db: AsyncSession = Depends(get_db)) -> LibraryAuditResult:
     return await audit_library(db)
+
+
+@router.post("/repair-title-merges", response_model=TitleMergeRepairResult)
+async def repair_title_merges_route(db: AsyncSession = Depends(get_db)) -> TitleMergeRepairResult:
+    """One-off: split books that the old loose title match wrongly merged.
+    DB-only — no Drive, no Anthropic. Safe to re-run."""
+    return await repair_title_merges(db)
 
 
 @router.post("/dismiss", status_code=204)

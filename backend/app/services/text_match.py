@@ -13,21 +13,49 @@ def normalize(text: str | None) -> str:
     return _NORMALIZE_RE.sub("", text.lower())
 
 
+def _strip_trailing_parens(core_title: str) -> str:
+    while True:
+        trimmed = _TRAILING_PARENS_RE.sub("", core_title).strip()
+        if trimmed == core_title:
+            return core_title
+        core_title = trimmed
+
+
 def normalize_title(text: str | None) -> str:
     """Like normalize(), but also drops a leading article ('the'/'a'/'an')
     and any colon/semicolon or trailing-parenthetical series/subtitle
     suffix. Sources routinely embed series info in the title field in
     incompatible ways for the same book — "Title : Series Name",
     "Title (Series Name 03)", "Title (Series Name Book 3)" — none of which
-    is a real disagreement, and none should be scored as one."""
+    is a real disagreement, and none should be scored as one.
+
+    This is the *loose* comparator — right for confidence scoring and
+    provider corroboration, where a false match only moves a number. It is
+    the WRONG choice for deciding whether two books are the same row: see
+    normalize_title_strict and its use in book_repository.resolve_book."""
     if not text:
         return ""
     core_title = _SUBTITLE_SEPARATOR_RE.sub("", text.strip())
-    while True:
-        trimmed = _TRAILING_PARENS_RE.sub("", core_title).strip()
-        if trimmed == core_title:
-            break
-        core_title = trimmed
+    core_title = _strip_trailing_parens(core_title)
+    stripped = _LEADING_ARTICLE_RE.sub("", core_title.lower())
+    return _NORMALIZE_RE.sub("", stripped)
+
+
+def normalize_title_strict(text: str | None) -> str:
+    """Like normalize_title(), but keeps the full title — it does NOT strip
+    a ':'/';' subtitle. Case, punctuation and a leading article are still
+    folded, and a trailing "(Series Name 3)" parenthetical is still dropped
+    (the distinguishing part of "Heir to the Empire (Thrawn 1)" vs "Dark
+    Force Rising (Thrawn 2)" is *before* the parens; only the colon form
+    hides it *after* the separator).
+
+    Use this for row-identity decisions ("is this the same Book row?").
+    "Mistborn: The Final Empire" and "Mistborn: The Well of Ascension" are
+    genuinely different books and must stay distinct rows; the loose
+    normalize_title collapses both to "mistborn"."""
+    if not text:
+        return ""
+    core_title = _strip_trailing_parens(text.strip())
     stripped = _LEADING_ARTICLE_RE.sub("", core_title.lower())
     return _NORMALIZE_RE.sub("", stripped)
 

@@ -8,7 +8,12 @@ import type {
   LibraryExportResult,
   MetadataWritebackJobStatus,
 } from '../types/library'
-import type { AuditClusterKind, DismissedClusterInfo, LibraryAuditResult } from '../types/libraryAudit'
+import type {
+  AuditClusterKind,
+  DismissedClusterInfo,
+  LibraryAuditResult,
+  TitleMergeRepairResult,
+} from '../types/libraryAudit'
 import type {
   DeepCheckEstimate,
   DeepCheckResult,
@@ -121,7 +126,13 @@ export const api = {
 
   listDuplicates: () => request<DuplicateGroup[]>('/duplicates'),
   clearDuplicates: () => request<ClearDuplicatesResult>('/duplicates/clear', { method: 'POST' }),
+  clearOneDuplicate: (fileId: number) =>
+    request<ClearDuplicatesResult>(`/duplicates/${fileId}/clear`, { method: 'POST' }),
+  unflagDuplicate: (fileId: number) =>
+    request<void>(`/duplicates/${fileId}/unflag`, { method: 'POST' }),
   getLibraryAudit: () => request<LibraryAuditResult>('/library-audit'),
+  repairTitleMerges: () =>
+    request<TitleMergeRepairResult>('/library-audit/repair-title-merges', { method: 'POST' }),
   dismissAuditCluster: (kind: AuditClusterKind, memberIds: number[]) =>
     request<void>('/library-audit/dismiss', {
       method: 'POST',

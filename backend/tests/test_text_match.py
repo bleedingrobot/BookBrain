@@ -1,4 +1,10 @@
-from app.services.text_match import normalize, normalize_title, texts_match, titles_match
+from app.services.text_match import (
+    normalize,
+    normalize_title,
+    normalize_title_strict,
+    texts_match,
+    titles_match,
+)
 
 
 def test_normalize_strips_punctuation_and_case() -> None:
@@ -89,3 +95,37 @@ def test_titles_match_ignores_differently_formatted_series_suffixes() -> None:
     assert titles_match(
         "A Reaper at the Gates (An Ember in the Ashes 03)", "A Reaper at the Gates"
     ) is True
+
+
+def test_normalize_title_strict_keeps_colon_subtitle() -> None:
+    # The distinguishing part of "<Series>: <Book>" titles is *after* the
+    # colon — the strict normalizer must keep it so two different books in a
+    # series don't collapse onto one key.
+    assert normalize_title_strict("Mistborn: The Final Empire") == "mistbornthefinalempire"
+    assert (
+        normalize_title_strict("Mistborn: The Well of Ascension")
+        == "mistbornthewellofascension"
+    )
+    assert normalize_title_strict("Mistborn: The Final Empire") != normalize_title_strict(
+        "Mistborn: The Well of Ascension"
+    )
+
+
+def test_normalize_title_strict_still_folds_case_article_and_trailing_parens() -> None:
+    assert normalize_title_strict("The Hob's Bargain") == normalize_title_strict("The Hob's bargain")
+    assert normalize_title_strict("A Study in Scarlet") == "studyinscarlet"
+    assert (
+        normalize_title_strict("Heir to the Empire (Thrawn Trilogy 1)")
+        != normalize_title_strict("Dark Force Rising (Thrawn Trilogy 2)")
+    )
+
+
+def test_normalize_title_strict_does_not_merge_series_prefix_books() -> None:
+    assert normalize_title_strict("Star Wars: Heir to the Empire") != normalize_title_strict(
+        "Star Wars: Dark Force Rising"
+    )
+
+
+def test_normalize_title_strict_empty() -> None:
+    assert normalize_title_strict(None) == ""
+    assert normalize_title_strict("") == ""
