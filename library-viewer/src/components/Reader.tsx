@@ -3,7 +3,7 @@ import '../vendor/foliate/view.js'
 import type { FoliateTOCItem, FoliateView } from '../vendor/foliate/view.js'
 import type { BookRow } from '../lib/books'
 import { getCachedBook, putCachedBook } from '../lib/bookCache'
-import { fetchDriveBlob, isAuthError } from '../lib/drive'
+import { downloadFile, fetchDriveBlob, isAuthError, looksLikeZip } from '../lib/drive'
 import { getProgress, setProgress } from '../lib/readingProgress'
 import {
   DEFAULT_PREFS,
@@ -20,6 +20,7 @@ interface Props {
   token: string
   book: BookRow
   onClose: () => void
+  onAuthError: (err: unknown) => void
 }
 
 const SAVE_DEBOUNCE_MS = 1000
@@ -35,7 +36,7 @@ function tocFlat(items: FoliateTOCItem[], depth = 0): { item: FoliateTOCItem; de
   return out
 }
 
-export function Reader({ token, book, onClose }: Props) {
+export function Reader({ token, book, onClose, onAuthError }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<FoliateView | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -43,6 +44,8 @@ export function Reader({ token, book, onClose }: Props) {
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState('')
+  const [retryNonce, setRetryNonce] = useState(0)
+  const [downloadState, setDownloadState] = useState<'idle' | 'saving' | 'done' | 'failed'>('idle')
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs())
   // The load effect reads prefs once for the first paint; the effect below
   // keeps them live. A ref keeps prefs out of the load effect's deps (it must
@@ -68,11 +71,19 @@ export function Reader({ token, book, onClose }: Props) {
     let cancelled = false
     const host = hostRef.current
     ;(async () => {
+      setStatus('loading')
       try {
-        let blob = await getCachedBook(book.id)
+        // "Try again" (retryNonce > 0) bypasses the cache — the cached copy
+        // may be the thing that's broken.
+        let blob = retryNonce > 0 ? null : await getCachedBook(book.id)
         if (!blob) {
           blob = await fetchDriveBlob(token, book.id)
           if (cancelled) return
+          if (!(await looksLikeZip(blob))) {
+            throw new Error(
+              "The download didn't come back as a book file — Drive may be rate-limiting you. Try again in a minute, or download it and open it in another reader.",
+            )
+          }
           void putCachedBook(book.id, blob)
         }
         if (cancelled || !host) return
@@ -127,9 +138,10 @@ export function Reader({ token, book, onClose }: Props) {
         if (!cancelled) setStatus('ready')
       } catch (err) {
         if (cancelled) return
+        if (isAuthError(err)) onAuthError(err)
         setErrorMsg(
-          isAuthError(err)
-            ? 'Your sign-in expired. Close this, sign in again, and reopen.'
+          err instanceof Error && err.message
+            ? err.message
             : 'Could not open this book — the file may be missing or not a valid EPUB.',
         )
         setStatus('error')
@@ -147,7 +159,7 @@ export function Reader({ token, book, onClose }: Props) {
       }
       viewRef.current = null
     }
-  }, [book.id, token, flushSave])
+  }, [book.id, token, flushSave, retryNonce, onAuthError])
 
   // --- re-apply typography/theme on change ------------------------------
   useEffect(() => {
@@ -276,9 +288,46 @@ export function Reader({ token, book, onClose }: Props) {
         {status === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
             <p className="max-w-sm text-sm">{errorMsg}</p>
-            <button className="btn btn-neutral btn-xs" onClick={onClose}>
-              Back to library
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                className="btn btn-primary btn-xs"
+                onClick={() => {
+                  setDownloadState('idle')
+                  setRetryNonce((n) => n + 1)
+                }}
+              >
+                Try again
+              </button>
+              <button
+                className="btn btn-neutral btn-xs"
+                disabled={downloadState === 'saving'}
+                onClick={async () => {
+                  setDownloadState('saving')
+                  try {
+                    await downloadFile(token, book.file)
+                    setDownloadState('done')
+                  } catch {
+                    setDownloadState('failed')
+                  }
+                }}
+              >
+                {downloadState === 'saving'
+                  ? 'Downloading…'
+                  : downloadState === 'done'
+                    ? 'Downloaded ✓'
+                    : downloadState === 'failed'
+                      ? 'Download failed — retry'
+                      : 'Download the file'}
+              </button>
+              <button className="btn btn-ghost btn-xs" onClick={onClose}>
+                Back to library
+              </button>
+            </div>
+            {downloadState === 'done' && (
+              <p className="max-w-sm text-xs opacity-60">
+                Saved to your device — open it in any EPUB reader.
+              </p>
+            )}
           </div>
         )}
       </div>

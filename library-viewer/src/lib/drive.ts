@@ -257,14 +257,37 @@ export async function copyFileToFolder(token: string, file: DriveFile, destinati
 // Raw file bytes from Drive. Shared by downloadFile (save-to-disk) and the
 // EPUB reader (which caches the blob in IndexedDB, see lib/bookCache.ts).
 export async function fetchDriveBlob(token: string, fileId: string): Promise<Blob> {
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const base = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+  const auth = { Authorization: `Bearer ${token}` }
+  let response: Response
+  try {
+    response = await fetch(base, { headers: auth })
+  } catch {
+    // network down / CORS / offline — fetch() rejects with a bare TypeError
+    throw new Error("Couldn't reach Google Drive — check your connection.")
+  }
+  // Google flags some files as "abusive" and refuses a plain download; a
+  // second request with acknowledgeAbuse=true goes through.
+  if (response.status === 403) {
+    const body = await response.clone().text().catch(() => '')
+    if (/abuse/i.test(body)) {
+      response = await fetch(`${base}&acknowledgeAbuse=true`, { headers: auth }).catch(() => response)
+    }
+  }
   if (!response.ok) {
     if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
-    throw new Error(`Failed to download file (${response.status})`)
+    if (response.status === 404) throw new Error('This file is no longer in your Drive library.')
+    throw new Error(`Google Drive refused the download (error ${response.status}).`)
   }
   return response.blob()
+}
+
+// A Blob is a ZIP (EPUBs are ZIP containers) — cheap guard against handing a
+// Drive error page / truncated download to the EPUB renderer.
+export async function looksLikeZip(blob: Blob): Promise<boolean> {
+  if (blob.size < 4) return false
+  const sig = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+  return sig[0] === 0x50 && sig[1] === 0x4b // "PK"
 }
 
 export async function downloadFile(token: string, file: DriveFile): Promise<void> {

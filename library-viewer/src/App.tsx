@@ -434,6 +434,7 @@ export default function App() {
         <Reader
           token={token}
           book={readingBook}
+          onAuthError={lib.flagAuthError}
           onClose={() => {
             setReadingBookId(null)
             setProgressTick((t) => t + 1)
