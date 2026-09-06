@@ -43,11 +43,47 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Spirit Stone",
+    "title": "The Spirit Stone",
     "author": "Katharine Kerr",
-    "series": "Act 3 : The Dragon Mage",
-    "series_number": 5.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": "Act 3 : The Dragon Mage",
+      "series_number": 5.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q135089500",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

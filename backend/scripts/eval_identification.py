@@ -36,18 +36,19 @@ _END = "<!-- eval-baseline:end -->"
 
 def _print_table(report) -> None:
     print(f"\ncorpus: {len(report.results)} entries  |  scored: {report.scored}  |  "
-          f"skipped offline: {report.skipped_offline}")
-    print(f"exact-match (all 4 fields): {report.exact_match:.1%}")
+          f"skipped offline: {report.skipped_offline}  |  unresolved: {report.skipped_unresolved}")
+    print(f"weak (Claude-only) answers {'INCLUDED' if report.include_weak else 'EXCLUDED'}")
+    print(f"exact-match (all scorable fields): {report.exact_match:.1%}")
     print(f"fast-path rate:             {report.fast_path_rate:.1%}")
     print(f"auto-organized (>=85) wrong: {report.wrong_auto_organized}")
-    print("\nper-field precision")
-    print("-" * 32)
+    print("\nper-field precision (hits / books with a triangulated answer)")
+    print("-" * 48)
     for f in FIELDS:
-        print(f"  {f:<15} {report.precision[f]:6.1%}")
+        print(f"  {f:<15} {report.precision[f]:6.1%}   ({report.coverage.get(f, 0)}/{report.scored} covered)")
 
-    wrong = [r for r in report.results if not r.exact and not r.prediction.skipped_offline]
+    wrong = [r for r in report.results if r.field_ok and not r.exact]
     if wrong:
-        print(f"\nconfusion ({len(wrong)} entries)")
+        print(f"\nconfusion ({len(wrong)} scored entries with a miss)")
         print("-" * 32)
         for r in wrong:
             tags = ",".join(r.entry.case_tags)
@@ -55,9 +56,10 @@ def _print_table(report) -> None:
             for wf in r.wrong_fields:
                 print(f"      {wf}: got {getattr(r.prediction, wf)!r}  want {getattr(r.entry.answer, wf)!r}")
 
-    unverified = [r for r in report.results if not r.entry.answer.verified]
-    if unverified:
-        print(f"\n{len(unverified)} answer keys still marked verified=false")
+    unresolved = [r for r in report.results if not r.field_ok and not r.prediction.skipped_offline]
+    if unresolved:
+        print(f"\n{len(unresolved)} entries have no triangulated answer key yet "
+              "(run scripts/build_truth.py with API credit)")
 
 
 def _write_baseline(report) -> None:
@@ -87,13 +89,13 @@ def _skeleton() -> str:
     )
 
 
-async def _run(live: bool, tag: str | None, only_recorded: bool) -> None:
+async def _run(live: bool, tag: str | None, only_recorded: bool, strict: bool) -> None:
     entries = load_corpus()
     if tag:
         entries = [e for e in entries if tag in e.case_tags]
     if only_recorded:
         entries = [e for e in entries if e.recorded_ai is not None]
-    return await score_corpus(entries, live=live)
+    return await score_corpus(entries, live=live, include_weak=not strict)
 
 
 def main() -> int:
@@ -103,18 +105,22 @@ def main() -> int:
     ap.add_argument("--live", action="store_true", help="real providers + real AI (costs credits)")
     ap.add_argument("--tag", help="only score entries carrying this case_tag")
     ap.add_argument("--only-recorded", action="store_true", help="skip fixtures with no recorded AI answer")
+    ap.add_argument("--strict", action="store_true",
+                    help="exclude 'weak' (Claude-only consensus) answer keys from scoring")
     args = ap.parse_args()
 
     if args.live:
         print("!! --live hits real metadata providers and the Anthropic API (credits) !!")
 
-    report = asyncio.run(_run(args.live, args.tag, args.only_recorded))
+    report = asyncio.run(_run(args.live, args.tag, args.only_recorded, args.strict))
 
     if args.json:
         print(json.dumps(
             {
                 "scored": report.scored,
                 "skipped_offline": report.skipped_offline,
+                "skipped_unresolved": report.skipped_unresolved,
+                "coverage": report.coverage,
                 "precision": report.precision,
                 "exact_match": report.exact_match,
                 "fast_path_rate": report.fast_path_rate,

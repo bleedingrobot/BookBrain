@@ -43,7 +43,34 @@
     "author": "Gene Wolfe",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q131461498",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

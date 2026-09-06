@@ -41,9 +41,36 @@
   "answer": {
     "title": "The Course of True Love (and First Dates)",
     "author": "Cassandra Clare",
-    "series": "Tales from the Shadowhunter Academy",
-    "series_number": 10.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Course of True Love (and First Dates)",
+      "author": "Cassandra Clare",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Course of True Love (and First Dates)",
+      "author": "Cassandra Clare",
+      "series": "The Bane Chronicles",
+      "series_number": 10.0,
+      "url": "https://www.fantasticfiction.com/c/cassandra-clare/bane-chronicles/",
+      "note": "conf=0.96; E-only short story (2014) by Cassandra Clare alone (unlike most Bane Chronicles entries, which are co-written). It is #10 of 11 in The Bane Chronicles, a Shadowhunter Chronicles sub-series about Magnus Bane; it covers Magnus and Alec Lightwood's first date. Some retailers market it as \"standalone\" merely meaning separately purchasable; Fantastic Fiction and FictionDB both list it as Bane Chronicles #10. Also collected in the omnibus The Bane Chronicles (2014)."
+    }
+  ],
+  "truth_disagreements": []
 }

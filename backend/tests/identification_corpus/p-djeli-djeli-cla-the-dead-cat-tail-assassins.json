@@ -56,10 +56,48 @@
   },
   "answer": {
     "title": "The Dead Cat Tail Assassins",
-    "author": "P. Djeli Djeli Clark",
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djeli Djeli Clark",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djeli Djeli Clark",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djèlí Clark",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q130711761",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "author: epub='P. Djeli Djeli Clark'; provider='P. Djeli Djeli Clark'; wikidata='P. Djèlí Clark'"
+  ]
 }

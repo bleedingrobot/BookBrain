@@ -31,11 +31,29 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Wronged: A Story of the Dark",
-    "author": "J.A. Sutherland",
-    "series": "Alexis Carew",
+    "title": null,
+    "author": null,
+    "series": null,
     "series_number": null,
     "verified": true,
-    "source": "human_correction"
-  }
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wronged - A Story of the Dark (Alexis Carew #301)",
+      "author": "J.A. Sutherland",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

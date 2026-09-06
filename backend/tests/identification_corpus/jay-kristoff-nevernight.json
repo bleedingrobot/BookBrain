@@ -45,9 +45,45 @@
   "answer": {
     "title": "Nevernight",
     "author": "Jay Kristoff",
-    "series": "The Nevernight Chronicle",
+    "series": "Nevernight Chronicle",
     "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Nevernight",
+      "author": "Jay Kristoff",
+      "series": "The Nevernight Chronicle",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Nevernight",
+      "author": "Jay Kristoff",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Nevernight",
+      "author": "Jay Kristoff",
+      "series": "Nevernight Chronicle",
+      "series_number": 1.0,
+      "url": "https://www.wikidata.org/wiki/Q116814621",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

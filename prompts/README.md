@@ -50,7 +50,7 @@ staged, commit-per-stage prompt that works through all six in one session
 
 | # | File | Kind | One line |
 |---|------|------|----------|
-| 15 | [`15-identification-accuracy-push.md`](15-identification-accuracy-push.md) | umbrella / multi-session | Get first-scan identify+name+file accuracy toward ~100%. **Stage 0 harness landed** (`IDENTIFICATION-EVAL.md`, `backend/tests/corpus_harness.py`, `scripts/snapshot_book.py` + `eval_identification.py`, 74-book corpus, `pytest -m corpus`) — baseline number pending answer-key verification. Then: web-search grounding, real provider series, filename parsing, richer evidence, junk-metadata + ISBN-trust checks, a verification pass, a "recently organized" tray, author canonicalisation, batch priors. One commit/stage, `pytest -m corpus` gates every stage. |
+| 15 | [`15-identification-accuracy-push.md`](15-identification-accuracy-push.md) | umbrella / multi-session | Get first-scan identify+name+file accuracy toward ~100%. **Stage 0 landed & redesigned autonomous** (James wanted zero manual verification): 74-book corpus with **triangulated** answer keys (`scripts/build_truth.py` — Wikidata + 2 web-grounded Claude calls; a field counts only when ≥2 independent sources agree), `pytest -m corpus` gate, plus `test_identification_invariants.py` + `test_identification_mutation.py` (need no ground truth). Baseline is **partial** — API credit ran out mid-`build_truth`; re-run to complete. Then: web-search grounding, real provider series, filename parsing, richer evidence, junk-metadata + ISBN-trust checks, a verification pass, a "recently organized" tray, author canonicalisation, batch priors. One commit/stage. |
 
 ## Shared context (every session should know this)
 

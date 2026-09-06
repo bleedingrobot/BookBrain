@@ -49,11 +49,41 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "We Sold Our Souls",
-    "author": "Grady Hendrix",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "We Sold Our Souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "We sold our souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='We Sold Our Souls'; provider='We sold our souls'",
+    "author: epub='Grady Hendrix'; provider='Grady Hendrix'"
+  ]
 }

@@ -105,9 +105,36 @@
   "answer": {
     "title": "The Tainted Cup",
     "author": "Robert Jackson Bennett",
-    "series": "The Shadow of the Leviathan",
-    "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Tainted Cup",
+      "author": "Robert Jackson Bennett",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Tainted Cup",
+      "author": "Robert Jackson Bennett",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q133842917",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

@@ -51,11 +51,41 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "The Wyrm King",
-    "author": "Tony DiTerlizzi, Holly Black",
-    "series": "Beyond the Spiderwick Chronicles",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Wyrm King",
+      "author": "Tony DiTerlizzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Wyrm King",
+      "author": "Holly Black",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='The Wyrm King'; provider='Wyrm King'",
+    "author: epub='Tony DiTerlizzi'; provider='Holly Black'"
+  ]
 }

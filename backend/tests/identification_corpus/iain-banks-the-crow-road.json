@@ -53,7 +53,43 @@
     "author": "Iain Banks",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The crow road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The crow road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q16241321",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

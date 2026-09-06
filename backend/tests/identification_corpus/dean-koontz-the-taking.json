@@ -50,7 +50,43 @@
     "author": "Dean Koontz",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q2438593",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

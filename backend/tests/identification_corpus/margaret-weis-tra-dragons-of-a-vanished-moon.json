@@ -52,10 +52,46 @@
   "recorded_series_ai": null,
   "answer": {
     "title": "Dragons of a Vanished Moon",
-    "author": "Margaret Weis, Tracy Hickman",
-    "series": "Dragonlance: The War of Souls",
+    "author": "Margaret Weis",
+    "series": "The War of Souls",
     "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Dragons of a Vanished Moon",
+      "author": "Margaret Weis",
+      "series": "Dragonlance: The War of Souls",
+      "series_number": 3.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Dragons of a Vanished Moon",
+      "author": "Margaret Weis",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Dragons of a Vanished Moon",
+      "author": "Margaret Weis",
+      "series": "The War of Souls",
+      "series_number": 3.0,
+      "url": "https://www.wikidata.org/wiki/Q21079072",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

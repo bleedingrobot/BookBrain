@@ -45,9 +45,47 @@
   "answer": {
     "title": "The Lone Drow",
     "author": "R. A. Salvatore",
-    "series": "Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best",
-    "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Lone Drow",
+      "author": "R. A. Salvatore",
+      "series": "Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Lone Drow",
+      "author": "R. A. Salvatore",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Lone Drow",
+      "author": "R. A. Salvatore",
+      "series": "The Hunter's Blades Trilogy",
+      "series_number": 18.0,
+      "url": "https://www.wikidata.org/wiki/Q17061141",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "series: epub='Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best'; wikidata=\"The Hunter's Blades Trilogy\""
+  ]
 }

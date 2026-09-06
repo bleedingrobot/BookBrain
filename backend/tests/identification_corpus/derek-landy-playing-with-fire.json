@@ -43,11 +43,41 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Playing with fire",
-    "author": "Derek Landy",
-    "series": "Skulduggery Pleasant",
-    "series_number": 2.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Playing With Fire",
+      "author": "Derek Landy",
+      "series": "Skulduggery Pleasant",
+      "series_number": 2.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Playing with fire",
+      "author": "Derek Landy",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Playing With Fire'; provider='Playing with fire'",
+    "author: epub='Derek Landy'; provider='Derek Landy'"
+  ]
 }

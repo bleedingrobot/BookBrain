@@ -49,11 +49,41 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Son of Thunder",
-    "author": "Murray J.D. Leeder",
-    "series": "Forgotten Realms: The Fighters",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Son of Thunder",
+      "author": "Murray J.D. Leeder",
+      "series": "Forgotten Realms.Fighters.Forgotten Realms.3 of 4._.ICB Best",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Son of Thunder",
+      "author": "Murray J.D. Leeder",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Son of Thunder'; provider='Son of Thunder'",
+    "author: epub='Murray J.D. Leeder'; provider='Murray J.D. Leeder'"
+  ]
 }

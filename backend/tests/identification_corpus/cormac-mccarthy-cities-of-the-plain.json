@@ -40,11 +40,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Cities of the Plain",
-    "author": "Cormac McCarthy",
-    "series": "The Border Trilogy",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Border Trilogy 3 - Cities of The Plain",
+      "author": "McCarthy",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

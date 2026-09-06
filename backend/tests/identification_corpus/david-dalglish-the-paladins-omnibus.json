@@ -39,11 +39,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "The Paladins Omnibus",
-    "author": "David Dalglish",
-    "series": "The Paladins",
+    "title": null,
+    "author": null,
+    "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Paladins",
+      "author": "David Dalglish",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

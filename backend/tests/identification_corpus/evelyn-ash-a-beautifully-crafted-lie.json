@@ -40,11 +40,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "A Beautifully Crafted Lie",
-    "author": "Evelyn Ash",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "A Beautifully Crafted Lie",
+      "author": "Ash",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

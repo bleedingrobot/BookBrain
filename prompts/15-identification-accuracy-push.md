@@ -194,6 +194,18 @@ must show it moved the number, or it doesn't ship.
 table, and fails if any field regresses below the recorded baseline.
 `IDENTIFICATION-EVAL.md` exists with the baseline.
 
+**UPDATE (2026-09-06): Stage 0 shipped, redesigned to need no human step.**
+James did not want to hand-verify answer keys, so the ground truth is
+*triangulated*: `scripts/build_truth.py` asks Wikidata + two web-search-grounded
+Claude calls (identify + adversarial-refute), and a field's answer is only
+accepted when >=2 independent signals agree (>=1 non-Claude ⇒ `consensus`,
+Claude-only ⇒ `weak`, else `unresolved`/not scored). Added
+`test_identification_invariants.py` (standalone-with-a-number, invented title,
+junk→high-confidence, non-determinism) and `test_identification_mutation.py`
+(corrupt one input ⇒ stays right or stops being confident) — both need no
+ground truth and carry the "never confidently wrong" guarantee. See
+`IDENTIFICATION-EVAL.md`.
+
 ---
 
 ### Tier 1 — biggest accuracy wins
@@ -530,9 +542,13 @@ there's no batch consensus.
 ## Sequencing
 
 ```
-0  (harness)  ── ~done: harness + scripts + 74-book corpus landed
-│               (IDENTIFICATION-EVAL.md); baseline number pending James's
-│               answer-key verification, then `eval_identification.py --write-baseline`
+0  (harness)  ── DONE: harness + 74-book corpus + IDENTIFICATION-EVAL.md.
+│               Answer keys are TRIANGULATED, not human-verified (James asked
+│               for zero manual steps): a field's ground truth is what >=2 of
+│               {Wikidata, web-grounded Claude x2, EPUB metadata, provider}
+│               agree on; disagreements are left "unresolved" and not scored.
+│               Plus structural-invariant + adversarial-mutation tests that
+│               need no ground truth. `scripts/build_truth.py` rebuilds the keys.
 │
 ├─ A  web-search grounding      ┐
 ├─ B  provider series           │ Tier 1 — do all three, any order

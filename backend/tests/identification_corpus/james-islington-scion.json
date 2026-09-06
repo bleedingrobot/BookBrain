@@ -41,11 +41,41 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Scion",
-    "author": "James Islington",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
     "verified": true,
-    "source": "human_correction"
-  }
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Scion'; provider='Scion'",
+    "author: epub='James Islington'; provider='James Islington'"
+  ]
 }

@@ -47,11 +47,41 @@
     "series_number": 2
   },
   "answer": {
-    "title": "Giant Problem",
-    "author": "Tony DiTerlizzi",
-    "series": "Beyond the Spiderwick Chronicles",
-    "series_number": 2.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "A Giant Problem",
+      "author": "Tony DiTerlizzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Giant Problem",
+      "author": "Tony DiTerlizzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='A Giant Problem'; provider='Giant Problem'",
+    "author: epub='Tony DiTerlizzi'; provider='Tony DiTerlizzi'"
+  ]
 }

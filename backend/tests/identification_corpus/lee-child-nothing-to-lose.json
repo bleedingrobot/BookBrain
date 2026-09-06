@@ -46,11 +46,41 @@
     "series_number": 12
   },
   "answer": {
-    "title": "Nothing to Lose",
-    "author": "Lee Child",
-    "series": "Jack Reacher",
-    "series_number": 12.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Nothing to Lose",
+      "author": "Lee Child",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Nothing to Lose",
+      "author": "Lee Child",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Nothing to Lose'; provider='Nothing to Lose'",
+    "author: epub='Lee Child'; provider='Lee Child'"
+  ]
 }

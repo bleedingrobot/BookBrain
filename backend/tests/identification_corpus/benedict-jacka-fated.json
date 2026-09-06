@@ -71,7 +71,61 @@
     "author": "Benedict Jacka",
     "series": "Alex Verus",
     "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Fated",
+      "author": "Benedict Jacka",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Fated",
+      "author": "Benedict Jacka",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Fated",
+      "author": "Benedict Jacka",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q139980139",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Fated",
+      "author": "Benedict Jacka",
+      "series": "Alex Verus",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/work/editions/16686573-fated",
+      "note": "conf=0.98; ISBN 9781101560419 matches the Ace Books ebook edition (Feb 28, 2012) of Fated by Benedict Jacka, per Goodreads editions list and Barnes & Noble (which lists it as \"Alex Verus Series #1\"). Kobo and Penguin Random House descriptions both call it the first novel in the Alex Verus series; Amazon Kindle title is \"Fated (Alex Verus Book 1)\"."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Fated",
+      "author": "Benedict Jacka",
+      "series": "Alex Verus",
+      "series_number": 1.0,
+      "url": "https://www.kobo.com/ww/en/ebook/fated-5",
+      "note": "conf=0.97; Proposed identification verified with no corrections. ISBN 9781101560419 is the Ace/Penguin ebook edition of Fated, explicitly labeled \"Book 1 - An Alex Verus Novel\" on Kobo. Alex Verus is a real 12-book published urban fantasy series (Fated through Risen, 2012-2021) plus novellas Favours and Gardens; Fated is #1. Author name and title match metadata and all sources."
+    }
+  ],
+  "truth_disagreements": []
 }

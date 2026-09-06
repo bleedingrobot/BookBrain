@@ -50,7 +50,43 @@
     "author": "Charles Stross",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q8026812",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

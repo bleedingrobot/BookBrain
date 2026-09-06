@@ -53,7 +53,43 @@
     "author": "Dean Koontz",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q7733032",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

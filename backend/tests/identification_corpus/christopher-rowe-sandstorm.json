@@ -49,11 +49,41 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Sandstorm",
-    "author": "Christopher Rowe",
-    "series": "Forgotten Realms",
+    "title": null,
+    "author": null,
+    "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Sandstorm",
+      "author": "Christopher Rowe",
+      "series": "Forgotten Realms.Not A Series.Forgotten Realms.0 of 0._.ICB Best",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Sandstorm",
+      "author": "Christopher Rowe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Sandstorm'; provider='Sandstorm'",
+    "author: epub='Christopher Rowe'; provider='Christopher Rowe'"
+  ]
 }

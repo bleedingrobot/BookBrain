@@ -51,9 +51,45 @@
   "answer": {
     "title": "Raven's Shadow",
     "author": "Patricia Briggs",
-    "series": "Raven Duology",
-    "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Raven's shadow",
+      "author": "Patricia Briggs",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Raven's shadow",
+      "author": "Patricia Briggs",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Raven's Shadow",
+      "author": "Patricia Briggs",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q135186828",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

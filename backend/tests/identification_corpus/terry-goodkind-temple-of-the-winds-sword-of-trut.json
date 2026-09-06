@@ -43,11 +43,47 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Temple of the Winds (Sword of Truth)",
+    "title": "Temple of the Winds",
     "author": "Terry Goodkind",
-    "series": "Sword of Truth",
+    "series": "The Sword of Truth",
     "series_number": 4.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Temple of the Winds",
+      "author": "Terry Goodkind",
+      "series": "Sword of Truth",
+      "series_number": 4.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Temple of the Winds (Sword of Truth)",
+      "author": "Terry Goodkind",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Temple of the Winds",
+      "author": "Terry Goodkind",
+      "series": "The Sword of Truth",
+      "series_number": 4.0,
+      "url": "https://www.wikidata.org/wiki/Q2320911",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

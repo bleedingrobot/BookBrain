@@ -46,11 +46,41 @@
     "series_number": null
   },
   "answer": {
-    "title": "City of Bones",
-    "author": "Martha Wells",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "City of Bones",
+      "author": "Martha Wells",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "City of Bones",
+      "author": "Martha Wells",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='City of Bones'; provider='City of Bones'",
+    "author: epub='Martha Wells'; provider='Martha Wells'"
+  ]
 }

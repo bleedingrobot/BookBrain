@@ -22,11 +22,24 @@ One `<id>.json` per book:
   "answer": {
     "title": "The Final Empire", "author": "Brandon Sanderson",
     "series": "Mistborn", "series_number": 1,
-    "verified": true,                    // a human eyeballed THIS answer
-    "source": "human_correction" | "stored_identification" | "manual"
-  }
+    "verified": true,
+    "source": "triangulated",            // scripts/build_truth.py
+    "provenance": {                       // per field: how sure we are
+      "title": "consensus", "author": "consensus",
+      "series": "weak", "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [ … each source's raw opinion … ],
+  "truth_disagreements": [ "series: wikidata=... web_claude_identify=..." ]
 }
 ```
+
+The `answer` block is **triangulated, not hand-verified** — see
+`../../../IDENTIFICATION-EVAL.md`. `provenance` drives scoring: `consensus`
+fields count toward the headline number, `weak` (Claude-only agreement) count
+only in the non-`--strict` view, `unresolved` fields are not scored at all.
+An `answer` block with no `provenance` key (pre-triangulation fixtures) is
+treated as all-`consensus`.
 
 ## Fidelity notes
 
@@ -54,5 +67,11 @@ python scripts/snapshot_book.py from-drive <drive_file_id> --with-ai
 Files here starting with `_` (like `_corpus_spec.json`) are tooling inputs, not
 fixtures — `load_corpus()` skips them.
 
-Then open the JSON, correct the `answer` block against a real source
-(publisher page / a reliable bibliography), and set `"verified": true`.
+Then triangulate its answer key (no manual step):
+
+```
+python scripts/build_truth.py --only <fixture-id> --write
+```
+
+Source lookups are cached under `_truth_cache/` (also `_`-prefixed, skipped by
+`load_corpus()`). `--refresh` ignores the cache.

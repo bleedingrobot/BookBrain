@@ -48,9 +48,45 @@
   "answer": {
     "title": "Abhorsen",
     "author": "Garth Nix",
-    "series": "The Old Kingdom",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Abhorsen",
+      "author": "Garth Nix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Abhorsen",
+      "author": "Garth Nix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Abhorsen",
+      "author": "Garth Nix",
+      "series": "Old Kingdom",
+      "series_number": 3.0,
+      "url": "https://www.wikidata.org/wiki/Q1473891",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

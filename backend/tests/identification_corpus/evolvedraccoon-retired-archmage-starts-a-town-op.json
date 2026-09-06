@@ -39,11 +39,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Retired Archmage Starts a Town: OP MC Cozy Slice of Life Litrpg",
-    "author": "EvolvedRaccoon",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Retired Archmage Starts a Town: OP MC Cozy Slice of Life Litrpg",
+      "author": "EvolvedRaccoon",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

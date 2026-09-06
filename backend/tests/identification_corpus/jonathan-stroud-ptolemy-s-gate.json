@@ -60,9 +60,45 @@
   "answer": {
     "title": "Ptolemy's Gate",
     "author": "Jonathan Stroud",
-    "series": "The Bartimaeus Trilogy",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Ptolemy's Gate",
+      "author": "Jonathan Stroud",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Ptolemy's Gate",
+      "author": "Jonathan Stroud",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Ptolemy's Gate",
+      "author": "Jonathan Stroud",
+      "series": "Bartimaeus Sequence",
+      "series_number": 3.0,
+      "url": "https://www.wikidata.org/wiki/Q2479243",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

@@ -59,12 +59,19 @@ FIELDS = ("title", "author", "series", "series_number")
 
 @dataclass
 class AnswerKey:
-    title: str
+    title: str | None = None
     author: str | None = None
     series: str | None = None
     series_number: float | None = None
-    verified: bool = False  # a human eyeballed this specific answer
-    source: str = ""        # "human_correction" | "stored_identification" | "manual"
+    verified: bool = False  # triangulated or hand-verified (vs auto-filled)
+    source: str = ""        # "triangulated" | "human_correction" | "stored_identification" | "manual"
+    # per-field: "consensus" | "weak" | "unresolved" (from scripts/build_truth.py).
+    # Absent ⇒ treat every field as "consensus" (pre-triangulation fixtures).
+    provenance: dict = field(default_factory=dict)
+
+    def scorable(self, fieldname: str, *, include_weak: bool = True) -> bool:
+        p = self.provenance.get(fieldname, "consensus")
+        return p == "consensus" or (include_weak and p == "weak")
 
 
 @dataclass
@@ -294,10 +301,34 @@ def _num(v: Any) -> float | None:
         return None
 
 
+# words that are noise when comparing series names across sources — leading
+# articles and the generic "kind of series" nouns that some catalogs append.
+_SERIES_NOISE = frozenset(
+    {"the", "a", "an", "series", "trilogy", "duology", "quartet", "sequence", "saga", "novels", "books"}
+)
+
+
+def series_key(name: Any) -> frozenset:
+    return normalize_words(name) - _SERIES_NOISE
+
+
+def series_matches(a: Any, b: Any) -> bool:
+    """Series names are phrased loosely across sources — "Nevernight Chronicle"
+    / "The Nevernight Chronicle", "Culture" / "Culture series", "Dragonlance:
+    The War of Souls" / "The War of Souls". Match if, after dropping articles
+    and generic series-nouns, one name's words are contained in the other's."""
+    ka, kb = series_key(a), series_key(b)
+    if not ka or not kb:
+        return not ka and not kb
+    return ka <= kb or kb <= ka
+
+
 def field_matches(fieldname: str, predicted: Any, expected: Any) -> bool:
     if fieldname == "title":
         return normalize_title_strict(predicted or "") == normalize_title_strict(expected or "")
-    if fieldname in ("author", "series"):
+    if fieldname == "series":
+        return series_matches(predicted, expected)
+    if fieldname == "author":
         return normalize_words(predicted) == normalize_words(expected)
     if fieldname == "series_number":
         return _num(predicted) == _num(expected)
@@ -308,8 +339,8 @@ def field_matches(fieldname: str, predicted: Any, expected: Any) -> bool:
 class EntryResult:
     entry: CorpusEntry
     prediction: Prediction
-    field_ok: dict[str, bool]
-    exact: bool
+    field_ok: dict[str, bool]      # only fields with a scorable answer key
+    exact: bool                    # all scorable fields correct (needs >=1 scorable)
 
     @property
     def wrong_fields(self) -> list[str]:
@@ -319,19 +350,23 @@ class EntryResult:
 @dataclass
 class CorpusReport:
     results: list[EntryResult] = field(default_factory=list)
-    scored: int = 0
-    skipped_offline: int = 0
-    precision: dict[str, float] = field(default_factory=dict)
+    scored: int = 0               # entries with >=1 scorable field
+    skipped_offline: int = 0      # AI path with no recorded answer
+    skipped_unresolved: int = 0   # triangulation reached no scorable field at all
+    include_weak: bool = True
+    precision: dict[str, float] = field(default_factory=dict)   # hits / coverage
+    coverage: dict[str, int] = field(default_factory=dict)      # entries with a scorable answer
     exact_match: float = 0.0
     fast_path_rate: float = 0.0
-    # auto-organize (>=85) that got any field wrong — the failure that matters most
-    wrong_auto_organized: int = 0
+    wrong_auto_organized: int = 0  # confidence >=85 but a scorable field was wrong
 
     def as_baseline_dict(self, corpus_size: int, generated: str) -> dict:
         return {
             "corpus_size": corpus_size,
             "scored": self.scored,
             "generated": generated,
+            "include_weak": self.include_weak,
+            "coverage": dict(self.coverage),
             "precision": {k: round(v, 4) for k, v in self.precision.items()},
             "exact_match": round(self.exact_match, 4),
         }
@@ -342,10 +377,12 @@ async def score_corpus(
     *,
     identification_service: IdentificationService | None = None,
     live: bool = False,
+    include_weak: bool = True,
 ) -> CorpusReport:
     entries = entries if entries is not None else load_corpus()
-    report = CorpusReport()
+    report = CorpusReport(include_weak=include_weak)
     field_hits = {f: 0 for f in FIELDS}
+    field_cov = {f: 0 for f in FIELDS}
     exact_hits = 0
     fast_paths = 0
 
@@ -354,25 +391,35 @@ async def score_corpus(
         if pred.skipped_offline:
             report.skipped_offline += 1
             report.results.append(
-                EntryResult(entry=entry, prediction=pred, field_ok={f: False for f in FIELDS}, exact=False)
+                EntryResult(entry=entry, prediction=pred, field_ok={}, exact=False)
+            )
+            continue
+
+        scorable = [f for f in FIELDS if entry.answer.scorable(f, include_weak=include_weak)]
+        if not scorable:
+            report.skipped_unresolved += 1
+            report.results.append(
+                EntryResult(entry=entry, prediction=pred, field_ok={}, exact=False)
             )
             continue
 
         field_ok = {
-            f: field_matches(f, getattr(pred, f), getattr(entry.answer, f)) for f in FIELDS
+            f: field_matches(f, getattr(pred, f), getattr(entry.answer, f)) for f in scorable
         }
         exact = all(field_ok.values())
         for f, ok in field_ok.items():
             field_hits[f] += int(ok)
+            field_cov[f] += 1
         exact_hits += int(exact)
         fast_paths += int(pred.fast_path)
         if pred.computed_confidence >= 85 and not exact:
             report.wrong_auto_organized += 1
         report.results.append(EntryResult(entry=entry, prediction=pred, field_ok=field_ok, exact=exact))
 
-    report.scored = sum(1 for r in report.results if not r.prediction.skipped_offline)
+    report.scored = sum(1 for r in report.results if r.field_ok)
     n = report.scored or 1
-    report.precision = {f: field_hits[f] / n for f in FIELDS}
+    report.coverage = field_cov
+    report.precision = {f: (field_hits[f] / field_cov[f] if field_cov[f] else 1.0) for f in FIELDS}
     report.exact_match = exact_hits / n
     report.fast_path_rate = fast_paths / n
     return report

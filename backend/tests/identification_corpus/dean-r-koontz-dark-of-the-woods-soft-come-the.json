@@ -49,11 +49,41 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Dark of the Woods / Soft Come the Dragons",
-    "author": "Dean R. Koontz",
+    "title": null,
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Dark of the Woods/Soft Comes the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Soft Come the Dragons ; Dark of the Woods",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Dark of the Woods/Soft Comes the Dragons'; provider='Soft Come the Dragons ; Dark of the Woods'",
+    "author: epub='Dean R. Koontz'; provider='Dean Koontz'"
+  ]
 }

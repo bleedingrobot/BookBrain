@@ -29,11 +29,29 @@
   "recorded_ai": null,
   "recorded_series_ai": null,
   "answer": {
-    "title": "Keeper of the Lost Cities The Graphic Novel Part 2",
-    "author": "Shannon Messenger",
-    "series": "Keeper of the Lost Cities: The Graphic Novel",
-    "series_number": 2.0,
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
     "verified": true,
-    "source": "human_correction"
-  }
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": null,
+      "author": null,
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

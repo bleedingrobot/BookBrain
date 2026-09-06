@@ -40,10 +40,37 @@
   "recorded_series_ai": null,
   "answer": {
     "title": "Down These Strange Streets",
-    "author": "George R. R. Martin and Gardner Dozois (editors)",
+    "author": null,
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Down These Strange Streets",
+      "author": "George R. R. Martin and Gardner Dozois",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Down These Strange Streets",
+      "author": null,
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q18352483",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

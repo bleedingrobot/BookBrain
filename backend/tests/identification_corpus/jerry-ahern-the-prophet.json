@@ -58,11 +58,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "The Prophet",
-    "author": "Jerry Ahern",
-    "series": "The Survivalist",
-    "series_number": 7.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Survivalist 7 - Prophet",
+      "author": "Jerry Ahern",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

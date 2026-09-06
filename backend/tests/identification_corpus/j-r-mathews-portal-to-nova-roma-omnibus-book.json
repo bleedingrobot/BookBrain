@@ -39,11 +39,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Portal to Nova Roma: Omnibus: Books 1-3",
-    "author": "J.R. Mathews",
-    "series": "Portal to Nova Roma",
+    "title": null,
+    "author": null,
+    "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Portal to Nova Roma: Omnibus: Books 1-3",
+      "author": "J.R. Mathews",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

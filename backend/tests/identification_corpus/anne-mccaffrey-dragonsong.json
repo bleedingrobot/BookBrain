@@ -41,9 +41,56 @@
   "answer": {
     "title": "Dragonsong",
     "author": "Anne McCaffrey",
-    "series": "Pern (Harper Hall Trilogy)",
+    "series": "Harper Hall Trilogy",
     "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "input",
+      "author": "Unknown",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Dragonriders of Pern",
+      "series_number": 1.0,
+      "url": "https://www.wikidata.org/wiki/Q3221026",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Harper Hall",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/book/show/28541.Dragonsong",
+      "note": "conf=0.96; Filename labels it \"Pern 03\" (its slot in the broader Dragonriders of Pern publication order), but the tight sub-series is the Harper Hall Trilogy, where Dragonsong is volume 1 (followed by Dragonsinger and Dragondrums). ISBN 0689860080 for the Simon & Schuster edition."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Harper Hall Trilogy",
+      "series_number": 1.0,
+      "url": "https://www.amazon.com/Dragonsong-Harper-Hall-Trilogy-Book/dp/0689860080",
+      "note": "conf=0.96; Title and author confirmed. The proposed series string \"Pern (Harper Hall Trilogy)\" mixes the broad universe with a parenthetical; the tight, actually-published sub-series is the Harper Hall Trilogy, in which Dragonsong is book 1 (publisher listings: \"Harper Hall Trilogy, Book 1\"). The filename's \"Pern 03\" reflects an internal-chronology/publication numbering of the wider Dragonriders of Pern universe, not this book's position in the trilogy."
+    }
+  ],
+  "truth_disagreements": [
+    "series: chose 'Harper Hall Trilogy', wikidata said 'Dragonriders of Pern'"
+  ]
 }

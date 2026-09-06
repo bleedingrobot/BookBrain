@@ -51,10 +51,48 @@
   "recorded_series_ai": null,
   "answer": {
     "title": "Shadowdale",
-    "author": "Richard Awlinson",
-    "series": "Forgotten Realms: Avatar Series",
-    "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "author": "Scott Ciencin",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Shadowdale",
+      "author": "Richard Awlinson",
+      "series": "Forgotten Realms.Avatar Series.Forgotten Realms.1 of 5._.ICB Best",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Shadowdale",
+      "author": "Scott Ciencin",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Shadowdale",
+      "author": "Scott Ciencin",
+      "series": "The Avatar Series",
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q17116366",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "series: epub='Forgotten Realms.Avatar Series.Forgotten Realms.1 of 5._.ICB Best'; wikidata='The Avatar Series'"
+  ]
 }

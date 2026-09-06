@@ -24,16 +24,16 @@ _TOLERANCE = 0.005
 def _format_table(report) -> str:
     lines = [
         f"corpus: {len(report.results)} entries, {report.scored} scored, "
-        f"{report.skipped_offline} skipped offline (no recorded AI answer)",
-        f"exact-match (all 4 fields): {report.exact_match:.1%}",
+        f"{report.skipped_offline} skipped offline, {report.skipped_unresolved} unresolved",
+        f"exact-match (scorable fields): {report.exact_match:.1%}",
         f"fast-path rate: {report.fast_path_rate:.1%}",
         f"auto-organized (>=85) but wrong: {report.wrong_auto_organized}",
         "",
-        "per-field precision:",
+        "per-field precision (hits / triangulated coverage):",
     ]
     for f in FIELDS:
-        lines.append(f"  {f:<15} {report.precision[f]:.1%}")
-    wrong = [r for r in report.results if not r.exact and not r.prediction.skipped_offline]
+        lines.append(f"  {f:<15} {report.precision[f]:.1%}  ({report.coverage.get(f, 0)}/{report.scored})")
+    wrong = [r for r in report.results if r.field_ok and not r.exact]
     if wrong:
         lines.append("")
         lines.append(f"confusion ({len(wrong)}):")

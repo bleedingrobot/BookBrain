@@ -49,11 +49,50 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Harry Potter og Mysteriekammeret",
-    "author": "J. K. Rowling",
-    "series": "Harry Potter",
-    "series_number": 2.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Harry Potter og mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Harry Potter and the Chamber of Secrets",
+      "author": null,
+      "series": null,
+      "series_number": 2.0,
+      "url": "https://www.wikidata.org/wiki/Q47209",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Harry Potter og Mysteriekammeret'; provider='Harry Potter og mysteriekammeret'; wikidata='Harry Potter and the Chamber of Secrets'",
+    "author: epub='J. K. Rowling'; provider='J. K. Rowling'"
+  ]
 }

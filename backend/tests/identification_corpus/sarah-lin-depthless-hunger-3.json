@@ -40,11 +40,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Depthless Hunger 3",
-    "author": "Sarah Lin",
-    "series": "Depthless Hunger",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Depthless Hunger 3",
+      "author": "Sarah Lin",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

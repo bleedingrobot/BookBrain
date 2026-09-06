@@ -40,11 +40,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Fields of Fire",
-    "author": "J.N. Chaney, Terry Maggert",
-    "series": "Backyard Starship",
-    "series_number": 9.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Fields of Fire (Backyard Starship Book 9)",
+      "author": "J.N. Chaney",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

@@ -40,11 +40,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "The Ascendant",
-    "author": "J.S. Holloway",
-    "series": "The Veil Trilogy",
-    "series_number": 2.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Ascendant: A Cyberpunk Thriller (The Veil Trilogy Book 2)",
+      "author": "Holloway",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

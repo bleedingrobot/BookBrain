@@ -51,9 +51,45 @@
   "answer": {
     "title": "The Urth of the New Sun",
     "author": "Gene Wolfe",
-    "series": "The Book of the New Sun",
-    "series_number": 5.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Urth of the New Sun : The sequel to 'The Book of the New Sun' (New Sun)",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Urth of the New Sun",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Urth of the New Sun",
+      "author": "Gene Wolfe",
+      "series": "The Book of the New Sun",
+      "series_number": 5.0,
+      "url": "https://www.wikidata.org/wiki/Q3225052",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

@@ -39,11 +39,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Undead in the Garden of Good and Evil",
-    "author": "Kim Harrison",
-    "series": "The Hollows",
-    "series_number": 0.2,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Hollows 00b - Undead in the Garden of Good and Evil",
+      "author": "Kim Harrison",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

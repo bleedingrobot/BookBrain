@@ -51,10 +51,46 @@
   "recorded_series_ai": null,
   "answer": {
     "title": "The Wrath of Mulgarath",
-    "author": "Tony DiTerlizzi, Holly Black",
-    "series": "The Spiderwick Chronicles",
-    "series_number": 5.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "author": "Holly Black",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Wrath of Mulgarath",
+      "author": "Holly Black",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Wrath of Mulgarath",
+      "author": "Tony DiTerlizzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Wrath of Mulgarath",
+      "author": "Holly Black",
+      "series": "The Spiderwick Chronicles",
+      "series_number": 5.0,
+      "url": "https://www.wikidata.org/wiki/Q4355639",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

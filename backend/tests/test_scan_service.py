@@ -440,7 +440,8 @@ async def test_process_file_persists_candidates(db_session) -> None:
         title="Foo", authors=["Bar"], isbn13="9780134685991", source="fake_provider"
     )
     service = ScanService(
-        candidate_service=CandidateService(providers=[_FakeMetadataProvider([candidate])])
+        candidate_service=CandidateService(providers=[_FakeMetadataProvider([candidate])]),
+        identification_service=_FakeIdentificationService(),
     )
     provider = _FakeDriveProvider(build_epub(title="Foo", authors=("Bar",), isbn="9780134685991"))
     raw = {"id": "drive-5", "name": "foo.epub", "parents": ["p"], "size": "100"}

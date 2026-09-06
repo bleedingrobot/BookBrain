@@ -39,11 +39,29 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Tunnels of Blood",
-    "author": "Darren Shan",
-    "series": "Cirque Du Freak: The Saga of Darren Shan",
-    "series_number": 3.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Cirque Du Freak 03 - Tunnels of Blood",
+      "author": "Darren Shan",
+      "series": "Cirque Du Freak",
+      "series_number": 3.0,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

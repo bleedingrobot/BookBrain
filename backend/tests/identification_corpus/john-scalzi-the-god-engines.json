@@ -53,7 +53,43 @@
     "author": "John Scalzi",
     "series": null,
     "series_number": null,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The God engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q7736902",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

@@ -39,11 +39,40 @@
   },
   "recorded_series_ai": null,
   "answer": {
-    "title": "Harry Potter og Føniksordenen",
-    "author": "J. K. Rowling",
-    "series": "Harry Potter",
-    "series_number": 5.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Harry Potter og Føniksordenen",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Harry Potter and the Order of the Phoenix",
+      "author": null,
+      "series": null,
+      "series_number": 5.0,
+      "url": "https://www.wikidata.org/wiki/Q80817",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='Harry Potter og Føniksordenen'; wikidata='Harry Potter and the Order of the Phoenix'"
+  ]
 }

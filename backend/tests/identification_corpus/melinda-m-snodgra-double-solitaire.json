@@ -52,9 +52,45 @@
   "answer": {
     "title": "Double Solitaire",
     "author": "Melinda M. Snodgrass",
-    "series": "Wild Cards",
-    "series_number": 10.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "[Wildcards 10] - Double Solitaire",
+      "author": "Martin",
+      "series": "Wildcards",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Double solitaire",
+      "author": "Melinda M. Snodgrass",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Double Solitaire",
+      "author": "Melinda M. Snodgrass",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q5299884",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }

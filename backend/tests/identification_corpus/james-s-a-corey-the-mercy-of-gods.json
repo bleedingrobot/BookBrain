@@ -58,7 +58,43 @@
     "author": "James S. A. Corey",
     "series": "The Captive's War",
     "series_number": 1.0,
-    "verified": false,
-    "source": "stored_identification"
-  }
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Mercy of Gods",
+      "author": "James S. A. Corey",
+      "series": "The Captive's War",
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Mercy of Gods",
+      "author": "James S. A. Corey",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Mercy of Gods",
+      "author": "James S. A. Corey",
+      "series": "The Captive's War",
+      "series_number": 1.0,
+      "url": "https://www.wikidata.org/wiki/Q128801941",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
 }
