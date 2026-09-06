@@ -73,6 +73,87 @@ def normalize_words(text: str | None) -> frozenset[str]:
     return frozenset(_WORD_RE.findall(text.lower()))
 
 
+# prompts/15 Stage J — author-name canonicalisation.
+#
+# "J.R.R. Tolkien" / "J. R. R. Tolkien" / "Tolkien, J.R.R." must resolve to one
+# Author row, not three. Multi-word surname particles keep "Le Guin, Ursula K."
+# reading as Last-comma-First rather than a two-author list.
+_SURNAME_PARTICLES = frozenset(
+    {"de", "del", "della", "der", "den", "van", "von", "le", "la", "du", "di",
+     "da", "dos", "das", "st", "saint", "mac", "mc", "o", "ter", "ten", "af",
+     "av", "bin", "ibn", "al", "ap"}
+)
+_COAUTHOR_SPLIT_RE = re.compile(r"\s*(?:;|&|\band\b|\bwith\b|\bet\b|/)\s*", re.IGNORECASE)
+_INITIAL_RE = re.compile(r"^[a-z]$")
+
+
+def primary_author_name(name: str) -> str:
+    """The first credited author from a "A & B" / "A; B" / "A and B" list, or a
+    "Last, First" pair reordered to "First Last". A bare "First Last" is
+    returned unchanged. Used as the stored *display* name so an Author row reads
+    "Ursula K. Le Guin", not "Le Guin, Ursula K." or "Le Guin, Ursula K. & …"."""
+    name = name.strip()
+    first = _COAUTHOR_SPLIT_RE.split(name)[0].strip()
+    if first.count(",") == 1:
+        last, given = (p.strip() for p in first.split(","))
+        last_tokens = last.lower().split()
+        given_tokens = given.split()
+        # "Weis, Margaret" (1-token surname) / "Le Guin, Ursula K." (surname
+        # starts with a particle) / "Tolkien, J.R.R." is Last, First.
+        if last and given and (len(last_tokens) == 1 or last_tokens[0] in _SURNAME_PARTICLES):
+            return f"{given} {last}"
+        # otherwise the comma separates two authors ("Margaret Weis, Tracy
+        # Hickman") — keep only the first, unless the second half is just an
+        # initial trail belonging to the first ("King, S." already handled above).
+        if len(given_tokens) >= 2 or (given_tokens and len(given_tokens[0]) > 2):
+            return last
+    return first
+
+
+def normalize_person_name(name: str | None) -> str:
+    """Canonical match key for an author. Folds case/punctuation, reorders
+    "Last, First", takes the first of a co-author list, joins a run of initials
+    ("J. R. R." -> "jrr"), and drops a lone interior middle initial so
+    "Iain M. Banks" matches "Iain Banks"."""
+    if not name or not name.strip():
+        return ""
+    tokens = [t for t in re.split(r"[^a-z0-9]+", primary_author_name(name).lower()) if t]
+    if not tokens:
+        return ""
+    # Join a run of initials: [j, r, r, tolkien] -> [jrr, tolkien].
+    merged: list[str] = []
+    from_initials: list[bool] = []
+    for tok in tokens:
+        if len(tok) == 1 and merged and from_initials[-1]:
+            merged[-1] += tok
+        else:
+            merged.append(tok)
+            from_initials.append(len(tok) == 1)
+    # Drop a lone interior middle initial ("iain m banks" -> "iain banks");
+    # keep a leading one and keep joined runs ("jrr tolkien").
+    if len(merged) >= 3:
+        merged = [merged[0]] + [t for t in merged[1:-1] if len(t) > 1] + [merged[-1]]
+    return " ".join(merged)
+
+
+def person_sort_name(name: str | None) -> str:
+    """"Brandon Sanderson" -> "Sanderson, Brandon" for Author.sort_name. Leaves
+    an already-"Last, First" string and a co-authored credit alone."""
+    if not name or not name.strip():
+        return ""
+    name = name.strip()
+    if "," in name or _COAUTHOR_SPLIT_RE.search(name):
+        return name
+    tokens = name.split()
+    if len(tokens) < 2:
+        return name
+    # pull any surname particles ("Le", "van", "de la") into the surname
+    cut = len(tokens) - 1
+    while cut > 1 and tokens[cut - 1].lower().strip(".") in _SURNAME_PARTICLES:
+        cut -= 1
+    return f"{' '.join(tokens[cut:])}, {' '.join(tokens[:cut])}"
+
+
 def texts_match(a: str | None, b: str | None) -> bool:
     na, nb = normalize(a), normalize(b)
     return bool(na) and na == nb

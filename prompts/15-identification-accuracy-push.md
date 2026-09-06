@@ -607,6 +607,22 @@ changes nothing; hold>0 delays the move and a tray correction pre-empts it.
 
 #### Stage J — Author canonicalisation
 
+> **DONE 2026-09-07.** `text_match.normalize_person_name` (match key — folds
+> case/punct, reorders "Last, First", first-of-co-author-list, joins an initials
+> run `J. R. R.`→`jrr`, drops a lone interior middle initial `Iain M. Banks`→
+> `Iain Banks`; surname particles keep "Le Guin, …" as Last-comma-First) +
+> `person_sort_name`. `_find_or_create_author` matches on the key; **display
+> name kept verbatim** — a first cut that rewrote co-author credits to the
+> primary author regressed the corpus (the triangulated keys disagree on
+> whether a collaboration keeps both names). `Author.sort_name` populated on
+> create + backfilled on match. `_find_or_create_series` matches ignoring a
+> leading article and **consults `SeriesAlias`**; `apply_series_merge` **writes**
+> one per merged-away name. `scripts/backfill_author_sort_names.py` +
+> `scripts/repair_forked_authors.py` (both dry-run default; the repair only
+> merges a group that shares a book/ISBN). Corpus flat (empty-DB harness can't
+> show dedup); `pytest -m corpus` green; no AI cost. **Not run against James's
+> real DB** — he runs the two scripts' dry-runs and eyeballs.
+
 **Why.** F5. Stop forking authors/series on the first pass.
 
 **Goal.**
@@ -711,9 +727,15 @@ there's no batch consensus.
 │                                  settings.ai_verify_enabled defaults OFF (cost).
 │                                  Tier 2 COMPLETE.
 │
-├─ I  recently-organized tray   ┐
-├─ J  author canonicalisation   │ Tier 3 — independent
-└─ K  batch priors              ┘
+├─ I  recently-organized tray   ── Tier 3
+├─ J  author canonicalisation   ── DONE (2026-09-07). normalize_person_name match
+│                                  key (initials / Last,First / co-author-first) +
+│                                  Author.sort_name populated + series match
+│                                  ignores a leading article + SeriesAlias
+│                                  consulted & written on merge. Corpus flat
+│                                  (empty-DB harness can't show dedup). Repair +
+│                                  backfill scripts (dry-run default).
+└─ K  batch priors              ── Tier 3
 ```
 
 Re-run `pytest -m corpus` after **every** stage and paste the delta into

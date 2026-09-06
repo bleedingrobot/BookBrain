@@ -297,6 +297,23 @@ async def apply_series_merge(
 
     await session.flush()
 
+    # prompts/15 Stage J — record every merged-away name as an alias of the
+    # canonical series, so a later scan that phrases it the old way resolves
+    # straight to the canonical row instead of re-forking it.
+    existing_aliases = {
+        a.alias
+        for a in (
+            await session.execute(
+                select(SeriesAlias).where(SeriesAlias.series_id == canonical.id)
+            )
+        ).scalars()
+    }
+    for series in others:
+        if series.name != canonical.name and series.name not in existing_aliases:
+            session.add(SeriesAlias(series_id=canonical.id, alias=series.name))
+            existing_aliases.add(series.name)
+    await session.flush()
+
     deleted_series_ids: list[int] = []
     for series in others:
         remaining = (

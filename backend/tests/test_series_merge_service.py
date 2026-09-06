@@ -254,6 +254,15 @@ async def test_apply_series_merge_moves_files_and_repoints_books(db_session) -> 
     # it (undoing would land the file in the deleted source folder).
     assert ops[0].action == OperationAction.series_merge
 
+    # prompts/15 Stage J — the merged-away name is now an alias of the
+    # canonical series, so a fresh scan phrasing it the old way won't re-fork.
+    from app.data.models import SeriesAlias
+
+    aliases = (await db_session.execute(select(SeriesAlias))).scalars().all()
+    assert [(a.series_id, a.alias) for a in aliases] == [
+        (series_b.id, "Empire of the Vampire")
+    ]
+
 
 async def test_apply_series_merge_leaves_excluded_series_untouched(db_session) -> None:
     # Regression for a real near-miss: a 3-member cluster where two entries

@@ -3,8 +3,21 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.models import Author, Book, Identifier, IdentifierType, Series
-from app.services.text_match import normalize_title_strict, normalize_words
+from app.data.models import Author, Book, Identifier, IdentifierType, Series, SeriesAlias
+from app.services.text_match import (
+    normalize_person_name,
+    normalize_title_strict,
+    normalize_words,
+    person_sort_name,
+)
+
+_ARTICLES = frozenset({"the", "a", "an"})
+
+
+def _series_match_key(name: str | None) -> frozenset[str]:
+    """Word set with a leading article dropped so "The Stormlight Archive" and
+    "Stormlight Archive" don't fork on the first scan (prompts/15 Stage J)."""
+    return normalize_words(name) - _ARTICLES
 
 # Process-wide, not scoped to any one caller: every write path that can
 # fuzzy-match-or-create an Author/Series/Book (scan's per-file pipeline,
@@ -95,11 +108,26 @@ async def resolve_book(
 
 
 async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
-    target = normalize_words(name)
+    # prompts/15 Stage J: match on normalize_person_name so "J.R.R. Tolkien",
+    # "J. R. R. Tolkien" and "Tolkien, J.R.R." reuse one row instead of forking
+    # three. Fall back to the old word-set match for a name that normalises to
+    # nothing (so junk names don't all collapse onto one empty key).
+    key = normalize_person_name(name)
+    fallback = normalize_words(name)
     for existing in (await session.execute(select(Author))).scalars().all():
-        if normalize_words(existing.name) == target:
+        matched = (
+            normalize_person_name(existing.name) == key
+            if key
+            else normalize_words(existing.name) == fallback
+        )
+        if matched:
+            if existing.sort_name is None:
+                existing.sort_name = person_sort_name(existing.name) or None
             return existing
-    row = Author(name=name)
+    # Display name is kept verbatim (first-seen) — collaboration credits vary
+    # too much to safely rewrite ("… & Gardner Dozois (editors)" must survive).
+    # The match key above already collapses spelling variants of one author.
+    row = Author(name=name, sort_name=person_sort_name(name) or None)
     session.add(row)
     await session.flush()
     return row
@@ -118,9 +146,22 @@ async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
     # vs the same without punctuation/casing — and each variant must reuse
     # the first-seen canonical row, not fork a new series (and a new Drive
     # folder on organize) every time the wording shifts slightly.
-    target = normalize_words(name)
+    # prompts/15 Stage J: match ignoring a leading article ("The Stormlight
+    # Archive" == "Stormlight Archive"), and consult SeriesAlias (populated by
+    # series-merge) so a re-fork of a name already merged away can't happen.
+    target = _series_match_key(name)
+    exact = normalize_words(name)
+    alias = (
+        await session.execute(
+            select(SeriesAlias).where(SeriesAlias.alias == name.strip())
+        )
+    ).scalar_one_or_none()
+    if alias is not None:
+        found = await session.get(Series, alias.series_id)
+        if found is not None:
+            return found
     for existing in (await session.execute(select(Series))).scalars().all():
-        if normalize_words(existing.name) == target:
+        if _series_match_key(existing.name) == target or normalize_words(existing.name) == exact:
             return existing
     row = Series(name=name)
     session.add(row)

@@ -24,6 +24,49 @@ def test_title_similarity_empty() -> None:
     assert title_similarity("x", "") == 0.0
 
 
+import pytest
+
+from app.services.text_match import normalize_person_name, person_sort_name
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("J.R.R. Tolkien", "J. R. R. Tolkien"),
+        ("J.R.R. Tolkien", "Tolkien, J.R.R."),
+        ("J. R. R. Tolkien", "Tolkien, J. R. R."),
+        ("Iain M. Banks", "Iain Banks"),
+        ("Ursula K. Le Guin", "Le Guin, Ursula K."),
+        ("Ursula K. Le Guin", "Ursula Le Guin"),
+        ("Brandon Sanderson", "Sanderson, Brandon"),
+        ("Margaret Weis & Tracy Hickman", "Margaret Weis"),
+        ("Weis, Margaret", "Margaret Weis"),
+    ],
+)
+def test_normalize_person_name_unifies_variants(a, b) -> None:
+    assert normalize_person_name(a) == normalize_person_name(b)
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("James Smith", "Jane Smith"),
+        ("George R. R. Martin", "George Martin"),
+        ("Frank Herbert", "Brian Herbert"),
+    ],
+)
+def test_normalize_person_name_keeps_distinct_people_distinct(a, b) -> None:
+    assert normalize_person_name(a) != normalize_person_name(b)
+
+
+def test_person_sort_name() -> None:
+    assert person_sort_name("Brandon Sanderson") == "Sanderson, Brandon"
+    assert person_sort_name("Ursula K. Le Guin") == "Le Guin, Ursula K."
+    assert person_sort_name("Sanderson, Brandon") == "Sanderson, Brandon"
+    assert person_sort_name("Plato") == "Plato"
+    assert person_sort_name("") == ""
+
+
 def test_normalize_strips_punctuation_and_case() -> None:
     assert normalize("Dune: House Atreides!") == "dunehouseatreides"
 

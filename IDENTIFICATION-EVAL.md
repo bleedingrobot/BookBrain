@@ -116,6 +116,43 @@ What the harness already catches (the failure modes `prompts/15` targets):
 ```
 <!-- eval-baseline:end -->
 
+## Tier 3
+
+### Stage J — author / series canonicalisation (`prompts/15` Stage J)
+
+Finding F5: `_find_or_create_author` matched on a plain word set, so
+"J.R.R. Tolkien" / "J. R. R. Tolkien" / "Tolkien, J.R.R." each forked a row;
+`Author.sort_name` was never populated; `_find_or_create_series` kept a leading
+article so "The Stormlight Archive" vs "Stormlight Archive" forked; the
+`SeriesAlias` table was completely unused.
+
+- **`text_match.normalize_person_name`** — the author match key: folds
+  case/punctuation, reorders "Last, First", takes the first of a `&`/`;`/`and`
+  co-author list, joins a run of initials (`J. R. R.` → `jrr`), drops a lone
+  interior middle initial (`Iain M. Banks` → `iain banks` matches `Iain Banks`).
+  Surname particles (`Le Guin, …`, `van …`) keep a two-word surname reading as
+  Last-comma-First rather than a two-author list. `person_sort_name` derives
+  the `sort_name` display form.
+- `_find_or_create_author` matches on that key (display name kept verbatim —
+  collaboration credits like "… & Gardner Dozois (editors)" vary too much to
+  rewrite safely); `sort_name` populated on create and backfilled on match.
+- `_find_or_create_series` matches ignoring a leading article, and **consults
+  `SeriesAlias`** — and `apply_series_merge` now **writes** a `SeriesAlias` for
+  every merged-away name, so a re-fork of a name already merged can't happen.
+- `scripts/backfill_author_sort_names.py` (dry-run default) fills historical
+  `sort_name`. `scripts/repair_forked_authors.py` (dry-run default) merges
+  already-forked Author rows — but only a group that shares a book (same ISBN or
+  strict-normalised title), so "J. Smith" ≠ "John Smith" stays split.
+
+**Corpus author precision is flat at 94.8%.** The empty-DB harness creates a
+fresh Author per book, so it can't show the *dedup* win (which is the whole
+point — not forking on the live 2200-book library). A first cut that also
+rewrote co-author display names to the primary author regressed author 94.8 →
+93.1 (the triangulated keys disagree on whether a collaboration keeps both
+names — "Weis, Hickman" → "Weis" but "Chaney, Maggert" → both), so display
+rewriting was dropped. `wrong_auto_organized` back to 1; `pytest -m corpus`
+green. No AI cost.
+
 ## Per-stage log
 
 | stage | date | title | author | series | series-# | exact | notes |
@@ -128,6 +165,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | E | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | placeholder/junk-metadata detector (`metadata_sanity.looks_like_placeholder_title` / `_author` — "Unknown"/"Calibre"/"book1"/bare-number/publisher-name-as-author; short titles need an ISBN or provider match). Fast path is **skipped** when the EPUB title/author is a placeholder (forces the AI path); `PLACEHOLDER_METADATA_PENALTY` (-30) and `TITLE_IS_FILENAME_ONLY_PENALTY` (-10) fire on the *resolved* metadata. No corpus case exercises it (the 59 scored books all have real metadata) so per-field + `wrong_auto_organized` are flat; `pytest -m corpus` green. No AI cost. |
 | F | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | ISBN-trust check: the fast path now also requires `text_match.title_similarity` (difflib ratio on the *strict*-normalised titles) ≥ 0.80 between the EPUB title and the ISBN-matched provider title — `titles_match` alone strips everything after a `:` so "Mistborn: The Final Empire" and "Mistborn: The Well of Ascension" passed it. On failure it falls through to the AI path (candidate still supplied). **Fast-path hit-rate on the corpus unchanged at 25.4%** — no legit deterministic win lost. Per-field flat; `pytest -m corpus` green. No AI cost. |
 | G | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | positive corroboration components: `DESCRIPTION_CORROBORATES` (+3, a blurb mentions the resolved title/author/series) and `PUBYEAR_PLAUSIBLE` (+2, a real ≤-current year present and sources within 5y). Additive, opt-in via `resolved_title`/`resolved_author`, so reident + old callers unchanged. `resolved_series`/`_title`/`_author` now threaded through `reident_audit_service._recompute_confidence` so the display recompute matches a fresh scan. **Thresholds kept at 85/95** — see sweep below. Corpus flat (first cut at +5/+3 tipped one series-only-wrong book over 85 → dialed to +3/+2, which crosses no threshold in the corpus); `pytest -m corpus` green. No AI cost. |
+| J | 2026-09-07 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | author canonicalisation: `normalize_person_name` match key (initials/`Last, First`/co-author) + `Author.sort_name` populated + `_find_or_create_series` article-insensitive + `SeriesAlias` consulted/written on merge. Corpus flat — the empty-DB harness can't show the dedup win; display-name rewriting was tried and dropped (regressed author 94.8→93.1 against inconsistent collaboration keys). Repair + backfill scripts, dry-run default. No AI cost. |
 | H | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | verification pass for the uncertain band (`70 ≤ computed_confidence < 95`): one adversarial `audit_book_identity` call — agree → +10 confidence (capped 94, so it still shows in the audit log), disagree → take the correction **and** force review (two AI opinions differed), uncertain → force review. **`settings.ai_verify_enabled` defaults OFF** (one extra ~$0.03 call per uncertain new book; James is budget-limited), so the corpus doesn't exercise it and the number is flat. Branch tests in `test_identification_service.py`. |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)

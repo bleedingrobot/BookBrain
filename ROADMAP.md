@@ -114,6 +114,16 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       the 70–95 band — agree → +10 (cap 94), disagree → take-correction + force
       review, uncertain → force review. `settings.ai_verify_enabled` **defaults
       OFF** (one extra ~$0.03 call per uncertain new book).
+  - **Tier 3 — J shipped** (2026-09-07) — author/series canonicalisation (F5).
+    `text_match.normalize_person_name` (author match key: initials joined,
+    "Last, First" reordered, first-of-co-author-list, lone middle initial
+    dropped) + `person_sort_name` → `Author.sort_name` now populated.
+    `_find_or_create_author` matches on the key (display name kept verbatim —
+    rewriting co-author credits regressed the corpus). `_find_or_create_series`
+    ignores a leading article + consults `SeriesAlias`; `apply_series_merge`
+    writes a `SeriesAlias` per merged-away name (closes the re-fork loop —
+    resolves the item below). `scripts/backfill_author_sort_names.py` +
+    `scripts/repair_forked_authors.py`, both dry-run default. I and K remain.
 - **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
   **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
   `resolved_title` / `resolved_author`, so the audit's display recompute matches
@@ -122,10 +132,11 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.
   Deciding to apply it there (probably yes) is its own change + test.
-- **Series merge — auto-create a `library_rule` (series_alias)** on apply, so
-  the next scan that phrases the merged-away name the old way gets corrected
-  by `find_rule_match` instead of re-forking the Series row (and Drive
-  folder) all over again. Today a re-fork just means running the merge again.
+- ~~**Series merge — auto-create a `library_rule` (series_alias)** on apply~~
+  **DONE (2026-09-07, prompts/15 Stage J)** — `apply_series_merge` writes a
+  `SeriesAlias` row per merged-away name and `_find_or_create_series` consults
+  the table, so the next scan phrasing the old name resolves straight to the
+  canonical Series row instead of re-forking it.
 - **Library Audit similarity threshold is loose** — a real ~2200-book library
   throws ~780 series + ~101 author clusters, many false positives sharing one
   generic word ("Wild" vs "Wild Cards", a chronicle vs a chronicle). The
