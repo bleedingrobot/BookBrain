@@ -81,17 +81,45 @@ def test_epub_provider_disagreement_penalized() -> None:
     assert breakdown.components["provider_matches_epub"] == 0
 
 
-def test_series_disagreement_penalized() -> None:
+def test_series_disagreement_penalized_on_a_provider_consensus() -> None:
+    # Two providers agree on a series the EPUB doesn't mention — a genuine
+    # consensus pointing elsewhere.
     candidates = [
-        MetadataCandidate(
-            title="Dune", authors=["Frank Herbert"], series="Wrong Series", source="a"
-        )
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], series="Wrong Series", source="a"),
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], series="Wrong Series", source="b"),
     ]
     breakdown = score(
         evidence=_evidence(series="Dune Chronicles"), candidates=candidates, filename="dune.epub"
     )
 
     assert breakdown.conflicts["series_disagreement"] == -10
+
+
+def test_lone_provider_series_does_not_contradict_a_correct_epub_series() -> None:
+    # prompts/15 Stage B: provider series are messy/sometimes wrong. One
+    # provider disagreeing with the EPUB's own series must not tank confidence.
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], series="Some Wrong Series", source="a"
+        )
+    ]
+    breakdown = score(
+        evidence=_evidence(series="Dune Chronicles"), candidates=candidates, filename="dune.epub"
+    )
+
+    assert "series_disagreement" not in breakdown.conflicts
+
+
+def test_two_providers_split_on_series_is_not_a_consensus_disagreement() -> None:
+    candidates = [
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], series="Series X", source="a"),
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], series="Series Y", source="b"),
+    ]
+    breakdown = score(
+        evidence=_evidence(series="Dune Chronicles"), candidates=candidates, filename="dune.epub"
+    )
+
+    assert "series_disagreement" not in breakdown.conflicts
 
 
 def test_score_never_goes_below_zero() -> None:

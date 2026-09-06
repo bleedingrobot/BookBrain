@@ -267,6 +267,22 @@ tests unchanged; cost delta recorded in `IDENTIFICATION-EVAL.md`.
 
 #### Stage B — Real series + richer candidates from providers
 
+> **DONE 2026-09-06.** `MetadataCandidate.genre` added;
+> `GoogleBooksProvider` / `OpenLibraryProvider` now populate `series` /
+> `series_number` / `genre`. Google Books: number from
+> `seriesInfo.bookDisplayNumber`, name from a *numbered* trailing title
+> parenthetical only, genre from `categories`. Open Library: search-doc
+> `series` array + `jscmd=data` `subjects` (`series:` / `genre:` prefixes) +
+> one per-edition-cached follow-up GET to `/books/OL…M.json` for its clean
+> `series` field (silent on failure). Shared `types.split_series_and_number`
+> peels a trailing `#N` off a name. `_build_prompt` candidate lines print
+> `series=` / `genre=` / `published=`. `SERIES_DISAGREEMENT_PENALTY` retuned to
+> require a **provider consensus** (≥2 candidates agree on a different series)
+> so a lone messy provider string can't contradict a correct EPUB series —
+> both directions tested. Offline corpus number flat by construction (fixtures
+> predate provider series); no regression, `pytest -m corpus` green; no AI-cost
+> change. See `IDENTIFICATION-EVAL.md` § Stage B.
+
 **Why.** F1. Makes series corroboratable and the uncorroborated-series
 penalty meaningful; lights up dead fast-path code.
 
@@ -573,8 +589,13 @@ there's no batch consensus.
 │                                  + `settings.ai_web_search_enabled`. Offline corpus
 │                                  unchanged by construction; live measurement pending
 │                                  credit (see IDENTIFICATION-EVAL.md § Stage A).
-├─ B  provider series           │ Tier 1 — do all three, any order
-├─ C  filename parser           │
+├─ B  provider series           ── DONE (2026-09-06). Google Books + Open Library
+│                                  now populate MetadataCandidate.series /
+│                                  series_number / genre; series-disagreement
+│                                  penalty needs a provider *consensus* now.
+│                                  Offline corpus flat by construction (fixtures
+│                                  predate provider series) — see IDENTIFICATION-EVAL.md.
+├─ C  filename parser           │ Tier 1 — C and D remain, any order
 ├─ D  richer text/evidence      ┘
 │
 ├─ E  placeholder detector      ┐

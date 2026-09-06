@@ -115,6 +115,7 @@ class CorpusEntry:
                     authors=list(c.get("authors", [])),
                     series=c.get("series"),
                     series_number=c.get("series_number"),
+                    genre=c.get("genre"),
                     description=c.get("description"),
                     language=c.get("language"),
                     first_published=c.get("first_published"),

@@ -122,6 +122,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 |---|---|---|---|---|---|---|---|
 | 0 | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | harness + triangulation + invariants + mutation. 59/74 scored (15 still Wikidata-only, credit ran out). This is the regression floor for Tier 1. |
 | A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn, **recent-books-only gate (~3% of calls)** after a first cut grounded 95% and tripled per-identify cost. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
+| B | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | real provider series + genre from Google Books / Open Library; series-disagreement penalty now needs a **provider consensus**, not one lone provider, so a messy provider string can't tank a correct EPUB series. **Offline number unchanged by construction** — the 74 corpus fixtures were snapshotted before providers returned series, so every recorded candidate still has `series: null`; the effect is only visible live / on a re-snapshot. No regression; `pytest -m corpus` green. No AI-cost change (pure provider/HTTP work). |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -164,3 +165,42 @@ ISBN+provider+EPUB agree on title/author but no source has a series) is *not*
 grounded — that path is the other half of the "Scion → invented Hierarchy #2"
 mechanism. Stage B (real provider series) shrinks how often it runs; grounding
 it too is a candidate follow-up once Stage B lands.
+
+### Stage B — real provider series + richer candidates (`prompts/15` Stage B)
+
+Finding F1 said `MetadataCandidate.series` was *always* `None` — both providers
+ignored the series data the APIs return. Fixed:
+
+- **Open Library.** Search docs: read the `series` array (asking for it via
+  `fields=`), split a trailing `#N` / `, N` / `(Book N)` off the name
+  (`types.split_series_and_number`). ISBN path (`jscmd=data`): parse
+  `series:<name>` / `genre:<name>` out of the `subjects` list, and — one extra,
+  per-edition-cached GET to `/books/OL…M.json` — read its clean `series` field
+  when the subjects don't carry one. Follow-up failure is silent.
+- **Google Books.** `seriesInfo.bookDisplayNumber` (or `volumeSeries[0]
+  .orderNumber`) → `series_number`; the series *name* (which `seriesInfo` never
+  carries) is taken from a numbered trailing parenthetical on the title —
+  `"The Final Empire (Mistborn, #1)"` — and only when it has a number, so
+  `"(Movie Tie-in Edition)"` is not mistaken for a series. A bare number with no
+  trustworthy name is dropped. `categories` → `genre` (BISAC leaf).
+- **`MetadataCandidate.genre`** added; `_build_prompt` candidate lines now print
+  `series=`, `genre=` and `published=`.
+- **Confidence.** `_series_in_a_source` already credited a provider-backed
+  series, so `UNCORROBORATED_SERIES_PENALTY` now correctly stands down once a
+  provider confirms the AI's series (it never could before). The
+  `SERIES_DISAGREEMENT_PENALTY` was retuned: with real (messy, sometimes wrong)
+  provider series now flowing in, it fires **only on a provider consensus** —
+  the EPUB series matches no candidate *and* ≥2 candidates agree on a different
+  one. A single lone provider disagreeing with the EPUB's own series no longer
+  penalises. Tested both directions (`test_confidence_service.py`,
+  `test_identification_service.py`).
+- Dead code revived: the fast-path `candidate_with_series` branch
+  (`IdentificationService.identify`) now actually fires when a provider supplies
+  the series — covered end to end by
+  `test_fast_path_skips_series_lookup_when_a_provider_already_has_it`.
+
+**Offline corpus number is unchanged** and that is expected: all 74 fixtures
+were captured before this change, so their recorded candidates still have
+`series: null` and the harness replays them verbatim. Real movement needs a
+re-snapshot (`scripts/snapshot_book.py from-drive … ` — free, no AI) or a
+`--live` run. No regression; `pytest -m corpus` green.

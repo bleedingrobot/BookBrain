@@ -357,6 +357,7 @@ def _candidate_to_dict(c: MetadataCandidate) -> dict:
         "authors": c.authors,
         "series": c.series,
         "series_number": c.series_number,
+        "genre": c.genre,
         "description": c.description,
         "language": c.language,
         "first_published": c.first_published,

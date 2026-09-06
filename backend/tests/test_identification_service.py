@@ -233,6 +233,43 @@ async def test_fast_path_series_from_provider_is_not_penalized() -> None:
     assert "uncorroborated_series" not in conflicts
 
 
+async def test_ai_path_series_corroborated_by_a_provider_is_not_penalized() -> None:
+    # prompts/15 Stage B: providers now return series, so an AI-supplied series
+    # that a provider candidate also carries no longer takes the
+    # uncorroborated-series penalty.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="The Final Empire",
+            author="Brandon Sanderson",
+            series="Mistborn",
+            series_number=1,
+            ai_confidence=88,
+            reasoning_summary="matched",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="The Final Empire",
+            authors=["Brandon Sanderson"],
+            series="Mistborn",
+            series_number=1,
+            source="open_library",
+        )
+    ]
+
+    result = await service.identify(
+        filename="the-final-empire.epub",
+        evidence=_evidence(title="The Final Empire", authors=["Brandon Sanderson"], isbn13=None),
+        candidates=candidates,
+    )
+
+    conflicts = result.raw_response["confidence_breakdown"]["conflicts"]
+    assert "uncorroborated_series" not in conflicts
+    assert "series_disagreement" not in conflicts
+
+
 async def test_junk_series_number_is_clamped_series_name_kept() -> None:
     fake_client = _FakeAIClient(
         result=AIIdentificationResult(

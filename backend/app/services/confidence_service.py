@@ -104,11 +104,21 @@ def score(
     if epub_provider_conflict:
         conflicts["epub_provider_disagreement"] = EPUB_PROVIDER_DISAGREEMENT_PENALTY
 
+    # prompts/15 Stage B: real provider series now flow in, and provider series
+    # strings are messy and sometimes plain wrong. A single provider disagreeing
+    # with the EPUB's own series is too weak to penalise — only fire when the
+    # EPUB series matches no candidate AND at least two candidates agree on a
+    # different series (a genuine provider consensus pointing elsewhere).
+    epub_series_key = normalize_title(evidence.series) if evidence.series else ""
     candidate_series = {normalize_title(c.series) for c in candidates if c.series}
+    disagreeing = [
+        c for c in candidates if c.series and normalize_title(c.series) != epub_series_key
+    ]
     if (
-        evidence.series
-        and candidate_series
-        and normalize_title(evidence.series) not in candidate_series
+        epub_series_key
+        and epub_series_key not in candidate_series
+        and len(disagreeing) >= 2
+        and len({normalize_title(c.series) for c in disagreeing}) == 1
     ):
         conflicts["series_disagreement"] = SERIES_DISAGREEMENT_PENALTY
 

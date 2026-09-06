@@ -286,10 +286,14 @@ def _build_prompt(
         lines.append("")
         lines.append("Candidate matches from metadata providers:")
         for candidate in candidates:
+            series_note = candidate.series
+            if series_note and candidate.series_number is not None:
+                series_note = f"{candidate.series} #{_fmt_number(candidate.series_number)}"
             lines.append(
                 f"- [{candidate.source}] title={candidate.title!r} "
                 f"authors={candidate.authors!r} isbn13={candidate.isbn13!r} "
-                f"series={candidate.series!r}"
+                f"series={series_note!r} genre={candidate.genre!r} "
+                f"published={candidate.first_published!r}"
             )
     else:
         lines.append("")
@@ -354,6 +358,10 @@ def _series_phrase(series: str, number: object) -> str:
     if number is not None:
         phrase += f" #{int(number) if isinstance(number, float) and number.is_integer() else number}"
     return phrase
+
+
+def _fmt_number(number: float) -> str:
+    return str(int(number) if isinstance(number, float) and number.is_integer() else number)
 
 
 def _clip(text: str | None) -> str:

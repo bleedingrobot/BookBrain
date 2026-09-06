@@ -63,6 +63,17 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     95% and tripled per-identify cost). Toggle `settings.ai_web_search_enabled`.
     Offline corpus unchanged by construction; live slice measurement still
     pending Anthropic credit.
+  - **Stage B shipped** (2026-09-06) — real provider series (F1).
+    `GoogleBooksProvider` + `OpenLibraryProvider` now populate
+    `MetadataCandidate.series` / `series_number` / `genre`
+    (Google: `seriesInfo.bookDisplayNumber` + numbered title parenthetical +
+    `categories`; Open Library: search-doc `series`, `jscmd=data`
+    `subjects` `series:`/`genre:` prefixes, one cached follow-up to the edition
+    record). Shared `types.split_series_and_number`. `_build_prompt` prints
+    `series=`/`genre=`/`published=` per candidate. `SERIES_DISAGREEMENT_PENALTY`
+    now needs a **provider consensus** (≥2 agreeing candidates) so a lone messy
+    provider string can't contradict a correct EPUB series. No AI-cost change;
+    offline corpus flat by construction (fixtures predate provider series).
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.
