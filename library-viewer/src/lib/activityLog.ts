@@ -8,10 +8,6 @@
 // tabs) can race and one can clobber the other. Fine for a low-volume
 // household log where losing an occasional line doesn't matter — never
 // worth blocking or retrying the real action over.
-//
-// A drive.readonly token (share-link guests, see googleAuth.ts) can't write
-// this file at all — callers should skip logging entirely for read-only
-// sessions rather than attempting a write that will always fail.
 
 import { readJsonFile, writeJsonFile } from './drive'
 

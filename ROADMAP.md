@@ -30,6 +30,23 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **library-viewer: drop guest/read-only mode + zero-setup defaults**
+  (2026-09-06) — the `?clientId=&folderId=` share link used to set
+  `readOnly: true`, which requested `drive.readonly` and hid Kobo devices,
+  the wishlist and activity logging. Removed entirely: everyone now gets the
+  full `drive` scope and the full UI. The trade-off James accepted: every
+  person who signs in grants the (unverified, personal) OAuth app full
+  read/write to their whole Drive — the scarier consent screen — but there's
+  no longer a broken half-experience or per-device retyping. New
+  `src/lib/config.ts` bakes the Google Client ID + library folder ID in as
+  build defaults (both are public-safe), so `loadSettings()` returns a
+  working config with nothing in localStorage — open the deployed URL, hit
+  "Sign in", done. localStorage / a share link still override the defaults
+  for a device pointed at a different library. Existing devices that used the
+  old share link get silently upgraded to full access on their next sign-in
+  (scope change forces a fresh Google consent). `bookbrain.readOnly` is now
+  an unread orphan key; `clearSettings()` cleans it up.
+
 - **Bulk Re-identify Audit** (2026-09-06) — `prompts/05`. A second tab on the
   Library Audit page. Where task 1 compares DB row *names*, this re-derives
   what identification would say now and diffs it against what's stored, per

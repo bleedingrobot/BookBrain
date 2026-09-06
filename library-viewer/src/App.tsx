@@ -39,17 +39,18 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// A share link (?clientId=...&folderId=...) hands a guest a ready-to-use,
-// read-only config with no Kobo access — they never see the settings form
-// at all. Consumed once on load, then scrubbed from the address bar so the
-// values don't linger in browser history.
+// A share link (?clientId=...&folderId=...) points a device at a specific
+// library with no setup form. Rarely needed now that the deployed build
+// ships working defaults (see lib/config.ts) — kept for pointing a device
+// at a different library/client. Consumed once on load, then scrubbed from
+// the address bar so the values don't linger in browser history.
 function consumeSharedSettings(): ViewerSettings | null {
   const params = new URLSearchParams(window.location.search)
   const googleClientId = params.get('clientId')
   const libraryFolderId = params.get('folderId')
   if (!googleClientId || !libraryFolderId) return null
 
-  const shared: ViewerSettings = { googleClientId, libraryFolderId, readOnly: true }
+  const shared: ViewerSettings = { googleClientId, libraryFolderId }
   saveSettings(shared)
   window.history.replaceState({}, '', window.location.pathname)
   return shared
@@ -91,22 +92,19 @@ export default function App() {
   const [sendState, setSendState] = useState<Record<string, SendStatus>>({})
   const [sentMap, setSentMap] = useState(getSentMap)
 
-  const readOnly = settings?.readOnly ?? false
   // Drive-synced (lib.remoteKoboDevices) once a sync has resolved it —
   // falls back to this browser's own local copy until then, or if the
   // library has no synced settings file at all yet.
-  const koboDevices = readOnly ? [] : (lib.remoteKoboDevices ?? settings?.koboDevices ?? [])
+  const koboDevices = lib.remoteKoboDevices ?? settings?.koboDevices ?? []
   const hasKobo = koboDevices.length > 0
 
-  // A drive.readonly token (share-link guests) can't write the log file at
-  // all, so these are no-ops for them rather than a doomed API call.
   function logDownload(file: DriveFile) {
-    if (!token || !settings || !viewerName || readOnly) return
+    if (!token || !settings || !viewerName) return
     void logActivity(token, settings.libraryFolderId, viewerName, 'download', file.name)
   }
 
   function logKoboSend(file: DriveFile, device: KoboDevice) {
-    if (!token || !settings || !viewerName || readOnly) return
+    if (!token || !settings || !viewerName) return
     void logActivity(token, settings.libraryFolderId, viewerName, 'kobo-send', `${file.name} → ${device.label}`)
   }
 
@@ -126,7 +124,7 @@ export default function App() {
   // read+write to Drive per character would be both wasteful and racy.
   const lastLoggedQueryRef = useRef('')
   useEffect(() => {
-    if (!token || !settings || !viewerName || readOnly) return
+    if (!token || !settings || !viewerName) return
     const trimmed = query.trim()
     if (trimmed.length < 2 || trimmed === lastLoggedQueryRef.current) return
     const folderId = settings.libraryFolderId
@@ -135,7 +133,7 @@ export default function App() {
       void logActivity(token, folderId, viewerName, 'search', trimmed)
     }, 800)
     return () => clearTimeout(id)
-  }, [query, token, viewerName, readOnly, settings])
+  }, [query, token, viewerName, settings])
 
   function selectMany(ids: string[], on: boolean) {
     setSelected((prev) => {
@@ -374,7 +372,7 @@ export default function App() {
             // Already signed in (editing, not first-time setup) — push the
             // Kobo device list to Drive right away rather than waiting for
             // the next sync, so another device picks up the change sooner.
-            else if (!s.readOnly) lib.saveKoboDevices(s.koboDevices ?? [])
+            else lib.saveKoboDevices(s.koboDevices ?? [])
           }}
           onCancel={settings ? () => setEditingSettings(false) : undefined}
         />
@@ -402,9 +400,10 @@ export default function App() {
         </button>
         {lib.authError && <p className="mt-3 text-sm text-red-600">{lib.authError}</p>}
         <p className="mt-6 text-xs leading-relaxed text-neutral-400">
-          {readOnly
-            ? 'Signing in grants this page read-only access to your Google Drive so it can list and download the shared library. Nothing is saved: closing or reloading this page signs you out.'
-            : 'Google only lets this page copy your existing library files with full Drive access, not a narrower "just this folder" permission — signing in grants access to your whole Drive, not only the library. Nothing is saved: closing or reloading this page signs you out.'}
+          Sending books to a Kobo copies files between Drive folders, which Google only allows with
+          full Drive access — so signing in grants this page access to your Drive, not just the
+          library folder. Nothing is saved anywhere but Google: closing or reloading this page signs
+          you out.
         </p>
         <button
           className="mt-8 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
@@ -438,7 +437,7 @@ export default function App() {
     )
   }
 
-  if (showWishlist && !readOnly) {
+  if (showWishlist) {
     return (
       <WishlistScreen
         token={token}
@@ -468,7 +467,6 @@ export default function App() {
       <LibraryHeader
         busy={lib.syncing || lib.loading}
         hasKobo={hasKobo}
-        readOnly={readOnly}
         onRefresh={lib.refresh}
         onRebuild={lib.rebuild}
         onShowDevices={() => setShowDevices(true)}

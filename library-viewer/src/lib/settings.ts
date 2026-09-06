@@ -1,8 +1,9 @@
+import { DEFAULT_GOOGLE_CLIENT_ID, DEFAULT_LIBRARY_FOLDER_ID } from './config'
+
 const CLIENT_ID_KEY = 'bookbrain.googleClientId'
 const FOLDER_ID_KEY = 'bookbrain.libraryFolderId'
 const KOBO_FOLDER_ID_KEY = 'bookbrain.koboFolderId' // legacy single-folder key, migrated on read
 const KOBO_DEVICES_KEY = 'bookbrain.koboDevices'
-const READONLY_KEY = 'bookbrain.readOnly'
 
 export interface KoboDevice {
   label: string
@@ -12,15 +13,12 @@ export interface KoboDevice {
 export interface ViewerSettings {
   googleClientId: string
   libraryFolderId: string
-  // Absent/empty for view/download-only guests — the per-device "Send to
-  // Kobo" buttons just don't appear for them. Only the owner's own settings
-  // need this. Each entry is one physical eReader: its label and the Drive
-  // folder that eReader's native Google Drive sync pulls from (its own
-  // account's "Rakuten Kobo" folder, shared to this account).
+  // One entry per physical eReader: its label and the Drive folder that
+  // eReader's native Google Drive sync pulls from (its own account's
+  // "Rakuten Kobo" folder, shared to this account). Synced to Drive as
+  // bookbrain-viewer-settings.json so every signed-in device shares one
+  // list — see koboDeviceSync.ts.
   koboDevices?: KoboDevice[]
-  // Set only for share-link guests: request drive.readonly instead of full
-  // Drive, and hide every write action. Never set for the owner.
-  readOnly?: boolean
 }
 
 export type PartialSettings = Partial<ViewerSettings>
@@ -47,12 +45,14 @@ function loadKoboDevices(): KoboDevice[] | undefined {
   return legacy ? [{ label: 'James', folderId: legacy }] : undefined
 }
 
+// localStorage wins if set (a device pointed at a different library via the
+// setup form or a share link), otherwise the build-time defaults so the
+// deployed viewer works with no setup at all.
 export function loadPartialSettings(): PartialSettings {
   return {
-    googleClientId: localStorage.getItem(CLIENT_ID_KEY) ?? undefined,
-    libraryFolderId: localStorage.getItem(FOLDER_ID_KEY) ?? undefined,
+    googleClientId: localStorage.getItem(CLIENT_ID_KEY) ?? DEFAULT_GOOGLE_CLIENT_ID ?? undefined,
+    libraryFolderId: localStorage.getItem(FOLDER_ID_KEY) ?? DEFAULT_LIBRARY_FOLDER_ID ?? undefined,
     koboDevices: loadKoboDevices(),
-    readOnly: localStorage.getItem(READONLY_KEY) === '1' || undefined,
   }
 }
 
@@ -73,8 +73,6 @@ export function saveSettings(settings: ViewerSettings): void {
   // The legacy key is fully superseded once we've written the new one —
   // drop it so a stale value can't shadow an intentionally-cleared list.
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
-  if (settings.readOnly) localStorage.setItem(READONLY_KEY, '1')
-  else localStorage.removeItem(READONLY_KEY)
 }
 
 export function clearSettings(): void {
@@ -82,5 +80,5 @@ export function clearSettings(): void {
   localStorage.removeItem(FOLDER_ID_KEY)
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
   localStorage.removeItem(KOBO_DEVICES_KEY)
-  localStorage.removeItem(READONLY_KEY)
+  localStorage.removeItem('bookbrain.readOnly') // orphan from the removed guest mode
 }

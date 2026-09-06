@@ -3,7 +3,6 @@ import { useState } from 'react'
 interface Props {
   busy: boolean
   hasKobo: boolean
-  readOnly: boolean
   onRefresh: () => void
   onRebuild: () => void
   onShowDevices: () => void
@@ -19,7 +18,6 @@ interface Props {
 export function LibraryHeader({
   busy,
   hasKobo,
-  readOnly,
   onRefresh,
   onRebuild,
   onShowDevices,
@@ -35,12 +33,8 @@ export function LibraryHeader({
 
   const items = [
     { label: 'Activity', fn: onShowActivity },
-    ...(readOnly
-      ? []
-      : [
-          { label: 'Wishlist', fn: onShowWishlist },
-          { label: 'Rebuild library', fn: onRebuild, disabled: busy },
-        ]),
+    { label: 'Wishlist', fn: onShowWishlist },
+    { label: 'Rebuild library', fn: onRebuild, disabled: busy },
     { label: 'Share…', fn: onShare },
     { label: 'Copy link', fn: onCopyLink },
     { label: 'Change settings', fn: onEditSettings },

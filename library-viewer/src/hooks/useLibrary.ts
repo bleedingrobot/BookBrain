@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { logActivity } from '../lib/activityLog'
 import { clearCoverCache, loadCoverManifest } from '../lib/covers'
 import { isAuthError, type DriveFile } from '../lib/drive'
-import { requestAccessToken, SCOPE_FULL, SCOPE_READONLY } from '../lib/googleAuth'
+import { requestAccessToken, SCOPE_FULL } from '../lib/googleAuth'
 import { loadRemoteKoboDevices, saveRemoteKoboDevices } from '../lib/koboDeviceSync'
 import { getViewerName } from '../lib/viewerIdentity'
 import {
@@ -44,7 +44,7 @@ export function useLibrary(settings: ViewerSettings | null) {
   const [remoteKoboDevices, setRemoteKoboDevices] = useState<KoboDevice[] | null>(null)
   const remoteSettingsFileIdRef = useRef<string | null>(null)
 
-  const scope = settings?.readOnly ? SCOPE_READONLY : SCOPE_FULL
+  const scope = SCOPE_FULL
 
   const flagAuthError = useCallback((err: unknown) => {
     if (isAuthError(err)) setSessionExpired(true)
@@ -72,30 +72,28 @@ export function useLibrary(settings: ViewerSettings | null) {
       setIndex(idx)
       await loadCoverManifest(activeToken, idx.coversFolder)
 
-      if (!settings.readOnly) {
-        try {
-          const remote = await loadRemoteKoboDevices(activeToken, settings.libraryFolderId)
-          if (remote.devices !== null) {
-            remoteSettingsFileIdRef.current = remote.fileId
-            setRemoteKoboDevices(remote.devices)
-          } else if (settings.koboDevices && settings.koboDevices.length > 0) {
-            // No settings file in this library yet, but this browser has
-            // devices configured locally (the pre-sync setup, or a device
-            // added before this feature existed) — seed Drive from them so
-            // the next device/browser that signs in gets them for free
-            // instead of retyping the same folder ids.
-            const fileId = await saveRemoteKoboDevices(
-              activeToken,
-              settings.libraryFolderId,
-              settings.koboDevices,
-              null,
-            )
-            remoteSettingsFileIdRef.current = fileId
-            setRemoteKoboDevices(settings.koboDevices)
-          }
-        } catch {
-          // Best-effort — settings.koboDevices (App's fallback) still works.
+      try {
+        const remote = await loadRemoteKoboDevices(activeToken, settings.libraryFolderId)
+        if (remote.devices !== null) {
+          remoteSettingsFileIdRef.current = remote.fileId
+          setRemoteKoboDevices(remote.devices)
+        } else if (settings.koboDevices && settings.koboDevices.length > 0) {
+          // No settings file in this library yet, but this browser has
+          // devices configured locally (the pre-sync setup, or a device
+          // added before this feature existed) — seed Drive from them so
+          // the next device/browser that signs in gets them for free
+          // instead of retyping the same folder ids.
+          const fileId = await saveRemoteKoboDevices(
+            activeToken,
+            settings.libraryFolderId,
+            settings.koboDevices,
+            null,
+          )
+          remoteSettingsFileIdRef.current = fileId
+          setRemoteKoboDevices(settings.koboDevices)
         }
+      } catch {
+        // Best-effort — settings.koboDevices (App's fallback) still works.
       }
     },
     [settings, flagAuthError],
@@ -108,7 +106,7 @@ export function useLibrary(settings: ViewerSettings | null) {
   // show up on another device until the next successful sync.
   const saveKoboDevices = useCallback(
     async (devices: KoboDevice[]) => {
-      if (!token || !settings || settings.readOnly) return
+      if (!token || !settings) return
       try {
         const fileId = await saveRemoteKoboDevices(
           token,
@@ -140,12 +138,8 @@ export function useLibrary(settings: ViewerSettings | null) {
       async (newToken, expiresIn) => {
         setSigningIn(false)
         applyToken(newToken, expiresIn)
-        // A drive.readonly token (share-link guests) can't write the log
-        // file at all, so don't bother trying.
-        if (!settings.readOnly) {
-          const who = getViewerName()
-          if (who) void logActivity(newToken, settings.libraryFolderId, who, 'sign-in', '')
-        }
+        const who = getViewerName()
+        if (who) void logActivity(newToken, settings.libraryFolderId, who, 'sign-in', '')
         const cached = loadCachedFiles(settings.libraryFolderId)
         if (cached) {
           setFiles(cached)

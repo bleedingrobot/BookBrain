@@ -30,13 +30,11 @@ declare global {
   }
 }
 
-// The owner needs full read/write — "Send to Kobo" copies a file into
-// another folder (files.copy), which drive.file's narrower scope wouldn't
-// cover for pre-existing library files this app never created. A share-link
-// guest only ever downloads, so they get the far less alarming
-// read-only scope.
+// Everyone gets full read/write — "Send to Kobo" copies a file into another
+// folder (files.copy), and the wishlist / activity-log / device-settings
+// sidecars are all writes, none of which drive.file's narrower scope would
+// cover for pre-existing library files this app never created.
 export const SCOPE_FULL = 'https://www.googleapis.com/auth/drive'
-export const SCOPE_READONLY = 'https://www.googleapis.com/auth/drive.readonly'
 
 let tokenClient: TokenClient | null = null
 let currentKey: string | null = null
