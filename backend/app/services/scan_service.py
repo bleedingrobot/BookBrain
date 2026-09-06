@@ -39,6 +39,7 @@ from app.services.drive_service import DriveService
 from app.services.duplicate_service import detect_same_book_duplicates
 from app.services.identification_service import IdentificationResult, IdentificationService
 from app.services.library_index_service import regenerate_library_index
+from app.services.metadata_sanity import clamp_series_number
 from app.services.organize_service import get_organize_dry_run, get_organize_service
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
@@ -567,6 +568,13 @@ class ScanService:
                 identification = await self._identification_service.identify(
                     filename=raw["name"], evidence=evidence, candidates=candidates
                 )
+
+        # Sanity clamp on every path, including find_rule_match (which carries
+        # evidence.series_number straight through from the EPUB). identify()
+        # already clamps its own paths idempotently; this catches the rule path.
+        identification.series_number = clamp_series_number(
+            identification.series, identification.series_number, identification.raw_response
+        )
 
         # Everything from here is DB-only — no more network calls — so the
         # lock is held only briefly despite doing the fuzzy Author/Series

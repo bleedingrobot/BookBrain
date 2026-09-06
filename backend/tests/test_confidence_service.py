@@ -146,6 +146,54 @@ def test_series_dropping_leading_article_is_not_a_disagreement() -> None:
     assert "series_disagreement" not in breakdown.conflicts
 
 
+def test_uncorroborated_series_penalized_only_when_opted_in() -> None:
+    candidates = [
+        MetadataCandidate(title="Dune", authors=["Frank Herbert"], source="a")
+    ]
+
+    # No resolved_series passed → historical/recompute callers unchanged.
+    without = score(evidence=_evidence(), candidates=candidates, filename="dune.epub")
+    assert "uncorroborated_series" not in without.conflicts
+
+    # AI (or the fast-path series lookup) asserted a series no source mentions.
+    with_penalty = score(
+        evidence=_evidence(),
+        candidates=candidates,
+        filename="dune.epub",
+        resolved_series="The Invented Chronicles",
+    )
+    assert with_penalty.conflicts["uncorroborated_series"] == -15
+    assert without.total - with_penalty.total == 15
+
+
+def test_series_backed_by_a_candidate_is_not_penalized() -> None:
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], series="Dune Chronicles", source="a"
+        )
+    ]
+
+    breakdown = score(
+        evidence=_evidence(),
+        candidates=candidates,
+        filename="dune.epub",
+        resolved_series="dune chronicles",  # word-set match, not exact string
+    )
+
+    assert "uncorroborated_series" not in breakdown.conflicts
+
+
+def test_series_backed_by_the_epub_is_not_penalized() -> None:
+    breakdown = score(
+        evidence=_evidence(series="The Expanse"),
+        candidates=[],
+        filename="dune.epub",
+        resolved_series="Expanse (The)",
+    )
+
+    assert "uncorroborated_series" not in breakdown.conflicts
+
+
 def test_provider_title_with_colon_series_suffix_is_not_a_disagreement() -> None:
     # Regression: Open Library returned two candidates for the same book —
     # one titled "Disquiet Gods : The Sun Eater", one titled "Disquiet

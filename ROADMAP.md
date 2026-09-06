@@ -9,6 +9,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB
   *(done, see below)*, (5) bulk re-identify audit *(done, see below)*. All four
   shipped.
+- **Trustworthy identification (`prompts/13`)** — A + B shipped: a
+  `series_number` sanity clamp (>50 / ≤0 → null, series name kept, original
+  recorded in `raw_response.series_number_clamped`) applied on every
+  identification return path, and a new `UNCORROBORATED_SERIES_PENALTY` (-15)
+  in `confidence_service.score()` that fires when the resolved series appears
+  in neither the EPUB nor any provider candidate — closing structural gap #1
+  (invented series auto-organising silently). Still to do: (C) feed recent
+  `/correct` pairs into the identify prompt as few-shot examples; (D)
+  perceptual-hash cover dedup — both filed for a follow-up prompt.
+- **Reident recompute + uncorroborated-series penalty** —
+  `reident_audit_service._recompute_confidence` deliberately does *not* pass
+  `resolved_series` yet, so historical books aren't retroactively penalised.
+  Deciding to apply it there (probably yes) is its own change + test.
 - **Series merge — auto-create a `library_rule` (series_alias)** on apply, so
   the next scan that phrases the merged-away name the old way gets corrected
   by `find_rule_match` instead of re-forking the Series row (and Drive

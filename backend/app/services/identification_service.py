@@ -6,6 +6,7 @@ from app.providers.ai.anthropic_client import AIIdentificationError, AnthropicId
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.confidence_service import score
+from app.services.metadata_sanity import clamp_series_number
 from app.services.text_match import texts_match, titles_match
 
 
@@ -48,7 +49,6 @@ class IdentificationService:
 
         fast_match = _find_isbn_match(evidence, candidates)
         if fast_match is not None:
-            breakdown = score(evidence=evidence, candidates=candidates, filename=filename)
             title = fast_match.title or evidence.title or ""
             author = _first_author(fast_match) or _first_author_evidence(evidence)
             series = evidence.series
@@ -62,7 +62,7 @@ class IdentificationService:
                 "Deterministic match: ISBN, a metadata provider, and the EPUB's "
                 "own metadata all agree on title and author."
             )
-            raw_response: dict = {"confidence_breakdown": breakdown.as_dict()}
+            raw_response: dict = {}
 
             # ISBN/provider/EPUB agreement is enough to trust title+author
             # without asking the AI. Series is a different question — neither
@@ -82,6 +82,18 @@ class IdentificationService:
                         )
                 except AIIdentificationError as exc:
                     raw_response["series_lookup_error"] = str(exc)
+
+            # Score *after* the series lookup, not before: a fast-path book that
+            # only has a series because the model guessed one must take the
+            # uncorroborated-series penalty and drop toward the review bar.
+            breakdown = score(
+                evidence=evidence,
+                candidates=candidates,
+                filename=filename,
+                resolved_series=series,
+            )
+            raw_response["confidence_breakdown"] = breakdown.as_dict()
+            series_number = clamp_series_number(series, series_number, raw_response)
 
             return IdentificationResult(
                 title=title,
@@ -104,12 +116,21 @@ class IdentificationService:
         try:
             ai_result, raw_response = await self._ai_client.identify(prompt)
         except AIIdentificationError as exc:
-            breakdown = score(evidence=evidence, candidates=candidates, filename=filename)
+            breakdown = score(
+                evidence=evidence,
+                candidates=candidates,
+                filename=filename,
+                resolved_series=evidence.series,
+            )
+            fallback_raw: dict = {"error": str(exc), "confidence_breakdown": breakdown.as_dict()}
+            series_number = clamp_series_number(
+                evidence.series, evidence.series_number, fallback_raw
+            )
             return IdentificationResult(
                 title=evidence.title or filename,
                 author=_first_author_evidence(evidence),
                 series=evidence.series,
-                series_number=evidence.series_number,
+                series_number=series_number,
                 computed_confidence=breakdown.total,
                 ai_reported_confidence=None,
                 needs_human_review=True,
@@ -117,7 +138,7 @@ class IdentificationService:
                 model="unavailable",
                 prompt_hash=prompt_hash,
                 evidence_hash=evidence_hash,
-                raw_response={"error": str(exc), "confidence_breakdown": breakdown.as_dict()},
+                raw_response=fallback_raw,
             )
 
         ai_corroborates = titles_match(ai_result.title, evidence.title) or any(
@@ -128,13 +149,19 @@ class IdentificationService:
             candidates=candidates,
             filename=filename,
             ai_corroborates=ai_corroborates,
+            resolved_series=ai_result.series,
+        )
+
+        merged_raw: dict = {**raw_response, "confidence_breakdown": breakdown.as_dict()}
+        series_number = clamp_series_number(
+            ai_result.series, ai_result.series_number, merged_raw
         )
 
         return IdentificationResult(
             title=ai_result.title,
             author=ai_result.author,
             series=ai_result.series,
-            series_number=ai_result.series_number,
+            series_number=series_number,
             computed_confidence=breakdown.total,
             ai_reported_confidence=ai_result.ai_confidence,
             needs_human_review=breakdown.total < 85,
@@ -142,7 +169,7 @@ class IdentificationService:
             model=self._ai_client.model_name,
             prompt_hash=prompt_hash,
             evidence_hash=evidence_hash,
-            raw_response={**raw_response, "confidence_breakdown": breakdown.as_dict()},
+            raw_response=merged_raw,
         )
 
 

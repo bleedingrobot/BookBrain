@@ -11,8 +11,22 @@ IDENTIFY_BOOK_TOOL = {
         "properties": {
             "title": {"type": "string"},
             "author": {"type": "string"},
-            "series": {"type": ["string", "null"]},
-            "series_number": {"type": ["number", "null"]},
+            "series": {
+                "type": ["string", "null"],
+                "description": (
+                    "The series name only if a source names one or you are certain "
+                    "from bibliographic knowledge. Leave null for a standalone book — "
+                    "do not invent a plausible-sounding series."
+                ),
+            },
+            "series_number": {
+                "type": ["number", "null"],
+                "description": (
+                    "This book's number in the series, only if it is a genuine "
+                    "numbered volume. Leave null for a standalone, an omnibus, or a "
+                    "placeholder number from a filename/catalogue (e.g. '#301')."
+                ),
+            },
             "ai_confidence": {
                 "type": "number",
                 "description": "Your own confidence, 0-100, that this identification is correct.",
@@ -71,13 +85,24 @@ IDENTIFY_SERIES_TOOL = {
     "description": (
         "Report whether this already-identified book is part of a series, using "
         "your general bibliographic knowledge. Called only when neither the EPUB "
-        "nor any metadata provider had series information for it."
+        "nor any metadata provider had series information for it. Leave both "
+        "fields null unless you are genuinely confident — a standalone book "
+        "wrongly given a series is a recurring, costly mistake here."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "series": {"type": ["string", "null"]},
-            "series_number": {"type": ["number", "null"]},
+            "series": {
+                "type": ["string", "null"],
+                "description": "Series name, or null if this is a standalone book.",
+            },
+            "series_number": {
+                "type": ["number", "null"],
+                "description": (
+                    "This book's number in the series, only if it is a genuine "
+                    "numbered volume; null otherwise."
+                ),
+            },
         },
         "required": ["series", "series_number"],
         "additionalProperties": False,

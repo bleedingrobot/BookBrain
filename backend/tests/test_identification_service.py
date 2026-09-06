@@ -182,6 +182,96 @@ async def test_computed_confidence_not_ai_reported_confidence_drives_review_flag
     assert result.needs_human_review is True
 
 
+async def test_fast_path_invented_series_drops_below_review_bar() -> None:
+    # ISBN + provider + EPUB all agree on title/author, but the only reason
+    # this book has a series is the fast-path series lookup guessed one that
+    # no source mentions. That must pull the computed score under 85.
+    fake_client = _FakeAIClient(
+        series_result=AISeriesResult(series="The Invented Hierarchy", series_number=2)
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a"
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub", evidence=_evidence(), candidates=candidates
+    )
+
+    assert result.series == "The Invented Hierarchy"
+    assert result.computed_confidence < 85
+    assert result.needs_human_review is True
+    assert result.raw_response["confidence_breakdown"]["conflicts"][
+        "uncorroborated_series"
+    ] == -15
+
+
+async def test_fast_path_series_from_provider_is_not_penalized() -> None:
+    fake_client = _FakeAIClient()
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], isbn13="9780441172719",
+            series="Dune Chronicles", series_number=1, source="a",
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub", evidence=_evidence(), candidates=candidates
+    )
+
+    assert result.series == "Dune Chronicles"
+    conflicts = result.raw_response["confidence_breakdown"]["conflicts"]
+    assert "uncorroborated_series" not in conflicts
+
+
+async def test_junk_series_number_is_clamped_series_name_kept() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Command Decision",
+            author="J. Daniel Layfield",
+            series="Alexis Carew",
+            series_number=301,
+            ai_confidence=80,
+            reasoning_summary="#301 is almost certainly a Calibre placeholder.",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="carew.epub", evidence=_evidence(isbn13=None, title=None), candidates=[]
+    )
+
+    assert result.series == "Alexis Carew"
+    assert result.series_number is None
+    assert result.raw_response["series_number_clamped"] == 301
+
+
+async def test_fractional_series_number_survives_the_clamp() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Snuff",
+            author="Terry Pratchett",
+            series="Discworld",
+            series_number=39.5,
+            ai_confidence=80,
+            reasoning_summary="novella between volumes",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="snuff.epub", evidence=_evidence(isbn13=None, title=None), candidates=[]
+    )
+
+    assert result.series_number == 39.5
+    assert "series_number_clamped" not in result.raw_response
+
+
 async def test_ai_failure_falls_back_to_low_confidence_result() -> None:
     fake_client = _FakeAIClient(raises=True)
     service = IdentificationService(ai_client=fake_client)

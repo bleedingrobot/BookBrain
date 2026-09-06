@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
-from app.services.text_match import normalize, normalize_title
+from app.services.text_match import normalize, normalize_title, normalize_words
 
 ISBN_PRESENT = 40
 PROVIDER_MATCHES_EPUB = 20
@@ -14,6 +14,13 @@ AI_CORROBORATES = 5
 PROVIDER_DISAGREEMENT_PENALTY = -25
 EPUB_PROVIDER_DISAGREEMENT_PENALTY = -15
 SERIES_DISAGREEMENT_PENALTY = -10
+# Distinct from SERIES_DISAGREEMENT_PENALTY: that one needs a *conflicting*
+# candidate series. This one fires on *silence* — the resolved book has a
+# series that neither the EPUB nor any provider candidate mentions at all,
+# i.e. the AI (or the fast-path series lookup) invented it. Structural gap #1
+# from the 2026-09-06 review: a clean ISBN+provider match (~90) minus this
+# lands an invented-series book in the review queue instead of the library.
+UNCORROBORATED_SERIES_PENALTY = -15
 
 
 @dataclass
@@ -26,12 +33,27 @@ class ConfidenceBreakdown:
         return {"total": self.total, "components": self.components, "conflicts": self.conflicts}
 
 
+def _series_in_a_source(
+    series: str, evidence: EpubEvidence, candidates: list[MetadataCandidate]
+) -> bool:
+    """Same order-independent word-set match as
+    ``reident_audit_service._series_corroborated`` — is this series backed by
+    the EPUB's own metadata or any provider candidate?"""
+    target = normalize_words(series)
+    if not target:
+        return True
+    if evidence.series and normalize_words(evidence.series) == target:
+        return True
+    return any(c.series and normalize_words(c.series) == target for c in candidates)
+
+
 def score(
     *,
     evidence: EpubEvidence,
     candidates: list[MetadataCandidate],
     filename: str,
     ai_corroborates: bool = False,
+    resolved_series: str | None = None,
 ) -> ConfidenceBreakdown:
     """SPEC.md §13's point table, filled in as part of this build — the
     original numbered spec's literal breakdown was never available to this
@@ -89,6 +111,12 @@ def score(
         and normalize_title(evidence.series) not in candidate_series
     ):
         conflicts["series_disagreement"] = SERIES_DISAGREEMENT_PENALTY
+
+    # An AI-supplied series that no source mentions. Callers opt in by passing
+    # the resolved series; the default keeps historical/recompute callers
+    # (reident_audit_service._recompute_confidence, existing tests) unchanged.
+    if resolved_series and not _series_in_a_source(resolved_series, evidence, candidates):
+        conflicts["uncorroborated_series"] = UNCORROBORATED_SERIES_PENALTY
 
     total = max(0, min(100, sum(components.values()) + sum(conflicts.values())))
     return ConfidenceBreakdown(total=total, components=components, conflicts=conflicts)
