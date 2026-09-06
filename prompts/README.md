@@ -47,7 +47,9 @@ staged, commit-per-stage prompt that works through all six in one session
   `ROADMAP.md`, and `AGENTS.md`/`CLAUDE.md` if present before starting.
 - **Three apps:**
   - `backend/` — FastAPI + SQLAlchemy 2.0 async + Alembic, SQLite. Strict layering
-    `api/ → services/ → providers/ → data/`. `cd backend && pytest`. Dev server
+    `api/ → services/ → providers/ → data/`. `cd backend && pytest` (includes
+    `tests/test_migrations.py`, which runs `alembic upgrade head` + `alembic check`
+    in a subprocess — schema drift fails the suite). Dev server
     `uvicorn app.main:app --reload` on `:8000`.
   - `frontend/` — React + TS + Vite + TanStack Query + Tailwind v4, the local
     admin UI. `cd frontend && npm run dev` on `:5173`, proxies `/api` to `:8000`.

@@ -30,6 +30,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **Alembic enum drift + `alembic check` gate** (2026-09-06, review batch #2 /
+  finding 08, P2) — `files.status` gained `rejected` and `files.status_reason`
+  gained `previously_rejected` / `same_book` in the models with no migration, so
+  `alembic check` was red and the SQLite `VARCHAR(14)` was too narrow for
+  `previously_rejected` (19). New migration `b2c3d4e5f6a7` (`batch_alter_table`
+  recreate on SQLite, no data change, indexes verified intact). New
+  `tests/test_migrations.py` runs `alembic upgrade head` + `alembic check` in a
+  subprocess — schema drift now fails `pytest`.
+
 - **Strict title match for book identity** (2026-09-06, review batch #2 / finding
   06, P0) — `book_repository.resolve_book` matched incoming titles against
   existing same-author books with the *loose* `normalize_title`, which strips a
