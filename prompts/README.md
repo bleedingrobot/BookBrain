@@ -20,6 +20,26 @@ Ran in this order — 3 and 5 leaned on 1 and 2, but none was a hard dependency:
 | 3 | [`03-epub-metadata-writeback.md`](03-epub-metadata-writeback.md) | Write the resolved title/author/series + cover into the EPUB itself |
 | 5 | [`05-bulk-reidentify-audit.md`](05-bulk-reidentify-audit.md) | Re-check every organised book's identification, report what changed |
 
+## 2026-09-06 review batch #2 (`REVIEW-2026-09-06.md`)
+
+Recommended order: **06 first** (only data-loss finding), then 07 (independent,
+viewer-only), then 08 before 06 lands if 06 adds a migration, then 09, then
+10 / 11 (polish).
+
+| # | File | Sev | One line |
+|---|------|-----|----------|
+| 06 | [`06-title-collision-false-duplicates.md`](06-title-collision-false-duplicates.md) | P0 | `normalize_title` merges distinct books → `same_book` false positives → bulk trash |
+| 07 | [`07-librarysync-missing-parents.md`](07-librarysync-missing-parents.md) | P1 | Viewer sync drops a cached file when a Drive change record omits `parents` |
+| 08 | [`08-alembic-enum-drift.md`](08-alembic-enum-drift.md) | P2 | Migration for the `status`/`status_reason` enum additions; wire `alembic check` in |
+| 09 | [`09-organize-write-lock.md`](09-organize-write-lock.md) | P2 | `OrganizeService._write_lock` not reset per test; unify the write locks |
+| 10 | [`10-series-merge-undo.md`](10-series-merge-undo.md) | P2 | Series-merge Operations logged as undoable but Undo leaves a broken state |
+| 11 | [`11-ai-spend-guardrails.md`](11-ai-spend-guardrails.md) | P2 | Cap + cost estimate for `descriptions?ai=true` and rebuild |
+
+`REVIEW-2026-09-06-FIXPLAN.md` (repo root) resolves the open design choices in
+06–11. [`12-work-the-review-fixes.md`](12-work-the-review-fixes.md) is the
+staged, commit-per-stage prompt that works through all six in one session
+(order: 06 → 08 → 07 → 10 → 09 → 11).
+
 ## Shared context (every session should know this)
 
 - **Repo:** `C:\Users\Giant\Documents\epub-librarian` — the directory keeps the
