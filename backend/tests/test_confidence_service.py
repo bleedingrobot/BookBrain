@@ -144,6 +144,26 @@ def test_filename_match_is_case_and_punctuation_insensitive() -> None:
     assert breakdown.components["filename_matches_title"] == 5
 
 
+def test_filename_corroborates_flag_overrides_the_substring_test() -> None:
+    # prompts/15 Stage C: when identification passes an explicit
+    # filename_corroborates verdict, it drives the component — not the old
+    # "title is a substring of the filename anywhere" test.
+    ev = _evidence(title="It")
+    # substring test would fire ("it" is in "the-shining.epub"); the structured
+    # verdict says no.
+    no = score(evidence=ev, candidates=[], filename="the-shining.epub", filename_corroborates=False)
+    assert no.components["filename_matches_title"] == 0
+
+    yes = score(evidence=ev, candidates=[], filename="whatever.epub", filename_corroborates=True)
+    assert yes.components["filename_matches_title"] == 5
+
+
+def test_filename_substring_test_still_used_when_no_verdict_passed() -> None:
+    # reident_audit_service._recompute_confidence doesn't parse the filename.
+    b = score(evidence=_evidence(), candidates=[], filename="Dune - Frank Herbert.epub")
+    assert b.components["filename_matches_title"] == 5
+
+
 def test_provider_dropping_leading_article_is_not_a_disagreement() -> None:
     # Regression: library catalogs (Open Library, Google Books) commonly
     # strip a leading "The"/"A"/"An" from titles. That must not be scored

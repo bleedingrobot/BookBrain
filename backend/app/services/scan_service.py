@@ -31,6 +31,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError
 from app.providers.epub.parser import EpubEvidence, parse_epub_safely
+from app.providers.filename.parser import parse_book_filename
 from app.schemas.library import RebuildEstimate
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
 from app.services import review_service
@@ -575,6 +576,23 @@ class ScanService:
                 )
                 for candidate in candidates
             ]
+            # prompts/15 Stage C: persist the structured filename parse as a
+            # candidate row so it shows up alongside providers in the
+            # re-identification audit. identify() runs its own parse for the
+            # prompt + confidence; this row is for the audit trail only, so it
+            # never joins the provider-conflict pool.
+            fn_guess = parse_book_filename(raw["name"])
+            if fn_guess.usable and (fn_guess.title or fn_guess.series):
+                candidate_rows.append(
+                    BookCandidate(
+                        title=fn_guess.title,
+                        author=fn_guess.author,
+                        series=fn_guess.series,
+                        series_number=fn_guess.series_number,
+                        source="filename",
+                        confidence_component_json={"parser_confidence": fn_guess.confidence},
+                    )
+                )
             with _timed(timings, "ai_identify"):
                 identification = await self._identification_service.identify(
                     filename=raw["name"],

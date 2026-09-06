@@ -456,6 +456,31 @@ async def test_process_file_persists_candidates(db_session) -> None:
     assert stored[0].source == "fake_provider"
 
 
+async def test_process_file_persists_a_filename_candidate_when_the_name_is_rich(db_session) -> None:
+    # prompts/15 Stage C — a structured filename parse is stored alongside the
+    # provider candidates (source="filename") for the re-identification audit.
+    service = ScanService(
+        candidate_service=CandidateService(providers=[]),
+        identification_service=_FakeIdentificationService(),
+    )
+    provider = _FakeDriveProvider(build_epub(title="Foo", authors=("Bar",)))
+    raw = {
+        "id": "drive-fn",
+        "name": "Sanderson, Brandon - Mistborn 01 - The Final Empire.epub",
+        "parents": ["p"],
+        "size": "100",
+    }
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    rows = (await db_session.execute(select(BookCandidate))).scalars().all()
+    filename_rows = [r for r in rows if r.source == "filename"]
+    assert len(filename_rows) == 1
+    assert filename_rows[0].title == "The Final Empire"
+    assert filename_rows[0].series == "Mistborn"
+    assert filename_rows[0].series_number == 1.0
+
+
 def _identification_result(confidence: int) -> IdentificationResult:
     return IdentificationResult(
         title="Some Title",

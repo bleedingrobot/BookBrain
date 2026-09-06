@@ -223,7 +223,8 @@ def snapshot_from_db(
     evidence = _evidence_from_rows(src_rows)
     candidates = _candidates_from_rows(
         conn.execute(
-            "select title, author, series, series_number, source from book_candidates where file_id=?",
+            "select title, author, series, series_number, source from book_candidates "
+            "where file_id=? and source != 'filename'",  # Stage C: identify() re-parses the name
             (file_id,),
         ).fetchall()
     )

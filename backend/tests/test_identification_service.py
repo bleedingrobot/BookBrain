@@ -270,6 +270,53 @@ async def test_ai_path_series_corroborated_by_a_provider_is_not_penalized() -> N
     assert "series_disagreement" not in conflicts
 
 
+async def test_filename_parse_corroborates_the_identification() -> None:
+    # prompts/15 Stage C: a rich tracker filename that agrees with the AI's
+    # answer earns the filename_matches_title component, and the structured
+    # parse is shown to the model.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="The Final Empire",
+            author="Brandon Sanderson",
+            series="Mistborn",
+            series_number=1,
+            ai_confidence=80,
+            reasoning_summary="matched",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="Sanderson, Brandon - Mistborn 01 - The Final Empire (2006).epub",
+        evidence=_evidence(title="The Final Empire", authors=["Brandon Sanderson"], isbn13=None),
+        candidates=[],
+    )
+
+    assert result.raw_response["confidence_breakdown"]["components"]["filename_matches_title"] == 5
+    assert "Structured parse of the filename" in fake_client.prompts[0]
+    assert "Mistborn" in fake_client.prompts[0]
+    assert result.raw_response["filename_guess"].startswith("title='The Final Empire'")
+
+
+async def test_wrong_filename_parse_does_not_corroborate() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="Brandon Sanderson - The Way of Kings.epub",
+        evidence=_evidence(title=None, isbn13=None),
+        candidates=[],
+    )
+
+    assert result.raw_response["confidence_breakdown"]["components"]["filename_matches_title"] == 0
+
+
 async def test_junk_series_number_is_clamped_series_name_kept() -> None:
     fake_client = _FakeAIClient(
         result=AIIdentificationResult(

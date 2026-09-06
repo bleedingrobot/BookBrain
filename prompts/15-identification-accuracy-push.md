@@ -319,6 +319,26 @@ proving a provider-backed series no longer takes the uncorroborated penalty.
 
 #### Stage C — Structured filename parsing → an independent candidate
 
+> **DONE 2026-09-06.** New `backend/app/providers/filename/parser.py` —
+> `parse_book_filename(name) -> FilenameGuess(title, author, series,
+> series_number, year, confidence)`, deterministic, no I/O. Handles
+> `Author - Title` / `Author - Series NN - Title` / `Title - Author` /
+> `Last, First - Title` / `Title (Series NN)` / enclosed `(Year)` /
+> all-lowercase names, strips site/release tags; a trailing Calibre `_1234` is
+> never a series number and an absurd `(… #301)` is dropped.
+> `FilenameGuess.usable` at `confidence >= 0.5`. `identify()` parses once, adds a
+> labelled `Structured parse of the filename …` block to `_build_prompt`, and
+> passes an explicit `filename_corroborates` verdict to `confidence_service`;
+> `FILENAME_MATCHES_TITLE` (5 pts) is now driven by that verdict, with the old
+> substring test kept only as the fallback for
+> `reident_audit_service._recompute_confidence`. `scan_service` persists the
+> guess as `BookCandidate(source="filename")` (filtered back out of the
+> provider-consensus maths in reident + snapshot_book). Per-field corpus
+> precision flat (frozen AI); `wrong_auto_organized` 2 → 1. Tests:
+> `test_filename_parser.py` (17), plus cases in `test_confidence_service.py` /
+> `test_identification_service.py` / `test_scan_service.py`. `pytest -m corpus`
+> green; no AI cost.
+
 **Why.** F2. Tracker/Calibre filenames are often the *best* signal and are
 currently unstructured.
 
@@ -595,8 +615,12 @@ there's no batch consensus.
 │                                  penalty needs a provider *consensus* now.
 │                                  Offline corpus flat by construction (fixtures
 │                                  predate provider series) — see IDENTIFICATION-EVAL.md.
-├─ C  filename parser           │ Tier 1 — C and D remain, any order
-├─ D  richer text/evidence      ┘
+├─ C  filename parser           ── DONE (2026-09-06). providers/filename/parser.py
+│                                  → labelled prompt block + structured
+│                                  filename_corroborates verdict replaces the
+│                                  weak substring test; corpus wrong_auto_organized
+│                                  2→1. Per-field flat (frozen AI).
+├─ D  richer text/evidence      ── Tier 1 — D remains
 │
 ├─ E  placeholder detector      ┐
 ├─ F  ISBN trust check          │ Tier 2 — E/F/G before H

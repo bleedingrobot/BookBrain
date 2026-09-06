@@ -54,6 +54,7 @@ def score(
     filename: str,
     ai_corroborates: bool = False,
     resolved_series: str | None = None,
+    filename_corroborates: bool | None = None,
 ) -> ConfidenceBreakdown:
     """SPEC.md §13's point table, filled in as part of this build — the
     original numbered spec's literal breakdown was never available to this
@@ -94,7 +95,18 @@ def score(
     epub_complete = bool(evidence.title) and bool(evidence.authors) and bool(evidence.language)
     components["epub_metadata_complete"] = EPUB_METADATA_COMPLETE if epub_complete else 0
 
-    filename_matches = bool(evidence.title) and normalize_title(evidence.title) in normalize(filename)
+    # prompts/15 Stage C: prefer the structured filename parse agreeing with the
+    # *resolved* title+author (passed by identification_service). The old
+    # substring test — resolved/EPUB title appears anywhere in the filename —
+    # stays as the fallback for callers that don't parse the filename
+    # (reident_audit_service._recompute_confidence); "It" was a substring of
+    # almost every filename.
+    if filename_corroborates is None:
+        filename_matches = bool(evidence.title) and normalize_title(evidence.title) in normalize(
+            filename
+        )
+    else:
+        filename_matches = filename_corroborates
     components["filename_matches_title"] = FILENAME_MATCHES_TITLE if filename_matches else 0
 
     components["ai_corroborates"] = AI_CORROBORATES if ai_corroborates else 0

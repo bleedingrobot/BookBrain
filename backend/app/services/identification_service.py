@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from app.core.config import get_settings
 from app.providers.ai.anthropic_client import AIIdentificationError, AnthropicIdentificationClient
 from app.providers.epub.parser import EpubEvidence
+from app.providers.filename.parser import FilenameGuess, parse_book_filename
 from app.providers.metadata.types import MetadataCandidate
 from app.services.confidence_service import score
 from app.services.metadata_sanity import clamp_series_number
-from app.services.text_match import normalize, texts_match, titles_match
+from app.services.text_match import normalize, normalize_words, texts_match, titles_match
 
 
 @dataclass
@@ -54,6 +55,7 @@ class IdentificationService:
         corrections: list[dict] | None = None,
     ) -> IdentificationResult:
         evidence_hash = hash_evidence(filename, evidence, candidates)
+        filename_guess = parse_book_filename(filename)
 
         fast_match = _find_isbn_match(evidence, candidates)
         if fast_match is not None:
@@ -99,8 +101,11 @@ class IdentificationService:
                 candidates=candidates,
                 filename=filename,
                 resolved_series=series,
+                filename_corroborates=_filename_corroborates(filename_guess, title, author),
             )
             raw_response["confidence_breakdown"] = breakdown.as_dict()
+            if filename_guess.usable:
+                raw_response["filename_guess"] = filename_guess.as_prompt_line()
             series_number = clamp_series_number(series, series_number, raw_response)
 
             return IdentificationResult(
@@ -121,7 +126,7 @@ class IdentificationService:
         # corrections feed the full identify_book prompt only. The fast path
         # and the identify_series lookup above don't call the model with a
         # free-text prompt, so there's nothing to teach there.
-        prompt = _build_prompt(filename, evidence, candidates, corrections)
+        prompt = _build_prompt(filename, evidence, candidates, corrections, filename_guess)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
         ground = should_ground(filename=filename, evidence=evidence, candidates=candidates)
@@ -133,6 +138,9 @@ class IdentificationService:
                 candidates=candidates,
                 filename=filename,
                 resolved_series=evidence.series,
+                filename_corroborates=_filename_corroborates(
+                    filename_guess, evidence.title, _first_author_evidence(evidence)
+                ),
             )
             fallback_raw: dict = {"error": str(exc), "confidence_breakdown": breakdown.as_dict()}
             series_number = clamp_series_number(
@@ -162,9 +170,14 @@ class IdentificationService:
             filename=filename,
             ai_corroborates=ai_corroborates,
             resolved_series=ai_result.series,
+            filename_corroborates=_filename_corroborates(
+                filename_guess, ai_result.title, ai_result.author
+            ),
         )
 
         merged_raw: dict = {**raw_response, "confidence_breakdown": breakdown.as_dict()}
+        if filename_guess.usable:
+            merged_raw["filename_guess"] = filename_guess.as_prompt_line()
         series_number = clamp_series_number(
             ai_result.series, ai_result.series_number, merged_raw
         )
@@ -257,6 +270,24 @@ def _find_isbn_match(
     return None
 
 
+def _filename_corroborates(
+    guess: FilenameGuess, resolved_title: str | None, resolved_author: str | None
+) -> bool:
+    """prompts/15 Stage C. The structured filename parse agrees with the
+    identification's resolved title (and author, if the filename carried one).
+    Replaces the old weak "resolved-or-EPUB title is a substring of the
+    filename" test — `"It"` was a substring of almost any filename."""
+    if not guess.usable or not guess.title or not resolved_title:
+        return False
+    if not titles_match(guess.title, resolved_title):
+        return False
+    if guess.author and resolved_author:
+        gw, rw = normalize_words(guess.author), normalize_words(resolved_author)
+        if gw and rw and not (gw <= rw or rw <= gw):
+            return False
+    return True
+
+
 _MAX_CORRECTION_EXAMPLES = 5
 _MAX_CORRECTION_FIELD_CHARS = 120
 
@@ -266,6 +297,7 @@ def _build_prompt(
     evidence: EpubEvidence,
     candidates: list[MetadataCandidate],
     corrections: list[dict] | None = None,
+    filename_guess: "FilenameGuess | None" = None,
 ) -> str:
     lines = [
         "Identify the book described by this evidence. Evidence comes from an "
@@ -298,6 +330,13 @@ def _build_prompt(
     else:
         lines.append("")
         lines.append("No metadata provider candidates were found.")
+
+    if filename_guess is not None and (filename_guess.title or filename_guess.series):
+        lines.append("")
+        lines.append(
+            "Structured parse of the filename (a heuristic — trust it only as far "
+            f"as its confidence): {filename_guess.as_prompt_line()}"
+        )
 
     # Appended last, and only when there's something to show, so a call with
     # no corrections produces the byte-identical prompt (and prompt_hash) as

@@ -74,6 +74,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     now needs a **provider consensus** (≥2 agreeing candidates) so a lone messy
     provider string can't contradict a correct EPUB series. No AI-cost change;
     offline corpus flat by construction (fixtures predate provider series).
+  - **Stage C shipped** (2026-09-06) — structured inbound-filename parser (F2).
+    New `app/providers/filename/parser.py` → `parse_book_filename(name) ->
+    FilenameGuess` (deterministic, no I/O; `Author - Title` /
+    `Author - Series NN - Title` / `Title - Author` / `Last, First - Title` /
+    `Title (Series NN)` / enclosed `(Year)` / lowercase names / site-tag strip;
+    trailing Calibre `_1234` and absurd `(… #301)` never become a series
+    number). `identify()` adds a labelled filename-parse block to the prompt and
+    passes an explicit `filename_corroborates` verdict to `confidence_service`;
+    `FILENAME_MATCHES_TITLE` is now that verdict, the old substring test kept as
+    the fallback for `reident_audit_service` only. `scan_service` persists a
+    `BookCandidate(source="filename")` for the audit (filtered out of the
+    provider-consensus maths). Corpus `wrong_auto_organized` 2 → 1; per-field
+    flat (frozen AI). No AI cost.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

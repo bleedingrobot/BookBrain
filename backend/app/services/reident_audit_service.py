@@ -127,6 +127,9 @@ def evidence_from_sources(rows: list[MetadataSource]) -> EpubEvidence:
 
 
 def candidates_from_rows(rows: list[BookCandidate]) -> list[MetadataCandidate]:
+    # The `filename` pseudo-candidate (prompts/15 Stage C) is a heuristic parse,
+    # not a metadata provider — it must not enter the provider-consensus /
+    # disagreement maths here.
     return [
         MetadataCandidate(
             title=r.title,
@@ -136,6 +139,7 @@ def candidates_from_rows(rows: list[BookCandidate]) -> list[MetadataCandidate]:
             source=r.source,
         )
         for r in rows
+        if r.source != "filename"
     ]
 
 

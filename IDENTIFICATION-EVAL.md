@@ -123,6 +123,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | 0 | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | harness + triangulation + invariants + mutation. 59/74 scored (15 still Wikidata-only, credit ran out). This is the regression floor for Tier 1. |
 | A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn, **recent-books-only gate (~3% of calls)** after a first cut grounded 95% and tripled per-identify cost. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
 | B | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | real provider series + genre from Google Books / Open Library; series-disagreement penalty now needs a **provider consensus**, not one lone provider, so a messy provider string can't tank a correct EPUB series. **Offline number unchanged by construction** — the 74 corpus fixtures were snapshotted before providers returned series, so every recorded candidate still has `series: null`; the effect is only visible live / on a re-snapshot. No regression; `pytest -m corpus` green. No AI-cost change (pure provider/HTTP work). |
+| C | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | structured inbound-filename parser (`providers/filename/parser.py`) → labelled prompt block + `FILENAME_MATCHES_TITLE` now driven by the parse agreeing with the *resolved* title/author (the old "title is a substring of the filename anywhere" test — `"It"` matched everything — demoted to a fallback for callers that don't parse the name). Per-field precision flat (frozen AI), but **`wrong_auto_organized` on the corpus dropped 2 → 1** — one book that got a spurious substring +5 and auto-organized wrong now scores under the bar. `pytest -m corpus` green, review-queue volume unchanged. No AI cost (deterministic). |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -204,3 +205,42 @@ were captured before this change, so their recorded candidates still have
 `series: null` and the harness replays them verbatim. Real movement needs a
 re-snapshot (`scripts/snapshot_book.py from-drive … ` — free, no AI) or a
 `--live` run. No regression; `pytest -m corpus` green.
+
+### Stage C — structured inbound-filename parser (`prompts/15` Stage C)
+
+Finding F2: tracker / libgen / Anna's-Archive / Calibre filenames are
+information-dense but the raw string was dropped into the prompt unstructured
+and never became a candidate.
+
+- New `backend/app/providers/filename/parser.py` —
+  `parse_book_filename(name) -> FilenameGuess(title, author, series,
+  series_number, year, confidence)`. Deterministic, no I/O. Handles
+  `Author - Title`, `Author - Series NN - Title`, `Title - Author`,
+  `Last, First - Title`, `Title (Series NN)`, enclosed `(Year)`, all-lowercase
+  torrent names, and strips `(Z-Library)` / `[libgen…]` / release-group tags.
+  `FilenameGuess.confidence` (0..1) gates use — `usable` at ≥ 0.5, which needs
+  title + author or title + a numbered series; a bare title doesn't clear it.
+- **Calibre-id guard**: a trailing `_1234` is Calibre's book id, stripped, never
+  a series number; an absurd `(… #301)` (> 50) is dropped, not emitted — the
+  "Alexis Carew #301" placeholder bug can't recur through this path.
+- `identification_service.identify` parses the filename once, adds a labelled
+  `Structured parse of the filename …` block to `_build_prompt`, and passes an
+  explicit `filename_corroborates` verdict (structured parse agrees with the
+  *resolved* title + author) to `confidence_service.score`.
+- `confidence_service`: `FILENAME_MATCHES_TITLE` (still 5 pts) is now driven by
+  that verdict when supplied; the old "resolved/EPUB title is a substring of the
+  filename anywhere" test stays only as the fallback for
+  `reident_audit_service._recompute_confidence` (which doesn't parse the name).
+  `"It"` was a substring of almost every filename — that's the weak test the
+  plan wanted gone.
+- `scan_service._process_file` persists the guess as a
+  `BookCandidate(source="filename")` for the re-identification audit; it is
+  filtered back out of the provider-consensus / disagreement maths in
+  `reident_audit_service` and `snapshot_book.py` (a heuristic parse is not a
+  provider).
+
+**Per-field precision is flat** (the harness replays a frozen `identify_book`
+answer, so a prompt hint / confidence tweak can't move title/author/series).
+What *did* move: `wrong_auto_organized` on the corpus **2 → 1** — a book that
+picked up a spurious substring +5 and auto-organized wrong now lands under the
+bar. Review-queue volume unchanged. `pytest -m corpus` green; no AI cost.
