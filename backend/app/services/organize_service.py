@@ -18,6 +18,7 @@ from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.schemas.organize import OrganizeFailure, OrganizeJobState, OrganizeJobStatus
+from app.services.book_repository import get_book_write_lock
 from app.services.cover_service import regenerate_covers
 from app.services.library_index_service import regenerate_library_index
 
@@ -172,16 +173,6 @@ class OrganizeService:
 
     def __init__(self) -> None:
         self._jobs: dict[str, OrganizeJobStatus] = {}
-        # Concurrent files each commit their own session at roughly the same
-        # moment once their Drive call finishes. WAL + busy_timeout (db.py)
-        # is a backstop for that, but a slow fsync (seen in practice on
-        # Windows) can make one commit hold the write lock long enough that
-        # others exhaust the timeout and fail outright instead of just
-        # waiting. Serializing commits in-process avoids ever touching
-        # SQLite's write lock concurrently from this service, so the
-        # timeout is only ever needed for contention from *other*
-        # processes/services.
-        self._write_lock = asyncio.Lock()
 
     def create_job(self) -> OrganizeJobStatus:
         job_id = str(uuid.uuid4())
@@ -361,7 +352,7 @@ class OrganizeService:
                 reason="dry run — no Drive changes made",
             )
             session.add(operation)
-            async with self._write_lock:
+            async with get_book_write_lock():
                 await session.commit()
             return operation
 
@@ -394,7 +385,14 @@ class OrganizeService:
         file_row.drive_parent_id = target_folder_id
         file_row.status = FileStatus.organised
 
-        async with self._write_lock:
+        # The shared book write lock (book_repository) — not a private one.
+        # Concurrent files each commit their own session the moment their
+        # Drive call finishes; a slow fsync (seen on Windows) can otherwise
+        # make one commit hold SQLite's write lock long enough that others
+        # exhaust busy_timeout and fail. Sharing the lock with scan /
+        # review / series-merge also serialises commits *across* services,
+        # not just within organize.
+        async with get_book_write_lock():
             await session.commit()
         return operation
 

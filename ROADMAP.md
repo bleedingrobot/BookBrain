@@ -30,6 +30,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   rest need the `ai=true` path (Claude), which costs credits.
 ## Done (kept for context)
 
+- **Write locks unified onto one shared commit serialiser** (2026-09-06, review
+  batch #2 / finding 09, P2) — `conftest._reset_shared_singletons` reset five
+  locks but missed `OrganizeService._write_lock` (an instance attr on the module
+  singleton), a latent "Lock bound to a different event loop" for the next test
+  to exercise the organize singleton. Rather than just add a sixth reset, organize
+  and series-merge commits now take `book_repository.get_book_write_lock()` — the
+  same lock scan and review already use. `OrganizeService._write_lock` /
+  `series_merge_service._write_lock` and their `reset_*` helpers are deleted;
+  cross-service commits (a manual organize overlapping a nightly scan's tail, a
+  merge overlapping either) now actually serialise. `metadata_writeback`'s lock
+  (longer critical section) and `nightly`'s ("run already active" guard) are left
+  alone. Concurrency tests unchanged and green.
+
 - **Series-merge operations are honestly non-undoable** (2026-09-06, review batch
   #2 / finding 10, P2) — `apply_series_merge` logged each moved file as
   `Operation(move_and_rename)`, which `undo_operation` treated as auto-undoable

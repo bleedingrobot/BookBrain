@@ -16,7 +16,12 @@ from app.data.models import (
     Series,
 )
 
-from app.services.organize_service import FolderPathCache, OrganizeService, build_target_path
+from app.services.organize_service import (
+    FolderPathCache,
+    OrganizeService,
+    build_target_path,
+    get_organize_service,
+)
 
 
 def test_build_target_path_with_series() -> None:
@@ -228,6 +233,31 @@ async def test_organize_file_dry_run_does_not_touch_drive_or_file_status(db_sess
     assert file_row.status.value == "inbox"
     assert file_row.filename == "dune.epub"
     assert file_row.drive_parent_id == "inbox-parent"
+
+
+# These two exercise the module-level singleton (get_organize_service), not a
+# fresh OrganizeService(), in two separate test functions. Before the commit
+# lock was unified onto book_repository's shared lock, the singleton carried
+# its own asyncio.Lock that conftest didn't reset — so the second of these to
+# run would raise "Lock is bound to a different event loop". They must both
+# pass now.
+async def test_singleton_organize_survives_a_loop_change_first(db_session) -> None:
+    file_row = await _seed_file(db_session)
+    op = await get_organize_service()._organize_file(
+        db_session, file_row, provider=None, library_root_folder_id=None, dry_run=True
+    )
+    assert op.dry_run is True
+
+
+async def test_singleton_organize_survives_a_loop_change_second(db_session) -> None:
+    file_row = await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+    op = await get_organize_service()._organize_file(
+        db_session, file_row, provider=provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert op.dry_run is False
+    await db_session.refresh(file_row)
+    assert file_row.status.value == "organised"
 
 
 async def test_organize_file_real_run_moves_and_updates_file(db_session) -> None:

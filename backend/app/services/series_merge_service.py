@@ -19,23 +19,10 @@ from app.schemas.series_merge import (
     SeriesMergeResult,
     SeriesMergeSeriesInfo,
 )
+from app.services.book_repository import get_book_write_lock
 from app.services.organize_service import build_target_path, get_folder_path_cache
 
 logger = logging.getLogger(__name__)
-
-# Serializes this service's own SQLite commits, mirroring
-# OrganizeService._write_lock's reasoning — a merge apply running alongside
-# a concurrent organize/scan shouldn't hit a Windows fsync-driven busy-timeout.
-# Module-level (not per-instance, there being no service class here), so
-# tests must reset it the same way conftest.py already resets the folder
-# path cache and book write lock: an asyncio.Lock binds to the event loop of
-# its first real acquisition, and pytest-asyncio gives each test its own loop.
-_write_lock = asyncio.Lock()
-
-
-def reset_series_merge_write_lock() -> None:
-    global _write_lock
-    _write_lock = asyncio.Lock()
 
 
 class SeriesMergeValidationError(Exception):
@@ -322,7 +309,10 @@ async def apply_series_merge(
             await session.delete(series)
             deleted_series_ids.append(series.id)
 
-    async with _write_lock:
+    # Shared book write lock — the Drive move_and_rename calls above ran
+    # outside any lock; only this final commit takes it, serialising against
+    # scan / organize / review commits on the same SQLite file.
+    async with get_book_write_lock():
         await session.commit()
 
     return SeriesMergeResult(
