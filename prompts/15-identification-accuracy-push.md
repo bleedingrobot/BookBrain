@@ -597,6 +597,9 @@ agree/disagree/route-to-review branches.
 > `Operation`; a future `build_truth.py` / `snapshot_book.py` mode can harvest
 > these as free ground truth (hook noted, harvester not built).
 > **Correct** reuses the existing `CorrectFileForm` → `/files/{id}/correct`.
+> **Confirm all** (`POST /api/files/confirm-batch` → `file_service.confirm_files`)
+> confirms every not-yet-confirmed row in the visible window in one click
+> (idempotent, unknown/unidentified ids skipped).
 > Soft-hold: `settings.organize_hold_hours` (`ORGANIZE_HOLD_HOURS`,
 > `get_organize_hold_hours`, clamped [0, 720], **default 0 = today's exact
 > behaviour**), surfaced on the Settings page folded into `OrganizeSettings`

@@ -206,6 +206,21 @@ async def confirm_file(session: AsyncSession, file_id: int) -> File:
     return file_row
 
 
+async def confirm_files(session: AsyncSession, file_ids: list[int]) -> tuple[int, int]:
+    """Confirm a batch (the tray's "Confirm all"). Each is idempotent; a file
+    that's missing or unidentified is counted as skipped, not an error, so one
+    bad id never sinks the batch. Returns (confirmed, skipped)."""
+    confirmed = 0
+    skipped = 0
+    for file_id in file_ids:
+        try:
+            await confirm_file(session, file_id)
+            confirmed += 1
+        except (FileRecordNotFoundError, FileNotIdentifiedError):
+            skipped += 1
+    return confirmed, skipped
+
+
 async def _isbns_for_book(
     session: AsyncSession, book_id: int
 ) -> tuple[str | None, str | None]:

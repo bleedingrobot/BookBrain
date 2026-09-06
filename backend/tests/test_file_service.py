@@ -304,6 +304,27 @@ async def test_correct_file_re_files_and_records_a_sticky_review(db_session) -> 
     assert left == []
 
 
+async def test_confirm_files_batch_is_idempotent_and_skips_bad_ids(db_session) -> None:
+    f1, _ = await _organised_book_file(db_session, title="Book One", author_name="A")
+    f2, _ = await _organised_book_file(db_session, title="Book Two", author_name="B")
+    unidentified = await _seed_file(
+        db_session, drive_file_id="x", filename="x.epub", status=FileStatus.inbox
+    )
+
+    confirmed, skipped = await file_service.confirm_files(
+        db_session, [f1.id, f2.id, unidentified.id, 9999]
+    )
+    assert confirmed == 2
+    assert skipped == 2
+
+    # Re-running is a no-op (still "confirmed", no duplicate Review rows).
+    confirmed, _ = await file_service.confirm_files(db_session, [f1.id, f2.id])
+    assert confirmed == 2
+    reviews = (await db_session.execute(select(Review))).scalars().all()
+    assert len(reviews) == 2
+    assert all(r.status == ReviewStatus.approved for r in reviews)
+
+
 async def test_correct_file_rejects_an_unidentified_file(db_session) -> None:
     file_row = await _seed_file(
         db_session, drive_file_id="u1", filename="u.epub", status=FileStatus.unidentified

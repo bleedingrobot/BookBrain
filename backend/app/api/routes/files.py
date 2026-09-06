@@ -5,7 +5,7 @@ from app.api.deps import require_drive_provider
 from app.data.db import get_db
 from app.data.models import FileStatus
 from app.providers.drive.provider import DriveProvider
-from app.schemas.files import FileSummary
+from app.schemas.files import ConfirmBatchRequest, ConfirmBatchResult, FileSummary
 from app.schemas.reviews import CorrectReviewRequest
 from app.services import file_service
 
@@ -52,6 +52,17 @@ async def correct_file(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     rows = await file_service.list_files(db)
     return next(r for r in rows if r.id == file_id)
+
+
+@router.post("/confirm-batch", response_model=ConfirmBatchResult)
+async def confirm_files_batch(
+    body: ConfirmBatchRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ConfirmBatchResult:
+    """Confirm a batch of auto-organized files at once ("Confirm all" in the
+    tray). Idempotent; unknown / unidentified ids are skipped, not errors."""
+    confirmed, skipped = await file_service.confirm_files(db, body.file_ids)
+    return ConfirmBatchResult(confirmed=confirmed, skipped=skipped)
 
 
 @router.post("/{file_id}/confirm", response_model=FileSummary)

@@ -63,6 +63,13 @@ export function RecentlyOrganized() {
       setActionError(err instanceof ApiError ? err.message : 'Failed to confirm.'),
   })
 
+  const confirmAll = useMutation({
+    mutationFn: (fileIds: number[]) => api.confirmFiles(fileIds),
+    onSuccess: invalidate,
+    onError: (err: unknown) =>
+      setActionError(err instanceof ApiError ? err.message : 'Failed to confirm all.'),
+  })
+
   const correct = useMutation({
     mutationFn: ({ id, body }: { id: number; body: CorrectReviewRequest }) =>
       api.correctFile(id, body),
@@ -79,6 +86,7 @@ export function RecentlyOrganized() {
   const organized = data?.organized ?? []
   const held = data?.held ?? []
   const holdOn = (data?.hold_hours ?? 0) > 0
+  const unconfirmed = organized.filter((i) => !i.confirmed)
 
   if (query.isLoading) return null
   if (!query.isError && organized.length === 0 && held.length === 0) return null
@@ -170,10 +178,24 @@ export function RecentlyOrganized() {
         </div>
       </div>
 
-      <p className="mt-1 text-xs text-neutral-400">
-        Books moved into the library without review. Glance down the list; hit{' '}
-        <b>Confirm</b> if it's right, <b>Correct</b> if it isn't.
-      </p>
+      <div className="mt-1 flex items-center justify-between gap-4">
+        <p className="text-xs text-neutral-400">
+          Books moved into the library without review. Glance down the list; hit{' '}
+          <b>Confirm</b> if it's right, <b>Correct</b> if it isn't.
+        </p>
+        {unconfirmed.length > 0 && (
+          <button
+            className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+            disabled={confirmAll.isPending || confirm.isPending}
+            onClick={() => {
+              setActionError(null)
+              confirmAll.mutate(unconfirmed.map((i) => i.file_id))
+            }}
+          >
+            {confirmAll.isPending ? 'Confirming…' : `Confirm all (${unconfirmed.length})`}
+          </button>
+        )}
+      </div>
 
       {query.isError && (
         <p className="mt-2 text-sm text-red-600">Couldn't load the list.</p>

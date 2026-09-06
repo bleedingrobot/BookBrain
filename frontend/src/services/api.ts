@@ -195,6 +195,11 @@ export const api = {
     }),
   confirmFile: (id: number) =>
     request<FileSummary>(`/files/${id}/confirm`, { method: 'POST' }),
+  confirmFiles: (fileIds: number[]) =>
+    request<{ confirmed: number; skipped: number }>('/files/confirm-batch', {
+      method: 'POST',
+      body: JSON.stringify({ file_ids: fileIds }),
+    }),
   getRecentlyOrganized: (since: string) =>
     request<RecentlyOrganizedResponse>(
       `/library/recently-organized?since=${encodeURIComponent(since)}`,
