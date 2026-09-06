@@ -219,9 +219,11 @@ ground truth and carry the "never confidently wrong" guarantee. See
 > answer triggers one forced follow-up; refusal / exhausted loop falls back to
 > the plain forced call; queries + result titles stored in
 > `raw_response["grounding"]`. Per-call gate `identification_service.should_ground`
-> (skip only: no recent year **and** ≥2 corroborating providers **and** an ISBN).
-> `settings.ai_web_search_enabled` (default true), `ai_web_search_max_uses` (3).
-> `ai_identify_cost_usd` 0.03 → 0.06. Offline corpus is unchanged by construction
+> — **recent-year signal only** (filename or provider pub date within ~2 years),
+> ~3% of calls; a first cut that also grounded on thin/conflicting providers hit
+> 95% and tripled per-identify cost, so it was pulled back to the post-cutoff
+> risk it actually addresses. `settings.ai_web_search_enabled` (default true),
+> `ai_web_search_max_uses` (2). `ai_identify_cost_usd` 0.03 → 0.035. Offline corpus is unchanged by construction
 > (frozen `identify_book` reply); live measurement on the recent/standalone
 > slices is still to run — see `IDENTIFICATION-EVAL.md` § Stage A.
 
@@ -567,6 +569,7 @@ there's no batch consensus.
 │
 ├─ A  web-search grounding      ── DONE (2026-09-06). `identify(prompt, ground=)`
 │                                  + `web_search_20260209` + `should_ground()` gate
+│                                  (recent-year signal only, ~3% of calls, for cost)
 │                                  + `settings.ai_web_search_enabled`. Offline corpus
 │                                  unchanged by construction; live measurement pending
 │                                  credit (see IDENTIFICATION-EVAL.md § Stage A).

@@ -377,48 +377,42 @@ def _candidate(**overrides) -> MetadataCandidate:
     return MetadataCandidate(**defaults)
 
 
-def test_should_ground_skips_clean_multi_provider_isbn_match() -> None:
+import datetime as _dt
+
+_THIS_YEAR = _dt.date.today().year
+
+
+def test_should_ground_only_on_a_recent_year_signal() -> None:
+    # Thin / conflicting / ISBN-less provider evidence does NOT ground — that's
+    # money spent on books the model already knows. Only a recent-year signal
+    # (the post-cutoff "invented series" risk) does.
+    assert not should_ground(filename="dune.epub", evidence=_evidence(), candidates=[])
     assert not should_ground(
-        filename="dune.epub",
-        evidence=_evidence(),
-        candidates=[_candidate(source="gb"), _candidate(source="ol")],
-    )
-
-
-def test_should_ground_when_providers_are_thin() -> None:
-    assert should_ground(filename="dune.epub", evidence=_evidence(), candidates=[])
-    assert should_ground(
-        filename="dune.epub", evidence=_evidence(), candidates=[_candidate()]
-    )
-
-
-def test_should_ground_when_providers_disagree_on_title() -> None:
-    assert should_ground(
         filename="x.epub",
-        evidence=_evidence(),
+        evidence=_evidence(isbn13=None),
         candidates=[_candidate(title="Dune"), _candidate(title="Children of Dune", source="ol")],
     )
 
 
-def test_should_ground_when_no_isbn_anywhere() -> None:
+def test_should_ground_on_a_recent_filename_year() -> None:
     assert should_ground(
-        filename="x.epub",
-        evidence=_evidence(isbn13=None),
-        candidates=[
-            _candidate(isbn13=None, source="gb"),
-            _candidate(isbn13=None, source="ol"),
-        ],
+        filename=f"Some New Book ({_THIS_YEAR}).epub",
+        evidence=_evidence(),
+        candidates=[],
     )
 
 
-def test_should_ground_on_a_recent_filename_year_even_with_clean_providers() -> None:
-    import datetime as _dt
-
-    year = _dt.date.today().year
+def test_should_ground_on_a_recent_provider_pub_date() -> None:
     assert should_ground(
-        filename=f"Some New Book ({year}).epub",
+        filename="some-new-book.epub",
         evidence=_evidence(),
-        candidates=[_candidate(source="gb"), _candidate(source="ol")],
+        candidates=[_candidate(first_published=f"{_THIS_YEAR}-03-01")],
+    )
+
+
+def test_should_ground_ignores_an_old_year() -> None:
+    assert not should_ground(
+        filename="Dune (1965).epub", evidence=_evidence(), candidates=[]
     )
 
 
@@ -428,23 +422,33 @@ def test_should_ground_disabled_by_settings(monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("AI_WEB_SEARCH_ENABLED", "false")
     try:
-        assert not should_ground(filename="x.epub", evidence=_evidence(), candidates=[])
+        assert not should_ground(
+            filename=f"New Book ({_THIS_YEAR}).epub", evidence=_evidence(), candidates=[]
+        )
     finally:
         get_settings.cache_clear()
 
 
-async def test_ai_path_passes_ground_flag_to_client() -> None:
-    fake_client = _FakeAIClient(
-        result=AIIdentificationResult(
-            title="Dune", author="Frank Herbert", series=None, series_number=None,
-            ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+async def test_ai_path_grounds_only_for_a_recent_book() -> None:
+    def _client() -> _FakeAIClient:
+        return _FakeAIClient(
+            result=AIIdentificationResult(
+                title="Dune", author="Frank Herbert", series=None, series_number=None,
+                ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+            )
         )
+
+    old = _client()
+    await IdentificationService(ai_client=old).identify(
+        filename="dune.epub", evidence=_evidence(), candidates=[]
     )
-    service = IdentificationService(ai_client=fake_client)
+    assert old.ground_flags == [False]
 
-    await service.identify(filename="dune.epub", evidence=_evidence(), candidates=[])
-
-    assert fake_client.ground_flags == [True]  # thin evidence → grounded
+    recent = _client()
+    await IdentificationService(ai_client=recent).identify(
+        filename=f"Brand New ({_THIS_YEAR}).epub", evidence=_evidence(), candidates=[]
+    )
+    assert recent.ground_flags == [True]
 
 
 async def test_evidence_hash_is_stable_for_identical_input() -> None:

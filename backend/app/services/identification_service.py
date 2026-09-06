@@ -206,35 +206,27 @@ def _recent_year_present(filename: str, candidates: list[MetadataCandidate]) -> 
     return False
 
 
-def _candidates_corroborate(candidates: list[MetadataCandidate]) -> bool:
-    """>=2 provider candidates that agree with each other on the title — the
-    case where the AI isn't really guessing and web search adds little."""
-    titled = [c for c in candidates if c.title]
-    if len(titled) < 2:
-        return False
-    return all(titles_match(titled[0].title, c.title) for c in titled[1:])
-
-
 def should_ground(
     *,
     filename: str,
     evidence: EpubEvidence,
     candidates: list[MetadataCandidate],
 ) -> bool:
-    """prompts/15 Stage A. Whether the AI-path identify call should be allowed
-    to web-search before answering. Grounding is the biggest single lever
-    against post-cutoff "invented series" errors, but it costs per search — so
-    skip it only for the safe case: a recent-enough date is absent *and* two
-    or more providers already corroborate each other *and* there is an ISBN.
-    Everything thinner or newer grounds.
+    """prompts/15 Stage A. Whether the AI-path identify call may web-search
+    before answering.
+
+    Web search is billed per call, so it is reserved for the *one* case where
+    the model's own bibliographic memory is genuinely unreliable: a book new
+    enough to be at or past its training cutoff. That is exactly the documented
+    failure — "Scion" (a 2026 standalone) auto-filed as an invented series #2.
+    For anything older the model already knows the answer and a search is money
+    spent for nothing, so thin/conflicting provider evidence on its own does
+    *not* trigger grounding — it just means a normal (unGROUNDED) AI call and,
+    if the score is low, the review queue.
     """
     if not get_settings().ai_web_search_enabled:
         return False
-    if _recent_year_present(filename, candidates):
-        return True
-    if not _candidates_corroborate(candidates):
-        return True
-    return not bool(evidence.isbn13 or evidence.isbn10)
+    return _recent_year_present(filename, candidates)
 
 
 def _first_author(candidate: MetadataCandidate) -> str | None:

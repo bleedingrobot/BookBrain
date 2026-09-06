@@ -59,9 +59,10 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     turn: `AnthropicIdentificationClient.identify(prompt, ground=)` uses the
     `web_search_20260209` server tool to verify title/author/series/pub-year
     (told today's date), gated per-call by `identification_service.should_ground`
-    (thin/conflicting providers or a recent-year signal), toggle
-    `settings.ai_web_search_enabled`. Offline corpus unchanged by construction;
-    live slice measurement still pending Anthropic credit.
+    — **recent-year signal only** (~3% of calls; a broader first cut grounded
+    95% and tripled per-identify cost). Toggle `settings.ai_web_search_enabled`.
+    Offline corpus unchanged by construction; live slice measurement still
+    pending Anthropic credit.
 - **Reident recompute + uncorroborated-series penalty** —
   `reident_audit_service._recompute_confidence` deliberately does *not* pass
   `resolved_series` yet, so historical books aren't retroactively penalised.

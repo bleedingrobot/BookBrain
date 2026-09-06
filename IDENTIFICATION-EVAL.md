@@ -121,7 +121,7 @@ What the harness already catches (the failure modes `prompts/15` targets):
 | stage | date | title | author | series | series-# | exact | notes |
 |---|---|---|---|---|---|---|---|
 | 0 | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | harness + triangulation + invariants + mutation. 59/74 scored (15 still Wikidata-only, credit ran out). This is the regression floor for Tier 1. |
-| A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
+| A | 2026-09-06 | 94.9% (59) | 94.8% (58) | 87.2% (47) | 95.3% (43) | 81.4% | web-search grounding on the AI identify turn, **recent-books-only gate (~3% of calls)** after a first cut grounded 95% and tripled per-identify cost. **Offline number unchanged by construction** — the corpus replays a frozen `identify_book` response, so grounding can only be measured live (see below). No regression; `pytest -m corpus` green. |
 
 ### Stage A — web-search grounding (`prompts/15` Stage A)
 
@@ -135,11 +135,15 @@ structured answer using the searched-up context. Refusal / exhausted-loop →
 falls back to the plain forced call. Search queries + result titles land in
 `raw_response["grounding"]` for the review UI.
 
-Gated per-call by `identification_service.should_ground(...)`: skipped only for
-the safe case (no recent-year signal **and** ≥2 providers corroborate each other
-**and** an ISBN is present); everything thinner or newer grounds. Toggle with
-`settings.ai_web_search_enabled` (default on). `config.ai_identify_cost_usd`
-padded 0.03 → 0.06 (web_search ≈ $0.01/search × up to 3, plus the larger prompt).
+Gated per-call by `identification_service.should_ground(...)`: web search is
+billed per call, so it fires **only when there's a recent-year signal** (a year
+within ~2 of today in the filename or a provider `first_published`) — the
+post-training-cutoff "invented series" risk. That is ~3% of the corpus (vs 95%
+under the first, too-broad gate — thin/conflicting providers no longer trigger
+it; they just get a normal un-grounded call and, if the score is low, the review
+queue). Toggle with `settings.ai_web_search_enabled` (default on),
+`ai_web_search_max_uses` = 2. `config.ai_identify_cost_usd` 0.03 → 0.035 (the
+blended figure — most calls don't ground).
 
 **Live measurement — still to run** (needs Anthropic credit; offline CI never
 hits the network):

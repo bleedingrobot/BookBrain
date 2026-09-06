@@ -5,7 +5,7 @@
 WEB_SEARCH_TOOL = {
     "type": "web_search_20260209",
     "name": "web_search",
-    "max_uses": 3,
+    "max_uses": 2,
 }
 
 IDENTIFY_BOOK_TOOL = {
