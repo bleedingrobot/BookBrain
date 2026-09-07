@@ -175,6 +175,18 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
   with the alias still applied; a clean title still short-circuits at 100.
   SPEC §2 says a rule short-circuits "like a sticky correction" — but a
   correction carries a human-verified title and a rule doesn't.
+- **book_repository per-file full-table scan (REVIEW-2026-09-08 F6)** —
+  **DONE (2026-09-08, prompt 24)**. `_find_or_create_author` / `_find_or_create_series`
+  used to `select()` every Author / Series row and loop in Python, once per
+  file, inside the global write lock — quadratic at rebuild scale.
+  `book_repository.MatchCache` (plain `dict[str,int]`) + `build_match_cache()`:
+  `scan_service._process_batch` primes one per scan/rebuild batch and threads
+  it to `resolve_book(match_cache=)`; a hit is an O(1) `session.get(id)`, a
+  miss still falls back to the full scan (so a within-batch concurrent create
+  is always found and the row is never duplicated). One-off callers
+  (`review_service.correct`, `file_service`, `sticky_resolution`,
+  `title_merge_repair`, `duplicate_service`) pass no cache — unchanged.
+  No behaviour change; corpus unchanged.
 - **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
   **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
   `resolved_title` / `resolved_author`, so the audit's display recompute matches

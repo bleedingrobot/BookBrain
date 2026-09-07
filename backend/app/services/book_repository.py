@@ -47,6 +47,38 @@ def reset_book_write_lock() -> None:
     _book_write_lock = asyncio.Lock()
 
 
+# A scan/rebuild batch passes one of these so the author/series find-or-create
+# doesn't reload every row from the DB per file. Purely an optimisation: a miss
+# always falls back to the full scan, so correctness never depends on it. Keyed
+# "author:<normalize_person_name>" / "series:<sorted match-key words>" -> row id.
+# Built once at batch start (build_match_cache) and updated in-memory whenever
+# _find_or_create_* creates a row — all *under the write lock*
+# (book_repository.get_book_write_lock), so no coroutine sees a half-populated
+# entry and the concurrent-create race stays closed. One-off callers (a hand
+# /correct, sticky resolution) pass None and hit the full scan every time.
+MatchCache = dict[str, int]
+
+
+async def build_match_cache(session: AsyncSession) -> MatchCache:
+    """One `select(id, name)` per table, folded into the same match keys
+    `_find_or_create_*` use. Call once per scan/rebuild batch, under the write
+    lock, before processing files."""
+    cache: MatchCache = {}
+    for aid, aname in (
+        await session.execute(select(Author.id, Author.name))
+    ).all():
+        key = normalize_person_name(aname)
+        if key:
+            cache.setdefault(f"author:{key}", aid)
+    for sid, sname in (
+        await session.execute(select(Series.id, Series.name))
+    ).all():
+        mk = _series_match_key(sname)
+        if mk:
+            cache.setdefault(_series_cache_key(mk), sid)
+    return cache
+
+
 async def resolve_book(
     session: AsyncSession,
     *,
@@ -56,9 +88,10 @@ async def resolve_book(
     series_number: float | None,
     isbn13: str | None,
     isbn10: str | None,
+    match_cache: MatchCache | None = None,
 ) -> Book:
-    author_row = await _find_or_create_author(session, author) if author else None
-    series_row = await _find_or_create_series(session, series) if series else None
+    author_row = await _find_or_create_author(session, author, match_cache) if author else None
+    series_row = await _find_or_create_series(session, series, match_cache) if series else None
 
     # normalize_title_strict, not exact string equality and not the loose
     # normalize_title: different uploads of the same book routinely differ in
@@ -122,7 +155,21 @@ def _display_name(name: str) -> str:
     return name
 
 
-async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
+def _upgrade_author_row(row: Author, display: str) -> Author:
+    # If this row is still named after a collaboration ("A & B") and we now
+    # have a clean solo form, upgrade the display name — the row represents the
+    # primary author. (Rewriting to a co-author *list* regressed the corpus in
+    # Stage J; rewriting to the clean solo name is what the truth wants.)
+    if is_collaboration(row.name) and not is_collaboration(display):
+        row.name = display
+    if row.sort_name is None:
+        row.sort_name = person_sort_name(row.name) or None
+    return row
+
+
+async def _find_or_create_author(
+    session: AsyncSession, name: str, cache: MatchCache | None = None
+) -> Author:
     # prompts/15 Stage J: match on normalize_person_name so "J.R.R. Tolkien",
     # "J. R. R. Tolkien" and "Tolkien, J.R.R." reuse one row instead of forking
     # three — and, since normalize_person_name keys a collaboration to its
@@ -133,6 +180,14 @@ async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
     key = normalize_person_name(name)
     fallback = normalize_words(name)
     display = _display_name(name)
+
+    if cache is not None and key:
+        cached_id = cache.get(f"author:{key}")
+        if cached_id is not None:
+            row = await session.get(Author, cached_id)
+            if row is not None:
+                return _upgrade_author_row(row, display)
+
     for existing in (await session.execute(select(Author))).scalars().all():
         matched = (
             normalize_person_name(existing.name) == key
@@ -140,19 +195,14 @@ async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
             else normalize_words(existing.name) == fallback
         )
         if matched:
-            # If this row is still named after a collaboration ("A & B") and we
-            # now have a clean solo form, upgrade the display name — the row
-            # represents the primary author. (Rewriting to a co-author *list*
-            # regressed the corpus in Stage J; rewriting to the clean solo
-            # name is what the triangulated truth wants.)
-            if is_collaboration(existing.name) and not is_collaboration(display):
-                existing.name = display
-            if existing.sort_name is None:
-                existing.sort_name = person_sort_name(existing.name) or None
-            return existing
+            if cache is not None and key:
+                cache[f"author:{key}"] = existing.id
+            return _upgrade_author_row(existing, display)
     row = Author(name=display, sort_name=person_sort_name(display) or None)
     session.add(row)
     await session.flush()
+    if cache is not None and key:
+        cache[f"author:{key}"] = row.id
     return row
 
 
@@ -162,7 +212,13 @@ async def resolve_series(session: AsyncSession, name: str | None) -> Series | No
     return await _find_or_create_series(session, name) if name else None
 
 
-async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
+def _series_cache_key(match_key: frozenset[str]) -> str:
+    return "series:" + " ".join(sorted(match_key))
+
+
+async def _find_or_create_series(
+    session: AsyncSession, name: str, cache: MatchCache | None = None
+) -> Series:
     # Word-set match, not exact string equality: the same series shows up
     # phrased differently across providers/AI calls — "Cirque Du Freak (The
     # Saga of Darren Shan)" vs "The Saga of Darren Shan (Cirque Du Freak)"
@@ -174,6 +230,15 @@ async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
     # series-merge) so a re-fork of a name already merged away can't happen.
     target = _series_match_key(name)
     exact = normalize_words(name)
+    ckey = _series_cache_key(target) if target else None
+
+    if cache is not None and ckey:
+        cached_id = cache.get(ckey)
+        if cached_id is not None:
+            row = await session.get(Series, cached_id)
+            if row is not None:
+                return row
+
     alias = (
         await session.execute(
             select(SeriesAlias).where(SeriesAlias.alias == name.strip())
@@ -182,13 +247,20 @@ async def _find_or_create_series(session: AsyncSession, name: str) -> Series:
     if alias is not None:
         found = await session.get(Series, alias.series_id)
         if found is not None:
+            # Deliberately not cached: an alias points a specific wording at a
+            # row whose own match key may differ, so keying it by `target`
+            # would mis-route a later non-alias name that shares that key.
             return found
     for existing in (await session.execute(select(Series))).scalars().all():
         if _series_match_key(existing.name) == target or normalize_words(existing.name) == exact:
+            if cache is not None and ckey:
+                cache[ckey] = existing.id
             return existing
     row = Series(name=name)
     session.add(row)
     await session.flush()
+    if cache is not None and ckey:
+        cache[ckey] = row.id
     return row
 
 

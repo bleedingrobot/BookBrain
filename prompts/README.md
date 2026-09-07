@@ -11,7 +11,7 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
-No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24.
+No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24. **All shipped 2026-09-08.**
 
 | # | File | Sev | Status | One line |
 |---|------|-----|--------|----------|
@@ -20,7 +20,7 @@ No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24.
 | 21 | [`21-rule-match-title-trust.md`](21-rule-match-title-trust.md) | P2 | **done** | `find_rule_match` no longer auto-organizes an unverified/placeholder title at confidence 100. |
 | 22 | [`22-librarysync-selective-rebuild.md`](22-librarysync-selective-rebuild.md) | P2 | **done** | `librarySync.ts` does a full tree rebuild on *any* sync error; only a stale sync token warrants that. |
 | 23 | [`23-cover-service-tests.md`](23-cover-service-tests.md) | P3 | **done** | Finding was overstated — `cover_service` was mostly tested; added the missing `regenerate_covers` edge-path cases. |
-| 24 | [`24-book-repository-match-cache.md`](24-book-repository-match-cache.md) | P2 | open | `_find_or_create_author`/`_series` full-table-scan per file under the global write lock — batch-scope a match cache. Perf, no rush. |
+| 24 | [`24-book-repository-match-cache.md`](24-book-repository-match-cache.md) | P2 | **done** | `book_repository.MatchCache` + `build_match_cache()` primed once per scan/rebuild batch in `_process_batch`, threaded to `resolve_book(match_cache=)`; `_find_or_create_author`/`_series` hit it (O(1) `session.get`) instead of the full-table scan. Miss falls back to the scan; one-off callers pass `None`. No behaviour change, corpus unchanged. |
 
 ## 2026-09-06 review batch (all shipped)
 

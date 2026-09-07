@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from contextlib import contextmanager
+
+from sqlalchemy import event, select
 
 from app.data.models import Author, Book, Identifier, Series
-from app.services.book_repository import resolve_book
+from app.services.book_repository import build_match_cache, resolve_book
 
 
 async def test_creates_author_series_book_and_identifier(db_session) -> None:
@@ -298,6 +300,71 @@ async def test_same_author_series_prefix_titles_stay_separate_books(db_session) 
 
     assert first.id != second.id
     assert len((await db_session.execute(select(Book))).scalars().all()) == 2
+
+
+@contextmanager
+def _capture_full_table_scans(db_session):
+    """Records every `SELECT ... FROM <table>` with no WHERE — the O(rows)
+    load-them-all match loop in `_find_or_create_*`, as opposed to the O(1)
+    `session.get(..., id)` a cache hit does."""
+    seen: list[str] = []
+
+    def _listen(conn, cursor, statement, parameters, context, executemany):
+        flat = " ".join(statement.split()).lower()
+        for table in ("authors", "series"):
+            if f"from {table}" in flat and "where" not in flat:
+                seen.append(flat)
+
+    engine = db_session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", _listen)
+    try:
+        yield seen
+    finally:
+        event.remove(engine, "before_cursor_execute", _listen)
+
+
+async def test_match_cache_skips_the_per_file_full_table_scan(db_session) -> None:
+    # REVIEW-2026-09-08 F6: without the cache, every file reloads all Author +
+    # Series rows to fuzzy-match. Primed once per batch, repeat resolves for a
+    # known author/series must not scan the tables again.
+    for who in ("Alice Author", "Bob Author"):
+        await resolve_book(
+            db_session, title=f"seed {who}", author=who,
+            series="Seed Cycle", series_number=1.0, isbn13=None, isbn10=None,
+        )
+    await db_session.commit()
+
+    cache = await build_match_cache(db_session)
+
+    with _capture_full_table_scans(db_session) as scans:
+        for i in range(5):
+            await resolve_book(
+                db_session, title=f"vol {i}", author="Alice Author",
+                series="Seed Cycle", series_number=float(i + 2),
+                isbn13=None, isbn10=None, match_cache=cache,
+            )
+
+    assert scans == []
+    # all five volumes still landed on the one seeded author/series
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 2
+    assert len((await db_session.execute(select(Series))).scalars().all()) == 1
+
+
+async def test_match_cache_miss_still_falls_back_to_the_full_scan(db_session) -> None:
+    # A row created by a concurrent path in the same batch won't be in the
+    # cache yet — a miss must fall through to the real match, never wrongly
+    # create a duplicate.
+    cache = await build_match_cache(db_session)
+    first = await resolve_book(
+        db_session, title="Book One", author="Fresh Name",
+        series=None, series_number=None, isbn13=None, isbn10=None, match_cache=cache,
+    )
+    second = await resolve_book(
+        db_session, title="Book Two", author="fresh   name",
+        series=None, series_number=None, isbn13=None, isbn10=None, match_cache=cache,
+    )
+    assert first.author_id == second.author_id
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 1
 
 
 async def test_expanse_style_subtitles_still_resolve_separately(db_session) -> None:

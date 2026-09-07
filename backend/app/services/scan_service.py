@@ -35,7 +35,12 @@ from app.providers.filename.parser import parse_book_filename
 from app.schemas.library import RebuildEstimate
 from app.schemas.scan import ScanFailure, ScanJobState, ScanJobStatus
 from app.services import review_service
-from app.services.book_repository import get_book_write_lock, resolve_book
+from app.services.book_repository import (
+    MatchCache,
+    build_match_cache,
+    get_book_write_lock,
+    resolve_book,
+)
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.drive_service import DriveService
 from app.services.batch_prior_service import apply_batch_priors
@@ -315,6 +320,13 @@ class ScanService:
         # job level instead of the file level.
         db_lock = get_book_write_lock()
         semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
+        # Batch-scoped author/series match cache (REVIEW-2026-09-08 F6): without
+        # it, every file reloads all ~450 Author + ~590 Series rows to fuzzy-
+        # match, serially under db_lock. Primed once here, updated in-memory as
+        # new rows are created (under the same lock). A miss always falls back
+        # to the full scan, so correctness never depends on it — only speed.
+        async with db_lock, async_session_factory() as session:
+            match_cache = await build_match_cache(session)
         # A *fresh* DriveProvider per file, not one shared across every
         # concurrently-processing file — httplib2 (googleapiclient's HTTP
         # layer) is not thread-safe for concurrent use from multiple threads
@@ -337,6 +349,7 @@ class ScanService:
                     counts,
                     failures,
                     db_lock,
+                    match_cache=match_cache,
                     timings=timings,
                     already_organised=already_organised,
                 )
@@ -368,6 +381,7 @@ class ScanService:
         failures: list[ScanFailure],
         db_lock: asyncio.Lock,
         *,
+        match_cache: MatchCache | None = None,
         timings: PhaseTimings | None = None,
         already_organised: bool = False,
     ) -> None:
@@ -383,6 +397,7 @@ class ScanService:
                 counts,
                 failures,
                 db_lock,
+                match_cache=match_cache,
                 timings=timings,
                 already_organised=already_organised,
             )
@@ -399,6 +414,7 @@ class ScanService:
         failures: list[ScanFailure],
         db_lock: asyncio.Lock,
         *,
+        match_cache: MatchCache | None = None,
         timings: PhaseTimings | None = None,
         already_organised: bool = False,
     ) -> None:
@@ -657,6 +673,7 @@ class ScanService:
                     series_number=identification.series_number,
                     isbn13=evidence.isbn13,
                     isbn10=evidence.isbn10,
+                    match_cache=match_cache,
                 )
                 file_row.book_id = book.id
 
