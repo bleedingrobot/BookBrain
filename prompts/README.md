@@ -9,6 +9,19 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   assessment and a fresh batch of numbered work-prompts. Run it every few weeks
   or after a burst of feature work.
 
+## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
+
+No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24.
+
+| # | File | Sev | One line |
+|---|------|-----|----------|
+| 19 | [`19-gitignore-restore-artifacts.md`](19-gitignore-restore-artifacts.md) | P2 | `.gitignore` the `*.db.pre-restore-*` / `*.db.before-restore` / `backup-runs.log*` a restore leaves behind (full-DB copies, must not be committable). Trivial — do first. |
+| 20 | [`20-coauthor-identity-policy.md`](20-coauthor-identity-policy.md) | P2 | Co-authored books collapse onto the primary author non-deterministically (`normalize_person_name` keys "A, B" as "A"); `repair_forked_authors.py` is now a no-op. Decide the policy, make `_find_or_create_author` deterministic, rework the repair. **Needs a policy call from James.** |
+| 21 | [`21-rule-match-title-trust.md`](21-rule-match-title-trust.md) | P2 | `find_rule_match` short-circuits at confidence 100 with an unverified EPUB/filename title — run it through the placeholder detector first. |
+| 22 | [`22-librarysync-selective-rebuild.md`](22-librarysync-selective-rebuild.md) | P2 | `librarySync.ts` does a full tree rebuild on *any* sync error; only a stale sync token warrants that. |
+| 23 | [`23-cover-service-tests.md`](23-cover-service-tests.md) | P2 | `cover_service` (PIL resize + pHash + Drive upload, runs every nightly) has zero tests. |
+| 24 | [`24-book-repository-match-cache.md`](24-book-repository-match-cache.md) | P2 | `_find_or_create_author`/`_series` full-table-scan per file under the global write lock — batch-scope a match cache. Perf, no rush. |
+
 ## 2026-09-06 review batch (all shipped)
 
 Ran in this order — 3 and 5 leaned on 1 and 2, but none was a hard dependency:
