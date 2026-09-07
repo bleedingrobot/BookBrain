@@ -157,6 +157,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     nightly. `Operation.confidence`/`model` now populated by organize. No AI
     cost. **prompts/15 push COMPLETE** — see `SPEC.md` § "Identification
     pipeline (2026)".
+- **library_rule short-circuit + title trust (REVIEW-2026-09-08 F3)** —
+  **DONE (2026-09-08, prompt 21)**. `sticky_resolution.find_rule_match` used to
+  return `computed_confidence=100` / `needs_human_review=False` with
+  `title = evidence.title or filename` — an author/series alias rule
+  auto-organized whatever the EPUB (or the filename) called the title, junk
+  included. Now: a placeholder/missing title routes to review at confidence 60
+  with the alias still applied; a clean title still short-circuits at 100.
+  SPEC §2 says a rule short-circuits "like a sticky correction" — but a
+  correction carries a human-verified title and a rule doesn't.
 - **Reident recompute + uncorroborated-series penalty** — ~~`reident_audit_service._recompute_confidence` deliberately does *not* pass~~
   **RESOLVED by Stage G (2026-09-06)** — it now passes `resolved_series` /
   `resolved_title` / `resolved_author`, so the audit's display recompute matches

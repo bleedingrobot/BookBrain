@@ -162,6 +162,62 @@ async def test_find_rule_match_case_insensitive(db_session) -> None:
     assert result.author == "Frank Herbert (canonical)"
 
 
+async def test_find_rule_match_does_not_auto_organize_a_placeholder_title(db_session) -> None:
+    db_session.add(
+        LibraryRule(
+            rule_type=RuleType.author_alias,
+            pattern="Frank Herbert",
+            resolution_json={"author": "Frank P. Herbert"},
+        )
+    )
+    await db_session.commit()
+
+    result = await find_rule_match(db_session, "dune.epub", _evidence(title="Calibre"))
+
+    assert result is not None
+    assert result.author == "Frank P. Herbert"  # the alias still applies
+    assert result.computed_confidence < 85  # below the auto-flag bar -> review
+    assert result.needs_human_review is True
+
+
+async def test_find_rule_match_missing_title_routes_to_review(db_session) -> None:
+    db_session.add(
+        LibraryRule(
+            rule_type=RuleType.author_alias,
+            pattern="Frank Herbert",
+            resolution_json={"author": "Frank P. Herbert"},
+        )
+    )
+    await db_session.commit()
+
+    result = await find_rule_match(
+        db_session, "Frank Herbert - Dune.epub", _evidence(title=None)
+    )
+
+    assert result is not None
+    assert result.needs_human_review is True
+    assert result.computed_confidence < 85
+
+
+async def test_find_rule_match_trusts_a_short_title_with_an_isbn(db_session) -> None:
+    db_session.add(
+        LibraryRule(
+            rule_type=RuleType.author_alias, pattern="Stephen King", resolution_json={"author": "S. King"}
+        )
+    )
+    await db_session.commit()
+
+    result = await find_rule_match(
+        db_session,
+        "it.epub",
+        _evidence(title="It", authors=["Stephen King"], isbn13="9781501142970"),
+    )
+
+    assert result is not None
+    assert result.computed_confidence == 100
+    assert result.needs_human_review is False
+
+
 async def test_find_rule_match_no_match_leaves_evidence_values(db_session) -> None:
     db_session.add(
         LibraryRule(
