@@ -485,3 +485,9 @@ mis-identification guards). The rest of that session's ideas, for later:
   bumped to 2 with a load-time migration of the old `acquired`-boolean shape.
   Adding a request also writes a `request` activity-log event. No roles —
   anyone with library access can add or re-status (2026-09-08).
+- Wishlist book search — `bookSearch.ts` (was `googleBooks.ts`): Google Books
+  keyless endpoint 429s constantly (one shared quota bucket per public IP
+  across every anonymous caller), so search now retries Google once then
+  falls back to Open Library (`search.json`, no key, CORS-open). Friendly
+  error only if both fail. A referrer-restricted Google Books key in
+  config.ts would remove the reliance on the fallback if wanted (2026-09-08).

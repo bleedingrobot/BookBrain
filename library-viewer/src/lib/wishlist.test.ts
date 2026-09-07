@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BookRow } from './books'
-import type { BookHit } from './googleBooks'
+import type { BookHit } from './bookSearch'
 import {
   alreadyListed,
   hitToItem,

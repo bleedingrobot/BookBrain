@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { logActivity } from '../lib/activityLog'
 import type { BookRow } from '../lib/books'
-import { searchGoogleBooks, type BookHit } from '../lib/googleBooks'
+import { searchBooks, type BookHit } from '../lib/bookSearch'
 import {
   alreadyListed,
   EMPTY_WISHLIST,
@@ -161,7 +161,7 @@ export function WishlistScreen({
     setError(null)
     setHits(null)
     try {
-      setHits(await searchGoogleBooks(query))
+      setHits(await searchBooks(query))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed.')
     } finally {

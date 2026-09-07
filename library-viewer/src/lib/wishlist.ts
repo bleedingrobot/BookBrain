@@ -12,7 +12,7 @@
 
 import type { BookRow } from './books'
 import { readJsonFile, writeJsonFile } from './drive'
-import type { BookHit } from './googleBooks'
+import type { BookHit } from './bookSearch'
 
 const FILENAME = 'bookbrain-wishlist.json'
 
