@@ -489,5 +489,8 @@ mis-identification guards). The rest of that session's ideas, for later:
   keyless endpoint 429s constantly (one shared quota bucket per public IP
   across every anonymous caller), so search now retries Google once then
   falls back to Open Library (`search.json`, no key, CORS-open). Friendly
-  error only if both fail. A referrer-restricted Google Books key in
-  config.ts would remove the reliance on the fallback if wanted (2026-09-08).
+  error only if both fail. `DEFAULT_GOOGLE_BOOKS_API_KEY` in `config.ts` now
+  holds a real key restricted (Google Cloud console) to referrer
+  `https://bleedingrobot.github.io/*` + Books API only — private 1,000/day
+  quota, verified by curl probe; Open Library stays as the fallback
+  (2026-09-08).
