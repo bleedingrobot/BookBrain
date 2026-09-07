@@ -1,0 +1,67 @@
+{
+  "id": "kim-harrison-black-magic-sanction",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Kim Harrison / Black Magic Sanction / series=The Hollows #8.0 (model=claude-opus-5, conf=20)",
+  "source": {
+    "file_id": 2464,
+    "drive_file_id": "1xFDXKI3AGMeGZN0HO_wrPrLnHN1ioIQi",
+    "filename": "Harrison, Kim - Hollows 08 - Black Magic Sanction.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 20
+  },
+  "filename": "Harrison, Kim - Hollows 08 - Black Magic Sanction.epub",
+  "evidence": {
+    "title": "Hollows 08 - Black Magic Sanction",
+    "authors": [
+      "Kim Harrison"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Black Magic Sanction",
+    "author": "Kim Harrison",
+    "series": "The Hollows",
+    "series_number": 8,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename and EPUB title both explicitly state \"Hollows 08 - Black Magic Sanction\" by Kim Harrison, a well-known real book: Black Magic Sanction is indeed the 8th novel in Kim Harrison's The Hollows (Rachel Morgan) series (2010). No provider candidates, but internal evidence is consistent and matches known bibliography.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Hollows 08 - Black Magic Sanction",
+      "author": "Kim Harrison",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
+}

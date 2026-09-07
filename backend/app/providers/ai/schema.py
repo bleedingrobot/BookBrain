@@ -1,3 +1,20 @@
+# prompts/15 Stage A. Anthropic-hosted web search, declared alongside
+# identify_book on the grounded identify turn. `max_uses` is overwritten at
+# call time from settings.ai_web_search_max_uses; the `type` is chosen per
+# model by anthropic_client._web_search_tool (the _20260209 variant needs
+# Opus 4.6+ / Sonnet 4.6+; Haiku 4.5 and older take the basic _20250305).
+# No beta header either way.
+WEB_SEARCH_TOOL = {
+    "type": "web_search_20260209",
+    "name": "web_search",
+    "max_uses": 2,
+}
+WEB_SEARCH_TOOL_BASIC = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 2,
+}
+
 IDENTIFY_BOOK_TOOL = {
     "name": "identify_book",
     "description": (
@@ -11,8 +28,22 @@ IDENTIFY_BOOK_TOOL = {
         "properties": {
             "title": {"type": "string"},
             "author": {"type": "string"},
-            "series": {"type": ["string", "null"]},
-            "series_number": {"type": ["number", "null"]},
+            "series": {
+                "type": ["string", "null"],
+                "description": (
+                    "The series name only if a source names one or you are certain "
+                    "from bibliographic knowledge. Leave null for a standalone book — "
+                    "do not invent a plausible-sounding series."
+                ),
+            },
+            "series_number": {
+                "type": ["number", "null"],
+                "description": (
+                    "This book's number in the series, only if it is a genuine "
+                    "numbered volume. Leave null for a standalone, an omnibus, or a "
+                    "placeholder number from a filename/catalogue (e.g. '#301')."
+                ),
+            },
             "ai_confidence": {
                 "type": "number",
                 "description": "Your own confidence, 0-100, that this identification is correct.",
@@ -34,20 +65,181 @@ IDENTIFY_BOOK_TOOL = {
     "strict": True,
 }
 
+RESOLVE_BOOK_REQUEST_TOOL = {
+    "name": "resolve_book_request",
+    "description": (
+        "The user typed a rough description of a book they want to add to a "
+        "wishlist. Work out which specific published book they mean, using your "
+        "bibliographic knowledge. Fill title and author as precisely as you can. "
+        "If it's part of a series, give the series name and this book's number. "
+        "If you can recall an ISBN-13, include it. If the description is too "
+        "vague to identify one specific book, set found=false and leave the "
+        "other fields empty."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "found": {"type": "boolean"},
+            "title": {"type": ["string", "null"]},
+            "author": {"type": ["string", "null"]},
+            "series": {"type": ["string", "null"]},
+            "series_number": {"type": ["number", "null"]},
+            "isbn13": {"type": ["string", "null"]},
+            "note": {
+                "type": ["string", "null"],
+                "description": "One short sentence: how confident you are and anything ambiguous.",
+            },
+        },
+        "required": ["found", "title", "author", "series", "series_number", "isbn13", "note"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
 IDENTIFY_SERIES_TOOL = {
     "name": "identify_series",
     "description": (
         "Report whether this already-identified book is part of a series, using "
         "your general bibliographic knowledge. Called only when neither the EPUB "
-        "nor any metadata provider had series information for it."
+        "nor any metadata provider had series information for it. Leave both "
+        "fields null unless you are genuinely confident — a standalone book "
+        "wrongly given a series is a recurring, costly mistake here."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "series": {"type": ["string", "null"]},
-            "series_number": {"type": ["number", "null"]},
+            "series": {
+                "type": ["string", "null"],
+                "description": "Series name, or null if this is a standalone book.",
+            },
+            "series_number": {
+                "type": ["number", "null"],
+                "description": (
+                    "This book's number in the series, only if it is a genuine "
+                    "numbered volume; null otherwise."
+                ),
+            },
         },
         "required": ["series", "series_number"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
+AUDIT_BOOK_IDENTITY_TOOL = {
+    "name": "audit_book_identity",
+    "description": (
+        "A book already filed in a personal library is being re-checked. You are "
+        "given the identification currently stored for it, the evidence it was "
+        "identified from, and what book-metadata providers say now. Decide "
+        "whether the stored identification is still correct. Pay particular "
+        "attention to the series: report series_is_real=false if the stored "
+        "series name is not an actual published series this book belongs to "
+        "(a common past mistake was inventing a plausible-sounding series). "
+        "Only fill the corrected_* fields when verdict is 'stored_is_wrong'; "
+        "leave corrected_series null if the book is really a standalone."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "verdict": {
+                "type": "string",
+                "enum": ["stored_is_correct", "stored_is_wrong", "uncertain"],
+            },
+            "series_is_real": {
+                "type": "boolean",
+                "description": "Is the stored series an actual published series this book is part of?",
+            },
+            "corrected_title": {"type": ["string", "null"]},
+            "corrected_author": {"type": ["string", "null"]},
+            "corrected_series": {"type": ["string", "null"]},
+            "corrected_series_number": {"type": ["number", "null"]},
+            "explanation": {
+                "type": "string",
+                "description": "1-3 sentences shown to the human reviewer: what's wrong (or right) and why.",
+            },
+        },
+        "required": [
+            "verdict",
+            "series_is_real",
+            "corrected_title",
+            "corrected_author",
+            "corrected_series",
+            "corrected_series_number",
+            "explanation",
+        ],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
+PROPOSE_SERIES_MERGE_TOOL = {
+    "name": "propose_series_merge",
+    "description": (
+        "Two or more Series records in a book library have similar-looking names "
+        "and may actually be the same series, split into separate database rows "
+        "because an earlier identification pass phrased the name differently. "
+        "Decide whether they really are one series, and if so, which of the "
+        "*existing* names should be kept as canonical. Do not invent a new name "
+        "that isn't already one of the given series names — pick the best of the "
+        "ones provided, e.g. the more complete/correctly-spelled/official-looking "
+        "one. When more than two series are given, some may be genuine matches "
+        "while others are unrelated false positives that merely share a word — "
+        "call out any of those in excluded_series_names rather than folding "
+        "them into the merge."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "is_same_series": {
+                "type": "boolean",
+                "description": "True if at least two of these records really do represent one "
+                "series split across multiple rows, false if none of them match at all "
+                "(i.e. this whole cluster is a false-positive flag).",
+            },
+            "canonical_series_name": {
+                "type": "string",
+                "description": "Must be an exact copy of one of the series names given in the "
+                "prompt — never a new or modified name.",
+            },
+            "excluded_series_names": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Exact copies of any of the given series names that should NOT "
+                "be merged in — genuinely different works that only coincidentally look "
+                "similar. Never include canonical_series_name here. Empty array if every "
+                "series given is part of the same merge.",
+            },
+            "confidence": {
+                "type": "number",
+                "description": "0-100, your confidence that is_same_series and canonical_series_name are correct.",
+            },
+            "explanation": {
+                "type": "string",
+                "description": "1-3 sentences, shown directly to the human reviewer: why these "
+                "look like the same series (or don't), and why the chosen name is the "
+                "more likely correct/canonical one.",
+            },
+            "warnings": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Anything the human should double check before approving, e.g. "
+                "duplicate series_number values across the merge, book counts that don't "
+                "add up cleanly. Do not use this to flag a series that shouldn't be merged "
+                "at all — that belongs in excluded_series_names instead. Empty array if none.",
+            },
+        },
+        "required": [
+            "is_same_series",
+            "canonical_series_name",
+            "excluded_series_names",
+            "confidence",
+            "explanation",
+            "warnings",
+        ],
         "additionalProperties": False,
     },
     "strict": True,

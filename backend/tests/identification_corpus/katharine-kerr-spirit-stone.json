@@ -1,0 +1,100 @@
+{
+  "id": "katharine-kerr-spirit-stone",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Katharine Kerr / Spirit Stone / series=Act 3 : The Dragon Mage #5.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 108,
+    "drive_file_id": "1HhiRi8zaRM9_v-zguPi5vqII42i7eeWp",
+    "filename": "The Spirit Stone - Katharine Kerr.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "The Spirit Stone - Katharine Kerr.epub",
+  "evidence": {
+    "title": "The Spirit Stone",
+    "authors": [
+      "Katharine Kerr"
+    ],
+    "language": "en",
+    "description": "<span class=\"Apple-style-span\" style=\"font-family: verdana, arial, helvetica, sans-serif; font-size: small; \">Elven prince Dar has called upon his allies, the dwarven folk of the Northern mountains and the human men of Deverry in the East, to take arms against their mutual enemy, the fanatical Horsekin, whose imminent invasion of the Westlands will place the entire realm in danger...</span>",
+    "isbn10": null,
+    "isbn13": "9780007371167",
+    "series": "Act 3 : The Dragon Mage",
+    "series_number": 5.0,
+    "text_snippet": "The Spirit Stone"
+  },
+  "candidates": [
+    {
+      "title": "Spirit Stone",
+      "authors": [
+        "Katharine Kerr"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780007371167",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Spirit Stone",
+    "author": "Katharine Kerr",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": "Act 3 : The Dragon Mage",
+      "series_number": 5.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q135089500",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Spirit Stone",
+      "author": "Katharine Kerr",
+      "series": "The Silver Wyrm",
+      "series_number": 2.0,
+      "url": "https://www.kobo.com/ww/en/ebook/the-spirit-stone-the-silver-wyrm-book-2",
+      "note": "conf=0.96; The ISBN 9780007371167 matches the Kobo ebook edition titled \"The Spirit Stone (The Silver Wyrm, Book 2)\" by Katharine Kerr (HarperVoyager). It is the second book of the \"Silver Wyrm\" act (the tight sub-series) within the larger Deverry cycle, where it is book thirteen overall. Some UK print editions were marketed as \"Book Five of the Dragon Mage,\" but the ebook edition matching this ISBN uses the Silver Wyrm designation."
+    }
+  ],
+  "truth_disagreements": [
+    "series: epub='Act 3 : The Dragon Mage'; web_claude_identify='The Silver Wyrm'"
+  ]
+}

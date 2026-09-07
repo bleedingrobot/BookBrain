@@ -10,7 +10,7 @@ export interface ParsedBook {
 // down to whichever fields are known. Falls back to the raw filename as
 // the title for anything that doesn't match (manually-added files, etc.).
 export function parseFilename(filename: string): ParsedBook {
-  const withoutExt = filename.replace(/\.(epub|kpub)$/i, '')
+  const withoutExt = filename.replace(/\.(epub|kpub|cbz|cbr)$/i, '')
   const parts = withoutExt.split(',').map((p) => p.trim())
 
   if (parts.length === 1) {
@@ -28,14 +28,4 @@ export function parseFilename(filename: string): ParsedBook {
     series: parts[2],
     seriesNumber: parts.slice(3).join(', '),
   }
-}
-
-export function matchesSearch(book: ParsedBook, filename: string, query: string): boolean {
-  if (!query.trim()) return true
-  const haystack = `${book.author ?? ''} ${book.title} ${book.series ?? ''} ${filename}`.toLowerCase()
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((term) => haystack.includes(term))
 }

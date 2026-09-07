@@ -1,0 +1,104 @@
+{
+  "id": "dean-r-koontz-dark-of-the-woods-soft-come-the",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: Dean R. Koontz / Dark of the Woods / Soft Come the Dragons / series=None #None (model=claude-opus-5, conf=5)",
+  "source": {
+    "file_id": 636,
+    "drive_file_id": "1w-eDxZTN18LhnOkGz9ZaNM6QWFIQZUps",
+    "filename": "Dark Of The Woods_Soft Comes The Dragons  - Dean R. Koontz.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 5
+  },
+  "filename": "Dark Of The Woods_Soft Comes The Dragons  - Dean R. Koontz.epub",
+  "evidence": {
+    "title": "Dark of the Woods/Soft Comes the Dragons",
+    "authors": [
+      "Dean R. Koontz"
+    ],
+    "language": "en",
+    "description": "SOFT COME THE DRAGONS\r\n\r\nMutilated, mutant by-products of America's \"Artificial Wombs\" created by attempts at producing human weapons...\r\n\r\nAn American team of doctors sent to China to combat the runaway ultimate in biological warfare...\r\n\r\nThe genetically mutated daughter of LSD users, hiding her powers in order to survive society...\r\n\r\nAnd Gabe, the vital, young man mistakenly locked in an antiseptic old-age ward...\r\n\r\nThe following stories are included in this book.\r\n\"Soft Come the Dragons\" (1967)\r\n\"A Third Hand\" (1970) [F&SF, Jan 1970]\r\n\"The Twelfth Bed\" (1968)\r\n\"A Season for Freedom\" (1977)\r\n[revised and re-issued version of \"Killerbot\" (1969)] \r\n\"The Psychedelic Children\" (1968)\r\n\"Dragon In the Land\" (1969)\r\n\"To Behold the Sun\" (1967)\r\n\r\nDARK OF THE WOODS\r\nBlessed shalt thou be in the city, and blessed shalt though be in the field.\r\n\r\nThou shalt be blessed above all...\r\n\r\nOur holy empire of the Alliance of mankind has fulfilled our destiny. Remember the many heroic humans who have died in conquering the stars for you. Therefore, do not let misguided sympathy toward inferior and conquered animals deter you from your inherent title of divine rulers of the universe. Do not lose this birthright by succumbing to the \"attractions\" of any alien creature. Remember the penalties imposed by the Supremacy of Man party for this transgression.\r\n\r\nOur blessings be with you as you follow in the paths of your brothers and sisters. We have faith in mankind and we have faith in you. But, however, should you falter from the paths of righteousness, we have many willing hands eager to show you the error of your ways....",
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Soft Come the Dragons ; Dark of the Woods",
+      "authors": [
+        "Dean Koontz"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Dark of the Woods / Soft Come the Dragons",
+    "author": "Dean R. Koontz",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 92,
+    "reasoning_summary": "Filename and EPUB metadata both indicate the Ace Double omnibus pairing Koontz's novel 'Dark of the Woods' with the story collection 'Soft Come the Dragons' (rendered 'Soft Comes the Dragons' in the filename). Open Library candidate confirms the same combined edition attributed to Dean Koontz. Not part of a series; no ISBN available.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Dark of the Woods / Soft Come the Dragons",
+    "author": "Dean R. Koontz",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "weak",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Dark of the Woods/Soft Comes the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Soft Come the Dragons ; Dark of the Woods",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Dark of the Woods / Soft Come the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.goodreads.com/book/show/3335519-dark-of-the-woods-soft-comes-the-dragons",
+      "note": "conf=0.9; This ebook reproduces the 1970 Ace Double (Ace #13793), a dos-à-dos volume pairing Koontz's short novel \"Dark of the Woods\" with his story collection \"Soft Come the Dragons\" (the file's metadata mis-renders it as \"Soft Comes the Dragons\"). Both works are independent early SF by Koontz; neither belongs to a numbered fiction series. \"Ace Double\" is a publisher/publication series (catalog number 13793), not a story series, so no series is assigned."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Dark of the Woods / Soft Come the Dragons",
+      "author": "Dean R. Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "http://www.isfdb.org/cgi-bin/pl.cgi?8905=",
+      "note": "conf=0.92; Verified: this is the 1970 Ace Double (Ace 13793) pairing the novel \"Dark of the Woods\" with the short-story collection \"Soft Come the Dragons,\" both by Dean R. Koontz, bound dos-a-dos. The EPUB metadata's \"Soft Comes the Dragons\" is a common misrendering; ISFDB and dealer listings give the correct title as \"Soft Come the Dragons.\" ISFDB catalogs the volume as an omnibus titled \"Dark of the Woods / Soft Come the Dragons\" (1970). No genuine fiction series: neither work belongs to a Koontz series, and \"Ace Double\" is a publisher format/numbered publication series, not a story series, so series is reported as null. Author name as published is Dean R. Koontz (later editions of Dark of the Woods appear as by Dean Koontz)."
+    }
+  ],
+  "truth_disagreements": []
+}

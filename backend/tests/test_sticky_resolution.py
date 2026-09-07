@@ -50,6 +50,34 @@ async def test_resolve_corrected_book_id_resolves_book_for_matching_sha256(db_se
     assert author.name == "Corrected Author"
 
 
+async def test_resolve_corrected_book_id_matches_pre_writeback_hash(db_session) -> None:
+    """After a metadata writeback changes files.sha256, a re-upload of the
+    pristine original (old hash) must still inherit the human correction —
+    _latest_correction matches original_sha256 too."""
+    file_row = File(
+        drive_file_id="drive-1",
+        drive_parent_id="p",
+        filename="dune.epub",
+        sha256="rewritten-hash",
+        original_sha256="pristine-hash",
+        size_bytes=100,
+        status=FileStatus.organised,
+    )
+    db_session.add(file_row)
+    await db_session.commit()
+    db_session.add(
+        Review(
+            file_id=file_row.id,
+            status=ReviewStatus.corrected,
+            proposed_json={},
+            correction_json={"title": "Corrected", "author": "A"},
+        )
+    )
+    await db_session.commit()
+
+    assert await resolve_corrected_book_id(db_session, "pristine-hash") is not None
+
+
 async def test_resolve_corrected_book_id_ignores_non_corrected_reviews(db_session) -> None:
     file_row = await _seed_file(db_session, sha256="pending-hash")
     review = Review(

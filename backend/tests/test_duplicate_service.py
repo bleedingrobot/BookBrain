@@ -2,8 +2,17 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.data.models import File, FileStatus, FileStatusReason
-from app.services.duplicate_service import clear_duplicates, detect_same_book_duplicates, list_duplicate_groups
+import pytest
+
+from app.data.models import Author, Book, File, FileStatus, FileStatusReason, MetadataSource, Series
+from app.services.duplicate_service import (
+    DuplicateNotClearableError,
+    clear_duplicates,
+    clear_one_duplicate,
+    detect_same_book_duplicates,
+    list_duplicate_groups,
+    unflag_duplicate,
+)
 
 
 class _FakeProvider:
@@ -278,6 +287,123 @@ async def test_detect_same_book_duplicates_ignores_files_without_a_book(db_sessi
     flagged = await detect_same_book_duplicates(db_session)
 
     assert flagged == 0
+
+
+async def test_clear_duplicates_leaves_same_book_rows_untouched(db_session) -> None:
+    # A same_book row is a resolved-book match, not a byte match — a bad
+    # identification could put a real, different book there, so the bulk
+    # trash must skip it. Exact-content (sha256, reason=None) dups still go.
+    sha_dup = File(
+        drive_file_id="sha-dup",
+        drive_parent_id="p",
+        filename="sha-dup.epub",
+        sha256="shared",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+    )
+    same_book = File(
+        drive_file_id="same-book",
+        drive_parent_id="p",
+        filename="same-book.epub",
+        sha256="different",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+    )
+    db_session.add_all([sha_dup, same_book])
+    await db_session.commit()
+    provider = _FakeProvider()
+
+    result = await clear_duplicates(db_session, provider)
+
+    assert result.cleared == 1
+    assert provider.trashed == ["sha-dup"]
+    remaining = (await db_session.execute(select(File.drive_file_id))).scalars().all()
+    assert remaining == ["same-book"]
+
+
+async def test_clear_one_duplicate_trashes_a_single_same_book_row(db_session) -> None:
+    same_book = File(
+        drive_file_id="same-book",
+        drive_parent_id="p",
+        filename="same-book.epub",
+        sha256="different",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+    )
+    db_session.add(same_book)
+    await db_session.commit()
+    provider = _FakeProvider()
+
+    result = await clear_one_duplicate(db_session, provider, same_book.id)
+
+    assert result.cleared == 1
+    assert provider.trashed == ["same-book"]
+    assert (await db_session.execute(select(File))).scalars().all() == []
+
+
+async def test_clear_one_duplicate_rejects_a_non_duplicate_file(db_session) -> None:
+    keeper = File(
+        drive_file_id="keeper",
+        drive_parent_id="p",
+        filename="keeper.epub",
+        sha256="x",
+        size_bytes=100,
+        status=FileStatus.organised,
+    )
+    db_session.add(keeper)
+    await db_session.commit()
+
+    with pytest.raises(DuplicateNotClearableError):
+        await clear_one_duplicate(db_session, _FakeProvider(), keeper.id)
+
+
+async def test_unflag_duplicate_splits_the_file_onto_its_own_book(db_session) -> None:
+    author = Author(name="Brandon Sanderson")
+    series = Series(name="Mistborn")
+    db_session.add_all([author, series])
+    await db_session.flush()
+    merged = Book(
+        canonical_title="Mistborn: The Final Empire",
+        author_id=author.id,
+        series_id=series.id,
+    )
+    db_session.add(merged)
+    await db_session.flush()
+    flagged = File(
+        drive_file_id="flagged",
+        drive_parent_id="p",
+        filename="well-of-ascension.epub",
+        sha256="y",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+        book_id=merged.id,
+    )
+    db_session.add(flagged)
+    await db_session.flush()
+    db_session.add(
+        MetadataSource(
+            file_id=flagged.id,
+            field_name="title",
+            value="Mistborn: The Well of Ascension",
+            source="epub",
+        )
+    )
+    await db_session.commit()
+
+    await unflag_duplicate(db_session, flagged.id)
+
+    await db_session.refresh(flagged)
+    assert flagged.status == FileStatus.inbox
+    assert flagged.status_reason is None
+    assert flagged.book_id != merged.id
+    new_book = (
+        await db_session.execute(select(Book).where(Book.id == flagged.book_id))
+    ).scalar_one()
+    assert new_book.canonical_title == "Mistborn: The Well of Ascension"
+    assert new_book.author_id == author.id
 
 
 async def test_list_duplicate_groups_falls_back_to_book_id_for_same_book_reason(db_session) -> None:

@@ -1,0 +1,594 @@
+[
+ {
+  "file_id": 2125,
+  "id": "j-k-rowling-harry-potter-og-f-niksordenen",
+  "case_tags": [
+   "foreign-edition"
+  ],
+  "notes": "foreign-edition; stored: J. K. Rowling / Harry Potter og F\u00f8niksordenen / series=Harry Potter #5.0 (model=claude-opus-5, conf=60)"
+ },
+ {
+  "file_id": 2569,
+  "id": "james-s-a-corey-the-mercy-of-gods",
+  "case_tags": [
+   "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: James S. A. Corey / The Mercy of Gods / series=The Captive's War #1.0 (model=deterministic, conf=95)"
+ },
+ {
+  "file_id": 1558,
+  "id": "bruce-r-cordell-city-of-torment",
+  "case_tags": [
+   "fast-path-isbn-junk-series"
+  ],
+  "notes": "fast-path-isbn-junk-series; stored: Bruce R. Cordell / City of Torment / series=Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best #2.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 2484,
+  "id": "shannon-messenger-keeper-of-the-lost-cities-the-grap",
+  "case_tags": [
+   "human-corrected"
+  ],
+  "notes": "human-corrected; stored: Shannon Messenger / Keeper of the Lost Cities The Graphic Novel Part 2 / series=Keeper of the Lost Cities: The Graphic Novel #2.0 (model=None, conf=None)"
+ },
+ {
+  "file_id": 2368,
+  "id": "james-islington-scion",
+  "case_tags": [
+   "human-corrected"
+  ],
+  "notes": "human-corrected; stored: James Islington / Scion / series=None #None (model=None, conf=None)"
+ },
+ {
+  "file_id": 2004,
+  "id": "j-a-sutherland-wronged-a-story-of-the-dark",
+  "case_tags": [
+   "human-corrected"
+  ],
+  "notes": "human-corrected; stored: J.A. Sutherland / Wronged: A Story of the Dark / series=Alexis Carew #None (model=None, conf=None)"
+ },
+ {
+  "file_id": 2483,
+  "id": "shannon-messenger-keeper-of-the-lost-cities-the-gra",
+  "case_tags": [
+   "human-corrected"
+  ],
+  "notes": "human-corrected; stored: Shannon Messenger / Keeper of the Lost Cities: The Graphic Novel Part 1 / series=Keeper of the Lost Cities: The Graphic Novel #1.0 (model=claude-opus-5, conf=0)"
+ },
+ {
+  "file_id": 1693,
+  "id": "evan-currie-the-valhalla-call",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Evan Currie / The Valhalla Call / series=Hayden War Cycle #4.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 807,
+  "id": "sarah-lin-depthless-hunger-3",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Sarah Lin / Depthless Hunger 3 / series=Depthless Hunger #3.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 67,
+  "id": "darren-shan-tunnels-of-blood",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Darren Shan / Tunnels of Blood / series=Cirque Du Freak: The Saga of Darren Shan #3.0 (model=claude-opus-5, conf=15)"
+ },
+ {
+  "file_id": 2467,
+  "id": "kim-harrison-the-outlaw-demon-wails",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Kim Harrison / The Outlaw Demon Wails / series=The Hollows #6.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 1448,
+  "id": "murray-j-d-leeder-son-of-thunder",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Murray J.D. Leeder / Son of Thunder / series=Forgotten Realms: The Fighters #3.0 (model=claude-opus-5, conf=45)"
+ },
+ {
+  "file_id": 2615,
+  "id": "a-j-nguyen-heir-of-the-shattered-flame",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: A. J. Nguyen / Heir of the Shattered Flame / series=The Eye of the Beholder #3.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1533,
+  "id": "richard-awlinson-shadowdale",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Richard Awlinson / Shadowdale / series=Forgotten Realms: Avatar Series #1.0 (model=claude-opus-5, conf=45)"
+ },
+ {
+  "file_id": 701,
+  "id": "melinda-m-snodgra-double-solitaire",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Melinda M. Snodgrass / Double Solitaire / series=Wild Cards #10.0 (model=claude-opus-5, conf=50)"
+ },
+ {
+  "file_id": 1726,
+  "id": "jerry-ahern-the-prophet",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Jerry Ahern / The Prophet / series=The Survivalist #7.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 1839,
+  "id": "gene-wolfe-the-urth-of-the-new-sun",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Gene Wolfe / The Urth of the New Sun / series=The Book of the New Sun #5.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 2398,
+  "id": "anne-mccaffrey-dragonsong",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Anne McCaffrey / Dragonsong / series=Pern (Harper Hall Trilogy) #1.0 (model=claude-opus-5, conf=15)"
+ },
+ {
+  "file_id": 2381,
+  "id": "j-n-chaney-terry-fields-of-fire",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: J.N. Chaney, Terry Maggert / Fields of Fire / series=Backyard Starship #9.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 699,
+  "id": "george-r-r-marti-black-trump",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: George R. R. Martin / Black Trump / series=Wild Cards #15.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 1368,
+  "id": "christopher-rowe-sandstorm",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Christopher Rowe / Sandstorm / series=Forgotten Realms #None (model=claude-opus-5, conf=45)"
+ },
+ {
+  "file_id": 2361,
+  "id": "j-s-holloway-the-ascendant",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: J.S. Holloway / The Ascendant / series=The Veil Trilogy #2.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 2208,
+  "id": "jim-butcher-blood-rites",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Jim Butcher / Blood Rites / series=The Dresden Files #6.0 (model=claude-opus-5, conf=60)"
+ },
+ {
+  "file_id": 2001,
+  "id": "tony-diterlizzi-h-the-wyrm-king",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Tony DiTerlizzi, Holly Black / The Wyrm King / series=Beyond the Spiderwick Chronicles #3.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 881,
+  "id": "cassandra-clare-the-course-of-true-love-and-first",
+  "case_tags": [
+   "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Cassandra Clare / The Course of True Love (and First Dates) / series=Tales from the Shadowhunter Academy #10.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 2477,
+  "id": "kim-harrison-undead-in-the-garden-of-good-and-e",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Kim Harrison / Undead in the Garden of Good and Evil / series=The Hollows #0.2 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 2464,
+  "id": "kim-harrison-black-magic-sanction",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Kim Harrison / Black Magic Sanction / series=The Hollows #8.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 2177,
+  "id": "john-scalzi-the-god-engines",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: John Scalzi / The God Engines / series=None #None (model=claude-opus-5, conf=45)"
+ },
+ {
+  "file_id": 1066,
+  "id": "dean-koontz-the-taking",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Dean Koontz / The Taking / series=None #None (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 897,
+  "id": "charles-stross-halo",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Charles Stross / Halo / series=Accelerando #4.0 (model=claude-opus-5, conf=15)"
+ },
+ {
+  "file_id": 1999,
+  "id": "tony-diterlizzi-giant-problem",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Tony DiTerlizzi / Giant Problem / series=Beyond the Spiderwick Chronicles #2.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 905,
+  "id": "charles-stross-wireless",
+  "case_tags": [
+   "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Charles Stross / Wireless / series=None #None (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 787,
+  "id": "david-dalglish-the-paladins-omnibus",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: David Dalglish / The Paladins Omnibus / series=The Paladins #None (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 636,
+  "id": "dean-r-koontz-dark-of-the-woods-soft-come-the",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: Dean R. Koontz / Dark of the Woods / Soft Come the Dragons / series=None #None (model=claude-opus-5, conf=5)"
+ },
+ {
+  "file_id": 780,
+  "id": "michael-crichton-a-new-collection-of-three-complete",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: Michael Crichton / A New Collection of Three Complete Novels: Congo / Sphere / Eaters of the Dead / series=None #None (model=claude-opus-5, conf=50)"
+ },
+ {
+  "file_id": 798,
+  "id": "j-r-mathews-portal-to-nova-roma-omnibus-book",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: J.R. Mathews / Portal to Nova Roma: Omnibus: Books 1-3 / series=Portal to Nova Roma #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1950,
+  "id": "hugh-howey-wool-omnibus-edition-wool-1-5",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: Hugh Howey / Wool Omnibus Edition (Wool 1 - 5) / series=Silo #1.0 (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1036,
+  "id": "dan-abnett-eisenhorn-the-omnibus",
+  "case_tags": [
+   "omnibus"
+  ],
+  "notes": "omnibus; stored: Dan Abnett / Eisenhorn: The Omnibus / series=Warhammer 40,000: Eisenhorn #None (model=claude-opus-5, conf=60)"
+ },
+ {
+  "file_id": 2580,
+  "id": "tj-klune-somewhere-beyond-the-sea",
+  "case_tags": [
+   "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: TJ Klune / Somewhere Beyond the Sea / series=Cerulean Chronicles #2.0 (model=deterministic, conf=95)"
+ },
+ {
+  "file_id": 2623,
+  "id": "tui-t-sutherland-winter-turning",
+  "case_tags": [
+   "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: Tui T. Sutherland / Winter Turning / series=Wings of Fire #7.0 (model=claude-opus-5, conf=0)"
+ },
+ {
+  "file_id": 2553,
+  "id": "robert-jackson-ben-the-tainted-cup",
+  "case_tags": [
+   "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: Robert Jackson Bennett / The Tainted Cup / series=The Shadow of the Leviathan #1.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 2585,
+  "id": "p-djeli-djeli-cla-the-dead-cat-tail-assassins",
+  "case_tags": [
+   "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: P. Djeli Djeli Clark / The Dead Cat Tail Assassins / series=None #None (model=deterministic, conf=55)"
+ },
+ {
+  "file_id": 669,
+  "id": "martha-wells-city-of-bones",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Martha Wells / City of Bones / series=None #None (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 1594,
+  "id": "derek-landy-playing-with-fire",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Derek Landy / Playing with fire / series=Skulduggery Pleasant #2.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 210,
+  "id": "terry-goodkind-temple-of-the-winds-sword-of-trut",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Terry Goodkind / Temple of the Winds (Sword of Truth) / series=Sword of Truth #4.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 1739,
+  "id": "lee-child-nothing-to-lose",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Lee Child / Nothing to Lose / series=Jack Reacher #12.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 108,
+  "id": "katharine-kerr-spirit-stone",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Katharine Kerr / Spirit Stone / series=Act 3 : The Dragon Mage #5.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 1420,
+  "id": "r-a-salvatore-the-lone-drow",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: R. A. Salvatore / The Lone Drow / series=Forgotten Realms.Hunters Blades Trilogy.Forgotten Realms.2 of 3._.ICB Best #1.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 113,
+  "id": "katharine-kerr-fire-dragon",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Katharine Kerr / Fire Dragon / series=Act 3 : The Dragon Mage #3.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 1797,
+  "id": "garth-nix-abhorsen",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Garth Nix / Abhorsen / series=The Old Kingdom #3.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 2100,
+  "id": "jay-kristoff-nevernight",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Jay Kristoff / Nevernight / series=The Nevernight Chronicle #1.0 (model=deterministic, conf=80)"
+ },
+ {
+  "file_id": 2541,
+  "id": "leigh-bardugo-rule-of-wolves",
+  "case_tags": [
+   "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Leigh Bardugo / Rule of Wolves / series=King of Scars #2.0 (model=deterministic, conf=95)"
+ },
+ {
+  "file_id": 2397,
+  "id": "evelyn-ash-a-beautifully-crafted-lie",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Evelyn Ash / A Beautifully Crafted Lie / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1871,
+  "id": "gene-wolfe-la-befana",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / La Befana / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1851,
+  "id": "gene-wolfe-the-eyeflash-miracles",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / The Eyeflash Miracles / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 2182,
+  "id": "john-scalzi-an-election",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: John Scalzi / An Election / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1583,
+  "id": "douglas-adams-the-private-life-of-genghis-khan",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Douglas Adams / The Private Life of Genghis Khan / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 2156,
+  "id": "carolyn-ives-gilma-testament-of-leaves",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Carolyn Ives Gilman / Testament of Leaves / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 1865,
+  "id": "gene-wolfe-paul-s-treehouse",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / Paul's Treehouse / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 736,
+  "id": "george-r-r-marti-down-these-strange-streets",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: George R. R. Martin and Gardner Dozois (editors) / Down These Strange Streets / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 503,
+  "id": "evolvedraccoon-retired-archmage-starts-a-town-op",
+  "case_tags": [
+   "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: EvolvedRaccoon / Retired Archmage Starts a Town: OP MC Cozy Slice of Life Litrpg / series=None #None (model=claude-opus-5, conf=25)"
+ },
+ {
+  "file_id": 147,
+  "id": "patricia-briggs-raven-s-shadow",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Patricia Briggs / Raven's Shadow / series=Raven Duology #1.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 1789,
+  "id": "grady-hendrix-we-sold-our-souls",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Grady Hendrix / We Sold Our Souls / series=None #None (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 1938,
+  "id": "iain-m-banks-use-of-weapons",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Iain M. Banks / Use of Weapons / series=Culture #3.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 557,
+  "id": "dean-koontz-the-face-of-fear",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Dean Koontz / The Face of Fear / series=None #None (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 1767,
+  "id": "margaret-weis-tra-dragons-of-a-vanished-moon",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Margaret Weis, Tracy Hickman / Dragons of a Vanished Moon / series=Dragonlance: The War of Souls #3.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 651,
+  "id": "dean-koontz-ashley-bell",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Dean Koontz / Ashley Bell / series=None #None (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 1997,
+  "id": "tony-diterlizzi-h-the-wrath-of-mulgarath",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Tony DiTerlizzi, Holly Black / The Wrath of Mulgarath / series=The Spiderwick Chronicles #5.0 (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 1929,
+  "id": "iain-banks-the-crow-road",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Iain Banks / The Crow Road / series=None #None (model=claude-opus-5, conf=85)"
+ },
+ {
+  "file_id": 495,
+  "id": "benedict-jacka-fated",
+  "case_tags": [
+   "clean-control"
+  ],
+  "notes": "clean-control; stored: Benedict Jacka / Fated / series=Alex Verus #1.0 (model=claude-opus-5, conf=100)"
+ },
+ {
+  "file_id": 2122,
+  "id": "j-k-rowling-harry-potter-og-mysteriekammeret",
+  "case_tags": [
+   "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: J. K. Rowling / Harry Potter og Mysteriekammeret / series=Harry Potter #2.0 (model=claude-opus-5, conf=80)"
+ },
+ {
+  "file_id": 2223,
+  "id": "jonathan-stroud-ptolemy-s-gate",
+  "case_tags": [
+   "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Jonathan Stroud / Ptolemy's Gate / series=The Bartimaeus Trilogy #3.0 (model=claude-opus-5, conf=60)"
+ },
+ {
+  "file_id": 976,
+  "id": "cormac-mccarthy-cities-of-the-plain",
+  "case_tags": [
+   "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Cormac McCarthy / Cities of the Plain / series=The Border Trilogy #3.0 (model=claude-opus-5, conf=20)"
+ },
+ {
+  "file_id": 1856,
+  "id": "gene-wolfe-return-to-the-whorl",
+  "case_tags": [
+   "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Gene Wolfe / Return to the Whorl / series=The Book of the Short Sun #3.0 (model=deterministic, conf=80)"
+ }
+]

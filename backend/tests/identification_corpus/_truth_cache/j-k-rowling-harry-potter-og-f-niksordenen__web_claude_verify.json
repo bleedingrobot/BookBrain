@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Harry Potter og Føniksordenen",
+  "author": "J. K. Rowling",
+  "series": "Harry Potter",
+  "series_number": 5.0,
+  "url": "https://us.amazon.com/Harry-Potter-og-F%C3%B8niksordenen-Norwegian-ebook/dp/B01JZORKQI",
+  "note": "conf=0.97; The proposed identification left every field null; all are now filled in. ISBN 9781781101766 resolves to the Norwegian (bokmål) ebook edition of Harry Potter and the Order of the Phoenix, published by Pottermore Publishing in 2016, translated by Torstein Bugge Høverstad. Ark.no lists the original title as \"Harry Potter and the order of the Phoenix\" and the series as Harry Potter (within the wider Harry Potter universe); the tight sub-series is simply \"Harry Potter\", where this is volume 5. Title kept in the Norwegian form matching the EPUB metadata and the published edition; author metadata \"J. K. Rowling\" is correct."
+}

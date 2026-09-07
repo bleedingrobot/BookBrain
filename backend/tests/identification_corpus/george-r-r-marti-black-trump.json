@@ -1,0 +1,85 @@
+{
+  "id": "george-r-r-marti-black-trump",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: George R. R. Martin / Black Trump / series=Wild Cards #15.0 (model=claude-opus-5, conf=20)",
+  "source": {
+    "file_id": 699,
+    "drive_file_id": "1kJKkZx71TAVFsaosak2zsC3RtgsOKkGN",
+    "filename": "George R R Martin - [Wild Cards 15] - Black Trump (epub).epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 20
+  },
+  "filename": "George R R Martin - [Wild Cards 15] - Black Trump (epub).epub",
+  "evidence": {
+    "title": "Wild Cards 15 - Black Trump",
+    "authors": [
+      "George R. R. Martin"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "/* */"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Black Trump",
+    "author": "George R. R. Martin",
+    "series": "Wild Cards",
+    "series_number": 15,
+    "ai_confidence": 88,
+    "reasoning_summary": "Filename and EPUB title agree: Wild Cards book 15, \"Black Trump,\" credited to editor George R. R. Martin. Black Trump is indeed the 15th Wild Cards volume (a mosaic novel by the Wild Cards Trust, edited by Martin), so series placement is consistent. No provider candidates were returned and the copyright page text is empty, so confirmation is based solely on the internal file metadata; the credited author may more precisely be \"Wild Cards Trust / edited by George R. R. Martin.\"",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Black Trump",
+    "author": "George R. R. Martin",
+    "series": "Wild Cards",
+    "series_number": 15.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "weak",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wild Cards 15 - Black Trump",
+      "author": "George R. R. Martin",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Black Trump",
+      "author": "George R. R. Martin",
+      "series": "Wild Cards",
+      "series_number": 15.0,
+      "url": "https://wildcards.fandom.com/wiki/Black_Trump_(novel)",
+      "note": "conf=0.95; Confirmed as volume 15 of the Wild Cards shared-universe series edited by George R.R. Martin (Baen, 1995). It is a mosaic/braided novel with contributions by Stephen Leigh, Victor Milán, John J. Miller, Sage Walker and Martin; Martin is credited as editor and is the metadata author. It is the third book of the \"Card Sharks\" triad (vols. 13-15, \"Book III of a New Cycle\"), but the standard catalogued numbering is Wild Cards #15. Note: the 2025 Bantam reprint retitled the book \"Showdown\"; the canonical/original title for this file is Black Trump."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Black Trump",
+      "author": "George R. R. Martin",
+      "series": "Wild Cards",
+      "series_number": 15.0,
+      "url": "https://wildcards.fandom.com/wiki/Black_Trump_(novel)",
+      "note": "conf=0.96; Filename/metadata identification is correct and now filled in. Black Trump (Bantam, 1995) is Volume 15 of the Wild Cards shared-universe series edited by George R. R. Martin. It is a mosaic novel with stories by Stephen Leigh, George R. R. Martin, Sage Walker, John J. Miller and Victor Milan; Martin is credited as editor, but catalogs and the EPUB metadata list him as author, which I have retained. It forms the third book of the informal \"Card Sharks Triad\" (#13 Card Sharks, #14 Marked Cards, #15 Black Trump), but that triad is a grouping within the single numbered Wild Cards series rather than a separately published/numbered series, so Wild Cards #15 is given. Note: the 2025 Bantam reprint retitled the book \"Showdown\" (released 18 March 2025); the canonical/original title of this file is Black Trump. No ISBN in the file; original 1995 mass-market edition."
+    }
+  ],
+  "truth_disagreements": []
+}

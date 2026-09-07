@@ -14,7 +14,7 @@ A file can have 0, 1, or >1 parents in Drive's model. The app requires exactly 1
 
 **Dry-run is Milestone 6a, not a vague aside.** Milestone 6 builds move/rename/logging but wires it only to a dry-run flag that defaults `true`. Milestone 6a is dry-run validation: the user runs a full scan+identify+dry-run-organize pass, reviews the log of *what would have happened*, and explicitly flips the flag. Milestone 7 (review queue) and Milestone 6 auto-move enablement both depend on 6a having been exercised at least once — this is a gate, not a suggestion.
 
-**Correction stickiness, keyed by content not by file row.** Cache AI decisions by `sha256(file) + evidence_hash` as the default path. But corrections are stickier than cache and are keyed by `sha256` alone (not `file_id`), because the same EPUB content can appear under multiple `files` rows (duplicates, re-uploads). Pipeline order on every identification pass:
+**Correction stickiness, keyed by content not by file row.** Cache AI decisions by `sha256(file) + evidence_hash` as the default path. But corrections are stickier than cache and are keyed by `sha256` alone (not `file_id`), because the same EPUB content can appear under multiple `files` rows (duplicates, re-uploads). A metadata writeback (§3) changes a file's bytes, so the lookup matches `files.original_sha256` (the pre-rewrite hash) as well — a correction made against the pristine original still sticks. Pipeline order on every identification pass:
 1. Check `reviews` for any `status='corrected'` row sharing this file's `sha256`. If found, use its `correction_json` directly — confidence 100, source `user_correction`, skip providers and AI entirely.
 2. Else check the `ai_decisions` cache keyed by `sha256 + evidence_hash`.
 3. Else run the full pipeline (§5).
@@ -54,9 +54,25 @@ The specific disagreeing fields and sources are stored in `metadata_sources`/`bo
 
 - `BookMetadataProvider` interface built, but only Google Books implemented first, Open Library second. No plugin system.
 - AI provider hard-coded to Anthropic's Messages API with structured JSON, behind one thin service class.
-- No webhooks/near-real-time watching — manual scan only, designed as an idempotent function so a scheduler can call it later.
+- No webhooks/near-real-time watching. Scan stays an idempotent function; a **nightly scheduled run** (2026-09-06) now calls it (plus auto-organize, covers, index) unattended — see `app/jobs/nightly.py`, an in-process APScheduler job and a standalone `python -m app.jobs.nightly` entrypoint sharing one job function. Still no push/watch channel.
 - No natural-language search / conversational librarian in v1 — schema (books/authors/series normalized) must not preclude it later.
-- No EPUB metadata repair/writing — read-only parsing only.
+- ~~No EPUB metadata repair/writing — read-only parsing only.~~ **Reversed
+  (2026-09-06).** A Kobo/Calibre shelf shows the epub's *embedded* OPF
+  metadata, so an organised file whose filename BookBrain fixed still
+  displays the original junk on the device. `app/providers/epub/writer.py`
+  now writes the resolved title/author/series (EPUB 3
+  `belongs-to-collection` **and** the legacy `calibre:series` pair, since
+  Kobo reads the latter) plus a cover (only when the epub genuinely has
+  none) back into the `.epub`, copying every other zip entry through
+  untouched and keeping `mimetype` first + stored. It's a separate opt-in
+  pass (`POST /api/library/embedded-metadata`, `dry_run` supported), not a
+  step of organize. **Not undoable** — the pre-rewrite bytes aren't kept;
+  Drive's own file revision history (in-place `update_file_content`, same
+  `drive_file_id`) is the only fallback. Rewriting changes `files.sha256`,
+  so the pre-rewrite hash is stashed in `files.original_sha256` and matched
+  alongside `sha256` in exact-duplicate detection and sticky-correction
+  lookup (below); `files.embedded_metadata_key` makes the pass skip
+  already-stamped files so re-runs cause no hash churn.
 - Single user, one OAuth-connected Google account, config in local settings table.
 
 ## 4. Architecture
@@ -84,6 +100,60 @@ Nothing in `api/` talks to `google_drive/` or `ai/` directly — always through 
 8. Threshold routing on `computed_confidence`: ≥95 auto-organize, 85–94 auto + flagged in audit log, 70–84 review queue, <70 left alone/unidentified.
 9. Cache the decision keyed by `sha256 + evidence_hash`; invalidated on manual correction (§1).
 
+## 5a. Identification pipeline (2026)
+
+§5 above is the v1 skeleton and still describes the shape. The `prompts/15`
+accuracy push (Stages 0 + A–K, complete 2026-09-07) hardened every stage of it
+without changing that shape. What actually runs now, per new file
+(`scan_service._process_file` → `identification_service.identify`):
+
+**Deterministic evidence.** `providers/epub/parser.py` walks the spine (skips
+cover/nav/titlepage + sub-200-char docs) for a `[front matter]` + `[body sample]`
+snippet, and pulls `description`, `publisher`, `pub_date`, `subjects`, and
+**every** ISBN (`all_isbns`). `providers/filename/parser.py::parse_book_filename`
+turns a tracker/Calibre filename into a structured `FilenameGuess` — a labelled
+prompt block, a `filename_corroborates` verdict, and a
+`BookCandidate(source="filename")`. A trailing Calibre `_1234` is never a series
+number.
+
+**Providers.** Google Books + Open Library now populate
+`MetadataCandidate.series` / `series_number` / `genre` (so series is
+corroboratable and `SERIES_DISAGREEMENT_PENALTY` requires a ≥2-candidate
+consensus).
+
+**Fast path.** ISBN match still short-circuits, but now also requires
+`title_similarity >= 0.80` with the ISBN-matched candidate (a wrong-but-valid
+ISBN falls through to AI), and is skipped entirely when the EPUB title/author
+`looks_like_placeholder_*` ("Unknown", "Calibre", "book1", a publisher name…).
+
+**AI path.** `_build_prompt` carries the description, publisher, pub date,
+subjects, all ISBNs, the filename parse, and a few-shot block of recent human
+`/correct` pairs. `should_ground()` turns on the Anthropic `web_search` server
+tool for books with a recent-year signal (filename or provider pub date within
+~2 years) — the post-training-cutoff case, ~3% of AI calls, `settings.
+ai_web_search_enabled`. `settings.ai_verify_enabled` (**off by default**, cost)
+adds one adversarial `audit_book_identity` follow-up for the 70–95 band.
+
+**Confidence** (`confidence_service.score`, still authoritative over
+`ai_confidence`): `PLACEHOLDER_METADATA_PENALTY` / `TITLE_IS_FILENAME_ONLY_PENALTY`,
+positive `DESCRIPTION_CORROBORATES` / `PUBYEAR_PLAUSIBLE` / `FILENAME_CORROBORATES`.
+
+**Resolution.** `text_match.normalize_person_name` is the author match key
+(initials joined, "Last, First" reordered, co-author-first); `Author.sort_name`
+is populated; series match ignores a leading article and consults `SeriesAlias`
+(which series-merge now writes).
+
+**Batch + safety net.** `batch_prior_service` runs between a scan batch and the
+auto-organize pass: a ≥3-file author/series consensus lifts a thin `review` file
+in the same batch whose filename names it (+12, cap 92). After organize,
+`GET /api/library/recently-organized` + the Dashboard tray show what was
+auto-filed with no review, one-click **Confirm** (idempotent `Review(approved)`
+signal) / **Correct**. `settings.organize_hold_hours` (default 0) optionally
+delays an auto-eligible file so a tray correction lands before any Drive move.
+
+The eval harness (`pytest -m corpus`, `IDENTIFICATION-EVAL.md`) gates all of
+this against a triangulated 74-book corpus.
+
 ## 6. Database schema (v1)
 
 ```
@@ -94,7 +164,9 @@ books(id, canonical_title, author_id, series_id, series_number,
       description, language, first_published, created_at)
 identifiers(id, book_id, type[isbn10|isbn13|other], value, source)
 files(id, drive_file_id, drive_parent_id, filename, sha256, size_bytes,
-      book_id NULL, status[inbox|organised|review|unidentified|duplicate],
+      original_sha256 NULL,       -- content hash before a §3 metadata writeback
+      embedded_metadata_key NULL, -- resolved (title,author,series) already stamped into the epub
+      book_id NULL, status[inbox|organised|review|unidentified|duplicate|rejected],
       status_reason NULL,  -- multi_parent | no_parent | manual_drift | parse_failed | ...
       quality_score, discovered_at, last_processed_at)
 metadata_sources(id, file_id, field_name, value, source, retrieved_at)
@@ -103,8 +175,10 @@ book_candidates(id, file_id, title, author, series, series_number,
 ai_decisions(id, file_id, model, prompt_hash, evidence_hash, raw_response_json,
              computed_confidence, ai_reported_confidence,
              needs_human_review, reasoning_summary, created_at)
-operations(id, timestamp, file_id, action, original_name, original_parent_id,
-           new_name, new_parent_id, confidence, model, reason, status[done|undone])
+operations(id, timestamp, file_id, action[move|rename|move_and_rename|write_metadata],
+           original_name, original_parent_id, new_name, new_parent_id,
+           confidence, model, reason, status[done|undone], dry_run)
+           -- write_metadata (§3 embedded-metadata rewrite) is logged but never undoable
 reviews(id, file_id, status[pending|approved|rejected|corrected],
         proposed_json, correction_json, resolved_at)
 library_rules(id, rule_type[filename_pattern|author_alias|series_alias],
@@ -139,7 +213,7 @@ Review dialog is the most important component: evidence, confidence breakdown (i
 | ISBN validation | isbnlib | checksum + normalization built-in |
 | Drive API | google-api-python-client + google-auth-oauthlib | official SDK |
 | AI | Anthropic Messages API, structured JSON via forced schema | avoids prose parsing |
-| Background jobs | FastAPI BackgroundTasks for v1 | avoids infra overkill now, interface allows Celery/RQ later |
+| Background jobs | FastAPI BackgroundTasks for v1; APScheduler (in-process) + a standalone entrypoint for the nightly run | avoids infra overkill now, interface allows Celery/RQ later |
 | Frontend | React + TypeScript + Vite + TanStack Query + Tailwind | matches §29 |
 | Testing | pytest + pytest-asyncio + responses/respx | matches §35 |
 

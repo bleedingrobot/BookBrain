@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -84,8 +85,12 @@ class _FakeIdentificationService:
 
     def __init__(self, result: IdentificationResult | None = None) -> None:
         self._result = result
+        self.corrections_seen: list[list[dict]] = []
 
-    async def identify(self, *, filename, evidence, candidates) -> IdentificationResult:
+    async def identify(
+        self, *, filename, evidence, candidates, corrections=None
+    ) -> IdentificationResult:
+        self.corrections_seen.append(corrections or [])
         if self._result is not None:
             return self._result
         return IdentificationResult(
@@ -197,6 +202,62 @@ async def test_process_file_accepts_kpub_extension(db_session) -> None:
     assert provider.trash_calls == []
     file_row = (await db_session.execute(select(File))).scalar_one()
     assert file_row.drive_file_id == "drive-kpub"
+
+
+async def test_process_file_accepts_cbz_without_converting(db_session) -> None:
+    import io
+    import zipfile
+
+    comicinfo = "<ComicInfo><Series>Saga</Series><Number>1</Number><Writer>Brian K. Vaughan</Writer></ComicInfo>"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("000.jpg", b"\xff\xd8\xff\xe0 fake jpeg" * 500)
+        zf.writestr("ComicInfo.xml", comicinfo)
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(buf.getvalue())
+    raw = {"id": "drive-cbz", "name": "Saga 001.cbz", "parents": ["p"], "size": "100"}
+    counts = _counts()
+
+    await service._process_file(provider, raw, get_settings(), counts, [], asyncio.Lock())
+
+    assert counts["new"] == 1
+    assert counts["converted"] == 0
+    assert provider.trash_calls == []
+    assert provider.update_content_calls == []  # kept as-is, no rewrite
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.drive_file_id == "drive-cbz"
+    assert file_row.filename == "Saga 001.cbz"
+    assert file_row.book_id is not None
+
+    sources = {
+        (s.field_name, s.source)
+        for s in (await db_session.execute(select(MetadataSource))).scalars().all()
+    }
+    assert ("series", "comic") in sources
+    assert ("authors", "comic") in sources
+
+
+async def test_process_file_marks_cbz_with_no_images_as_unidentified(db_session) -> None:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("notes.txt", b"no pages here")
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(buf.getvalue())
+    raw = {"id": "drive-bad-cbz", "name": "empty.cbz", "parents": ["p"], "size": "100"}
+    counts = _counts()
+    failures: list = []
+
+    await service._process_file(provider, raw, get_settings(), counts, failures, asyncio.Lock())
+
+    assert counts["failed"] == 1
+    assert "no page images" in failures[0].reason
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.status.value == "unidentified"
 
 
 async def test_process_file_trashes_non_ebook_files_instead_of_processing(db_session) -> None:
@@ -379,7 +440,8 @@ async def test_process_file_persists_candidates(db_session) -> None:
         title="Foo", authors=["Bar"], isbn13="9780134685991", source="fake_provider"
     )
     service = ScanService(
-        candidate_service=CandidateService(providers=[_FakeMetadataProvider([candidate])])
+        candidate_service=CandidateService(providers=[_FakeMetadataProvider([candidate])]),
+        identification_service=_FakeIdentificationService(),
     )
     provider = _FakeDriveProvider(build_epub(title="Foo", authors=("Bar",), isbn="9780134685991"))
     raw = {"id": "drive-5", "name": "foo.epub", "parents": ["p"], "size": "100"}
@@ -392,6 +454,31 @@ async def test_process_file_persists_candidates(db_session) -> None:
     assert stored[0].title == "Foo"
     assert stored[0].author == "Bar"
     assert stored[0].source == "fake_provider"
+
+
+async def test_process_file_persists_a_filename_candidate_when_the_name_is_rich(db_session) -> None:
+    # prompts/15 Stage C — a structured filename parse is stored alongside the
+    # provider candidates (source="filename") for the re-identification audit.
+    service = ScanService(
+        candidate_service=CandidateService(providers=[]),
+        identification_service=_FakeIdentificationService(),
+    )
+    provider = _FakeDriveProvider(build_epub(title="Foo", authors=("Bar",)))
+    raw = {
+        "id": "drive-fn",
+        "name": "Sanderson, Brandon - Mistborn 01 - The Final Empire.epub",
+        "parents": ["p"],
+        "size": "100",
+    }
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    rows = (await db_session.execute(select(BookCandidate))).scalars().all()
+    filename_rows = [r for r in rows if r.source == "filename"]
+    assert len(filename_rows) == 1
+    assert filename_rows[0].title == "The Final Empire"
+    assert filename_rows[0].series == "Mistborn"
+    assert filename_rows[0].series_number == 1.0
 
 
 def _identification_result(confidence: int) -> IdentificationResult:
@@ -704,6 +791,73 @@ async def test_process_file_library_rule_skips_candidates_and_ai(db_session) -> 
     assert author.name == "Jane A. Author"
 
 
+async def test_process_file_feeds_recent_corrections_to_identify(db_session) -> None:
+    # A human previously corrected an invented series off another book by the
+    # same author. That worked example must be fetched and handed to identify().
+    prior = File(
+        drive_file_id="corrected-1",
+        drive_parent_id="p",
+        filename="prior.epub",
+        sha256="prior-sha",
+        size_bytes=100,
+        status=FileStatus.inbox,
+    )
+    db_session.add(prior)
+    await db_session.flush()
+    db_session.add(
+        Review(
+            file_id=prior.id,
+            status=ReviewStatus.corrected,
+            proposed_json={
+                "title": "Scion",
+                "author": "Jane Author",
+                "series": "The Hierarchy",
+                "series_number": 2,
+            },
+            correction_json={
+                "title": "Scion",
+                "author": "Jane Author",
+                "series": None,
+                "series_number": None,
+            },
+            resolved_at=datetime.now(UTC),
+        )
+    )
+    await db_session.commit()
+
+    service = _no_network_scan_service()
+    provider = _FakeDriveProvider(build_epub())  # default author "Jane Author"
+    raw = {"id": "drive-corr", "name": "foo.epub", "parents": ["p"], "size": "100"}
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    seen = service._identification_service.corrections_seen[-1]
+    assert [row["corrected"]["series"] for row in seen] == [None]
+    assert seen[0]["proposed"]["series"] == "The Hierarchy"
+
+
+async def test_process_file_library_rule_path_skips_correction_fetch(db_session) -> None:
+    # find_rule_match resolves the book before identify() is reached, so the
+    # correction lookup must be skipped entirely (identify is never called).
+    db_session.add(
+        LibraryRule(
+            rule_type=RuleType.author_alias,
+            pattern="Jane Author",
+            resolution_json={"author": "Jane A. Author"},
+        )
+    )
+    await db_session.commit()
+
+    fake_identify = _FakeIdentificationService()
+    service = ScanService(candidate_service=CandidateService(providers=[]), identification_service=fake_identify)
+    provider = _FakeDriveProvider(build_epub())
+    raw = {"id": "drive-rule-corr", "name": "foo.epub", "parents": ["p"], "size": "100"}
+
+    await service._process_file(provider, raw, get_settings(), _counts(), [], asyncio.Lock())
+
+    assert fake_identify.corrections_seen == []
+
+
 async def test_process_file_detects_plain_duplicate_and_copies_primary(db_session) -> None:
     epub_bytes = build_epub(title="Foo", authors=("Bar",), isbn="9780134685991")
     service = _no_network_scan_service()
@@ -800,7 +954,9 @@ async def test_process_batch_processes_all_files_concurrently_and_avoids_duplica
     counts = _counts()
     failures: list = []
 
-    await service._process_batch(provider, raw_files, get_settings(), counts, failures)
+    await service._process_batch(
+        None, raw_files, get_settings(), counts, failures, provider_factory=lambda: provider
+    )
 
     assert counts["new"] == 6
     assert failures == []
@@ -817,6 +973,7 @@ async def test_process_batch_processes_all_files_concurrently_and_avoids_duplica
 
 
 async def test_run_scan_auto_organizes_eligible_files_after_scanning(db_session, monkeypatch) -> None:
+    import app.services.organize_service as organize_module
     import app.services.scan_service as scan_module
 
     await SettingsRepository(db_session).set(ORGANIZE_DRY_RUN, "false")
@@ -841,6 +998,14 @@ async def test_run_scan_auto_organizes_eligible_files_after_scanning(db_session,
 
     monkeypatch.setattr(scan_module, "DriveProvider", lambda _service: _FakeScanProvider())
     monkeypatch.setattr(scan_module, "build_drive_service", lambda _creds: object())
+    # organize_eligible_files now builds its own DriveProvider per file
+    # (see organize_service.py — no longer accepts one pre-built provider),
+    # via its own imports of DriveProvider/build_drive_service, not
+    # scan_module's — so the auto-organize half of this test needs its own
+    # patch too, or it tries to build a real Drive client from the fake
+    # `creds=object()` below and blows up.
+    monkeypatch.setattr(organize_module, "DriveProvider", lambda _service: _FakeScanProvider())
+    monkeypatch.setattr(organize_module, "build_drive_service", lambda _creds: object())
 
     async def fake_get_library_folder_config(_settings_repo):
         return FolderConfig(folder_id="lib-root", folder_name="Library", created_by_app=False)

@@ -5,7 +5,14 @@ Auto-organizing Google Drive EPUB library manager. See [SPEC.md](SPEC.md) for th
 ## Layout
 
 - `backend/` — FastAPI + SQLAlchemy + Alembic (async), layered `api/ → services/ → providers/ → data/`
-- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4
+- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4 (local admin UI)
+- `library-viewer/` — React + Vite + Tailwind, the family-facing browser. Reads the
+  `bookbrain-index.json` sidecar + covers straight from Drive (no backend). Deployed
+  to GitHub Pages on push to `main`. Includes an in-browser EPUB reader built on a
+  **vendored** copy of [foliate-js](https://github.com/johnfactotum/foliate-js)
+  (`src/vendor/foliate/`, EPUB path only, no npm dependency — see its `VERSION`).
+  Reader typography/theme and per-book reading position live in `localStorage`;
+  opened books are cached in IndexedDB for offline reading.
 
 ## Backend
 
@@ -22,6 +29,31 @@ uvicorn app.main:app --reload
 ```
 
 Runs at `http://localhost:8000`. Tests: `pytest`.
+
+Dependencies (including APScheduler, added for the nightly run) are declared in
+`pyproject.toml` — `pip install -e ".[dev]"` installs them. After pulling changes,
+re-run that and `alembic upgrade head`.
+
+### Nightly unattended run
+
+Settings → **Nightly run** turns on a once-a-night pass that does the whole
+pipeline with no one watching: pull the Torrents folder, scan the Book Dump,
+auto-organize everything above the confidence threshold, then refresh covers and
+the library index. It never resolves a review or clears a duplicate — uncertain
+books still wait in the queue.
+
+Two layers run the same job (`app/jobs/nightly.py::run_nightly`):
+
+- **In-process** — an APScheduler job in the FastAPI lifespan. Fires only if the
+  server is up at the chosen hour. Toggling the setting re-arms it live.
+- **Standalone** — `python -m app.jobs.nightly`, no HTTP layer, exits non-zero on
+  failure, logs to `backend/nightly-runs.log`. For when the machine's usually not
+  running the server overnight: double-click `backend/scripts/register-nightly-task.bat`
+  once to install a Windows Scheduled Task (2am by default; pass an hour to match
+  the in-app setting). `unregister-nightly-task.bat` removes it.
+
+A dead Google token makes either layer log "reconnect Google in Settings" and stop
+cleanly. The Dashboard shows the last run's result.
 
 ### Google OAuth setup (needed for Milestone 2+)
 

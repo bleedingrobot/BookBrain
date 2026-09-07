@@ -1,0 +1,113 @@
+{
+  "id": "iain-banks-the-crow-road",
+  "case_tags": [
+    "clean-control"
+  ],
+  "notes": "clean-control; stored: Iain Banks / The Crow Road / series=None #None (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 1929,
+    "drive_file_id": "1zgBjcwqsznqYxfObbGmJbpAu68mMXBLh",
+    "filename": "The crow road - Iain Banks.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "The crow road - Iain Banks.epub",
+  "evidence": {
+    "title": "The crow road",
+    "authors": [
+      "Iain Banks"
+    ],
+    "language": "en",
+    "description": "SUMMARY:\n\"It was the day my grandmother exploded. I sat in the crematorium, listening to my Uncle Hamish quietly snoring in harmony to Bach’s Mass in B Minor, and I reflected that it always seemed to be death that drew me back to Gallanach.\"So begins Iain Banks’ The Crow Road, the tale of Prentice McHoan and his complex but enduring Scottish family. Prentice, preoccupied with thoughts of sex, death, booze, drugs, and God, has returned to his home village of Gallanach full of questions about the McHoan past, present, and future.When his beloved Uncle Rory disappears, Prentice becomes obsessed with the papers Rory left behind — the notes and sketches for a book called The Crow Road. With the help of an old friend, Prentice sets out to solve the mystery of his uncle’s disappearance, inadvertently confronting the McHoans’ long association with tragedy — an association that includes his sister’s fatal car crash and his father’s dramatic death by lightning. The Crow Road is a coming-of-age story as only Iain Banks could write — an arresting combination of dark humor, menace, and thought-provoking meditations on the nature of love, mortality, and identity.",
+    "isbn10": null,
+    "isbn13": "9780349109077",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "The crow road",
+      "authors": [
+        "Iain Banks"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Crow Road",
+    "author": "Iain Banks",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 96,
+    "reasoning_summary": "Filename, EPUB title/author metadata, and the Open Library candidate all agree on 'The Crow Road' by Iain Banks. ISBN 9780349109077 corresponds to the Abacus edition of this standalone novel (not part of a series).",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Crow Road",
+    "author": "Iain Banks",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The crow road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The crow road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q16241321",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Crow_Road",
+      "note": "conf=0.96; Standalone mainstream literary novel published 1992 by Iain Banks (writing without the middle initial, i.e., not one of his Iain M. Banks SF/Culture books). ISBN 9780349109077 matches an Abacus paperback edition of this title. No series affiliation found in any source; it stands alone among his non-SF novels."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Crow Road",
+      "author": "Iain Banks",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.abebooks.com/9780349109077/Crow-Road-Iain-Banks-0349109079/plp",
+      "note": "conf=0.95; ISBN 9780349109077 = Abacus paperback edition of The Crow Road by Iain Banks (first published 1992, Scribner/Abacus). Author credited as \"Iain Banks\" (mainstream fiction), not \"Iain M. Banks\" (his SF/Culture byline). No series affiliation found in any source; it is a genuine standalone contemporary Scottish family novel featuring the McHoan family. Proposed identification confirmed as correct on all fields."
+    }
+  ],
+  "truth_disagreements": []
+}

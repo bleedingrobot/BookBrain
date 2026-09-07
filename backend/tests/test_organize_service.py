@@ -1,9 +1,11 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
+from app.core.settings_keys import ORGANIZE_HOLD_HOURS
 from app.data.db import Base
 from app.data.models import (
     Author,
@@ -14,9 +16,16 @@ from app.data.models import (
     IdentifierType,
     Operation,
     Series,
+    Setting,
 )
 
-from app.services.organize_service import FolderPathCache, OrganizeService, build_target_path
+from app.services.organize_service import (
+    FolderPathCache,
+    OrganizeService,
+    build_target_path,
+    get_organize_hold_hours,
+    get_organize_service,
+)
 
 
 def test_build_target_path_with_series() -> None:
@@ -73,6 +82,18 @@ def test_build_target_path_series_without_series_number() -> None:
     assert filename == "Author, Novella, Series.epub"
 
 
+def test_build_target_path_preserves_non_epub_extension() -> None:
+    _, filename = build_target_path(
+        title="Saga",
+        author_name="Brian K. Vaughan",
+        series_name="Saga",
+        series_number=1.0,
+        extension=".cbz",
+    )
+
+    assert filename == "Brian K. Vaughan, Saga, Saga, 1.cbz"
+
+
 class _FakeFolderProvider:
     def __init__(self) -> None:
         self.folders: dict[str, list[dict]] = {}
@@ -92,9 +113,9 @@ class _FakeFolderProvider:
 
 async def test_folder_path_cache_creates_missing_folders() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author", "Series"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author", "Series"])
 
     assert len(provider.create_calls) == 2
     assert provider.create_calls[0] == ("Author", "root-id")
@@ -106,9 +127,9 @@ async def test_folder_path_cache_creates_missing_folders() -> None:
 async def test_folder_path_cache_reuses_existing_folder() -> None:
     provider = _FakeFolderProvider()
     provider.folders["root-id"] = [{"id": "existing-author", "name": "Author"}]
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    folder_id = await cache.resolve("root-id", ["Author"])
+    folder_id = await cache.resolve(provider, "root-id", ["Author"])
 
     assert folder_id == "existing-author"
     assert provider.create_calls == []
@@ -120,9 +141,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
     # both create it — Drive doesn't enforce folder name uniqueness, so
     # that's a silent duplicate-folder bug, not an error.
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
+    cache = FolderPathCache()
 
-    results = await asyncio.gather(*(cache.resolve("root-id", ["Author", "Series"]) for _ in range(8)))
+    results = await asyncio.gather(
+        *(cache.resolve(provider, "root-id", ["Author", "Series"]) for _ in range(8))
+    )
 
     assert len(set(results)) == 1
     assert len(provider.create_calls) == 2  # "Author" once, "Series" once — not 16
@@ -130,11 +153,11 @@ async def test_folder_path_cache_only_creates_a_shared_folder_once_under_concurr
 
 async def test_folder_path_cache_hit_does_not_touch_the_lock() -> None:
     provider = _FakeFolderProvider()
-    cache = FolderPathCache(provider)
-    await cache.resolve("root-id", ["Author"])
+    cache = FolderPathCache()
+    await cache.resolve(provider, "root-id", ["Author"])
     create_calls_after_warmup = len(provider.create_calls)
 
-    await cache.resolve("root-id", ["Author"])
+    await cache.resolve(provider, "root-id", ["Author"])
 
     assert len(provider.create_calls) == create_calls_after_warmup
 
@@ -214,6 +237,31 @@ async def test_organize_file_dry_run_does_not_touch_drive_or_file_status(db_sess
     assert file_row.status.value == "inbox"
     assert file_row.filename == "dune.epub"
     assert file_row.drive_parent_id == "inbox-parent"
+
+
+# These two exercise the module-level singleton (get_organize_service), not a
+# fresh OrganizeService(), in two separate test functions. Before the commit
+# lock was unified onto book_repository's shared lock, the singleton carried
+# its own asyncio.Lock that conftest didn't reset — so the second of these to
+# run would raise "Lock is bound to a different event loop". They must both
+# pass now.
+async def test_singleton_organize_survives_a_loop_change_first(db_session) -> None:
+    file_row = await _seed_file(db_session)
+    op = await get_organize_service()._organize_file(
+        db_session, file_row, provider=None, library_root_folder_id=None, dry_run=True
+    )
+    assert op.dry_run is True
+
+
+async def test_singleton_organize_survives_a_loop_change_second(db_session) -> None:
+    file_row = await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+    op = await get_organize_service()._organize_file(
+        db_session, file_row, provider=provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert op.dry_run is False
+    await db_session.refresh(file_row)
+    assert file_row.status.value == "organised"
 
 
 async def test_organize_file_real_run_moves_and_updates_file(db_session) -> None:
@@ -331,11 +379,12 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
     provider = _FakeMoveProvider()
     service = OrganizeService()
 
-    counts = await service.organize_eligible_files(
-        provider=provider, library_root_folder_id="lib-root", dry_run=False
+    counts, failures = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
     )
 
     assert counts == {"organized": 5, "failed": 0}
+    assert failures == []
     assert len(provider.move_calls) == 5
     # All 5 books share one not-yet-existing author folder — must be
     # created exactly once, not once per concurrently-organized file.
@@ -346,3 +395,161 @@ async def test_organize_eligible_files_runs_concurrently_and_shares_one_new_fold
         assert all(s == FileStatus.organised for s in statuses)
 
     await engine.dispose()
+
+
+def _patch_session_factory(monkeypatch, db_session) -> None:
+    import app.services.organize_service as organize_module
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+
+async def test_get_organize_hold_hours_defaults_and_clamps(db_session) -> None:
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db_session)
+    assert await get_organize_hold_hours(repo) == 0  # missing -> 0
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="garbage"))
+    await db_session.commit()
+    assert await get_organize_hold_hours(repo) == 0
+    (await db_session.get(Setting, ORGANIZE_HOLD_HOURS)).value = "99999"
+    await db_session.commit()
+    assert await get_organize_hold_hours(repo) == 720  # clamped
+
+
+async def test_organize_hold_zero_is_a_noop(db_session, monkeypatch) -> None:
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="0"))
+    await db_session.commit()
+    await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+
+    counts, _ = await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    assert counts == {"organized": 1, "failed": 0}
+    assert len(provider.move_calls) == 1
+
+
+async def test_organize_hold_delays_a_fresh_file_then_releases_it(db_session, monkeypatch) -> None:
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="24"))
+    file_row = await _seed_file(db_session)  # discovered_at defaults to now
+    provider = _FakeMoveProvider()
+    service = OrganizeService()
+
+    counts, _ = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert counts == {"organized": 0, "failed": 0}
+    assert provider.move_calls == []
+    assert (await db_session.execute(select(Operation))).scalars().all() == []
+
+    # 25h later — the hold has elapsed.
+    file_row.discovered_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
+    await db_session.commit()
+
+    counts, _ = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert counts == {"organized": 1, "failed": 0}
+    assert len(provider.move_calls) == 1
+
+
+async def test_organize_hold_lets_a_tray_correction_preempt_the_move(db_session, monkeypatch) -> None:
+    from app.schemas.reviews import CorrectReviewRequest
+    from app.services import file_service
+
+    _patch_session_factory(monkeypatch, db_session)
+    db_session.add(Setting(key=ORGANIZE_HOLD_HOURS, value="24"))
+    file_row = await _seed_file(db_session)
+    provider = _FakeMoveProvider()
+
+    # Organize pass runs while the file is still held — nothing moves.
+    await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+    assert provider.move_calls == []
+
+    # Human corrects it in the tray before any Drive move happened.
+    await file_service.correct_file(
+        db_session,
+        file_row.id,
+        CorrectReviewRequest(title="Dune", author="Frank Herbert", series=None),
+    )
+    await db_session.refresh(file_row)
+    assert file_row.status == FileStatus.inbox
+    # No move operation was ever logged for this file.
+    ops = (await db_session.execute(select(Operation).where(Operation.file_id == file_row.id))).scalars().all()
+    assert all(o.action.value not in ("move", "rename", "move_and_rename") for o in ops)
+
+
+async def test_organize_records_confidence_and_model_on_the_operation(db_session, monkeypatch) -> None:
+    from app.data.models import AIDecision
+
+    _patch_session_factory(monkeypatch, db_session)
+    file_row = await _seed_file(db_session)
+    db_session.add(
+        AIDecision(
+            file_id=file_row.id,
+            model="claude-opus-5",
+            prompt_hash="p",
+            evidence_hash="e",
+            raw_response_json={},
+            computed_confidence=91,
+        )
+    )
+    await db_session.commit()
+    provider = _FakeMoveProvider()
+
+    await OrganizeService().organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    op = (await db_session.execute(select(Operation))).scalars().one()
+    assert op.confidence == 91
+    assert op.model == "claude-opus-5"
+
+
+class _FakeFailingMoveProvider(_FakeFolderProvider):
+    """Regression: a failed move used to be swallowed as a bare failed-count
+    increment with no way to tell which file failed or why."""
+
+    def move_and_rename(self, file_id, *, old_parent_id, new_parent_id, new_name) -> dict:
+        raise RuntimeError("simulated Drive API failure")
+
+
+async def test_organize_eligible_files_records_failure_reason(db_session, monkeypatch) -> None:
+    # Without this monkeypatch, organize_eligible_files opens sessions via
+    # the real app.data.db.async_session_factory — i.e. whatever database
+    # the settings point at, not this test's isolated in-memory db_session.
+    import app.services.organize_service as organize_module
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+    file_row = await _seed_file(db_session)
+    provider = _FakeFailingMoveProvider()
+    service = OrganizeService()
+
+    counts, failures = await service.organize_eligible_files(
+        provider_factory=lambda: provider, library_root_folder_id="lib-root", dry_run=False
+    )
+
+    assert counts == {"organized": 0, "failed": 1}
+    assert len(failures) == 1
+    assert failures[0].filename == file_row.filename
+    assert "simulated Drive API failure" in failures[0].reason

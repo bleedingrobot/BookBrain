@@ -142,6 +142,71 @@ async def test_author_variants_reuse_the_same_row(db_session) -> None:
     assert len(authors) == 1
 
 
+async def test_author_initial_and_lastfirst_variants_reuse_one_row(db_session) -> None:
+    # prompts/15 Stage J
+    for who in ("J.R.R. Tolkien", "J. R. R. Tolkien", "Tolkien, J.R.R.", "Iain M. Banks"):
+        await resolve_book(
+            db_session, title=f"Book {who}", author=who,
+            series=None, series_number=None, isbn13=None, isbn10=None,
+        )
+    for who in ("Iain Banks",):
+        await resolve_book(
+            db_session, title=f"Book {who}", author=who,
+            series=None, series_number=None, isbn13=None, isbn10=None,
+        )
+
+    authors = {a.name for a in (await db_session.execute(select(Author))).scalars().all()}
+    assert authors == {"J.R.R. Tolkien", "Iain M. Banks"}  # 2 rows, not 5
+
+
+async def test_different_authors_sharing_initials_stay_separate(db_session) -> None:
+    for who in ("James Smith", "Jane Smith"):
+        await resolve_book(
+            db_session, title=f"Book by {who}", author=who,
+            series=None, series_number=None, isbn13=None, isbn10=None,
+        )
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 2
+
+
+async def test_sort_name_is_populated(db_session) -> None:
+    await resolve_book(
+        db_session, title="Elantris", author="Brandon Sanderson",
+        series=None, series_number=None, isbn13=None, isbn10=None,
+    )
+    author = (await db_session.execute(select(Author))).scalars().one()
+    assert author.sort_name == "Sanderson, Brandon"
+
+
+async def test_series_leading_article_does_not_fork(db_session) -> None:
+    # prompts/15 Stage J — "The Stormlight Archive" == "Stormlight Archive".
+    for name in ("The Stormlight Archive", "Stormlight Archive"):
+        await resolve_book(
+            db_session, title=f"vol for {name}", author="Brandon Sanderson",
+            series=name, series_number=1.0, isbn13=None, isbn10=None,
+        )
+    series_rows = (await db_session.execute(select(Series))).scalars().all()
+    assert len(series_rows) == 1
+    assert series_rows[0].name == "The Stormlight Archive"  # first-seen kept
+
+
+async def test_series_alias_resolves_to_the_aliased_row(db_session) -> None:
+    from app.data.models import SeriesAlias
+
+    book = await resolve_book(
+        db_session, title="A book", author="Some Author",
+        series="Mistborn", series_number=1.0, isbn13=None, isbn10=None,
+    )
+    canonical = (await db_session.execute(select(Series))).scalars().one()
+    db_session.add(SeriesAlias(series_id=canonical.id, alias="The Mistborn Saga"))
+    await db_session.flush()
+
+    await resolve_book(
+        db_session, title="Another book", author="Some Author",
+        series="The Mistborn Saga", series_number=2.0, isbn13=None, isbn10=None,
+    )
+    assert len((await db_session.execute(select(Series))).scalars().all()) == 1
+
+
 async def test_title_casing_variants_reuse_the_same_book(db_session) -> None:
     # Regression: different uploads of the same book routinely differ in
     # AI-extracted title casing ("The Hob's Bargain" vs "The Hob's bargain")
@@ -169,3 +234,56 @@ async def test_title_casing_variants_reuse_the_same_book(db_session) -> None:
     assert first.id == second.id
     books = (await db_session.execute(select(Book))).scalars().all()
     assert len(books) == 1
+
+
+async def test_same_author_series_prefix_titles_stay_separate_books(db_session) -> None:
+    # Regression (P0): "<Series>: <Book Title>" is a very common epub title
+    # format. The loose normalize_title stripped everything from the colon on,
+    # so two different books by the same author collapsed onto one Book row —
+    # from there detect_same_book_duplicates flags one as a duplicate and the
+    # bulk clear can trash it.
+    first = await resolve_book(
+        db_session,
+        title="Mistborn: The Final Empire",
+        author="Brandon Sanderson",
+        series="Mistborn",
+        series_number=1.0,
+        isbn13=None,
+        isbn10=None,
+    )
+    second = await resolve_book(
+        db_session,
+        title="Mistborn: The Well of Ascension",
+        author="Brandon Sanderson",
+        series="Mistborn",
+        series_number=2.0,
+        isbn13=None,
+        isbn10=None,
+    )
+
+    assert first.id != second.id
+    assert len((await db_session.execute(select(Book))).scalars().all()) == 2
+
+
+async def test_expanse_style_subtitles_still_resolve_separately(db_session) -> None:
+    # These already worked (the distinguishing word is before the colon) —
+    # make sure the strict matcher doesn't regress them either.
+    a = await resolve_book(
+        db_session,
+        title="Leviathan Wakes: Book One of The Expanse",
+        author="James S. A. Corey",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    b = await resolve_book(
+        db_session,
+        title="Caliban's War: Book Two of The Expanse",
+        author="James S. A. Corey",
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+    )
+    assert a.id != b.id

@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_identify",
+  "title": "Halo",
+  "author": "Charles Stross",
+  "series": "Macx Family",
+  "series_number": 4.0,
+  "url": "https://isfdb.org/cgi-bin/title.cgi?100466=",
+  "note": "conf=0.93; The EPUB's title/author metadata are swapped and garbled (\"Charles Stross - Lobsters 04\" / \"Halo\"). The work is \"Halo,\" a novelette by Charles Stross, first published in Asimov's Science Fiction, June 2002, and a Hugo/Sturgeon nominee. ISFDB records it as Series: Macx Family, Series Number: 4 — the nine-story sequence (Lobsters, Troubadour, Tourist, Halo, Router, Nightfall, Curator, Elector, Survivor) later fixed up into the 2005 novel Accelerando. The filename's \"Lobsters 04\" is an informal fan-naming of the same sequence after its first installment; equivalent series names in use are \"Accelerando\" / \"Macx Family.\" Not a standalone novel; the 2011 date is the ebook packaging date, not first publication."
+}

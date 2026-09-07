@@ -1,0 +1,86 @@
+{
+  "id": "hugh-howey-wool-omnibus-edition-wool-1-5",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: Hugh Howey / Wool Omnibus Edition (Wool 1 - 5) / series=Silo #1.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 1950,
+    "drive_file_id": "1R8mB6tG2woozJkHhgySoQpmKLQQNw0LV",
+    "filename": "Wool Omnibus Edition (Wool 1 - 5) - Howey, Hugh.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Wool Omnibus Edition (Wool 1 - 5) - Howey, Hugh.epub",
+  "evidence": {
+    "title": "Wool Omnibus Edition (Wool 1 - 5)",
+    "authors": [
+      "Howey",
+      "Hugh"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Wool Omnibus Edition (Wool 1 - 5)",
+    "author": "Hugh Howey",
+    "series": "Silo",
+    "series_number": 1,
+    "ai_confidence": 92,
+    "reasoning_summary": "Filename and EPUB metadata both clearly state \"Wool Omnibus Edition (Wool 1 - 5)\" by Hugh Howey. This is the well-known collection of Howey's first five Wool novellas, published as the omnibus \"Wool\" — book 1 of the Silo series. No metadata provider candidates were available, but the internal evidence is unambiguous; the copyright-page text is just cover CSS and provides no conflicting information. Series designation (Silo #1) inferred from general knowledge rather than file evidence.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Wool Omnibus",
+    "author": "Hugh Howey",
+    "series": "Silo",
+    "series_number": 1.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "weak",
+      "author": "weak",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wool Omnibus Edition (Wool 1 - 5)",
+      "author": "Howey",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Wool Omnibus",
+      "author": "Hugh Howey",
+      "series": "Silo",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/work/editions/18979356-wool",
+      "note": "conf=0.95; Goodreads lists \"Wool Omnibus (Silo, #1)\" by Hugh Howey, published January 25, 2012 by Broad Reach Publishing. The omnibus collects the five self-published Wool novellas (Wool 1-5, originally Silo #1-5 individually), and is catalogued as Silo book 1; later entries are Shift (#2) and Dust (#3). Author metadata \"Howey\" = Hugh Howey."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Wool Omnibus",
+      "author": "Hugh Howey",
+      "series": "Silo",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/book/show/13453029-wool-omnibus",
+      "note": "conf=0.95; All proposed fields were null and are corrected. The file is the Wool Omnibus (collecting the five self-published Wool novellas: Holston, Proper Gauge, Casting Off, The Unraveling, The Stranded), by Hugh Howey (EPUB metadata gives surname only). Goodreads catalogues Wool Omnibus as Silo #1 (Broad Reach Publishing, 25 Jan 2012); the Silo series continues with Shift (#2) and Dust (#3). The novella-level \"Wool\" sequence (Wool 1-5) is subsumed by this omnibus, so Silo is the appropriate series with number 1. No ISBN in file, consistent with early self-published ebook editions."
+    }
+  ],
+  "truth_disagreements": []
+}

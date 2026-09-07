@@ -10,11 +10,22 @@ import {
 
 const CACHE_KEY = 'bookbrain.libraryCache'
 
+// Incremental sync trusts Drive's changes feed and our own diffing logic to
+// stay correct forever — but a bug in either (we've already had to fix one:
+// see the "brand-new nested folder" fix) can silently drop something and
+// then advance the sync token past it. Once that happens it's permanently
+// invisible to Refresh, since nothing about the dropped item changes again
+// afterward for Drive to report. A periodic full walk is the only thing
+// that can catch and correct that kind of silent drift without the user
+// ever noticing something's missing.
+const AUTO_REBUILD_INTERVAL_MS = 24 * 60 * 60 * 1000
+
 export interface LibraryCache {
   libraryFolderId: string
   pageToken: string
   files: DriveFile[]
   folderIds: string[]
+  builtAt: number
 }
 
 function loadCache(): LibraryCache | null {
@@ -47,12 +58,12 @@ async function fullRebuild(token: string, libraryFolderId: string): Promise<Libr
   // (harmlessly) on the very next incremental sync.
   const pageToken = await getStartPageToken(token)
   const { files, folderIds } = await listLibraryTree(token, libraryFolderId)
-  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds }
+  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds, builtAt: Date.now() }
   saveCache(cache)
   return cache
 }
 
-function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
+export function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
   const filesById = new Map(cache.files.map((f) => [f.id, f]))
   const folderIds = new Set(cache.folderIds)
 
@@ -93,7 +104,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   }
   for (const change of folderChanges) {
     const file = change.file!
-    if (!(file.parents ?? []).some((p) => folderIds.has(p))) {
+    // `parents` absent (not `[]`) means the change record carries no
+    // placement info — Drive doesn't send `parents` on every delta. Don't
+    // evict a folder we already know over that; only an explicit
+    // removed/trashed (handled above) or a populated `parents` with no known
+    // ancestor means it genuinely left the tree.
+    if (file.parents === undefined) continue
+    if (!file.parents.some((p) => folderIds.has(p))) {
       folderIds.delete(file.id) // not ours, or moved out of the tree
     }
   }
@@ -101,7 +118,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   for (const change of live) {
     const file = change.file!
     if (file.mimeType === FOLDER_MIME_TYPE) continue
-    const parentKnown = (file.parents ?? []).some((p) => folderIds.has(p))
+    // Same missing-`parents` guard as the folder pass: a change with no
+    // `parents` key tells us nothing about where the file is — leave any
+    // existing cache entry alone rather than dropping it until the 24h
+    // rebuild. `parents: []` (explicitly empty) still means "not in our
+    // tree" and is handled by the `.some` below.
+    if (file.parents === undefined) continue
+    const parentKnown = file.parents.some((p) => folderIds.has(p))
     if (parentKnown && isSupportedEbook(file.name)) {
       filesById.set(file.id, { id: file.id, name: file.name })
     } else {
@@ -119,6 +142,10 @@ export async function syncLibrary(
   const existing = loadCache()
 
   if (!existing || existing.libraryFolderId !== libraryFolderId) {
+    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  }
+
+  if (!existing.builtAt || Date.now() - existing.builtAt > AUTO_REBUILD_INTERVAL_MS) {
     return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
   }
 

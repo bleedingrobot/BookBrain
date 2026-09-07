@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { PartialSettings, ViewerSettings } from '../lib/settings'
+import type { KoboDevice, PartialSettings, ViewerSettings } from '../lib/settings'
 
 export function SettingsForm({
   initial,
@@ -12,33 +12,48 @@ export function SettingsForm({
 }) {
   const [googleClientId, setGoogleClientId] = useState(initial?.googleClientId ?? '')
   const [libraryFolderId, setLibraryFolderId] = useState(initial?.libraryFolderId ?? '')
-  const [koboFolderId, setKoboFolderId] = useState(initial?.koboFolderId ?? '')
+  const [koboDevices, setKoboDevices] = useState<KoboDevice[]>(initial?.koboDevices ?? [])
+
+  function updateDevice(index: number, patch: Partial<KoboDevice>) {
+    setKoboDevices((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
+  }
 
   return (
-    <div className="mx-auto mt-16 max-w-md p-6">
-      <h1 className="text-xl font-semibold">BookBrain Library</h1>
-      <p className="mt-2 text-sm text-neutral-500">
-        This runs entirely in your browser — nothing is sent anywhere but Google. All values
-        below are saved only in this browser's local storage.
+    <div className="mx-auto max-w-md px-6 py-12">
+      <img
+        src={`${import.meta.env.BASE_URL}favicon.svg`}
+        alt=""
+        className="h-9 w-9"
+      />
+      <h1 className="mt-4 text-xl font-semibold tracking-tight">BookBrain Library</h1>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-500">
+        This runs entirely in your browser — nothing is sent anywhere but Google. The Client ID and
+        library folder are saved only in this browser's local storage. Kobo devices also get a copy
+        saved to a small settings file in your Drive library folder, so once one signed-in device
+        has them, any other device signed in with access to that library picks them up automatically
+        — no retyping the same folder ids twice.
       </p>
 
       <form
-        className="mt-6 space-y-4"
+        className="mt-6 space-y-5"
         onSubmit={(e) => {
           e.preventDefault()
           if (googleClientId.trim() && libraryFolderId.trim()) {
+            const cleanDevices = koboDevices
+              .map((d) => ({ label: d.label.trim(), folderId: d.folderId.trim() }))
+              .filter((d) => d.label && d.folderId)
             onSave({
               googleClientId: googleClientId.trim(),
               libraryFolderId: libraryFolderId.trim(),
-              koboFolderId: koboFolderId.trim() || undefined,
+              koboDevices: cleanDevices.length > 0 ? cleanDevices : undefined,
             })
           }
         }}
       >
-        <label className="block text-sm">
-          <span className="text-neutral-500">Google OAuth Client ID</span>
+        <label className="block">
+          <span className="text-sm font-medium">Google OAuth Client ID</span>
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1.5 w-full"
             value={googleClientId}
             onChange={(e) => setGoogleClientId(e.target.value)}
             placeholder="xxxxxxxx.apps.googleusercontent.com"
@@ -49,10 +64,10 @@ export function SettingsForm({
           </span>
         </label>
 
-        <label className="block text-sm">
-          <span className="text-neutral-500">Library folder ID</span>
+        <label className="block">
+          <span className="text-sm font-medium">Library folder ID</span>
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1.5 w-full"
             value={libraryFolderId}
             onChange={(e) => setLibraryFolderId(e.target.value)}
             placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz"
@@ -63,29 +78,57 @@ export function SettingsForm({
           </span>
         </label>
 
-        <label className="block text-sm">
-          <span className="text-neutral-500">Kobo sync folder ID (optional)</span>
-          <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-            value={koboFolderId}
-            onChange={(e) => setKoboFolderId(e.target.value)}
-            placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz"
-          />
-          <span className="mt-1 block text-xs text-neutral-400">
-            The folder "Send to Kobo" copies books into — same id-from-URL format as above. Leave
-            blank to skip; "Send to Kobo" just won't show up.
-          </span>
-        </label>
-
-        <div className="flex items-center gap-3">
+        <div>
+          <span className="text-sm font-medium">Kobo devices (optional)</span>
+          <div className="mt-1.5 space-y-2">
+            {koboDevices.map((device, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  className="field w-24 shrink-0"
+                  value={device.label}
+                  onChange={(e) => updateDevice(index, { label: e.target.value })}
+                  placeholder="Name"
+                />
+                <input
+                  className="field min-w-0 flex-1"
+                  value={device.folderId}
+                  onChange={(e) => updateDevice(index, { folderId: e.target.value })}
+                  placeholder="Sync folder ID"
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs shrink-0"
+                  onClick={() => setKoboDevices((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
           <button
-            type="submit"
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+            type="button"
+            className="btn btn-neutral btn-xs mt-2"
+            onClick={() => setKoboDevices((prev) => [...prev, { label: '', folderId: '' }])}
           >
+            + Add Kobo device
+          </button>
+          <span className="mt-1.5 block text-xs leading-relaxed text-neutral-400">
+            One row per eReader. The folder ID is that device's own "Rakuten Kobo" folder (from its
+            Google account, shared to this one) — same id-from-URL format as above. Each book gets a
+            "Send to <i>Name</i>" button. Leave empty to hide the Kobo buttons entirely.
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 pt-1">
+          <button type="submit" className="btn btn-primary px-4 py-2 text-sm">
             Save
           </button>
           {onCancel && (
-            <button type="button" className="text-xs text-neutral-400 underline" onClick={onCancel}>
+            <button
+              type="button"
+              className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              onClick={onCancel}
+            >
               Cancel
             </button>
           )}

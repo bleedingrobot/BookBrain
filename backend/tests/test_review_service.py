@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy import select
 
@@ -196,6 +198,29 @@ async def test_correct_resolves_new_book_and_promotes_status(db_session) -> None
     assert updated.correction_json["title"] == "Corrected Title"
 
 
+async def test_correct_does_not_merge_series_prefix_titles(db_session) -> None:
+    # Regression (P0): correcting a file to "<Series>: <Book B>" when a
+    # "<Series>: <Book A>" by the same author already exists must not resolve
+    # both onto one Book row.
+    author = Author(name="Brandon Sanderson")
+    db_session.add(author)
+    await db_session.flush()
+    existing = Book(canonical_title="Mistborn: The Final Empire", author_id=author.id)
+    db_session.add(existing)
+    await db_session.commit()
+
+    review = await _seed_review(db_session, proposed_author="Brandon Sanderson")
+    body = CorrectReviewRequest(
+        title="Mistborn: The Well of Ascension", author="Brandon Sanderson"
+    )
+
+    await review_service.correct(db_session, review.id, body)
+
+    file_row = (await db_session.execute(select(File))).scalar_one()
+    assert file_row.book_id != existing.id
+    assert len((await db_session.execute(select(Book))).scalars().all()) == 2
+
+
 async def test_correct_preserves_isbn_from_prior_book(db_session) -> None:
     author = Author(name="Original Author")
     db_session.add(author)
@@ -253,3 +278,85 @@ async def test_correct_apply_to_similar_no_rule_when_author_unchanged(db_session
     await review_service.correct(db_session, review.id, body)
 
     assert (await db_session.execute(select(LibraryRule))).scalars().all() == []
+
+
+async def _seed_corrected(db_session, *, proposed, corrected, resolved_at, drive_id) -> None:
+    file_row = File(
+        drive_file_id=drive_id,
+        drive_parent_id="p",
+        filename=f"{drive_id}.epub",
+        sha256=drive_id,
+        size_bytes=1,
+        status=FileStatus.inbox,
+    )
+    db_session.add(file_row)
+    await db_session.flush()
+    db_session.add(
+        Review(
+            file_id=file_row.id,
+            status=ReviewStatus.corrected,
+            proposed_json=proposed,
+            correction_json=corrected,
+            resolved_at=resolved_at,
+        )
+    )
+    await db_session.commit()
+
+
+def _pair(*, title, author, series, number, to_series=None, to_number=None, to_title=None):
+    return dict(
+        proposed={"title": title, "author": author, "series": series, "series_number": number},
+        corrected={
+            "title": to_title or title,
+            "author": author,
+            "series": to_series,
+            "series_number": to_number,
+        },
+    )
+
+
+async def test_recent_corrections_ranks_author_match_ahead_of_newer_row(db_session) -> None:
+    now = datetime.now(UTC)
+    await _seed_corrected(
+        db_session,
+        **_pair(title="Newer", author="Unrelated Author", series="X", number=1),
+        resolved_at=now,
+        drive_id="newer",
+    )
+    await _seed_corrected(
+        db_session,
+        **_pair(title="Older", author="Target Author", series="Y", number=3),
+        resolved_at=now - timedelta(days=5),
+        drive_id="older",
+    )
+
+    out = await review_service.recent_corrections(db_session, author="Target Author")
+
+    assert [row["proposed"]["title"] for row in out] == ["Older", "Newer"]
+
+
+async def test_recent_corrections_excludes_noop_rows(db_session) -> None:
+    await _seed_corrected(
+        db_session,
+        proposed={"title": "Same", "author": "A", "series": None, "series_number": None},
+        corrected={"title": "Same", "author": "A", "series": None, "series_number": None},
+        resolved_at=datetime.now(UTC),
+        drive_id="noop",
+    )
+
+    assert await review_service.recent_corrections(db_session) == []
+
+
+async def test_recent_corrections_respects_limit_and_recency_order(db_session) -> None:
+    now = datetime.now(UTC)
+    for i in range(4):
+        await _seed_corrected(
+            db_session,
+            **_pair(title=f"T{i}", author=f"A{i}", series="S", number=1),
+            resolved_at=now - timedelta(hours=i),
+            drive_id=f"d{i}",
+        )
+
+    out = await review_service.recent_corrections(db_session, limit=2)
+
+    assert [row["proposed"]["title"] for row in out] == ["T0", "T1"]

@@ -1,0 +1,94 @@
+{
+  "id": "gene-wolfe-the-eyeflash-miracles",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / The Eyeflash Miracles / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 1851,
+    "drive_file_id": "1uXLsocB9fN6AY4H5ZCgHIMEpC4FRKWX5",
+    "filename": "The Eyeflash Miracles - Gene Wolfe.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "The Eyeflash Miracles - Gene Wolfe.epub",
+  "evidence": {
+    "title": "The Eyeflash Miracles",
+    "authors": [
+      "Gene Wolfe"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Eyeflash Miracles",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 88,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"The Eyeflash Miracles\" by Gene Wolfe, a known 1976 novella by Wolfe (first published in Future Power, later collected in The Island of Doctor Death and Other Stories and Other Stories). No provider candidates were returned, and no ISBN is present, but the internal metadata is consistent and unambiguous. Not part of a series; likely a standalone novella ebook.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Eyeflash Miracles",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q131461498",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://isfdb.org/cgi-bin/title.cgi?41421=",
+      "note": "conf=0.93; ISFDB title record #41421 lists it as a standalone SHORTFICTION (novella) by Gene Wolfe, first published 1976; no series affiliation shown. It first appeared in the anthology Future Power (1976, ed. Dann & Dozois) and was reprinted in the collections The Island of Doctor Death and Other Stories and Other Stories (1980) and The Best of Gene Wolfe (2009) — those are collections/anthologies, not a series. Nebula-nominated novella. The ebook is a standalone digitization of the novella."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Eyeflash Miracles",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://isfdb.org/cgi-bin/title.cgi?41421=",
+      "note": "conf=0.95; Proposed identification verified as correct on all fields. \"The Eyeflash Miracles\" (1976) is a Nebula-nominated NOVELLA by Gene Wolfe, first published in the anthology Future Power (ed. Dann & Dozois, 1976), reprinted in The Best Science Fiction of the Year #6 (1977) and in Wolfe's collections The Island of Doctor Death and Other Stories and Other Stories (1980), The Best of Gene Wolfe (2009), and The Very Best of Gene Wolfe. It is genuinely standalone: ISFDB title record #41421 shows no series assignment, and in ISFDB contents listings it appears without any series bracket, unlike neighboring Wolfe stories that are tagged (e.g. [The Fifth Head of Cerberus], [Archipelago]). It is not part of the loosely associated \"Doctor Death / Doctor Island / Doctor of Death Island\" grouping. Caveat: this file is a standalone novella rather than a full-length book, and it carries no ISBN, consistent with the EPUB metadata."
+    }
+  ],
+  "truth_disagreements": []
+}

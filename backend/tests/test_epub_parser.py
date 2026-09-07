@@ -9,7 +9,7 @@ from app.providers.epub.errors import (
     EpubTooManyEntriesError,
 )
 from app.providers.epub.parser import parse_epub, parse_epub_safely
-from tests.epub_fixtures import build_epub
+from tests.epub_fixtures import build_epub, build_rich_epub
 
 GENEROUS = dict(max_entry_bytes=10_000_000, max_total_bytes=50_000_000, max_entries=1000)
 
@@ -41,6 +41,75 @@ def test_extracts_text_snippet_without_tags() -> None:
 
     assert "dark and stormy night" in evidence.text_snippet
     assert "<" not in evidence.text_snippet
+
+
+def test_stage_d_extracts_publisher_date_subjects_and_all_isbns() -> None:
+    data = build_rich_epub(
+        title="Ancillary Justice",
+        authors=("Ann Leckie",),
+        description="A soldier seeks revenge across a galactic empire.",
+        publisher="Orbit Books",
+        pub_date="2013-10-01",
+        subjects=("Science Fiction", "Space Opera"),
+        identifiers=("urn:isbn:9780316246620", "9780356502403"),
+        source="urn:isbn:031624662X",
+    )
+
+    ev = parse_epub(data, **GENEROUS)
+
+    assert ev.publisher == "Orbit Books"
+    assert ev.pub_date == "2013-10-01"
+    assert ev.subjects == ["Science Fiction", "Space Opera"]
+    assert ev.description.startswith("A soldier seeks revenge")
+    # both <dc:identifier> ISBNs and the <dc:source> ISBN, deduped, in order
+    assert ev.all_isbns == ["9780316246620", "9780356502403", "031624662X"]
+    assert ev.isbn13 == "9780316246620"
+    assert ev.isbn10 == "031624662X"
+
+
+def test_stage_d_text_snippet_skips_cover_and_takes_front_matter_plus_body() -> None:
+    copyright_page = (
+        "First published in 2013 by Orbit Books. Copyright Ann Leckie. "
+        "ISBN 978-0-316-24662-0. All rights reserved. " * 4
+    )
+    chapter = "The body of Lieutenant Awn lay naked and cooling in the snow. " * 10
+    data = build_rich_epub(
+        spine=(
+            ("cover.xhtml", "<img src='c.jpg'/>"),
+            ("titlepage.xhtml", "<h1>Ancillary Justice</h1>"),
+            ("copyright.xhtml", f"<p>{copyright_page}</p>"),
+            ("chapter1.xhtml", f"<p>{chapter}</p>"),
+            ("chapter2.xhtml", "<p>later chapter</p>"),
+        ),
+    )
+
+    ev = parse_epub(data, **GENEROUS)
+
+    assert "[front matter]" in ev.text_snippet
+    assert "First published in 2013" in ev.text_snippet
+    assert "Ancillary Justice</h1>" not in ev.text_snippet  # titlepage skipped, tags stripped
+    assert "body of Lieutenant Awn" in ev.text_snippet
+
+
+def test_stage_d_text_snippet_falls_back_for_a_tiny_book() -> None:
+    data = build_epub(
+        chapter_text="<html><body><p>It was a dark and stormy night.</p></body></html>"
+    )
+    ev = parse_epub(data, **GENEROUS)
+    assert "dark and stormy night" in ev.text_snippet
+
+
+def test_stage_d_nav_document_is_skipped() -> None:
+    data = build_rich_epub(
+        spine=(
+            ("nav.xhtml", "<nav>lots of table of contents entries here " * 20 + "</nav>"),
+            ("chapter1.xhtml", "<p>" + "Real prose begins here now. " * 20 + "</p>"),
+        ),
+        manifest_extra_props={"nav.xhtml": "nav"},
+    )
+    ev = parse_epub(data, **GENEROUS)
+    assert "table of contents" not in ev.text_snippet
+    assert "Real prose begins here" in ev.text_snippet
 
 
 def test_multiple_authors() -> None:

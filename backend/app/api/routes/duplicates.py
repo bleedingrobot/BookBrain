@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_drive_provider
 from app.data.db import get_db
-from app.data.repositories.settings_repository import SettingsRepository
-from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.schemas.duplicates import ClearDuplicatesResult, DuplicateGroup
-from app.services.auth_service import AuthService, get_auth_service
-from app.services.duplicate_service import clear_duplicates, list_duplicate_groups
+from app.services.duplicate_service import (
+    DuplicateNotClearableError,
+    clear_duplicates,
+    clear_one_duplicate,
+    list_duplicate_groups,
+    unflag_duplicate,
+)
 
 router = APIRouter(prefix="/duplicates", tags=["duplicates"])
 
@@ -20,12 +24,26 @@ async def get_duplicates(db: AsyncSession = Depends(get_db)) -> list[DuplicateGr
 @router.post("/clear", response_model=ClearDuplicatesResult)
 async def clear_duplicates_route(
     db: AsyncSession = Depends(get_db),
-    auth: AuthService = Depends(get_auth_service),
+    provider: DriveProvider = Depends(require_drive_provider),
 ) -> ClearDuplicatesResult:
-    settings_repo = SettingsRepository(db)
-    creds = await auth.get_credentials(settings_repo)
-    if creds is None:
-        raise HTTPException(status_code=401, detail="not connected to Google Drive")
-
-    provider = DriveProvider(build_drive_service(creds))
     return await clear_duplicates(db, provider)
+
+
+@router.post("/{file_id}/clear", response_model=ClearDuplicatesResult)
+async def clear_one_duplicate_route(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> ClearDuplicatesResult:
+    try:
+        return await clear_one_duplicate(db, provider, file_id)
+    except DuplicateNotClearableError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{file_id}/unflag", status_code=204)
+async def unflag_duplicate_route(file_id: int, db: AsyncSession = Depends(get_db)) -> None:
+    try:
+        await unflag_duplicate(db, file_id)
+    except DuplicateNotClearableError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

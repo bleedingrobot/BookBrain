@@ -19,7 +19,7 @@ from app.data.models import (
 )
 from app.providers.drive.provider import DriveProvider
 from app.schemas.reviews import CandidateItem, CorrectReviewRequest, EvidenceItem, ReviewDetail, ReviewSummary
-from app.services.book_repository import resolve_book
+from app.services.book_repository import get_book_write_lock, resolve_book
 from app.services.text_match import normalize
 
 # Structural issues (a Drive-side conflict, not an identification problem) are
@@ -139,15 +139,21 @@ async def correct(session: AsyncSession, review_id: int, body: CorrectReviewRequ
     review.resolved_at = datetime.now(UTC)
 
     isbn13, isbn10 = await _identifiers_for_book(session, file_row.book_id)
-    book = await resolve_book(
-        session,
-        title=body.title,
-        author=body.author,
-        series=body.series,
-        series_number=body.series_number,
-        isbn13=isbn13,
-        isbn10=isbn10,
-    )
+    # Shared with scan_service's per-file pipeline: resolve_book's fuzzy
+    # Author/Series/Book find-or-create must serialize against a concurrent
+    # scan doing the same, or a human correction and an in-flight scan can
+    # each decide the same not-yet-seen author doesn't exist yet and both
+    # create it.
+    async with get_book_write_lock():
+        book = await resolve_book(
+            session,
+            title=body.title,
+            author=body.author,
+            series=body.series,
+            series_number=body.series_number,
+            isbn13=isbn13,
+            isbn10=isbn10,
+        )
     file_row.book_id = book.id
     if file_row.status_reason not in _STRUCTURAL_REASONS:
         file_row.status = FileStatus.inbox
@@ -158,6 +164,86 @@ async def correct(session: AsyncSession, review_id: int, body: CorrectReviewRequ
 
     await session.commit()
     return review
+
+
+# How many recent corrected rows to pull before ranking/filtering in Python.
+# The table is small (one row per human correction ever made) and we only
+# ever surface `limit` of them; 200 is comfortably more than enough history
+# to find author/series-relevant examples without loading the whole table.
+_RECENT_CORRECTIONS_SCAN = 200
+_CORRECTION_KEYS = ("title", "author", "series", "series_number")
+
+
+async def recent_corrections(
+    session: AsyncSession,
+    *,
+    limit: int = 5,
+    author: str | None = None,
+    series: str | None = None,
+) -> list[dict]:
+    """Recent human `/correct` edits as ``{"proposed": {...}, "corrected":
+    {...}}`` pairs (each inner dict has title/author/series/series_number),
+    newest first, for feeding the identify prompt a few worked examples of
+    "what a human fixed last time".
+
+    Rows whose proposed **or** corrected author/series matches the book being
+    identified (normalized) sort ahead of the rest; within each group the
+    newest-first order is kept. No-op corrections — where nothing actually
+    changed — are dropped (they teach nothing). At most ``limit`` returned.
+
+    Both `/correct` writers land here: `review_service.correct` (proposed =
+    the AI's original proposal) and `file_service.correct_file` (proposed =
+    the previous book state). Either is a valid wrong→right pair.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(Review)
+                .where(Review.status == ReviewStatus.corrected)
+                .order_by(Review.resolved_at.desc())
+                .limit(_RECENT_CORRECTIONS_SCAN)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    want_author, want_series = normalize(author), normalize(series)
+    ranked: list[tuple[bool, dict]] = []
+    for review in rows:
+        corrected = _correction_fields(review.correction_json)
+        if corrected is None:
+            continue
+        proposed = _correction_fields(review.proposed_json) or dict.fromkeys(_CORRECTION_KEYS)
+        if _correction_is_noop(proposed, corrected):
+            continue
+        relevant = (
+            bool(want_author)
+            and want_author in {normalize(proposed["author"]), normalize(corrected["author"])}
+        ) or (
+            bool(want_series)
+            and want_series in {normalize(proposed["series"]), normalize(corrected["series"])}
+        )
+        ranked.append((relevant, {"proposed": proposed, "corrected": corrected}))
+
+    # Stable sort: relevant rows first, newest-first order preserved within each.
+    ranked.sort(key=lambda pair: not pair[0])
+    return [pair[1] for pair in ranked[:limit]]
+
+
+def _correction_fields(payload: dict | None) -> dict | None:
+    if not payload:
+        return None
+    return {key: payload.get(key) for key in _CORRECTION_KEYS}
+
+
+def _correction_is_noop(proposed: dict, corrected: dict) -> bool:
+    return (
+        normalize(proposed["title"]) == normalize(corrected["title"])
+        and normalize(proposed["author"]) == normalize(corrected["author"])
+        and normalize(proposed["series"]) == normalize(corrected["series"])
+        and proposed["series_number"] == corrected["series_number"]
+    )
 
 
 async def _create_alias_rules(session: AsyncSession, review: Review, body: CorrectReviewRequest) -> None:

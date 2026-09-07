@@ -4,8 +4,17 @@ export interface DriveFile {
 }
 
 export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
-const EBOOK_EXTENSIONS = ['.epub', '.kpub']
+const EBOOK_EXTENSIONS = ['.epub', '.kpub', '.cbz', '.cbr']
 const WALK_CONCURRENCY = 8
+
+// The Drive helpers throw a plain Error with one of these messages on an
+// expired/invalid token — used to switch the UI into "reconnect" mode.
+export function isAuthError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    /sign-in expired|invalid credentials|invalid authentication|\b401\b/i.test(err.message)
+  )
+}
 
 export function isSupportedEbook(name: string): boolean {
   const lower = name.toLowerCase()
@@ -135,6 +144,101 @@ export async function listAllChanges(
   return { changes, newStartPageToken }
 }
 
+// Every non-folder file directly in `folderId` (not recursive) — used to
+// show what's actually sitting in a device's Rakuten Kobo sync folder.
+export async function listFolderContents(token: string, folderId: string): Promise<DriveFile[]> {
+  const files: DriveFile[] = []
+  let pageToken: string | undefined
+  do {
+    const query = encodeURIComponent(
+      `'${folderId}' in parents and trashed=false and mimeType != '${FOLDER_MIME_TYPE}'`,
+    )
+    const pageParam = pageToken ? `&pageToken=${pageToken}` : ''
+    const data = (await driveFetch(
+      token,
+      `files?q=${query}&fields=nextPageToken,files(id,name)&pageSize=1000${pageParam}`,
+    )) as { files: DriveFile[]; nextPageToken?: string }
+    files.push(...data.files)
+    pageToken = data.nextPageToken
+  } while (pageToken)
+  return files
+}
+
+// Reads a single JSON file by name from a folder. Returns its parsed
+// content and Drive id + modifiedTime (for change detection), or null.
+export async function readJsonFile<T>(
+  token: string,
+  folderId: string,
+  name: string,
+): Promise<{ id: string; modifiedTime: string; content: T } | null> {
+  const q = encodeURIComponent(`'${folderId}' in parents and name = '${name}' and trashed = false`)
+  const listResp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!listResp.ok) throw new Error(`Drive API error (${listResp.status})`)
+  const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
+  if (files.length === 0) return null
+  const dl = await fetch(`https://www.googleapis.com/drive/v3/files/${files[0].id}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!dl.ok) throw new Error(`Drive API error (${dl.status})`)
+  return { id: files[0].id, modifiedTime: files[0].modifiedTime, content: (await dl.json()) as T }
+}
+
+// Creates or overwrites a JSON file in a folder. Returns the file's id.
+export async function writeJsonFile(
+  token: string,
+  folderId: string,
+  name: string,
+  content: unknown,
+  existingId: string | null,
+): Promise<string> {
+  const body = JSON.stringify(content)
+  if (existingId) {
+    const resp = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&fields=id`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body,
+      },
+    )
+    if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
+    return existingId
+  }
+  const boundary = 'bookbrain' + Math.random().toString(36).slice(2)
+  const multipart =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify({ name, parents: [folderId] })}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
+  const resp = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body: multipart,
+    },
+  )
+  if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
+  return ((await resp.json()) as { id: string }).id
+}
+
+export async function trashFile(token: string, fileId: string): Promise<void> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+    throw new Error(`Failed to remove file (${response.status})`)
+  }
+}
+
 export async function copyFileToFolder(token: string, file: DriveFile, destinationFolderId: string): Promise<void> {
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/copy`, {
     method: 'POST',
@@ -150,14 +254,44 @@ export async function copyFileToFolder(token: string, file: DriveFile, destinati
   }
 }
 
-export async function downloadFile(token: string, file: DriveFile): Promise<void> {
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!response.ok) {
-    throw new Error(`Failed to download ${file.name} (${response.status})`)
+// Raw file bytes from Drive. Shared by downloadFile (save-to-disk) and the
+// EPUB reader (which caches the blob in IndexedDB, see lib/bookCache.ts).
+export async function fetchDriveBlob(token: string, fileId: string): Promise<Blob> {
+  const base = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+  const auth = { Authorization: `Bearer ${token}` }
+  let response: Response
+  try {
+    response = await fetch(base, { headers: auth })
+  } catch {
+    // network down / CORS / offline — fetch() rejects with a bare TypeError
+    throw new Error("Couldn't reach Google Drive — check your connection.")
   }
-  const blob = await response.blob()
+  // Google flags some files as "abusive" and refuses a plain download; a
+  // second request with acknowledgeAbuse=true goes through.
+  if (response.status === 403) {
+    const body = await response.clone().text().catch(() => '')
+    if (/abuse/i.test(body)) {
+      response = await fetch(`${base}&acknowledgeAbuse=true`, { headers: auth }).catch(() => response)
+    }
+  }
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+    if (response.status === 404) throw new Error('This file is no longer in your Drive library.')
+    throw new Error(`Google Drive refused the download (error ${response.status}).`)
+  }
+  return response.blob()
+}
+
+// A Blob is a ZIP (EPUBs are ZIP containers) — cheap guard against handing a
+// Drive error page / truncated download to the EPUB renderer.
+export async function looksLikeZip(blob: Blob): Promise<boolean> {
+  if (blob.size < 4) return false
+  const sig = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+  return sig[0] === 0x50 && sig[1] === 0x4b // "PK"
+}
+
+export async function downloadFile(token: string, file: DriveFile): Promise<void> {
+  const blob = await fetchDriveBlob(token, file.id)
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

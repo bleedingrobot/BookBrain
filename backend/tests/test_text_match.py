@@ -1,4 +1,70 @@
-from app.services.text_match import normalize, normalize_title, texts_match, titles_match
+from app.services.text_match import (
+    normalize,
+    normalize_title,
+    normalize_title_strict,
+    texts_match,
+    title_similarity,
+    titles_match,
+)
+
+
+def test_title_similarity_separates_same_series_different_book() -> None:
+    # Both pass titles_match (colon-strip) but are different books.
+    assert titles_match("Mistborn: The Final Empire", "Mistborn: The Well of Ascension")
+    assert title_similarity("Mistborn: The Final Empire", "Mistborn: The Well of Ascension") < 0.8
+
+
+def test_title_similarity_tolerates_a_leading_article() -> None:
+    assert title_similarity("The Hobbit", "Hobbit") == 1.0
+    assert title_similarity("Dune", "Dune") == 1.0
+
+
+def test_title_similarity_empty() -> None:
+    assert title_similarity(None, "x") == 0.0
+    assert title_similarity("x", "") == 0.0
+
+
+import pytest
+
+from app.services.text_match import normalize_person_name, person_sort_name
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("J.R.R. Tolkien", "J. R. R. Tolkien"),
+        ("J.R.R. Tolkien", "Tolkien, J.R.R."),
+        ("J. R. R. Tolkien", "Tolkien, J. R. R."),
+        ("Iain M. Banks", "Iain Banks"),
+        ("Ursula K. Le Guin", "Le Guin, Ursula K."),
+        ("Ursula K. Le Guin", "Ursula Le Guin"),
+        ("Brandon Sanderson", "Sanderson, Brandon"),
+        ("Margaret Weis & Tracy Hickman", "Margaret Weis"),
+        ("Weis, Margaret", "Margaret Weis"),
+    ],
+)
+def test_normalize_person_name_unifies_variants(a, b) -> None:
+    assert normalize_person_name(a) == normalize_person_name(b)
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("James Smith", "Jane Smith"),
+        ("George R. R. Martin", "George Martin"),
+        ("Frank Herbert", "Brian Herbert"),
+    ],
+)
+def test_normalize_person_name_keeps_distinct_people_distinct(a, b) -> None:
+    assert normalize_person_name(a) != normalize_person_name(b)
+
+
+def test_person_sort_name() -> None:
+    assert person_sort_name("Brandon Sanderson") == "Sanderson, Brandon"
+    assert person_sort_name("Ursula K. Le Guin") == "Le Guin, Ursula K."
+    assert person_sort_name("Sanderson, Brandon") == "Sanderson, Brandon"
+    assert person_sort_name("Plato") == "Plato"
+    assert person_sort_name("") == ""
 
 
 def test_normalize_strips_punctuation_and_case() -> None:
@@ -89,3 +155,37 @@ def test_titles_match_ignores_differently_formatted_series_suffixes() -> None:
     assert titles_match(
         "A Reaper at the Gates (An Ember in the Ashes 03)", "A Reaper at the Gates"
     ) is True
+
+
+def test_normalize_title_strict_keeps_colon_subtitle() -> None:
+    # The distinguishing part of "<Series>: <Book>" titles is *after* the
+    # colon — the strict normalizer must keep it so two different books in a
+    # series don't collapse onto one key.
+    assert normalize_title_strict("Mistborn: The Final Empire") == "mistbornthefinalempire"
+    assert (
+        normalize_title_strict("Mistborn: The Well of Ascension")
+        == "mistbornthewellofascension"
+    )
+    assert normalize_title_strict("Mistborn: The Final Empire") != normalize_title_strict(
+        "Mistborn: The Well of Ascension"
+    )
+
+
+def test_normalize_title_strict_still_folds_case_article_and_trailing_parens() -> None:
+    assert normalize_title_strict("The Hob's Bargain") == normalize_title_strict("The Hob's bargain")
+    assert normalize_title_strict("A Study in Scarlet") == "studyinscarlet"
+    assert (
+        normalize_title_strict("Heir to the Empire (Thrawn Trilogy 1)")
+        != normalize_title_strict("Dark Force Rising (Thrawn Trilogy 2)")
+    )
+
+
+def test_normalize_title_strict_does_not_merge_series_prefix_books() -> None:
+    assert normalize_title_strict("Star Wars: Heir to the Empire") != normalize_title_strict(
+        "Star Wars: Dark Force Rising"
+    )
+
+
+def test_normalize_title_strict_empty() -> None:
+    assert normalize_title_strict(None) == ""
+    assert normalize_title_strict("") == ""

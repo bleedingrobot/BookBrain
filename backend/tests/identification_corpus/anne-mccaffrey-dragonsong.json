@@ -1,0 +1,96 @@
+{
+  "id": "anne-mccaffrey-dragonsong",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Anne McCaffrey / Dragonsong / series=Pern (Harper Hall Trilogy) #1.0 (model=claude-opus-5, conf=15)",
+  "source": {
+    "file_id": 2398,
+    "drive_file_id": "1qmi9bBkbRPoi3Y3Vt6797FPhR9XaBEjA",
+    "filename": "Anne McCaffrey - Pern 03 - Dragonsong.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 15
+  },
+  "filename": "Anne McCaffrey - Pern 03 - Dragonsong.epub",
+  "evidence": {
+    "title": "input",
+    "authors": [
+      "Unknown"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Dragonsong",
+    "author": "Anne McCaffrey",
+    "series": "Pern (Harper Hall Trilogy)",
+    "series_number": 1,
+    "ai_confidence": 88,
+    "reasoning_summary": "EPUB internal metadata is empty/placeholder (\"input\", Unknown author), so the filename is the only usable evidence: \"Anne McCaffrey - Pern 03 - Dragonsong\". Dragonsong is a well-known Anne McCaffrey novel, book 1 of the Harper Hall of Pern trilogy and often numbered 3 in publication order of the broader Dragonriders of Pern series (hence \"Pern 03\"). No provider candidates were available to confirm edition/ISBN, and series numbering is ambiguous between Harper Hall (#1) and overall Pern (#3).",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Dragonsong",
+    "author": "Anne McCaffrey",
+    "series": "Harper Hall Trilogy",
+    "series_number": 1.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "input",
+      "author": "Unknown",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Dragonriders of Pern",
+      "series_number": 1.0,
+      "url": "https://www.wikidata.org/wiki/Q3221026",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Harper Hall",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/book/show/28541.Dragonsong",
+      "note": "conf=0.96; Filename labels it \"Pern 03\" (its slot in the broader Dragonriders of Pern publication order), but the tight sub-series is the Harper Hall Trilogy, where Dragonsong is volume 1 (followed by Dragonsinger and Dragondrums). ISBN 0689860080 for the Simon & Schuster edition."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Dragonsong",
+      "author": "Anne McCaffrey",
+      "series": "Harper Hall Trilogy",
+      "series_number": 1.0,
+      "url": "https://www.amazon.com/Dragonsong-Harper-Hall-Trilogy-Book/dp/0689860080",
+      "note": "conf=0.96; Title and author confirmed. The proposed series string \"Pern (Harper Hall Trilogy)\" mixes the broad universe with a parenthetical; the tight, actually-published sub-series is the Harper Hall Trilogy, in which Dragonsong is book 1 (publisher listings: \"Harper Hall Trilogy, Book 1\"). The filename's \"Pern 03\" reflects an internal-chronology/publication numbering of the wider Dragonriders of Pern universe, not this book's position in the trilogy."
+    }
+  ],
+  "truth_disagreements": [
+    "series: chose 'Harper Hall Trilogy', wikidata said 'Dragonriders of Pern'"
+  ]
+}
