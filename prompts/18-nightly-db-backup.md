@@ -69,9 +69,17 @@ except Exception as exc:
     steps.append(f"backup: FAILED — {exc}")
 ```
 
-Best-effort — a Drive hiccup must not abort the scan. No toggle in v1 (the
-nightly job is already opt-in; the manual button covers ad-hoc). Note in the
-prompt: add a `backup_to_drive` setting if James wants nightly-without-backup.
+Best-effort — a Drive hiccup must not abort the scan.
+
+**Follow-up shipped same day:** James's nightly run is off and he wanted
+backups on their own schedule. Added `app/jobs/backup_job.py`
+(`run_backup_job`, mirrors `run_nightly_job` — creds/folder resolution,
+`job_runs` row with `kind="backup"`, standalone `python -m app.jobs.backup_job`
+entrypoint), `BACKUP_RUN_ENABLED`/`BACKUP_RUN_HOUR` settings, `scheduler.py`
+`sync_backup_schedule` (job id `backup-run`, default hour 3) wired into the
+lifespan, `GET/PUT /jobs/backup`, and an enable+hour control in the Settings
+Backups block. Independent of nightly; with both on a same-day backup just
+replaces the earlier file.
 
 ### D. Settings page (`frontend/src/pages/Settings.tsx`)
 

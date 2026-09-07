@@ -38,7 +38,7 @@ import type {
 } from '../types/wishlist'
 import type { ScanJobStatus } from '../types/scan'
 import type { SystemStatus } from '../types/system'
-import type { NightlySettings } from '../types/jobs'
+import type { BackupSettings, NightlySettings } from '../types/jobs'
 
 class ApiError extends Error {
   status: number
@@ -256,6 +256,13 @@ export const api = {
   getNightlySettings: () => request<NightlySettings>('/jobs/nightly'),
   updateNightlySettings: (enabled: boolean, hour: number) =>
     request<NightlySettings>('/jobs/nightly', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, hour }),
+    }),
+
+  getBackupSchedule: () => request<BackupSettings>('/jobs/backup'),
+  updateBackupSchedule: (enabled: boolean, hour: number) =>
+    request<BackupSettings>('/jobs/backup', {
       method: 'PUT',
       body: JSON.stringify({ enabled, hour }),
     }),

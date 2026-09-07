@@ -14,3 +14,9 @@ class NightlySettings(BaseModel):
     enabled: bool
     hour: int = Field(ge=0, le=23)
     last_run: NightlyRunInfo | None = None
+
+
+class BackupSettings(BaseModel):
+    enabled: bool
+    hour: int = Field(ge=0, le=23)
+    last_run: NightlyRunInfo | None = None

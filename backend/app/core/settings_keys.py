@@ -27,6 +27,13 @@ ORGANIZE_HOLD_HOURS = "organize_hold_hours"
 NIGHTLY_RUN_ENABLED = "nightly_run_enabled"
 NIGHTLY_RUN_HOUR = "nightly_run_hour"
 
+# Scheduled DB backup to Drive (backup_service), on its own toggle + hour so
+# it can run without the full nightly pipeline. The nightly run also takes a
+# backup as its first step — with both on, a same-day backup just replaces the
+# earlier file, so it's harmless.
+BACKUP_RUN_ENABLED = "backup_run_enabled"
+BACKUP_RUN_HOUR = "backup_run_hour"
+
 # Cached Bulk Re-identify Audit report (reident_audit_service). A JSON blob —
 # expensive to build (a provider lookup per organised book), so it's stored
 # and only regenerated on demand, like the nightly job_runs trail. Carries

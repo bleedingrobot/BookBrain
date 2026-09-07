@@ -12,3 +12,5 @@ export interface NightlySettings {
   hour: number
   last_run: NightlyRunInfo | null
 }
+
+export type BackupSettings = NightlySettings

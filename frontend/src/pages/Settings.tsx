@@ -35,6 +35,16 @@ export function Settings() {
     queryFn: api.listBackups,
     enabled: authStatus.data?.connected === true,
   })
+  const backupSchedule = useQuery({
+    queryKey: ['backup-schedule'],
+    queryFn: api.getBackupSchedule,
+  })
+
+  const updateBackupSchedule = useMutation({
+    mutationFn: ({ enabled, hour }: { enabled: boolean; hour: number }) =>
+      api.updateBackupSchedule(enabled, hour),
+    onSuccess: (data) => queryClient.setQueryData(['backup-schedule'], data),
+  })
 
   const updateNightly = useMutation({
     mutationFn: ({ enabled, hour }: { enabled: boolean; hour: number }) =>
@@ -434,6 +444,51 @@ export function Settings() {
           library folder on each nightly run (last 7 kept). Restore steps are in{' '}
           <span className="font-mono text-xs">RESTORE.md</span>.
         </p>
+
+        {backupSchedule.data && (
+          <div className="mt-3 space-y-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={backupSchedule.data.enabled}
+                disabled={updateBackupSchedule.isPending}
+                onChange={(e) =>
+                  updateBackupSchedule.mutate({
+                    enabled: e.target.checked,
+                    hour: backupSchedule.data!.hour,
+                  })
+                }
+              />
+              Back up automatically every day
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-neutral-500">At</span>
+              <select
+                className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                value={backupSchedule.data.hour}
+                disabled={!backupSchedule.data.enabled || updateBackupSchedule.isPending}
+                onChange={(e) =>
+                  updateBackupSchedule.mutate({
+                    enabled: backupSchedule.data!.enabled,
+                    hour: Number(e.target.value),
+                  })
+                }
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+              <span className="text-neutral-400">machine local time</span>
+            </label>
+            <p className="text-xs text-neutral-400">
+              Independent of the nightly run. Needs the machine awake at that hour; if it's
+              off, run <span className="font-mono">python -m app.jobs.backup_job</span> or
+              just click below.
+            </p>
+          </div>
+        )}
 
         <div className="mt-3 space-y-3 text-sm">
           <div className="flex flex-wrap items-center gap-3">

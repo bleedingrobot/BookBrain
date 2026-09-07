@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.core.settings_keys import NIGHTLY_RUN_ENABLED, NIGHTLY_RUN_HOUR
+from app.core.settings_keys import (
+    BACKUP_RUN_ENABLED,
+    BACKUP_RUN_HOUR,
+    NIGHTLY_RUN_ENABLED,
+    NIGHTLY_RUN_HOUR,
+)
 from app.data.repositories.settings_repository import SettingsRepository
 from app.jobs import scheduler as sched
 
@@ -70,3 +75,27 @@ async def test_sync_adds_removes_and_reschedules_the_job(db_session):
     await repo.set(NIGHTLY_RUN_ENABLED, "false")
     await sched.sync_nightly_schedule(scheduler)
     assert scheduler.get_job(sched._NIGHTLY_JOB_ID) is None
+
+
+async def test_backup_schedule_is_independent_of_the_nightly_one(db_session):
+    scheduler = sched.create_scheduler()
+    repo = SettingsRepository(db_session)
+
+    # backup on, nightly off -> only the backup job exists
+    await repo.set(BACKUP_RUN_ENABLED, "true")
+    await repo.set(BACKUP_RUN_HOUR, "4")
+    await sched.sync_backup_schedule(scheduler)
+    await sched.sync_nightly_schedule(scheduler)
+
+    assert scheduler.get_job(sched._NIGHTLY_JOB_ID) is None
+    job = scheduler.get_job(sched._BACKUP_JOB_ID)
+    assert job is not None and "hour='4'" in str(job.trigger)
+
+    await repo.set(BACKUP_RUN_ENABLED, "false")
+    await sched.sync_backup_schedule(scheduler)
+    assert scheduler.get_job(sched._BACKUP_JOB_ID) is None
+
+
+async def test_read_backup_config_defaults(db_session):
+    enabled, hour = await sched.read_backup_config()
+    assert enabled is False and hour == sched.DEFAULT_BACKUP_HOUR

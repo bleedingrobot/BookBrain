@@ -235,9 +235,12 @@ mis-identification guards). The rest of that session's ideas, for later:
     `backup: FAILED` in the summary but doesn't abort the scan.
     `POST /api/library/backup` + `GET /api/library/backups` + a "Backups" block
     in Settings (Back up now, the last 7 with Drive links, a "last backup N
-    days ago" warning). `RESTORE.md` at repo root. No toggle yet — nightly is
-    already opt-in; add a `backup_to_drive` setting if nightly-without-backup
-    is ever wanted.
+    days ago" warning). `RESTORE.md` at repo root. **Its own schedule** —
+    `BACKUP_RUN_ENABLED`/`_HOUR`, `app/jobs/backup_job.py` +
+    `scheduler.sync_backup_schedule` (job `backup-run`) + standalone
+    `python -m app.jobs.backup_job` + `GET/PUT /jobs/backup` + a toggle in the
+    Settings Backups block — so backups run without the full nightly pipeline
+    (which also takes one as its first step; both on = same-day replace).
   - **Library-health panel** — mostly queries that already exist: N with no
     cover, N with no description, N stuck in review > 30 days, N series with
     gaps, N low-confidence auto-organised, folder-drift count. One screen for

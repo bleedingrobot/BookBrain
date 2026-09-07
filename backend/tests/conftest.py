@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.config import get_settings
 from app.data.db import Base
 from app.data import models  # noqa: F401  (registers models on Base.metadata)
+from app.jobs.backup_job import reset_backup_lock
 from app.jobs.nightly import reset_nightly_lock
 from app.services import book_repository
 from app.services.metadata_writeback_service import reset_write_lock as reset_metadata_writeback_lock
@@ -29,6 +30,7 @@ def _reset_shared_singletons():
     book_repository.reset_book_write_lock()
     get_folder_path_cache().clear()
     reset_nightly_lock()
+    reset_backup_lock()
     reset_metadata_writeback_lock()
 
 
