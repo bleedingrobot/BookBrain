@@ -4,6 +4,7 @@ import {
   isSupportedEbook,
   listAllChanges,
   listLibraryTree,
+  StalePageTokenError,
   type DriveChange,
   type DriveFile,
 } from './drive'
@@ -154,10 +155,16 @@ export async function syncLibrary(
     const cache: LibraryCache = { ...applyChanges(existing, changes), pageToken: newStartPageToken }
     saveCache(cache)
     return { cache, rebuilt: false }
-  } catch {
-    // The sync token can go stale — Drive only retains change history for
-    // a limited window. Fall back to a full rebuild instead of surfacing
-    // an error the user can't do anything about.
-    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  } catch (err) {
+    // A *stale sync token* is the one thing a full rebuild fixes — Drive only
+    // keeps change history for a limited window. Every other failure (a
+    // transient 500, offline, a rate-limit) must surface: a blind rebuild
+    // here would fire hundreds of Drive calls and hide the real problem. The
+    // caller (useLibrary.runSync) keeps showing the last cached list + an
+    // error, and the 24h auto-rebuild above is the backstop for silent drift.
+    if (err instanceof StalePageTokenError) {
+      return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+    }
+    throw err
   }
 }

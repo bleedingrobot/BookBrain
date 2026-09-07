@@ -21,13 +21,37 @@ export function isSupportedEbook(name: string): boolean {
   return EBOOK_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 
+export class DriveApiError extends Error {
+  status: number
+  reason?: string
+  constructor(message: string, status: number, reason?: string) {
+    super(message)
+    this.status = status
+    this.reason = reason
+  }
+}
+
+// The changes sync token expired (Drive only keeps change history for a
+// limited window). This — and only this — is legitimately fixed by a full
+// tree rebuild; every other sync error should surface, not silently rebuild.
+export class StalePageTokenError extends Error {}
+
 async function driveFetch(token: string, path: string): Promise<unknown> {
   const response = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!response.ok) {
     if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
-    throw new Error(`Drive API error (${response.status})`)
+    let reason: string | undefined
+    try {
+      const body = (await response.json()) as {
+        error?: { errors?: { reason?: string }[]; status?: string }
+      }
+      reason = body?.error?.errors?.[0]?.reason ?? body?.error?.status
+    } catch {
+      // no / non-JSON body
+    }
+    throw new DriveApiError(`Drive API error (${response.status})`, response.status, reason)
   }
   return response.json()
 }
@@ -130,10 +154,24 @@ export async function listAllChanges(
   let newStartPageToken = startPageToken
 
   while (true) {
-    const data = (await driveFetch(
-      token,
-      `changes?pageToken=${encodeURIComponent(pageToken)}&pageSize=1000&fields=${CHANGE_FIELDS}`,
-    )) as { changes: DriveChange[]; nextPageToken?: string; newStartPageToken?: string }
+    let data: { changes: DriveChange[]; nextPageToken?: string; newStartPageToken?: string }
+    try {
+      data = (await driveFetch(
+        token,
+        `changes?pageToken=${encodeURIComponent(pageToken)}&pageSize=1000&fields=${CHANGE_FIELDS}`,
+      )) as typeof data
+    } catch (err) {
+      // A stale/invalid page token comes back as 410 (sometimes 404) with
+      // reason "pageTokenExpired". That — and only that — means "your token
+      // is too old, do a full rebuild"; anything else is a real error.
+      if (
+        err instanceof DriveApiError &&
+        (err.reason === 'pageTokenExpired' || err.status === 410)
+      ) {
+        throw new StalePageTokenError('Drive sync token expired')
+      }
+      throw err
+    }
 
     changes.push(...data.changes)
     if (data.newStartPageToken) newStartPageToken = data.newStartPageToken
