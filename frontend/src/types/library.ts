@@ -34,6 +34,20 @@ export interface RebuildEstimate {
   estimated: boolean
 }
 
+export interface BackupResult {
+  db_name: string
+  total_bytes: number
+  kept: number
+  trashed: number
+}
+
+export interface BackupInfo {
+  name: string
+  size_bytes: number
+  created_at: string
+  view_url: string | null
+}
+
 export interface RecentlyOrganizedItem {
   file_id: number
   operation_id: number

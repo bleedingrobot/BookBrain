@@ -8,10 +8,11 @@ from app.providers.drive.provider import DriveProvider
 from app.schemas.covers import CoverJobStatus
 from app.schemas.descriptions import DescriptionBackfillEstimate, DescriptionJobStatus
 from app.schemas.library import LibraryExportResult, RebuildEstimate
+from app.schemas.backup import BackupInfo, BackupResult
 from app.schemas.metadata_writeback import MetadataWritebackJobStatus
 from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
-from app.services import library_service, recently_organized_service
+from app.services import backup_service, library_service, recently_organized_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
 from app.services.description_service import (
@@ -205,6 +206,41 @@ async def get_embedded_metadata_status(
     if status is None:
         raise HTTPException(status_code=404, detail="metadata writeback job not found")
     return status
+
+
+async def _backup_prereqs(db: AsyncSession, auth: AuthService):
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    return creds, library.folder_id
+
+
+@router.post("/backup", response_model=BackupResult)
+async def create_backup(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> BackupResult:
+    """Snapshot epub_librarian.db (gzipped + a portable SQL dump) into the
+    library folder's backups/ subfolder now, keeping the last N. The nightly
+    run does this automatically; this is the ad-hoc button."""
+    creds, folder_id = await _backup_prereqs(db, auth)
+    try:
+        return await backup_service.create_backup(creds, folder_id)
+    except Exception as exc:  # noqa: BLE001 - surface the reason to the UI
+        raise HTTPException(status_code=500, detail=f"backup failed: {exc}") from exc
+
+
+@router.get("/backups", response_model=list[BackupInfo])
+async def list_backups(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> list[BackupInfo]:
+    creds, folder_id = await _backup_prereqs(db, auth)
+    return await backup_service.list_backups(creds, folder_id)
 
 
 @router.get("/recently-organized", response_model=RecentlyOrganizedResponse)

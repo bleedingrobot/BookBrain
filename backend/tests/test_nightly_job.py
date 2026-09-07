@@ -45,7 +45,7 @@ class _FakeScanService:
         return self._running
 
 
-def _patch_pipeline(monkeypatch, *, scan=None, covers=None, index=812):
+def _patch_pipeline(monkeypatch, *, scan=None, covers=None, index=812, backup_raises=False):
     scan = scan or _FakeScanService()
     monkeypatch.setattr(nightly, "get_scan_service", lambda: scan)
 
@@ -58,9 +58,15 @@ def _patch_pipeline(monkeypatch, *, scan=None, covers=None, index=812):
     async def fake_pull(creds, inbox_folder_id):
         return "torrents: 0 copied, 0 failed"
 
+    async def fake_backup(creds, library_folder_id, **kwargs):
+        if backup_raises:
+            raise RuntimeError("drive down")
+        return SimpleNamespace(db_name="epub_librarian-2026-09-07.db.gz", total_bytes=4096, kept=7)
+
     monkeypatch.setattr(nightly, "regenerate_covers", fake_covers)
     monkeypatch.setattr(nightly, "regenerate_library_index", fake_index)
     monkeypatch.setattr(nightly, "_pull_local_folder", fake_pull)
+    monkeypatch.setattr(nightly.backup_service, "create_backup", fake_backup)
     return scan
 
 
@@ -85,6 +91,19 @@ async def test_run_nightly_runs_every_phase(monkeypatch):
     assert "scan:" in result.summary
     assert "covers: 3 new" in result.summary
     assert "index: 812 books" in result.summary
+    assert "backup: epub_librarian-2026-09-07.db.gz" in result.summary
+
+
+async def test_run_nightly_backup_failure_does_not_abort_the_run(monkeypatch):
+    _patch_pipeline(monkeypatch, backup_raises=True)
+
+    result = await nightly.run_nightly(
+        object(), inbox_folder_id="inbox-1", library_folder_id="lib-1", pull_local_folder=False
+    )
+
+    assert result.ok
+    assert "backup: FAILED — drive down" in result.summary
+    assert "scan:" in result.summary  # the run carried on
 
 
 async def test_pull_local_folder_noops_on_empty_folder(db_session, monkeypatch, tmp_path):

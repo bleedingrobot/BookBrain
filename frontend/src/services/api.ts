@@ -3,6 +3,8 @@ import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive
 import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
 import type {
+  BackupInfo,
+  BackupResult,
   CoverJobStatus,
   DescriptionBackfillEstimate,
   DescriptionJobStatus,
@@ -212,6 +214,8 @@ export const api = {
     request<DescriptionBackfillEstimate>('/library/descriptions/estimate'),
   getRebuildStatus: (jobId: string) => request<ScanJobStatus>(`/library/rebuild/${jobId}`),
   exportLibrary: () => request<LibraryExportResult>('/library/export', { method: 'POST' }),
+  createBackup: () => request<BackupResult>('/library/backup', { method: 'POST' }),
+  listBackups: () => request<BackupInfo[]>('/library/backups'),
   refreshLibraryIndex: () => request<{ books: number }>('/library/index', { method: 'POST' }),
   generateCovers: () => request<CoverJobStatus>('/library/covers', { method: 'POST' }),
   getCoverStatus: (jobId: string) => request<CoverJobStatus>(`/library/covers/${jobId}`),

@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     # offer copying into the Drive inbox
     torrents_watch_folder: str = r"D:\Torrents"
 
+    # Nightly SQLite backup to Drive (backup_service). How many dated
+    # snapshots to keep in the library folder's backups/ subfolder — older
+    # ones are trashed (recoverable) after each new upload.
+    backup_retention: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:

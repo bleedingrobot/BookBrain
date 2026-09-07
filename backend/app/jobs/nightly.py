@@ -43,7 +43,7 @@ from app.data.models import JobRunStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
-from app.services import job_run_service, local_scan_service
+from app.services import backup_service, job_run_service, local_scan_service
 from app.services.auth_service import get_auth_service
 from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
@@ -135,6 +135,16 @@ async def run_nightly(
         pulled = await _pull_local_folder(creds, inbox_folder_id)
         if pulled:
             steps.append(pulled)
+
+    if library_folder_id:
+        # First, before the night's mutations — a snapshot of the good state.
+        # Best-effort: a Drive hiccup here must not stop the scan.
+        try:
+            r = await backup_service.create_backup(creds, library_folder_id)
+            steps.append(f"backup: {r.db_name} ({r.total_bytes // 1024} KB, kept {r.kept})")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("nightly: DB backup failed")
+            steps.append(f"backup: FAILED — {exc}")
 
     steps.append(await _scan_phase(creds, inbox_folder_id))
 

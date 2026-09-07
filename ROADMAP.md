@@ -225,10 +225,19 @@ mis-identification guards). The rest of that session's ideas, for later:
     *actual* spend. Wrap `AnthropicIdentificationClient` to log every call with
     token counts + computed cost to a table; running month total on the
     Dashboard.
-  - **DB backup to Drive on the nightly run** — `epub_librarian.db` is a single
-    point of failure holding 2,200 books of resolved metadata + human
-    corrections; the Sheets export is lossy. Copy the actual `.db` (or a full
-    JSON dump) into a Drive `backups/` folder nightly, keep the last 7.
+  - ~~**DB backup to Drive on the nightly run**~~ **DONE (2026-09-07, `prompts/18`)**
+    — `app/services/backup_service.py`: `VACUUM INTO` a consistent snapshot (WAL
+    folded in), gzip it + a portable `.sql.gz` `iterdump`, upload both to a
+    `backups/` subfolder of the Drive library folder as
+    `epub_librarian-YYYY-MM-DD.{db,sql}.gz`, keep the last
+    `settings.backup_retention` (7). Runs first in `run_nightly` (before the
+    night's mutations), best-effort — a Drive failure logs + shows
+    `backup: FAILED` in the summary but doesn't abort the scan.
+    `POST /api/library/backup` + `GET /api/library/backups` + a "Backups" block
+    in Settings (Back up now, the last 7 with Drive links, a "last backup N
+    days ago" warning). `RESTORE.md` at repo root. No toggle yet — nightly is
+    already opt-in; add a `backup_to_drive` setting if nightly-without-backup
+    is ever wanted.
   - **Library-health panel** — mostly queries that already exist: N with no
     cover, N with no description, N stuck in review > 30 days, N series with
     gaps, N low-confidence auto-organised, folder-drift count. One screen for

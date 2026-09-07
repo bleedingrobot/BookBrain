@@ -30,11 +30,21 @@ export function Settings() {
   })
   const systemStatus = useQuery({ queryKey: ['system-status'], queryFn: api.getSystemStatus })
   const nightly = useQuery({ queryKey: ['nightly-settings'], queryFn: api.getNightlySettings })
+  const backups = useQuery({
+    queryKey: ['backups'],
+    queryFn: api.listBackups,
+    enabled: authStatus.data?.connected === true,
+  })
 
   const updateNightly = useMutation({
     mutationFn: ({ enabled, hour }: { enabled: boolean; hour: number }) =>
       api.updateNightlySettings(enabled, hour),
     onSuccess: (data) => queryClient.setQueryData(['nightly-settings'], data),
+  })
+
+  const runBackup = useMutation({
+    mutationFn: api.createBackup,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backups'] }),
   })
 
   const disconnect = useMutation({
@@ -413,6 +423,77 @@ export function Settings() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="font-medium">Backups</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          A gzipped snapshot of the database — every book's metadata and every
+          correction you've made — plus a portable SQL dump, saved to a{' '}
+          <span className="font-mono text-xs">backups/</span> folder in your Drive
+          library folder on each nightly run (last 7 kept). Restore steps are in{' '}
+          <span className="font-mono text-xs">RESTORE.md</span>.
+        </p>
+
+        <div className="mt-3 space-y-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="rounded border border-neutral-300 px-3 py-1.5 disabled:opacity-50 dark:border-neutral-700"
+              disabled={runBackup.isPending}
+              onClick={() => runBackup.mutate()}
+            >
+              {runBackup.isPending ? 'Backing up…' : 'Back up now'}
+            </button>
+            {(() => {
+              const newest = backups.data?.[0]
+              const daysOld = newest
+                ? Math.floor((Date.now() - new Date(newest.created_at).getTime()) / 86_400_000)
+                : null
+              if (backups.data && backups.data.length === 0)
+                return <span className="text-amber-700 dark:text-amber-500">No backups yet.</span>
+              if (daysOld !== null && daysOld >= 2)
+                return (
+                  <span className="text-amber-700 dark:text-amber-500">
+                    Last backup {daysOld} days ago.
+                  </span>
+                )
+              return null
+            })()}
+          </div>
+
+          {runBackup.isError && (
+            <p className="text-red-600 dark:text-red-400">
+              {runBackup.error instanceof ApiError ? runBackup.error.message : 'Backup failed.'}
+            </p>
+          )}
+          {runBackup.data && (
+            <p className="text-neutral-500">
+              Saved {runBackup.data.db_name} · {runBackup.data.kept} kept
+              {runBackup.data.trashed > 0 ? ` · ${runBackup.data.trashed} old trashed` : ''}
+            </p>
+          )}
+
+          {backups.data && backups.data.length > 0 && (
+            <ul className="divide-y divide-neutral-100 rounded border border-neutral-200 text-xs dark:divide-neutral-800 dark:border-neutral-800">
+              {backups.data.map((b) => (
+                <li key={b.name} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                  <span>{b.created_at}</span>
+                  <span className="text-neutral-400">{(b.size_bytes / 1024).toFixed(0)} KB</span>
+                  {b.view_url && (
+                    <a
+                      className="underline"
+                      href={b.view_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open in Drive
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <section className="mt-8">
