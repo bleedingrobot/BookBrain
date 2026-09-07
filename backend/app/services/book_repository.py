@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import Author, Book, Identifier, IdentifierType, Series, SeriesAlias
 from app.services.text_match import (
+    is_collaboration,
     normalize_person_name,
     normalize_title_strict,
     normalize_words,
     person_sort_name,
+    primary_author_name,
 )
 
 _ARTICLES = frozenset({"the", "a", "an"})
@@ -107,13 +109,30 @@ async def resolve_book(
     return book_row
 
 
+def _display_name(name: str) -> str:
+    """The name to store on an `Author` row for `name`. A solo credit is kept
+    verbatim (first-seen). A collaboration ("A & B") is stored under its
+    primary author's clean solo name — REVIEW-2026-09-08 policy: co-authored
+    books are filed under the primary author, deterministically, so
+    `_find_or_create_author` must never leave a row named "A & B"."""
+    if is_collaboration(name):
+        primary = primary_author_name(name).strip()
+        if primary and not is_collaboration(primary):
+            return primary
+    return name
+
+
 async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
     # prompts/15 Stage J: match on normalize_person_name so "J.R.R. Tolkien",
     # "J. R. R. Tolkien" and "Tolkien, J.R.R." reuse one row instead of forking
-    # three. Fall back to the old word-set match for a name that normalises to
-    # nothing (so junk names don't all collapse onto one empty key).
+    # three — and, since normalize_person_name keys a collaboration to its
+    # primary author, "Dean Koontz, Kevin J. Anderson" resolves to the "Dean
+    # Koontz" row (the review policy). Fall back to the old word-set match for
+    # a name that normalises to nothing (so junk names don't all collapse onto
+    # one empty key).
     key = normalize_person_name(name)
     fallback = normalize_words(name)
+    display = _display_name(name)
     for existing in (await session.execute(select(Author))).scalars().all():
         matched = (
             normalize_person_name(existing.name) == key
@@ -121,13 +140,17 @@ async def _find_or_create_author(session: AsyncSession, name: str) -> Author:
             else normalize_words(existing.name) == fallback
         )
         if matched:
+            # If this row is still named after a collaboration ("A & B") and we
+            # now have a clean solo form, upgrade the display name — the row
+            # represents the primary author. (Rewriting to a co-author *list*
+            # regressed the corpus in Stage J; rewriting to the clean solo
+            # name is what the triangulated truth wants.)
+            if is_collaboration(existing.name) and not is_collaboration(display):
+                existing.name = display
             if existing.sort_name is None:
                 existing.sort_name = person_sort_name(existing.name) or None
             return existing
-    # Display name is kept verbatim (first-seen) — collaboration credits vary
-    # too much to safely rewrite ("… & Gardner Dozois (editors)" must survive).
-    # The match key above already collapses spelling variants of one author.
-    row = Author(name=name, sort_name=person_sort_name(name) or None)
+    row = Author(name=display, sort_name=person_sort_name(display) or None)
     session.add(row)
     await session.flush()
     return row

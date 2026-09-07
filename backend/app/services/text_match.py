@@ -85,6 +85,30 @@ _SURNAME_PARTICLES = frozenset(
 )
 _COAUTHOR_SPLIT_RE = re.compile(r"\s*(?:;|&|\band\b|\bwith\b|\bet\b|/)\s*", re.IGNORECASE)
 _INITIAL_RE = re.compile(r"^[a-z]$")
+# words primary_author_name legitimately drops from an editor credit
+_CREDIT_NOISE = frozenset({"editors", "editor", "eds", "ed"})
+
+
+def looks_solo(name: str | None) -> bool:
+    """True only for a single-person credit. A collaboration ("A & B", "A; B",
+    "Weis, Margaret & Hickman, Tracy") is not solo — its primary author shares
+    a ``normalize_person_name`` key with the solo "A", so treating them the
+    same would relabel A's solo books.
+
+    Detection: no co-author separator, and ``primary_author_name`` keeps every
+    significant word of the name (for a real solo it only reorders
+    "Last, First"; for a collaboration it truncates to the first author)."""
+    if not name or not name.strip():
+        return False
+    if _COAUTHOR_SPLIT_RE.search(name):
+        return False
+    all_words = set(_WORD_RE.findall(name.lower()))
+    primary_words = set(_WORD_RE.findall(primary_author_name(name).lower()))
+    return primary_words >= (all_words - _CREDIT_NOISE)
+
+
+def is_collaboration(name: str | None) -> bool:
+    return bool(name and name.strip()) and not looks_solo(name)
 
 
 def primary_author_name(name: str) -> str:

@@ -56,8 +56,7 @@ async def test_merges_forked_authors_sharing_a_book(db_session) -> None:
 
     authors = (await db_session.execute(select(Author))).scalars().all()
     assert len(authors) == 1
-    assert authors[0].name == "J. R. R. Tolkien"  # longer display form wins
-    assert authors[0].sort_name == "Tolkien, J. R. R."
+    assert authors[0].name == "J.R.R. Tolkien"  # shortest clean solo name wins
     books = (await db_session.execute(select(Book))).scalars().all()
     assert {b.author_id for b in books} == {authors[0].id}
 
@@ -74,29 +73,33 @@ async def test_does_not_merge_when_no_book_is_shared(db_session) -> None:
     assert len((await db_session.execute(select(Author))).scalars().all()) == 2
 
 
-async def test_does_not_merge_a_solo_row_with_a_collaboration_credit(db_session) -> None:
-    # "Dean Koontz" and "Dean Koontz, Kevin J. Anderson" share the
-    # normalize_person_name key "dean koontz" and a book — but merging them
-    # would relabel every solo Koontz novel as a collaboration.
-    await _add(db_session, "Dean Koontz", "Prodigal Son", isbn="9780553593334")
-    await _add(db_session, "Dean Koontz", "Watchers")
-    await _add(db_session, "Dean Koontz & Kevin J. Anderson", "Prodigal Son", isbn="9780553593334")
+async def test_folds_a_collaboration_credit_into_the_primary(db_session) -> None:
+    # REVIEW-2026-09-08 policy: a co-authored book is filed under the primary
+    # author. "Dean Koontz & Kevin J. Anderson" folds into the "Dean Koontz"
+    # row; a solo variant with no shared book does not.
+    a1, _ = await _add(db_session, "Dean Koontz", "Watchers")
+    await _add(db_session, "Dean Koontz & Kevin J. Anderson", "Prodigal Son")
+    await _add(db_session, "Dean R. Koontz", "Lightning")  # solo variant, no shared book
     await db_session.commit()
 
     await repair.main(write=True)
 
     authors = {a.name for a in (await db_session.execute(select(Author))).scalars().all()}
-    assert authors == {"Dean Koontz", "Dean Koontz & Kevin J. Anderson"}
+    assert authors == {"Dean Koontz", "Dean R. Koontz"}  # collab gone, solo variant kept
+    books = (await db_session.execute(select(Book))).scalars().all()
+    prodigal = next(b for b in books if b.canonical_title == "Prodigal Son")
+    assert prodigal.author_id == a1.id
 
 
-def test_looks_solo() -> None:
-    assert repair._looks_solo("J.R.R. Tolkien")
-    assert repair._looks_solo("Tolkien, J.R.R.")
-    assert repair._looks_solo("Dean R. Koontz")
-    assert not repair._looks_solo("Dean Koontz & Kevin J. Anderson")
-    assert not repair._looks_solo("Dean Koontz; Queenie Chan")
-    assert not repair._looks_solo("Dean Koontz, Kevin J. Anderson")
-    assert not repair._looks_solo("George R. R. Martin, Gardner Dozois (eds.)")
+async def test_all_collab_group_synthesises_the_primary(db_session) -> None:
+    await _add(db_session, "A & B", "One")
+    await _add(db_session, "A and B", "Two")
+    await db_session.commit()
+
+    await repair.main(write=True)
+
+    authors = [a.name for a in (await db_session.execute(select(Author))).scalars().all()]
+    assert authors == ["A"]
 
 
 async def test_dry_run_changes_nothing(db_session) -> None:

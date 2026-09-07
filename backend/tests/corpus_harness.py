@@ -46,7 +46,11 @@ from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
 from app.services.book_repository import resolve_book
 from app.services.identification_service import IdentificationService
-from app.services.text_match import normalize_title_strict, normalize_words
+from app.services.text_match import (
+    normalize_person_name,
+    normalize_title_strict,
+    normalize_words,
+)
 
 CORPUS_DIR = Path(__file__).parent / "identification_corpus"
 FIELDS = ("title", "author", "series", "series_number")
@@ -330,13 +334,27 @@ def series_matches(a: Any, b: Any) -> bool:
     return ka <= kb or kb <= ka
 
 
+def author_matches(a: Any, b: Any) -> bool:
+    """Match on the word set OR on the *primary* author. Co-authored books are
+    filed under the primary author (REVIEW-2026-09-08 policy), and the
+    triangulated truth is inconsistent about whether a co-write's answer key is
+    "A" or "A & B" — so "George R. R. Martin" and "George R. R. Martin and
+    Gardner Dozois (editors)" count as the same author here, while a house
+    pseudonym ("Richard Awlinson" vs "Scott Ciencin" — a different person) does
+    not."""
+    if normalize_words(a) == normalize_words(b):
+        return True
+    ka, kb = normalize_person_name(a), normalize_person_name(b)
+    return bool(ka) and ka == kb
+
+
 def field_matches(fieldname: str, predicted: Any, expected: Any) -> bool:
     if fieldname == "title":
         return normalize_title_strict(predicted or "") == normalize_title_strict(expected or "")
     if fieldname == "series":
         return series_matches(predicted, expected)
     if fieldname == "author":
-        return normalize_words(predicted) == normalize_words(expected)
+        return author_matches(predicted, expected)
     if fieldname == "series_number":
         return _num(predicted) == _num(expected)
     raise ValueError(fieldname)

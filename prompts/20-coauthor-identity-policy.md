@@ -1,5 +1,23 @@
 # Task 20 — Co-author identity: make it deterministic, unblock the repair (REVIEW-2026-09-08 F1 + F2)
 
+> **DONE 2026-09-08.** James chose **policy 1 — file under the primary author**.
+> - `text_match.looks_solo` / `is_collaboration` (moved out of the repair
+>   script). `book_repository._display_name`: a collaboration credit is stored
+>   under `primary_author_name(name)`; `_find_or_create_author` upgrades an
+>   existing "A & B" row to the clean solo form on the next match.
+> - `corpus_harness.author_matches` now also matches on the primary author (the
+>   triangulated truth is inconsistent about co-write display strings). **Author
+>   precision 94.8% → 96.6%**, exact 81.4% → 83.1%; baseline re-stamped.
+> - `repair_forked_authors.py` reworked: solo-name variants merge only with a
+>   shared book/ISBN (still); a collaboration credit whose primary is the
+>   canonical always folds in. Canonical = the shortest clean solo name. Its
+>   dry-run on the real DB proposes 25 merges (Koontz collabs → "Dean Koontz",
+>   the six GRRM anthology credits → "George R. R. Martin", etc.); `Dean R.
+>   Koontz`/`Iain M. Banks`/`David L. Robbins` still SKIP (no shared book).
+>   **NOT `--write`-run** — James runs it and eyeballs.
+> - `test_book_repository.py` +2, `test_text_match.py` +1,
+>   `test_repair_forked_authors.py` reworked. 593 backend + corpus green.
+
 Read `prompts/README.md` for shared context. **Ask James the policy question
 below before writing code.**
 

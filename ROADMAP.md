@@ -137,6 +137,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       Audit → Split records for now (a handful of real forks remain, e.g.
       "Dean R. Koontz" vs "Dean Koontz", and one duplicate author row for
       "Prodigal Son").
+    - **2026-09-08 (REVIEW-2026-09-08 / prompt 20): co-author policy settled.**
+      James chose "file a co-authored book under the primary author,
+      deterministically". `text_match.is_collaboration` / `looks_solo`;
+      `book_repository` stores the clean primary name for a collab credit and
+      upgrades an existing "A & B" row on the next match; `corpus_harness`
+      scores author on the primary (author precision 94.8 → 96.6, baseline
+      re-stamped). `repair_forked_authors.py` reworked — folds collab credits
+      into the primary, still gates solo-variant merges on a shared book; its
+      real-DB dry-run proposes 25 merges. **James still runs `--write`.**
   - **Tier 3 — K shipped** (2026-09-07) — batch priors (F6).
     `app/services/batch_prior_service.apply_batch_priors`, called by `run_scan`
     between the batch and the auto-organize pass. A ≥3-file author/series

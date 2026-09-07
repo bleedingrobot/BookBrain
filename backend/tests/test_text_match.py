@@ -1,4 +1,6 @@
 from app.services.text_match import (
+    is_collaboration,
+    looks_solo,
     normalize,
     normalize_title,
     normalize_title_strict,
@@ -6,6 +8,23 @@ from app.services.text_match import (
     title_similarity,
     titles_match,
 )
+
+
+def test_looks_solo_and_is_collaboration() -> None:
+    for solo in ("J.R.R. Tolkien", "Tolkien, J.R.R.", "Dean R. Koontz", "Ursula K. Le Guin"):
+        assert looks_solo(solo), solo
+        assert not is_collaboration(solo), solo
+    for collab in (
+        "Dean Koontz & Kevin J. Anderson",
+        "Dean Koontz; Queenie Chan",
+        "Dean Koontz, Kevin J. Anderson",
+        "George R. R. Martin and Gardner Dozois (editors)",
+        "Weis, Margaret & Hickman, Tracy",
+    ):
+        assert is_collaboration(collab), collab
+        assert not looks_solo(collab), collab
+    assert not looks_solo("") and not looks_solo(None)
+    assert not is_collaboration("") and not is_collaboration(None)
 
 
 def test_title_similarity_separates_same_series_different_book() -> None:

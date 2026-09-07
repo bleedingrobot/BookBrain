@@ -1,39 +1,34 @@
-"""Merge Author rows that prompts/15 Stage J's canonicaliser would now unify.
+"""Merge Author rows that `_find_or_create_author` would now unify.
 
     python scripts/repair_forked_authors.py            # dry run — show the merges
     python scripts/repair_forked_authors.py --write    # apply
 
-Before Stage J, `_find_or_create_author` matched on a plain word set, so
-"J.R.R. Tolkien" / "J. R. R. Tolkien" / "Tolkien, J.R.R." each got their own
-row. New scans no longer fork them; this repairs the ones already forked.
+Before prompts/15 Stage J, `_find_or_create_author` matched on a plain word
+set, so "J.R.R. Tolkien" / "J. R. R. Tolkien" / "Tolkien, J.R.R." each got
+their own row, and a collaboration credit ("Dean Koontz; Queenie Chan") got
+its own row instead of resolving to the primary author. New scans no longer
+fork either; this repairs the ones already forked.
 
-Conservative, per the Stage J gotcha ("two different authors can share
-initials"): a group is only merged when
+Within a `normalize_person_name` key group:
 
-  * every name in it shares the same `normalize_person_name` key,
-  * every name resolves to the same *full* set of people — so a solo credit
-    ("Dean Koontz") is never merged with a collaboration that merely starts
-    with that person ("Dean Koontz, Kevin J. Anderson"); the primary-author
-    key collides but they are different credits, and
-  * the group's books share at least one ISBN or a normalised title — evidence
-    they're really one person, not "J. Smith" vs "John Smith".
+  * **Solo-name variants** ("J.R.R. Tolkien" / "Tolkien, J.R.R." /
+    "Dean R. Koontz" vs "Dean Koontz") merge only with book-level
+    corroboration — a shared ISBN or a shared strict-normalised title —
+    because "J. Smith" and "John Smith" also share a key but may be two
+    people. The cleanest solo name (shortest) is canonical.
+  * **Collaboration credits** whose primary author is the canonical
+    ("Dean Koontz; Queenie Chan" → "Dean Koontz") always fold in —
+    REVIEW-2026-09-08 policy: a co-authored book is filed under the primary
+    author.
 
-Books are repointed to the row with the most complete display name; the
-emptied rows are deleted. Mirrors title_merge_repair_service.
-
-KNOWN LIMITATION: the "most complete display name" pick is crude (longest
-string wins), and the mixed-credit guard above means genuine forks that also
-carry a stray collaboration row are skipped wholesale rather than
-sub-grouped. For the pre-Stage-J library this leaves ~a handful of real forks
-(e.g. "Dean R. Koontz" vs "Dean Koontz") for hand cleanup via Library Audit →
-Split records. Rework the grouping before leaning on this for bulk merges.
+Books are repointed to the canonical row; the emptied rows are deleted.
+Mirrors title_merge_repair_service. Dry-run first; `--write` to apply.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -52,32 +47,13 @@ from app.data.db import async_session_factory  # noqa: E402
 from app.data.models import Author, Book, Identifier  # noqa: E402
 from app.services.book_repository import get_book_write_lock  # noqa: E402
 from app.services.text_match import (  # noqa: E402
-    _COAUTHOR_SPLIT_RE,
+    is_collaboration,
+    looks_solo,
     normalize_person_name,
     normalize_title_strict,
     person_sort_name,
     primary_author_name,
 )
-
-_WORD_RE = re.compile(r"[a-z0-9]+")
-# tokens primary_author_name legitimately drops from an editor credit
-_CREDIT_NOISE = {"editors", "editor", "eds", "ed"}
-
-
-def _looks_solo(name: str) -> bool:
-    """True only for a single-person credit. A collaboration ("A & B",
-    "A; B", "Weis, Margaret & Hickman, Tracy") is not solo — its primary
-    author shares a normalize_person_name key with the solo "A", but merging
-    them would relabel A's solo books as the collaboration.
-
-    Detection: no co-author separator, and primary_author_name() keeps every
-    significant word of the name (for a real solo it only reorders
-    "Last, First"; for a collaboration it truncates to the first author)."""
-    if _COAUTHOR_SPLIT_RE.search(name):
-        return False
-    all_words = set(_WORD_RE.findall(name.lower()))
-    primary_words = set(_WORD_RE.findall(primary_author_name(name).lower()))
-    return primary_words >= (all_words - _CREDIT_NOISE)
 
 
 def _book_keys(books: list[Book], isbns: dict[int, set[str]]) -> set[str]:
@@ -110,34 +86,53 @@ async def main(write: bool) -> None:
         for key, group in by_key.items():
             if len(group) < 2:
                 continue
-            # only ever unify clean solo-name variants ("J.R.R. Tolkien" /
-            # "Tolkien, J.R.R."). A group that also carries a collaboration
-            # credit sharing the same primary author ("Dean Koontz" +
-            # "Dean Koontz, Kevin J. Anderson") is skipped wholesale — see the
-            # module docstring's KNOWN LIMITATION.
-            if not all(_looks_solo(a.name) for a in group):
-                non_solo = [a.name for a in group if not _looks_solo(a.name)]
-                print(f"  SKIP {key!r}: {[a.name for a in group]} — mixed with a collaboration credit ({non_solo})")
-                continue
-            # require book-level corroboration: at least two rows in the group
-            # share a book (same ISBN or same strict-normalised title). Without
-            # that, "J. Smith" and "John Smith" could be two different people.
-            all_keys = [_book_keys(a.books, isbns) for a in group]
-            shared = any(
-                all_keys[i] & all_keys[j]
-                for i in range(len(group))
-                for j in range(i + 1, len(group))
-            )
-            if not shared:
-                print(f"  SKIP {key!r}: {[a.name for a in group]} — no shared book/ISBN")
+
+            solos = [a for a in group if looks_solo(a.name)]
+            collabs = [a for a in group if is_collaboration(a.name)]
+
+            # Canonical = the cleanest solo name in the group (shortest wins —
+            # "Dean Koontz" over "Dean Koontz and Kevin J. Anderson"); if the
+            # group is all collaboration credits, synthesise the primary.
+            if solos:
+                canonical = min(solos, key=lambda a: (len(a.name), a.id))
+                canonical_solos = solos
+            else:
+                canonical = min(group, key=lambda a: a.id)
+                canonical.name = primary_author_name(canonical.name).strip() or canonical.name
+                canonical_solos = [canonical]
+
+            merge_in: list[Author] = []
+
+            # Solo-name variants ("J.R.R. Tolkien" / "Tolkien, J.R.R." /
+            # "Dean Koontz" / "Dean R. Koontz") only merge with book-level
+            # corroboration — "J. Smith" and "John Smith" share a key but may be
+            # two people.
+            other_solos = [a for a in canonical_solos if a.id != canonical.id]
+            if other_solos:
+                keys_by_id = {a.id: _book_keys(a.books, isbns) for a in canonical_solos}
+                for a in other_solos:
+                    if keys_by_id[a.id] & keys_by_id[canonical.id]:
+                        merge_in.append(a)
+                    else:
+                        print(
+                            f"  SKIP {a.name!r} -> {canonical.name!r}: no shared book/ISBN "
+                            "(could be a different person)"
+                        )
+
+            # Collaboration credits ("Dean Koontz; Queenie Chan") whose primary
+            # author IS this canonical always fold in — REVIEW-2026-09-08 policy:
+            # a co-authored book is filed under the primary author.
+            for a in collabs:
+                if a.id != canonical.id and normalize_person_name(a.name) == key:
+                    merge_in.append(a)
+
+            if not merge_in:
                 continue
 
-            canonical = max(group, key=lambda a: (len(a.name), a.id))
-            others = [a for a in group if a.id != canonical.id]
-            print(f"  MERGE -> {canonical.name!r}  <=  {[a.name for a in others]}")
+            print(f"  MERGE -> {canonical.name!r}  <=  {[a.name for a in merge_in]}")
             merges += 1
             if write:
-                for a in others:
+                for a in merge_in:
                     for b in list(a.books):
                         b.author = canonical
                     await session.flush()

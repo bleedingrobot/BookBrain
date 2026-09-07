@@ -177,6 +177,41 @@ async def test_sort_name_is_populated(db_session) -> None:
     assert author.sort_name == "Sanderson, Brandon"
 
 
+async def test_coauthored_book_files_under_the_primary_author(db_session) -> None:
+    # REVIEW-2026-09-08 policy: "A & B" resolves to A's row, and the row is
+    # named with the clean solo form — deterministically, whatever the scan
+    # order.
+    b1 = await resolve_book(
+        db_session, title="Frankenstein: Prodigal Son",
+        author="Dean Koontz & Kevin J. Anderson",
+        series=None, series_number=None, isbn13=None, isbn10=None,
+    )
+    b2 = await resolve_book(
+        db_session, title="Watchers", author="Dean Koontz",
+        series=None, series_number=None, isbn13=None, isbn10=None,
+    )
+    authors = (await db_session.execute(select(Author))).scalars().all()
+    assert len(authors) == 1
+    assert authors[0].name == "Dean Koontz"
+    assert b1.author_id == b2.author_id == authors[0].id
+
+
+async def test_collab_first_then_solo_upgrades_the_display_name(db_session) -> None:
+    # The comma form doesn't carry a co-author separator, so a lone
+    # "Dean Koontz, Kevin J. Anderson" scan lands verbatim; the next solo
+    # scan upgrades the row to the clean name.
+    await resolve_book(
+        db_session, title="Prodigal Son", author="Dean Koontz; Kevin J. Anderson",
+        series=None, series_number=None, isbn13=None, isbn10=None,
+    )
+    await resolve_book(
+        db_session, title="Watchers", author="Dean Koontz",
+        series=None, series_number=None, isbn13=None, isbn10=None,
+    )
+    author = (await db_session.execute(select(Author))).scalars().one()
+    assert author.name == "Dean Koontz"
+
+
 async def test_series_leading_article_does_not_fork(db_session) -> None:
     # prompts/15 Stage J — "The Stormlight Archive" == "Stormlight Archive".
     for name in ("The Stormlight Archive", "Stormlight Archive"):

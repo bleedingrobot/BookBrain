@@ -107,11 +107,11 @@ What the harness already catches (the failure modes `prompts/15` targets):
   },
   "precision": {
     "title": 0.9492,
-    "author": 0.9483,
+    "author": 0.9655,
     "series": 0.8723,
     "series_number": 0.9535
   },
-  "exact_match": 0.8136
+  "exact_match": 0.8305
 }
 ```
 <!-- eval-baseline:end -->
@@ -219,6 +219,30 @@ richer evidence, junk-metadata catches, ISBN-trust, batch priors, author dedup,
 the human-glance safety net) need a `--live` run or a re-snapshot to show — most
 of that is free of AI cost. See `SPEC.md` § "Identification pipeline (2026)" for
 the final shape.
+
+## 2026-09-08 — co-author identity policy (REVIEW-2026-09-08 / prompt 20)
+
+James's decision: a co-authored book ("A & B") is filed under the **primary
+author (A)**, deterministically. Two changes:
+
+- `book_repository._find_or_create_author` now stores the clean primary name
+  for a collaboration credit (`text_match.is_collaboration` /
+  `primary_author_name`), and upgrades an existing row still named "A & B" to
+  the solo form on the next match. The match *key* was already the primary's
+  (`normalize_person_name`), so filing was already going to the right entity —
+  this makes the *folder name* deterministic instead of "whichever credit was
+  scanned first".
+- `corpus_harness.author_matches` now also matches on the primary author, so
+  the eval scores what the policy cares about. The triangulated truth is
+  inconsistent on co-write display strings ("Margaret Weis" vs "Margaret Weis,
+  Tracy Hickman" vs "George R. R. Martin and Gardner Dozois (editors)") — this
+  stops penalising the pipeline for a distinction the policy says doesn't
+  matter, while a house pseudonym ("Richard Awlinson" ≠ "Scott Ciencin") still
+  counts as wrong.
+
+**Author precision 94.8% → 96.6%**, exact-match 81.4% → 83.1% — a scoring
+correction, not a real accuracy gain; baseline re-stamped. `pytest -m corpus`
+green.
 
 ## Per-stage log
 
