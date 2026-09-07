@@ -1,8 +1,18 @@
 # Task 23 — Tests for `cover_service` (REVIEW-2026-09-08 F5)
 
+> **DONE 2026-09-08 — and the finding was overstated.** `cover_service` was
+> *not* untested: `test_cover_extract.py` covers `_thumbnail` / `_phash_of_jpg`
+> / `_make_one` (jpg / nocover / cbz), and `test_cover_phash.py` already
+> covered the `regenerate_covers` happy path + the rehash-from-existing-jpg
+> path + the `cover_phash` writeback. The genuine gaps — `nocover` and
+> `failed` counting *through* `regenerate_covers`, failure isolation across the
+> gather, `limit` bounding + `remaining`, and `_ensure_covers_folder` creating
+> the folder — are now covered by 2 new cases in `test_cover_phash.py`. 590
+> backend tests green.
+
 Read `prompts/README.md`. Test-only, no behaviour change.
 
-## Why
+## Why (original)
 
 `backend/app/services/cover_service.py` (259 lines) has **no test**. It:
 
