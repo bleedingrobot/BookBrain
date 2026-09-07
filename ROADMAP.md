@@ -241,6 +241,11 @@ mis-identification guards). The rest of that session's ideas, for later:
     `python -m app.jobs.backup_job` + `GET/PUT /jobs/backup` + a toggle in the
     Settings Backups block — so backups run without the full nightly pipeline
     (which also takes one as its first step; both on = same-day replace).
+    **Restore**: `python -m app.jobs.restore` (`--list` / `--latest` / `--date`
+    / `--file` / interactive) or `scripts/restore-backup.bat` — downloads from
+    Drive, auto-rebuilds from the `.sql.gz` if the binary's damaged, renames
+    the live DB to `.pre-restore-<ts>` first, refuses to run while the DB is
+    open. `RESTORE.md` leads with it.
   - **Library-health panel** — mostly queries that already exist: N with no
     cover, N with no description, N stuck in review > 30 days, N series with
     gaps, N low-confidence auto-organised, folder-drift count. One screen for

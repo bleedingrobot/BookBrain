@@ -140,29 +140,49 @@ async def create_backup(
     return await asyncio.to_thread(_do_backup, creds, library_folder_id, r)
 
 
-def _do_list(creds: Credentials, library_folder_id: str) -> list[BackupInfo]:
-    provider = DriveProvider(build_drive_service(creds))
+def list_snapshot_files(provider: DriveProvider, library_folder_id: str) -> list[dict]:
+    """Every dated `.db.gz` in `backups/`, newest first, as raw dicts with the
+    Drive id kept (restore needs it): `{date, db_id, db_name, size, sql_id,
+    sql_name}`. `sql_id` is None if the sibling `.sql.gz` is missing."""
     folder = next(
         (f for f in provider.list_folders(library_folder_id) if f["name"] == _BACKUPS_FOLDER),
         None,
     )
     if folder is None:
         return []
-    out: list[BackupInfo] = []
-    for f in provider.list_files_in_folder(folder["id"]):
-        m = _NAME_RE.match(f["name"])
+    files = provider.list_files_in_folder(folder["id"])
+    by_name = {f["name"]: f for f in files}
+    out: list[dict] = []
+    for name, f in by_name.items():
+        m = _NAME_RE.match(name)
         if m is None:
             continue
+        sql = by_name.get(f"{_STEM}-{m.group(1)}.sql.gz")
         out.append(
-            BackupInfo(
-                name=f["name"],
-                size_bytes=int(f.get("size") or 0),
-                created_at=m.group(1),
-                view_url=f"https://drive.google.com/file/d/{f['id']}/view",
-            )
+            {
+                "date": m.group(1),
+                "db_id": f["id"],
+                "db_name": name,
+                "size": int(f.get("size") or 0),
+                "sql_id": sql["id"] if sql else None,
+                "sql_name": sql["name"] if sql else None,
+            }
         )
-    out.sort(key=lambda b: b.created_at, reverse=True)
+    out.sort(key=lambda s: s["date"], reverse=True)
     return out
+
+
+def _do_list(creds: Credentials, library_folder_id: str) -> list[BackupInfo]:
+    provider = DriveProvider(build_drive_service(creds))
+    return [
+        BackupInfo(
+            name=s["db_name"],
+            size_bytes=s["size"],
+            created_at=s["date"],
+            view_url=f"https://drive.google.com/file/d/{s['db_id']}/view",
+        )
+        for s in list_snapshot_files(provider, library_folder_id)
+    ]
 
 
 async def list_backups(creds: Credentials, library_folder_id: str) -> list[BackupInfo]:
