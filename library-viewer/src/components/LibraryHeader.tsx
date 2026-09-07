@@ -37,7 +37,7 @@ export function LibraryHeader({
 
   const items = [
     { label: 'Activity', fn: onShowActivity },
-    { label: 'Wishlist', fn: onShowWishlist },
+    { label: 'Wishlist & requests', fn: onShowWishlist },
     { label: 'Rebuild library', fn: onRebuild, disabled: busy },
     ...(offlineCount > 0
       ? [{ label: `Clear downloaded books (${offlineCount})`, fn: onClearDownloads }]

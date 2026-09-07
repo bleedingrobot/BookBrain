@@ -472,6 +472,7 @@ export default function App() {
         token={token}
         libraryFolderId={settings.libraryFolderId}
         rows={allRows}
+        viewerName={viewerName}
         onBack={() => setShowWishlist(false)}
       />
     )

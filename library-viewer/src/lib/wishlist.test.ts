@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { BookRow } from './books'
 import type { BookHit } from './googleBooks'
-import { alreadyListed, hitToItem, libraryMatch, reconcile, type WishlistItem } from './wishlist'
+import {
+  alreadyListed,
+  hitToItem,
+  libraryMatch,
+  normalizeItems,
+  reconcile,
+  withStatus,
+  type WishlistItem,
+} from './wishlist'
 
 function row(partial: Partial<BookRow>): BookRow {
   return {
@@ -27,8 +35,13 @@ function item(partial: Partial<WishlistItem>): WishlistItem {
     isbn13: partial.isbn13 ?? null,
     cover: null,
     note: '',
-    addedAt: '',
-    acquired: partial.acquired ?? false,
+    requestedBy: partial.requestedBy ?? null,
+    status: partial.status ?? 'wanted',
+    statusNote: partial.statusNote ?? '',
+    statusBy: partial.statusBy ?? null,
+    statusAt: partial.statusAt ?? null,
+    addedAt: partial.addedAt ?? '',
+    acquired: partial.acquired ?? partial.status === 'acquired',
     acquiredAt: partial.acquiredAt ?? null,
   }
 }
@@ -83,20 +96,64 @@ describe('alreadyListed', () => {
   })
 })
 
+describe('normalizeItems', () => {
+  it('migrates a legacy acquired item to status "acquired"', () => {
+    const [i] = normalizeItems([{ id: 'x', title: 'Dune', acquired: true, acquiredAt: '2026-01-01' }])
+    expect(i.status).toBe('acquired')
+    expect(i.acquired).toBe(true)
+  })
+
+  it('defaults a legacy un-acquired item to status "wanted"', () => {
+    const [i] = normalizeItems([{ id: 'x', title: 'Dune', acquired: false }])
+    expect(i.status).toBe('wanted')
+    expect(i.requestedBy).toBeNull()
+  })
+
+  it('keeps a valid stored status and requester', () => {
+    const [i] = normalizeItems([
+      { id: 'x', title: 'Dune', status: 'sourced', requestedBy: 'Tess', statusBy: 'James' },
+    ])
+    expect(i.status).toBe('sourced')
+    expect(i.requestedBy).toBe('Tess')
+    expect(i.statusBy).toBe('James')
+  })
+
+  it('falls back to "wanted" for an unrecognised status string', () => {
+    const [i] = normalizeItems([{ id: 'x', title: 'Dune', status: 'bogus' as never }])
+    expect(i.status).toBe('wanted')
+  })
+
+  it('drops entries without an id or title', () => {
+    expect(normalizeItems([{ title: 'No id' }, { id: 'only-id' }])).toHaveLength(0)
+  })
+})
+
 describe('reconcile', () => {
   it('flips a wanted item to acquired once the library has it', () => {
     const list = { fileId: null, modifiedTime: null, items: [item({ id: 'x', title: 'Dune' })] }
     const { list: next, changed } = reconcile(list, [row({ title: 'Dune' })])
     expect(changed).toBe(true)
+    expect(next.items[0].status).toBe('acquired')
     expect(next.items[0].acquired).toBe(true)
     expect(next.items[0].acquiredAt).not.toBeNull()
+  })
+
+  it('flips a sourced item to acquired too', () => {
+    const list = {
+      fileId: null,
+      modifiedTime: null,
+      items: [item({ id: 'x', title: 'Dune', status: 'sourced' })],
+    }
+    const { list: next, changed } = reconcile(list, [row({ title: 'Dune' })])
+    expect(changed).toBe(true)
+    expect(next.items[0].status).toBe('acquired')
   })
 
   it('leaves already-acquired items alone and reports no change', () => {
     const list = {
       fileId: null,
       modifiedTime: null,
-      items: [item({ id: 'x', title: 'Dune', acquired: true, acquiredAt: '2026-01-01' })],
+      items: [item({ id: 'x', title: 'Dune', status: 'acquired', acquiredAt: '2026-01-01' })],
     }
     const { list: next, changed } = reconcile(list, [row({ title: 'Dune' })])
     expect(changed).toBe(false)
@@ -109,13 +166,40 @@ describe('reconcile', () => {
   })
 })
 
+describe('withStatus', () => {
+  it('stamps who and when, and keeps the acquired flag in sync', () => {
+    const next = withStatus(item({ status: 'wanted' }), 'sourced', 'James', 'ordered')
+    expect(next.status).toBe('sourced')
+    expect(next.statusBy).toBe('James')
+    expect(next.statusNote).toBe('ordered')
+    expect(next.statusAt).toBeTruthy()
+    expect(next.acquired).toBe(false)
+  })
+
+  it('sets acquiredAt when moved to acquired', () => {
+    const next = withStatus(item({ status: 'wanted' }), 'acquired', 'James')
+    expect(next.acquired).toBe(true)
+    expect(next.acquiredAt).toBeTruthy()
+  })
+
+  it('leaves the existing note when none is passed', () => {
+    const next = withStatus(item({ status: 'sourced', statusNote: 'from Amazon' }), 'declined', 'Tess')
+    expect(next.statusNote).toBe('from Amazon')
+  })
+})
+
 describe('hitToItem', () => {
-  it('carries fields across and starts un-acquired', () => {
-    const wi = hitToItem(hit({ title: 'Dune', author: 'Frank Herbert', isbn13: '9780441013593' }))
+  it('carries fields across, records the requester, and starts wanted', () => {
+    const wi = hitToItem(
+      hit({ title: 'Dune', author: 'Frank Herbert', isbn13: '9780441013593' }),
+      'Tess',
+    )
     expect(wi).toMatchObject({
       title: 'Dune',
       author: 'Frank Herbert',
       isbn13: '9780441013593',
+      requestedBy: 'Tess',
+      status: 'wanted',
       acquired: false,
       acquiredAt: null,
     })

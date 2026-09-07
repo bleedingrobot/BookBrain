@@ -6,6 +6,7 @@ const TYPE_LABEL: Record<ActivityEvent['type'], string> = {
   search: 'Searched',
   download: 'Downloaded',
   'kobo-send': 'Sent to Kobo',
+  request: 'Requested',
 }
 
 export function ActivityScreen({
@@ -57,8 +58,8 @@ export function ActivityScreen({
         </button>
       </div>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-        Sign-ins, searches, downloads, and Kobo sends. Stored as a file in your Drive library
-        folder — visible to anyone with access to that folder.
+        Sign-ins, searches, downloads, Kobo sends, and book requests. Stored as a file in your Drive
+        library folder — visible to anyone with access to that folder.
       </p>
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

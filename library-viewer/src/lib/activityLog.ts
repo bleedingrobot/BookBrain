@@ -14,7 +14,7 @@ import { readJsonFile, writeJsonFile } from './drive'
 const FILENAME = 'bookbrain-activity-log.json'
 const MAX_EVENTS = 500
 
-export type ActivityEventType = 'sign-in' | 'search' | 'download' | 'kobo-send'
+export type ActivityEventType = 'sign-in' | 'search' | 'download' | 'kobo-send' | 'request'
 
 export interface ActivityEvent {
   id: string

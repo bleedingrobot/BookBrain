@@ -478,3 +478,10 @@ mis-identification guards). The rest of that session's ideas, for later:
   `bookbrain-wishlist.json` in the Drive library folder (syncs across
   devices), no Claude / no API credits, auto-ticks on library match
   (ISBN then fuzzy title+author) (2026-09-04).
+- Wishlist → "Wishlist & requests" (library-viewer) — every item now records
+  who asked for it (`requestedBy`, self-picked viewer name) and a status the
+  household works: wanted → sourced → acquired, or declined, each with a note
+  + who/when. `acquired` still auto-set by reconcile; `wishlist.json` version
+  bumped to 2 with a load-time migration of the old `acquired`-boolean shape.
+  Adding a request also writes a `request` activity-log event. No roles —
+  anyone with library access can add or re-status (2026-09-08).

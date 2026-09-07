@@ -2,12 +2,27 @@
 // folder, so it syncs across devices. Read on demand, written on every
 // change. Reconcile marks an item "acquired" once a matching book is in
 // the library (by ISBN, then fuzzy title+author).
+//
+// Every item also records who asked for it (requestedBy — the self-picked
+// viewer name, honesty-based, same as the activity log) and a status the
+// household works through: wanted -> sourced -> acquired, or declined.
+// "acquired" is set automatically by reconcile; the rest are set by hand
+// on the Wishlist screen. There are no roles in this app — anyone who can
+// open the library can add a request or move its status.
 
 import type { BookRow } from './books'
 import { readJsonFile, writeJsonFile } from './drive'
 import type { BookHit } from './googleBooks'
 
 const FILENAME = 'bookbrain-wishlist.json'
+
+export type WishlistStatus = 'wanted' | 'sourced' | 'declined' | 'acquired'
+
+const STATUSES: WishlistStatus[] = ['wanted', 'sourced', 'declined', 'acquired']
+
+function isStatus(s: unknown): s is WishlistStatus {
+  return typeof s === 'string' && (STATUSES as string[]).includes(s)
+}
 
 export interface WishlistItem {
   id: string
@@ -17,6 +32,17 @@ export interface WishlistItem {
   isbn13: string | null
   cover: string | null
   note: string
+  // Who added the request (self-picked viewer name). Null for items added
+  // before requests existed, or when no name is set.
+  requestedBy: string | null
+  // Progress. `acquired` (below) is kept in sync with `status === 'acquired'`
+  // so an older viewer build that only knows the boolean still behaves.
+  status: WishlistStatus
+  // Free text for a non-wanted status — where it was ordered from, why it
+  // was declined, etc.
+  statusNote: string
+  statusBy: string | null
+  statusAt: string | null
   addedAt: string
   acquired: boolean
   acquiredAt: string | null
@@ -75,25 +101,47 @@ export function alreadyListed(hit: BookHit, items: WishlistItem[]): boolean {
   )
 }
 
-export async function loadWishlist(token: string, libraryFolderId: string): Promise<Wishlist> {
-  try {
-    const found = await readJsonFile<RawFile>(token, libraryFolderId, FILENAME)
-    if (!found) return EMPTY_WISHLIST
-    const items = (found.content.items ?? [])
-      .filter((i): i is WishlistItem => typeof i?.title === 'string' && typeof i?.id === 'string')
-      .map((i) => ({
-        id: i.id,
-        title: i.title,
+// Inverse of what saveWishlist writes: pull a stored item list back into
+// well-formed WishlistItems, filling defaults and migrating the old shape
+// (pre-status items only had an `acquired` boolean).
+export function normalizeItems(raw: Partial<WishlistItem>[] | undefined): WishlistItem[] {
+  return (raw ?? [])
+    .filter((i): i is Partial<WishlistItem> => typeof i?.title === 'string' && typeof i?.id === 'string')
+    .map((i) => {
+      const status: WishlistStatus = isStatus(i.status)
+        ? i.status
+        : i.acquired
+          ? 'acquired'
+          : 'wanted'
+      return {
+        id: i.id as string,
+        title: i.title as string,
         author: i.author ?? null,
         series: i.series ?? null,
         isbn13: i.isbn13 ?? null,
         cover: i.cover ?? null,
         note: i.note ?? '',
+        requestedBy: i.requestedBy ?? null,
+        status,
+        statusNote: i.statusNote ?? '',
+        statusBy: i.statusBy ?? null,
+        statusAt: i.statusAt ?? i.acquiredAt ?? null,
         addedAt: i.addedAt ?? '',
-        acquired: Boolean(i.acquired),
+        acquired: status === 'acquired',
         acquiredAt: i.acquiredAt ?? null,
-      }))
-    return { fileId: found.id, modifiedTime: found.modifiedTime, items }
+      }
+    })
+}
+
+export async function loadWishlist(token: string, libraryFolderId: string): Promise<Wishlist> {
+  try {
+    const found = await readJsonFile<RawFile>(token, libraryFolderId, FILENAME)
+    if (!found) return EMPTY_WISHLIST
+    return {
+      fileId: found.id,
+      modifiedTime: found.modifiedTime,
+      items: normalizeItems(found.content.items),
+    }
   } catch {
     return EMPTY_WISHLIST
   }
@@ -108,26 +156,46 @@ export async function saveWishlist(
     token,
     libraryFolderId,
     FILENAME,
-    { version: 1, items: list.items },
+    { version: 2, items: list.items },
     list.fileId,
   )
   return { ...list, fileId }
 }
 
-// Returns a new list with any wanted item that's now in the library flipped
-// to acquired, or the same list if nothing changed.
+// Returns a new list with any not-yet-acquired item that's now in the
+// library flipped to acquired, or the same list if nothing changed.
 export function reconcile(list: Wishlist, rows: BookRow[]): { list: Wishlist; changed: boolean } {
   let changed = false
   const items = list.items.map((item) => {
-    if (item.acquired) return item
+    if (item.status === 'acquired') return item
     if (libraryMatch(item, rows) === null) return item
     changed = true
-    return { ...item, acquired: true, acquiredAt: new Date().toISOString() }
+    const at = new Date().toISOString()
+    return { ...item, status: 'acquired' as const, acquired: true, acquiredAt: at, statusAt: at }
   })
   return { list: changed ? { ...list, items } : list, changed }
 }
 
-export function hitToItem(hit: BookHit): WishlistItem {
+// Apply a hand-set status change, stamping who/when.
+export function withStatus(
+  item: WishlistItem,
+  status: WishlistStatus,
+  by: string | null,
+  statusNote?: string,
+): WishlistItem {
+  const at = new Date().toISOString()
+  return {
+    ...item,
+    status,
+    statusBy: by,
+    statusAt: at,
+    statusNote: statusNote ?? item.statusNote,
+    acquired: status === 'acquired',
+    acquiredAt: status === 'acquired' ? (item.acquiredAt ?? at) : null,
+  }
+}
+
+export function hitToItem(hit: BookHit, requestedBy: string | null): WishlistItem {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     title: hit.title,
@@ -136,6 +204,11 @@ export function hitToItem(hit: BookHit): WishlistItem {
     isbn13: hit.isbn13,
     cover: hit.cover,
     note: '',
+    requestedBy,
+    status: 'wanted',
+    statusNote: '',
+    statusBy: null,
+    statusAt: null,
     addedAt: new Date().toISOString(),
     acquired: false,
     acquiredAt: null,
