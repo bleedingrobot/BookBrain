@@ -13,11 +13,13 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 
 export const DEFAULT_LIBRARY_FOLDER_ID = '1BdqKbxECXkg70DZRXg3ynzxEO2hK3SrH'
 
-// Optional. A Google Books API key lifts wishlist search off the shared
-// keyless quota (one bucket per public IP across every anonymous caller —
-// it 429s constantly). Also safe to ship in the public bundle IF the key is
-// restricted in the Google Cloud console to (a) HTTP referrers matching this
-// site's origin and (b) the Books API only: it's read-only public data and
-// the referrer lock stops it being reused elsewhere. Left empty = use the
-// keyless endpoint and lean on the Open Library fallback (see bookSearch.ts).
-export const DEFAULT_GOOGLE_BOOKS_API_KEY = ''
+// A Google Books API key lifts wishlist search off the shared keyless quota
+// (one bucket per public IP across every anonymous caller — it 429s
+// constantly). Safe to ship in the public bundle: it's restricted in the
+// Google Cloud console to HTTP referrers matching https://bleedingrobot.github.io/*
+// and to the Books API only, so it can't be reused elsewhere and only
+// touches read-only public data. Verified 2026-09-08 — a request with no /
+// a foreign Referer gets 403, this origin gets 200. If quota theft ever
+// shows up, rotate the key here. Empty = keyless endpoint + Open Library
+// fallback (see bookSearch.ts).
+export const DEFAULT_GOOGLE_BOOKS_API_KEY = 'AIzaSyARc-3eRiMVr4EKC-UGTZ1RyHDv8eAgODU'

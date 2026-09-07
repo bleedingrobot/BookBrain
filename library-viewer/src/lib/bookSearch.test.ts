@@ -78,7 +78,8 @@ describe('searchBooks', () => {
     await expect(searchBooks('x')).rejects.toThrow(/unavailable right now/)
   })
 
-  it('does not send a key param when none is configured', async () => {
+  it('sends the configured Books API key on the Google request', async () => {
+    const { DEFAULT_GOOGLE_BOOKS_API_KEY } = await import('./config')
     let googleUrl = ''
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       googleUrl = String(input)
@@ -86,6 +87,7 @@ describe('searchBooks', () => {
     })
     await searchBooks('dune')
     expect(googleUrl).toContain(GOOGLE)
-    expect(googleUrl).not.toContain('key=')
+    // key param present iff config.ts ships one (it does today)
+    expect(googleUrl.includes('key=')).toBe(DEFAULT_GOOGLE_BOOKS_API_KEY.trim() !== '')
   })
 })
