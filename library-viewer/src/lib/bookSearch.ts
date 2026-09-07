@@ -1,13 +1,15 @@
 // Browser-side book search for the wishlist. Tries Google Books first, then
 // falls back to Open Library.
 //
-// Neither call uses an API key. Google's keyless endpoint shares ONE quota
-// bucket per public IP across every anonymous caller on that network, and
-// Google throttles it hard and unpredictably — a 429 there is common and
-// isn't really "you". Open Library has no key and a far more forgiving
-// limit, so it's the safety net. If Google quota keeps biting, a
-// referrer-restricted Google Books key could be baked into config.ts later
-// (it's read-only and origin-locked, so safe enough for a public bundle).
+// Google's keyless endpoint shares ONE quota bucket per public IP across
+// every anonymous caller on that network, and Google throttles it hard and
+// unpredictably — a 429 there is common and isn't really "you". Two things
+// blunt that: a referrer-restricted Google Books API key
+// (DEFAULT_GOOGLE_BOOKS_API_KEY in config.ts — its own private quota, used
+// when set), and an Open Library fallback (no key, far more forgiving) as
+// the safety net when Google is unavailable regardless.
+
+import { DEFAULT_GOOGLE_BOOKS_API_KEY } from './config'
 
 export interface BookHit {
   title: string
@@ -46,9 +48,11 @@ function googleToHit(v: GoogleVolume): BookHit | null {
 }
 
 async function searchGoogleBooks(query: string): Promise<BookHit[]> {
+  const key = DEFAULT_GOOGLE_BOOKS_API_KEY.trim()
   const url =
-    `https://www.googleapis.com/books/v1/volumes?maxResults=8&printType=books&q=` +
-    encodeURIComponent(query.trim())
+    `https://www.googleapis.com/books/v1/volumes?maxResults=8&printType=books` +
+    (key ? `&key=${encodeURIComponent(key)}` : '') +
+    `&q=${encodeURIComponent(query.trim())}`
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`google ${resp.status}`)
   const data = (await resp.json()) as { items?: GoogleVolume[] }

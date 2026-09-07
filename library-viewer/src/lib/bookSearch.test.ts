@@ -77,4 +77,15 @@ describe('searchBooks', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({}, false, 500))
     await expect(searchBooks('x')).rejects.toThrow(/unavailable right now/)
   })
+
+  it('does not send a key param when none is configured', async () => {
+    let googleUrl = ''
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      googleUrl = String(input)
+      return jsonResponse({ items: [] })
+    })
+    await searchBooks('dune')
+    expect(googleUrl).toContain(GOOGLE)
+    expect(googleUrl).not.toContain('key=')
+  })
 })
