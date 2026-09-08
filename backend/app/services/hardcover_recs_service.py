@@ -26,7 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.data.models import Book, File, FileStatus, Identifier, IdentifierType
-from app.providers.metadata.hardcover import _TokenBucket, hardcover_graphql
+from app.providers.metadata.hardcover import (
+    HardcoverRateLimited,
+    HardcoverUnavailable,
+    _TokenBucket,
+    hardcover_graphql,
+)
 from app.services.text_match import normalize_title
 
 logger = logging.getLogger(__name__)
@@ -140,9 +145,11 @@ async def _similar_ids(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, isbn: str
 ) -> tuple[int, list[int], dict] | None:
     data = await hardcover_graphql(client, token, _BOOK_BY_ISBN, {"isbn": isbn}, bucket)
-    editions = (data or {}).get("editions") or []
+    if data is None:
+        raise HardcoverUnavailable  # call failed — don't wipe existing recs/meta
+    editions = data.get("editions") or []
     if not editions:
-        return None
+        return None  # Hardcover genuinely has no edition for this ISBN
     book = editions[0].get("book") or {}
     hc_id = book.get("id")
     if not isinstance(hc_id, int):
@@ -157,7 +164,9 @@ async def _resolve(
     if not ids:
         return []
     data = await hardcover_graphql(client, token, _RESOLVE_BOOKS, {"ids": ids[:_RESOLVE]}, bucket)
-    rows = {b["id"]: b for b in ((data or {}).get("books") or []) if isinstance(b.get("id"), int)}
+    if data is None:
+        raise HardcoverUnavailable  # call failed — don't store a truncated list
+    rows = {b["id"]: b for b in (data.get("books") or []) if isinstance(b.get("id"), int)}
     out: list[dict] = []
     for bid in ids:  # keep Hardcover's similarity ranking
         if bid == self_id or bid not in rows:
@@ -239,6 +248,7 @@ async def refresh_book_recs(
     http = client or httpx.AsyncClient(timeout=12.0)
     bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
     counts = {"resolved": 0, "empty": 0, "failed": 0}
+    stopped_early = False
 
     try:
         for book in books:
@@ -258,6 +268,16 @@ async def refresh_book_recs(
                 book.hardcover_json = {"id": hc_id, "similar": similar, "meta": meta}
                 book.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)
                 counts["resolved" if similar else "empty"] += 1
+            except HardcoverRateLimited:
+                # Daily quota gone — stop, keep what's committed, resume next
+                # run. Do NOT wipe this book's existing recs/meta.
+                stopped_early = True
+                break
+            except HardcoverUnavailable:
+                # Transient call failure — leave this book's existing data
+                # alone rather than storing an empty/truncated list.
+                counts["failed"] += 1
+                await session.rollback()
             except Exception:  # noqa: BLE001 — one bad book must not stop the run
                 logger.exception("hardcover recs failed for book %s", book.id)
                 counts["failed"] += 1
@@ -276,6 +296,8 @@ async def refresh_book_recs(
         if owns_client:
             await http.aclose()
 
+    if stopped_early:
+        counts["rate_limited"] = True
     logger.info("hardcover book recs: %s", counts)
     return counts
 

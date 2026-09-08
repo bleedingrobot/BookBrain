@@ -184,6 +184,45 @@ async def test_no_token_is_a_no_op(db_session, monkeypatch) -> None:
     assert await refresh_book_recs(db_session) == {"skipped": "no HARDCOVER_API_TOKEN"}
 
 
+@respx.mock
+async def test_daily_limit_stops_early_without_wiping_existing_recs(db_session) -> None:
+    book = await _seed_book(db_session, "HasRecs", "9780000000010")
+    book.hardcover_json = {
+        "id": 5,
+        "similar": [{"title": "keep me", "author": "A", "isbn13": None}],
+        "meta": {"pages": 200},
+    }
+    await db_session.commit()
+
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            429, headers={"Retry-After": "60000", "x-ratelimit-daily-remaining": "0"}, json={}
+        )
+    )
+
+    counts = await refresh_book_recs(db_session, stale_after_days=45)
+    assert counts.get("rate_limited") is True
+
+    hc = (await db_session.execute(_sel("HasRecs"))).scalar_one().hardcover_json
+    assert [r["title"] for r in hc["similar"]] == ["keep me"]  # not wiped to []
+    assert hc["meta"] == {"pages": 200}
+
+
+@respx.mock
+async def test_transient_failure_leaves_a_book_alone(db_session) -> None:
+    book = await _seed_book(db_session, "Flaky", "9780000000011")
+    book.hardcover_json = {"id": 9, "similar": [{"title": "x", "author": None, "isbn13": None}]}
+    await db_session.commit()
+
+    respx.post(ENDPOINT).mock(return_value=httpx.Response(200, json={"errors": [{"message": "boom"}]}))
+
+    counts = await refresh_book_recs(db_session)
+    assert counts["failed"] == 1 and counts["empty"] == 0
+
+    hc = (await db_session.execute(_sel("Flaky"))).scalar_one().hardcover_json
+    assert hc["similar"] == [{"title": "x", "author": None, "isbn13": None}]  # untouched
+
+
 def _sel(title: str):
     from sqlalchemy import select
 

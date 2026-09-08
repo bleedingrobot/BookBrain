@@ -32,6 +32,21 @@ logger = logging.getLogger(__name__)
 ENDPOINT = "https://api.hardcover.app/v1/graphql"
 _USER_AGENT = "BookBrain (+https://github.com/bleedingrobot/BookBrain)"
 
+
+class HardcoverRateLimited(Exception):
+    """The **daily** quota is exhausted (resets ~midnight UTC). A bulk refresh
+    should stop the whole run the moment it sees this — otherwise every
+    remaining call 429s, each burning a `Retry-After` sleep, and (worse) a
+    provider that can't tell "call failed" from "no result" downgrades good
+    data. Distinct from a burst 429, which `hardcover_graphql` retries."""
+
+
+class HardcoverUnavailable(Exception):
+    """A single call failed for a transient reason (network, HTTP 5xx, a
+    GraphQL error, a burst 429 that outlived its one retry). The caller
+    should leave whatever it already has untouched and try again next run —
+    NOT record a negative result."""
+
 # `editions -> book -> book_series -> series` is depth 4. Works today; their
 # docs list a max query depth of 3 as a *roadmap* item. If it lands this query
 # starts returning an `errors` array and the provider degrades to []. The fix
@@ -99,6 +114,16 @@ class _TokenBucket:
                 self._tokens -= 1.0
 
 
+def _is_daily_limit(response: httpx.Response) -> bool:
+    """A 429 for the *daily* quota (not the per-minute burst). Header forms
+    seen live: `x-ratelimit-daily-remaining: 0` and
+    `ratelimit: "daily";r=0;t=65817`."""
+    if response.headers.get("x-ratelimit-daily-remaining") == "0":
+        return True
+    rl = response.headers.get("ratelimit", "").replace(" ", "")
+    return '"daily"' in rl and "r=0" in rl
+
+
 async def hardcover_graphql(
     client: httpx.AsyncClient,
     token: str,
@@ -106,10 +131,11 @@ async def hardcover_graphql(
     variables: dict,
     bucket: _TokenBucket,
 ) -> dict | None:
-    """POST one GraphQL request; return the `data` object, or None on ANY
-    failure (network, HTTP != 200, GraphQL `errors`, unparseable body). One
-    429 retry honouring `Retry-After`. Shared by HardcoverProvider and
-    hardcover_series_service so the rate-limit / error handling lives once."""
+    """POST one GraphQL request; return the `data` object, or None on a
+    transient failure (network, HTTP != 200, GraphQL `errors`, unparseable
+    body, a burst 429 that outlived its one retry). Raises `HardcoverRateLimited`
+    when the *daily* quota is gone — a bulk caller must stop, not grind on.
+    Shared by HardcoverProvider and the refresh services."""
     if not token:
         return None
     headers = {
@@ -125,11 +151,16 @@ async def hardcover_graphql(
         except httpx.HTTPError as exc:
             logger.info("hardcover request failed: %s", exc)
             return None
-        if response.status_code == 429 and attempt == 0:
-            retry_after = _retry_after_seconds(response)
-            logger.info("hardcover rate-limited, retrying in %ss", retry_after)
-            await asyncio.sleep(retry_after)
-            continue
+        if response.status_code == 429:
+            if _is_daily_limit(response):
+                logger.warning("hardcover daily rate limit exhausted — aborting run")
+                raise HardcoverRateLimited
+            if attempt == 0:
+                retry_after = _retry_after_seconds(response)
+                logger.info("hardcover burst-limited, retrying in %ss", retry_after)
+                await asyncio.sleep(retry_after)
+                continue
+            return None
         if response.status_code != 200:
             logger.info("hardcover HTTP %s", response.status_code)
             return None
@@ -195,7 +226,14 @@ class HardcoverProvider(BookMetadataProvider):
         return out
 
     async def _post(self, query: str, variables: dict) -> dict | None:
-        return await hardcover_graphql(self._client, self._token, query, variables, self._bucket)
+        try:
+            return await hardcover_graphql(
+                self._client, self._token, query, variables, self._bucket
+            )
+        except HardcoverRateLimited:
+            # A live scan must degrade to the other providers, never fail.
+            logger.info("hardcover daily limit — provider standing down for this scan")
+            return None
 
     # -- mapping ----------------------------------------------------------
 

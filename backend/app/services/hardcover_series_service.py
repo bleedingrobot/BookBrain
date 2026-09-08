@@ -26,7 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.data.models import Author, Book, File, FileStatus, Series
-from app.providers.metadata.hardcover import _TokenBucket, hardcover_graphql
+from app.providers.metadata.hardcover import (
+    HardcoverRateLimited,
+    HardcoverUnavailable,
+    _TokenBucket,
+    hardcover_graphql,
+)
 from app.services.text_match import normalize_person_name, normalize_words
 
 logger = logging.getLogger(__name__)
@@ -115,9 +120,14 @@ def _hits(data: dict | None) -> list[dict]:
 async def _find_series_id(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, name: str, author: str | None
 ) -> tuple[int, str, str] | None:
-    """Returns (hardcover_id, hardcover_name, hardcover_slug) or None."""
+    """Returns (hardcover_id, hardcover_name, hardcover_slug), or None when the
+    search genuinely turned up no acceptable match. Raises HardcoverUnavailable
+    if the *call itself* failed — the caller must then leave the series as-is,
+    never record `match:"none"` off a failed request."""
     query = f"{name} {author}".strip() if author else name.strip()
     data = await hardcover_graphql(client, token, _SERIES_SEARCH, {"q": query}, bucket)
+    if data is None:
+        raise HardcoverUnavailable
     bb_key = _series_key(name)
     author_key = normalize_person_name(author) if author else None
 
@@ -154,7 +164,9 @@ async def _fetch_books(
     only, capped. `releaseDate` (prompts/26 Part A) drives the viewer's
     "next up" / "coming soon" split — it's an ISO date string or absent."""
     data = await hardcover_graphql(client, token, _SERIES_BOOKS, {"id": hc_id}, bucket)
-    rows = (data or {}).get("series") or []
+    if data is None:
+        raise HardcoverUnavailable
+    rows = data.get("series") or []
     if not rows:
         return None
     s = rows[0]
@@ -218,6 +230,7 @@ async def refresh_series_catalog(
     bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
     counts = {"matched": 0, "refreshed": 0, "unmatched": 0, "failed": 0}
 
+    stopped_early = False
     try:
         for series in stale:
             existing = series.hardcover_json if isinstance(series.hardcover_json, dict) else {}
@@ -251,6 +264,17 @@ async def refresh_series_catalog(
                 }
                 series.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)
                 counts["refreshed"] += 1
+            except HardcoverRateLimited:
+                # Daily quota gone — stop now, keep what's committed, come
+                # back next run. Crucially: do NOT touch this series.
+                stopped_early = True
+                break
+            except HardcoverUnavailable:
+                # Transient call failure — leave this series' existing data
+                # alone (a failed search must never become `match:"none"`).
+                logger.info("hardcover series: skipped %r (call failed)", series.name)
+                counts["failed"] += 1
+                await session.rollback()
             except Exception:  # noqa: BLE001 — one bad series must not stop the run
                 logger.exception("hardcover series refresh failed for %r", series.name)
                 counts["failed"] += 1
@@ -269,5 +293,7 @@ async def refresh_series_catalog(
         if owns_client:
             await http.aclose()
 
+    if stopped_early:
+        counts["rate_limited"] = True
     logger.info("hardcover series catalog: %s", counts)
     return counts

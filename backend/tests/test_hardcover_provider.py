@@ -1,7 +1,14 @@
 import httpx
+import pytest
 import respx
 
-from app.providers.metadata.hardcover import ENDPOINT, HardcoverProvider
+from app.providers.metadata.hardcover import (
+    ENDPOINT,
+    HardcoverProvider,
+    HardcoverRateLimited,
+    _TokenBucket,
+    hardcover_graphql,
+)
 
 
 def _fast_bucket(provider: HardcoverProvider) -> None:
@@ -201,6 +208,29 @@ async def test_rate_limited_retries_once_then_gives_up() -> None:
 
     assert results == []
     assert route.call_count == 2
+
+
+@respx.mock
+async def test_daily_limit_raises_and_provider_degrades_to_empty() -> None:
+    route = respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            429,
+            headers={"Retry-After": "60000", "x-ratelimit-daily-remaining": "0"},
+            json={},
+        )
+    )
+    bucket = _TokenBucket(rate_per_sec=1e6, burst=1e6)
+
+    async with httpx.AsyncClient() as client:
+        # the shared helper surfaces the daily limit so a bulk caller can stop
+        with pytest.raises(HardcoverRateLimited):
+            await hardcover_graphql(client, "t", "query{x}", {}, bucket)
+        assert route.call_count == 1  # no pointless retry
+
+        # a live scan through the provider still just degrades to []
+        provider = HardcoverProvider(token="t", client=client)
+        _fast_bucket(provider)
+        assert await provider.search_by_isbn("9780765311788") == []
 
 
 async def test_no_token_makes_no_request() -> None:

@@ -186,6 +186,51 @@ async def test_no_token_is_a_no_op(db_session, monkeypatch) -> None:
     assert await refresh_series_catalog(db_session) == {"skipped": "no HARDCOVER_API_TOKEN"}
 
 
+@respx.mock
+async def test_daily_limit_stops_early_without_wiping_a_good_match(db_session) -> None:
+    # A series that already has a good auto-match + book list.
+    good = await _seed_series(db_session, "Established")
+    good.hardcover_json = {
+        "id": 1,
+        "name": "Established",
+        "slug": "established",
+        "books": [{"position": 1.0, "title": "One", "releaseDate": "2020-01-01"}],
+        "match": "auto",
+    }
+    await db_session.commit()
+    await _seed_series(db_session, "Also Established")  # never reached
+
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            429, headers={"Retry-After": "60000", "x-ratelimit-daily-remaining": "0"}, json={}
+        )
+    )
+
+    counts = await refresh_series_catalog(db_session)
+    assert counts.get("rate_limited") is True
+
+    hc = (await db_session.execute(_select_series("Established"))).scalar_one().hardcover_json
+    assert hc["match"] == "auto" and hc["books"][0]["releaseDate"] == "2020-01-01"  # untouched
+
+
+@respx.mock
+async def test_transient_search_failure_does_not_downgrade_to_none(db_session) -> None:
+    series = await _seed_series(db_session, "Flaky")
+    series.hardcover_json = {"id": 7, "name": "Flaky", "slug": "flaky", "books": [], "match": "auto"}
+    await db_session.commit()
+
+    # a GraphQL-level error (not a 429) → hardcover_graphql returns None
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(200, json={"errors": [{"message": "boom"}]})
+    )
+
+    counts = await refresh_series_catalog(db_session)
+    assert counts["failed"] == 1 and counts["unmatched"] == 0
+
+    hc = (await db_session.execute(_select_series("Flaky"))).scalar_one().hardcover_json
+    assert hc["match"] == "auto"  # NOT rewritten to {"match": "none"}
+
+
 def _select_series(name: str):
     from sqlalchemy import select
 
