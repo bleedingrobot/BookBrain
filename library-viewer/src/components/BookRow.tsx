@@ -114,6 +114,14 @@ function ReadersAlsoLiked({
 
 const isEpub = (name: string) => name.toLowerCase().endsWith('.epub')
 
+// "December 2024" from an ISO date, best-effort.
+function monthYear(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
+
 export function BookRow({
   row,
   allRows,
@@ -301,6 +309,24 @@ export function BookRow({
                     </a>
                   </>
                 )}
+              </p>
+            )}
+            {gap?.nextUp && row.series && (
+              <p className="mt-1.5 text-neutral-500">
+                Next in {row.series}: #{gap.nextUp.position} {gap.nextUp.title}
+              </p>
+            )}
+            {gap?.upcoming && gap.upcoming.length > 0 && row.series && (
+              <p className="mt-1.5 text-neutral-500">
+                Coming:{' '}
+                {gap.upcoming
+                  .map(
+                    (u) =>
+                      `#${u.position} ${u.title}${
+                        u.releaseDate ? ` — ${monthYear(u.releaseDate)}` : ''
+                      }`,
+                  )
+                  .join(', ')}
               </p>
             )}
             {(seriesPeers.length > 1 || authorPeers.length > 1) && (

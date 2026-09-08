@@ -94,6 +94,34 @@ async def test_matches_and_stores_the_canonical_book_list(db_session) -> None:
 
 
 @respx.mock
+async def test_stores_release_dates_when_present(db_session) -> None:
+    await _seed_series(db_session, "Stormlight")
+    _route(
+        search_hits=[{"id": "997", "name": "Stormlight", "author_name": "Brandon Sanderson", "slug": "s"}],
+        series_books={
+            "id": 997,
+            "name": "Stormlight",
+            "slug": "s",
+            "primary_books_count": 5,
+            "book_series": [
+                {"position": 1, "book": {"title": "The Way of Kings", "release_date": "2010-08-31"}},
+                {"position": 2, "book": {"title": "Words of Radiance"}},  # no date
+                {"position": 6, "book": {"title": "Untitled Stormlight Archive #6", "release_date": "2031-12-01"}},
+            ],
+        },
+    )
+
+    await refresh_series_catalog(db_session)
+
+    hc = (await db_session.execute(_select_series("Stormlight"))).scalar_one().hardcover_json
+    assert hc["books"] == [
+        {"position": 1.0, "title": "The Way of Kings", "releaseDate": "2010-08-31"},
+        {"position": 2.0, "title": "Words of Radiance"},
+        {"position": 6.0, "title": "Untitled Stormlight Archive #6", "releaseDate": "2031-12-01"},
+    ]
+
+
+@respx.mock
 async def test_no_match_records_none_and_stops_re_searching(db_session) -> None:
     await _seed_series(db_session, "Some Obscure Series")
     _route(search_hits=[{"id": "1", "name": "Totally Different", "author_name": "Someone Else"}], series_books=None)

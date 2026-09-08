@@ -81,6 +81,30 @@ describe('normalise', () => {
   })
 })
 
+describe('normalise — series catalog', () => {
+  it('keeps release dates and coerces a missing one to null', () => {
+    const out = normalise({
+      series: {
+        Mistborn: {
+          hardcoverId: 5,
+          hardcoverName: 'The Mistborn Saga',
+          hardcoverSlug: 'the-mistborn-saga',
+          primaryCount: 3,
+          books: [
+            { position: 1, title: 'The Final Empire', releaseDate: '2006-07-17' },
+            { position: 2, title: 'The Well of Ascension' },
+            { position: 3, title: 5 as unknown as string }, // dropped
+          ],
+        },
+      },
+    })
+    expect(out.series.Mistborn.books).toEqual([
+      { position: 1, title: 'The Final Empire', releaseDate: '2006-07-17' },
+      { position: 2, title: 'The Well of Ascension', releaseDate: null },
+    ])
+  })
+})
+
 describe('loadCachedIndex', () => {
   it('is EMPTY_INDEX with no cache', () => {
     expect(loadCachedIndex('lib-1')).toBe(EMPTY_INDEX)

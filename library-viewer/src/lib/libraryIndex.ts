@@ -38,6 +38,9 @@ export interface IndexEntry {
 export interface SeriesCatalogBook {
   position: number
   title: string
+  // ISO date string, or null. Placeholder rows ("Untitled … #10", dated
+  // decades out) are filtered viewer-side, not here. prompts/26 Part A.
+  releaseDate?: string | null
 }
 
 export interface SeriesCatalog {
@@ -102,7 +105,11 @@ function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCata
         (b): b is SeriesCatalogBook =>
           !!b && typeof b.position === 'number' && typeof b.title === 'string',
       )
-      .map((b) => ({ position: b.position, title: b.title }))
+      .map((b) => ({
+        position: b.position,
+        title: b.title,
+        releaseDate: typeof b.releaseDate === 'string' ? b.releaseDate : null,
+      }))
     if (books.length === 0) continue
     out[name] = {
       hardcoverId: typeof entry.hardcoverId === 'number' ? entry.hardcoverId : null,

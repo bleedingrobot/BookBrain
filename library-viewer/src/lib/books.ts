@@ -87,6 +87,7 @@ export type FilterKey =
   | 'all'
   | 'noseries'
   | 'gaps'
+  | 'comingsoon'
   | `on:${string}`
   | `off:${string}`
   | 'unsent'
@@ -97,10 +98,12 @@ export function matchesFilter(
   filter: FilterKey,
   sent: SentMap,
   incompleteSeries: Set<string>,
+  comingSoonSeries: Set<string> = new Set(),
 ): boolean {
   if (filter === 'all') return true
   if (filter === 'noseries') return !row.series
   if (filter === 'gaps') return row.series != null && incompleteSeries.has(row.series)
+  if (filter === 'comingsoon') return row.series != null && comingSoonSeries.has(row.series)
   if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
   if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
   if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]

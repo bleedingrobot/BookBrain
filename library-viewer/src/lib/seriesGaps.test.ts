@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { BookRow } from './books'
 import type { SeriesCatalog } from './libraryIndex'
-import { computeSeriesGaps, incompleteSeriesNames } from './seriesGaps'
+import {
+  comingSoonSeriesNames,
+  computeSeriesGaps,
+  incompleteSeriesNames,
+} from './seriesGaps'
 
 function catalog(
   slug: string,
-  books: { position: number; title: string }[],
+  books: { position: number; title: string; releaseDate?: string | null }[],
 ): SeriesCatalog {
   return { hardcoverId: 1, hardcoverName: slug, hardcoverSlug: slug, primaryCount: books.length, books }
 }
+
+const iso = (offsetDays: number) =>
+  new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10)
 
 function book(series: string | null, seriesNumber: string | null): BookRow {
   return {
@@ -123,6 +130,61 @@ describe('computeSeriesGaps (Hardcover catalog path)', () => {
     const gap = computeSeriesGaps(rows, {}).get('Mistborn')!
     expect(gap.source).toBe('guess')
     expect(gap.missingTitles).toBeUndefined()
+  })
+})
+
+describe('computeSeriesGaps — next up / upcoming (Part A)', () => {
+  const owned = [book('Stormlight', '1'), book('Stormlight', '2')]
+
+  it('splits already-released vs future entries above what you own', () => {
+    const cat = {
+      Stormlight: catalog('stormlight', [
+        { position: 1, title: 'The Way of Kings', releaseDate: '2010-08-31' },
+        { position: 2, title: 'Words of Radiance', releaseDate: '2014-03-04' },
+        { position: 3, title: 'Oathbringer', releaseDate: iso(-30) }, // out
+        { position: 4, title: 'Rhythm of War', releaseDate: iso(90) }, // coming
+      ]),
+    }
+    const gap = computeSeriesGaps(owned, cat).get('Stormlight')!
+    expect(gap.nextUp).toEqual({ position: 3, title: 'Oathbringer', releaseDate: iso(-30) })
+    expect(gap.upcoming).toEqual([{ position: 4, title: 'Rhythm of War', releaseDate: iso(90) }])
+  })
+
+  it('ignores far-future placeholder rows', () => {
+    const cat = {
+      Stormlight: catalog('stormlight', [
+        { position: 1, title: 'The Way of Kings' },
+        { position: 2, title: 'Words of Radiance' },
+        { position: 6, title: 'Untitled Stormlight Archive #6', releaseDate: '2031-12-01' },
+        { position: 7, title: 'The Real Title', releaseDate: '2044-01-01' }, // >3y out
+      ]),
+    }
+    const gap = computeSeriesGaps(owned, cat).get('Stormlight')!
+    expect(gap.nextUp).toBeNull()
+    expect(gap.upcoming).toEqual([])
+  })
+
+  it('a single owned book still surfaces an upcoming entry', () => {
+    const cat = {
+      Stormlight: catalog('stormlight', [
+        { position: 1, title: 'The Way of Kings', releaseDate: '2010-08-31' },
+        { position: 2, title: 'Words of Radiance', releaseDate: iso(120) },
+      ]),
+    }
+    const gap = computeSeriesGaps([book('Stormlight', '1')], cat).get('Stormlight')!
+    expect(gap.upcoming).toEqual([{ position: 2, title: 'Words of Radiance', releaseDate: iso(120) }])
+  })
+
+  it('comingSoonSeriesNames is only series with a future entry', () => {
+    const cat = {
+      Stormlight: catalog('stormlight', [
+        { position: 1, title: 'a' },
+        { position: 2, title: 'b' },
+        { position: 3, title: 'c', releaseDate: iso(60) },
+      ]),
+    }
+    const gaps = computeSeriesGaps(owned, cat)
+    expect([...comingSoonSeriesNames(gaps)]).toEqual(['Stormlight'])
   })
 })
 

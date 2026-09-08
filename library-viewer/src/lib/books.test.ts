@@ -86,8 +86,9 @@ describe('matchesRow', () => {
 describe('matchesFilter', () => {
   const sent: SentMap = { james: { a: 't' }, tess: { b: 't' } }
   const incomplete = new Set(['Mistborn'])
+  const comingSoon = new Set(['Stormlight'])
   const m = (r: BookRow, f: Parameters<typeof matchesFilter>[1]) =>
-    matchesFilter(r, f, sent, incomplete)
+    matchesFilter(r, f, sent, incomplete, comingSoon)
   it('all', () => expect(m(row({ id: 'a' }), 'all')).toBe(true))
   it('noseries', () => {
     expect(m(row({ series: null }), 'noseries')).toBe(true)
@@ -97,6 +98,11 @@ describe('matchesFilter', () => {
     expect(m(row({ series: 'Mistborn' }), 'gaps')).toBe(true)
     expect(m(row({ series: 'Elantris' }), 'gaps')).toBe(false)
     expect(m(row({ series: null }), 'gaps')).toBe(false)
+  })
+  it('comingsoon = in a series with an announced future book', () => {
+    expect(m(row({ series: 'Stormlight' }), 'comingsoon')).toBe(true)
+    expect(m(row({ series: 'Mistborn' }), 'comingsoon')).toBe(false)
+    expect(m(row({ series: null }), 'comingsoon')).toBe(false)
   })
   it('on:<folder>', () => {
     expect(m(row({ id: 'a' }), 'on:james')).toBe(true)

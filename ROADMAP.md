@@ -55,8 +55,17 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       page/ratings-count line + clickable genre chips, `books.ts` gains a
       `genre:<g>` filter + `topGenres()` facet + a "Rating" sort,
       `App.tsx` renders the genre facet chips.
-    - **Parts A / C / D** — new & upcoming per series, description source,
-      characters. Scoped in prompts/26, not started.
+    - **Part A — DONE (2026-09-08)**: "new & upcoming" per series. The
+      `_SERIES_BOOKS` query gains `book { release_date }`, stored per entry as
+      `releaseDate` in `series.hardcover_json.books` (flows through the index's
+      `series` map unchanged). Viewer `seriesGaps.ts` splits catalogue entries
+      *above* what you own into `nextUp` (lowest already-released one you lack)
+      and `upcoming` (real future dates only — `/^untitled\b/i` titles and
+      dates >3 years out are filtered as placeholders). `BookRow` shows
+      "Next in {series}: #N Title" and "Coming: #N Title — <month year>";
+      `App.tsx` adds a "Coming soon" filter chip (`comingSoonSeriesNames`).
+    - **Parts C / D** — description source, characters. Scoped in prompts/26,
+      not started.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

@@ -1,6 +1,14 @@
 import type { BookRow } from './books'
 import type { SeriesCatalog } from './libraryIndex'
 
+// A catalogue entry above what you own — the next released book you're
+// missing, or a not-yet-published one. prompts/26 Part A.
+export interface SeriesReleaseEntry {
+  position: number
+  title: string
+  releaseDate: string | null
+}
+
 export interface SeriesGap {
   have: number[] // whole entry numbers present, sorted
   missing: number[] // whole numbers below the highest owned that aren't present
@@ -10,6 +18,27 @@ export interface SeriesGap {
   // Present only when source === 'hardcover': the Hardcover series slug, for
   // a "via Hardcover" link.
   hardcoverSlug?: string | null
+  // source === 'hardcover' only: the lowest already-released entry above what
+  // you own that you don't have ("what to buy next").
+  nextUp?: SeriesReleaseEntry | null
+  // source === 'hardcover' only: entries above what you own with a real
+  // future release date ("what's coming").
+  upcoming?: SeriesReleaseEntry[]
+}
+
+// A far-future date on a placeholder row ("Untitled Stormlight Archive #10",
+// 2035-01-01) is not a real announcement. Treat a date this many years out,
+// or an "Untitled …" title, as "no real date".
+const FAR_FUTURE_YEARS = 3
+const PLACEHOLDER_TITLE = /^untitled\b/i
+
+function realReleaseDate(book: { title: string; releaseDate?: string | null }): Date | null {
+  if (!book.releaseDate || PLACEHOLDER_TITLE.test(book.title)) return null
+  const d = new Date(book.releaseDate)
+  if (Number.isNaN(d.getTime())) return null
+  const cutoff = new Date()
+  cutoff.setFullYear(cutoff.getFullYear() + FAR_FUTURE_YEARS)
+  return d > cutoff ? null : d
 }
 
 // The biggest jump between consecutive owned entries that still counts as
@@ -41,7 +70,6 @@ function ownedWholeNumbers(rows: BookRow[]): Map<string, Set<number>> {
 // out of "missing" — those are "what's next", not "what's absent".
 function fromCatalog(owned: Set<number>, catalog: SeriesCatalog): SeriesGap | null {
   const have = [...owned].sort((a, b) => a - b)
-  if (have.length < 2) return null
   const maxOwned = have[have.length - 1]
 
   const titleAt = new Map<number, string>()
@@ -59,7 +87,39 @@ function fromCatalog(owned: Set<number>, catalog: SeriesCatalog): SeriesGap | nu
     const t = titleAt.get(i)
     if (t) missingTitles[i] = t
   }
-  return { have, missing, source: 'hardcover', missingTitles, hardcoverSlug: catalog.hardcoverSlug }
+
+  // Everything above what you own: split into already-out ("next up", the
+  // single lowest one) and not-yet-released ("upcoming", all of them).
+  const now = Date.now()
+  let nextUp: SeriesReleaseEntry | null = null
+  const upcoming: SeriesReleaseEntry[] = []
+  const aboveOwned = catalog.books
+    .filter((b) => Number.isInteger(b.position) && b.position > maxOwned && !owned.has(b.position))
+    .sort((a, b) => a.position - b.position)
+  for (const b of aboveOwned) {
+    const date = realReleaseDate(b)
+    const entry: SeriesReleaseEntry = {
+      position: b.position,
+      title: b.title,
+      releaseDate: b.releaseDate ?? null,
+    }
+    if (date && date.getTime() > now) {
+      upcoming.push(entry)
+    } else if (date && !nextUp) {
+      nextUp = entry
+    }
+  }
+
+  if (have.length < 2 && !nextUp && upcoming.length === 0) return null
+  return {
+    have,
+    missing,
+    source: 'hardcover',
+    missingTitles,
+    hardcoverSlug: catalog.hardcoverSlug,
+    nextUp,
+    upcoming,
+  }
 }
 
 // The original heuristic: walk up from the lowest owned entry, stop at the
@@ -104,6 +164,16 @@ export function incompleteSeriesNames(gaps: Map<string, SeriesGap>): Set<string>
   const names = new Set<string>()
   for (const [name, gap] of gaps) {
     if (gap.missing.length > 0) names.add(name)
+  }
+  return names
+}
+
+// Series with a book announced for the future you don't own — the "Coming
+// soon" filter chip. prompts/26 Part A.
+export function comingSoonSeriesNames(gaps: Map<string, SeriesGap>): Set<string> {
+  const names = new Set<string>()
+  for (const [name, gap] of gaps) {
+    if (gap.upcoming && gap.upcoming.length > 0) names.add(name)
   }
   return names
 }

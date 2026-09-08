@@ -31,7 +31,11 @@ import {
   type RecBook,
   type Recommendations,
 } from './lib/recommendations'
-import { computeSeriesGaps, incompleteSeriesNames } from './lib/seriesGaps'
+import {
+  comingSoonSeriesNames,
+  computeSeriesGaps,
+  incompleteSeriesNames,
+} from './lib/seriesGaps'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -173,14 +177,17 @@ export default function App() {
     [allRows, index.series],
   )
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
+  const comingSoonSeries = useMemo(() => comingSoonSeriesNames(seriesGaps), [seriesGaps])
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const rows = useMemo(() => {
     const out = allRows.filter(
-      (row) => matchesRow(row, query) && matchesFilter(row, filter, sentMap, incompleteSeries),
+      (row) =>
+        matchesRow(row, query) &&
+        matchesFilter(row, filter, sentMap, incompleteSeries, comingSoonSeries),
     )
     out.sort(SORTS[sort])
     return out
-  }, [allRows, query, sort, filter, sentMap, incompleteSeries])
+  }, [allRows, query, sort, filter, sentMap, incompleteSeries, comingSoonSeries])
 
   // Log a search a beat after typing settles, not on every keystroke — a
   // read+write to Drive per character would be both wasteful and racy.
@@ -538,6 +545,9 @@ export default function App() {
     { key: 'all', label: 'All' },
     ...koboDevices.map((d) => ({ key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` })),
     ...(incompleteSeries.size > 0 ? [{ key: 'gaps' as FilterKey, label: 'Missing books' }] : []),
+    ...(comingSoonSeries.size > 0
+      ? [{ key: 'comingsoon' as FilterKey, label: 'Coming soon' }]
+      : []),
     ...genreFacets.map((g) => ({ key: `genre:${g}` as FilterKey, label: g })),
   ]
 

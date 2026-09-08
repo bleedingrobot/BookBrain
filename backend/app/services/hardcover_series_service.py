@@ -62,7 +62,7 @@ query BookBrainSeriesBooks($id: Int!) {
       }
     ) {
       position
-      book { title }
+      book { title release_date }
     }
   }
 }
@@ -150,7 +150,9 @@ async def _fetch_books(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, hc_id: int
 ) -> tuple[list[dict], int | None, str, str] | None:
     """Returns (books, primary_count, name, slug) — books as
-    [{position: float, title: str}], numeric positions only, capped."""
+    [{position: float, title: str, releaseDate: str|None}], numeric positions
+    only, capped. `releaseDate` (prompts/26 Part A) drives the viewer's
+    "next up" / "coming soon" split — it's an ISO date string or absent."""
     data = await hardcover_graphql(client, token, _SERIES_BOOKS, {"id": hc_id}, bucket)
     rows = (data or {}).get("series") or []
     if not rows:
@@ -159,14 +161,19 @@ async def _fetch_books(
     books: list[dict] = []
     for entry in s.get("book_series") or []:
         pos = entry.get("position")
-        title = (entry.get("book") or {}).get("title")
+        book = entry.get("book") or {}
+        title = book.get("title")
         if not isinstance(title, str) or not title.strip():
             continue
         try:
             pos_f = float(pos)
         except (TypeError, ValueError):
             continue
-        books.append({"position": pos_f, "title": title.strip()})
+        item = {"position": pos_f, "title": title.strip()}
+        release_date = book.get("release_date")
+        if isinstance(release_date, str) and release_date.strip():
+            item["releaseDate"] = release_date.strip()
+        books.append(item)
         if len(books) >= _MAX_ENTRIES:
             break
     return books, s.get("primary_books_count"), s.get("name") or "", s.get("slug") or ""
