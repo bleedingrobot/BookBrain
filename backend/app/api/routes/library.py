@@ -115,24 +115,35 @@ async def refresh_library_index(
 @router.post("/series-catalog/refresh")
 async def refresh_series_catalog(
     limit: int = 300,
+    stale_days: int | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """prompts/25 Phase 2 — top up each series' Hardcover canonical book list
     (bounded, so it's safe to click; the nightly job does this too). The next
     index refresh then carries it into bookbrain-index.json. No-op without
-    HARDCOVER_API_TOKEN."""
-    return await hardcover_series_service.refresh_series_catalog(db, limit=max(1, min(limit, 1000)))
+    HARDCOVER_API_TOKEN. `stale_days=0` forces a re-sync of everything (use
+    after a schema change like Part A's `releaseDate`)."""
+    kwargs = {"limit": max(1, min(limit, 1000))}
+    if stale_days is not None:
+        kwargs["stale_after_days"] = max(0, stale_days)
+    return await hardcover_series_service.refresh_series_catalog(db, **kwargs)
 
 
 @router.post("/book-recs/refresh")
 async def refresh_book_recs(
     limit: int = 400,
+    stale_days: int | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """prompts/25 Phase 3 — fetch/resolve each book's Hardcover "readers also
     liked" list (bounded). Then POST /library/recommendations to write the
-    sidecar. No-op without HARDCOVER_API_TOKEN."""
-    return await hardcover_recs_service.refresh_book_recs(db, limit=max(1, min(limit, 2000)))
+    sidecar. No-op without HARDCOVER_API_TOKEN. `stale_days=0` forces a
+    re-sync (rows lacking `meta` from before Part B are always re-picked
+    regardless)."""
+    kwargs = {"limit": max(1, min(limit, 2000))}
+    if stale_days is not None:
+        kwargs["stale_after_days"] = max(0, stale_days)
+    return await hardcover_recs_service.refresh_book_recs(db, **kwargs)
 
 
 @router.post("/recommendations")
