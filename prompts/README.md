@@ -64,7 +64,8 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   2026-09-09** — `@huggingface/transformers` (lazy chunk), model vendored in
   `public/models/`, `lib/embeddings.ts` + `lib/semanticSearch.ts` +
   Keyword|Meaning toggle in `App.tsx`, "· NN% match" per row. Parity
-  cosine 0.99. Not browser-verified.
+  cosine 0.99. **Browser-verified 2026-09-09** ("female assassin" → good
+  results). Feature done + live.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

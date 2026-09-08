@@ -377,7 +377,7 @@ mis-identification guards). The rest of that session's ideas, for later:
     `public/models/` (22 MB), `lib/embeddings.ts` + `lib/semanticSearch.ts`,
     a **Keyword | ✨ Meaning** toggle by the search box (debounced auto-search,
     exact matches pinned, "· NN% match" per row, offline once cached).
-    Backend↔viewer parity cosine 0.99. **Not browser-verified with real auth.**
+    Backend↔viewer parity cosine 0.99. **Browser-verified 2026-09-09** ("female assassin" → good results). Feature done + live.
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".
