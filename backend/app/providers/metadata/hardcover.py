@@ -203,7 +203,6 @@ class HardcoverProvider(BookMetadataProvider):
 
     def _document_to_candidate(self, doc: dict) -> MetadataCandidate:
         series, series_number = _document_series(doc)
-        isbns = doc.get("isbns") or []
         year = doc.get("release_year")
         author_names = doc.get("author_names") or []
         return MetadataCandidate(
@@ -213,8 +212,11 @@ class HardcoverProvider(BookMetadataProvider):
             series_number=series_number,
             description=doc.get("description") or None,
             first_published=str(year) if year else None,
-            isbn13=next((i for i in isbns if isinstance(i, str) and len(i) == 13), None),
-            isbn10=next((i for i in isbns if isinstance(i, str) and len(i) == 10), None),
+            # A search hit's `isbns` is an unordered pile of *every* edition's
+            # ISBN (dozens, many foreign) — picking one would be misleading.
+            # The ISBN path is where a specific edition's ISBN comes from.
+            isbn13=None,
+            isbn10=None,
             source=self.name,
         )
 
@@ -261,15 +263,23 @@ def _first_series(book_series: object) -> tuple[str | None, float | None]:
 
 
 def _document_series(doc: dict) -> tuple[str | None, float | None]:
+    # A search-hit document carries the series as a nested object:
+    #   featured_series: { position, series: { name, ... } }
+    # (may be {} for a book with no series). `series_names` is a flat string
+    # array fallback — first entry, which Typesense weights as most relevant.
     featured = doc.get("featured_series")
     number = doc.get("featured_series_position")
+    if number is None and isinstance(featured, dict):
+        number = featured.get("position")
     try:
         number = float(number) if number is not None else None
     except (TypeError, ValueError):
         number = None
     name: str | None = None
     if isinstance(featured, dict):
-        name = featured.get("series_name") or featured.get("name")
+        inner = featured.get("series")
+        if isinstance(inner, dict):
+            name = inner.get("name")
     if not name:
         series_names = doc.get("series_names") or []
         name = next((s for s in series_names if isinstance(s, str) and s.strip()), None)

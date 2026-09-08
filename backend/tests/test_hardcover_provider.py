@@ -90,6 +90,8 @@ async def test_search_by_isbn_without_series_does_not_crash() -> None:
 
 @respx.mock
 async def test_search_by_title_author_parses_typesense_hits() -> None:
+    # Real Typesense document shape: featured_series is a nested object, and
+    # `isbns` is an unordered pile of every edition's ISBN (not used).
     respx.post(ENDPOINT).mock(
         return_value=httpx.Response(
             200,
@@ -97,19 +99,23 @@ async def test_search_by_title_author_parses_typesense_hits() -> None:
                 "data": {
                     "search": {
                         "results": {
+                            "found": 1,
                             "hits": [
                                 {
                                     "document": {
                                         "title": "Leviathan Wakes",
                                         "author_names": ["James S. A. Corey"],
-                                        "featured_series": {"series_name": "The Expanse"},
-                                        "featured_series_position": 1,
-                                        "isbns": ["9780316129084", "0316129089"],
+                                        "featured_series": {
+                                            "position": 1.0,
+                                            "series": {"name": "The Expanse", "id": 42},
+                                        },
+                                        "featured_series_position": 1.0,
+                                        "isbns": ["0316129089", "9780316129084"],
                                         "release_year": 2011,
                                         "description": "The solar system is colonised.",
                                     }
                                 }
-                            ]
+                            ],
                         }
                     }
                 }
@@ -127,9 +133,45 @@ async def test_search_by_title_author_parses_typesense_hits() -> None:
     assert c.title == "Leviathan Wakes"
     assert c.series == "The Expanse"
     assert c.series_number == 1.0
-    assert c.isbn13 == "9780316129084"
-    assert c.isbn10 == "0316129089"
+    assert c.first_published == "2011"
+    assert c.isbn13 is None  # search path never sets an ISBN
     assert c.source == "hardcover"
+
+
+@respx.mock
+async def test_search_hit_without_series_is_fine() -> None:
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "search": {
+                        "results": {
+                            "hits": [
+                                {
+                                    "document": {
+                                        "title": "A Standalone",
+                                        "author_names": ["Someone"],
+                                        "featured_series": {},
+                                        "featured_series_position": None,
+                                        "series_names": [],
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        provider = HardcoverProvider(token="t", client=client)
+        _fast_bucket(provider)
+        results = await provider.search_by_title_author("A Standalone", None)
+
+    assert results[0].series is None
+    assert results[0].series_number is None
 
 
 @respx.mock
