@@ -10,6 +10,11 @@ runs in the nightly job + `POST /api/library/new-releases/refresh`. One
 GraphQL call per author. Every failure is swallowed — an author just keeps
 their old data (or none) and is retried next run. Rate-limit-aware: a daily
 429 stops the run cleanly, keeping everything already committed.
+
+prompts/28 Phase 1 — the same per-author request also carries an `authors`
+root field, so this pass resolves `Author.hardcover_person_id` (the canonical
++ alias walk) for free. `repair_forked_authors.py` then merges rows that
+share a person id. Run `new-releases/refresh?stale_days=0` once to backfill.
 """
 
 import logging
@@ -28,7 +33,7 @@ from app.providers.metadata.hardcover import (
     hardcover_graphql,
 )
 from app.services.hardcover_recs_service import _BOOK_CATEGORY, _tag_names
-from app.services.text_match import normalize_title
+from app.services.text_match import normalize_person_name, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +42,19 @@ _FAR_FUTURE_YEARS = 3
 _PLACEHOLDER_TITLE = ("untitled",)
 _WINDOW_MONTHS = 4  # $since = today − this many months
 
-# `books` filtered to this author's canonical, non-compilation, non-partial
-# works released within the window or announced for the future. The
-# `contributions.author.name` filter is what actually resolves the author
-# (the `authors { contributions(...) }` shape returns [] — validated live
-# 2026-09-08). `canonical_id: {_is_null: true}` collapses translations.
-_AUTHOR_BOOKS = """
-query BookBrainAuthorReleases($name: String!, $since: date!) {
+# One request, two roots (Hardcover allows ≤5 top-level queries/request):
+#
+#   books  — this author's canonical, non-compilation, non-partial works in
+#            the window or announced for the future. The
+#            `contributions.author.name` filter is what resolves the author
+#            (the `authors { contributions(...) }` shape returns [] — validated
+#            live 2026-09-08). `canonical_id: {_is_null: true}` drops
+#            translations.
+#   authors — the same-named author row(s), plus the `canonical` (dedup) and
+#            `alias` (pen name → real identity) hops, for prompts/28's person
+#            id. Ordered by book count so row 0 is the real one.
+_AUTHOR_INFO = """
+query BookBrainAuthorInfo($name: String!, $since: date!) {
   books(
     where: {
       contributions: {author: {name: {_eq: $name}}}
@@ -62,6 +73,13 @@ query BookBrainAuthorReleases($name: String!, $since: date!) {
       isbn_13
     }
     cached_tags
+  }
+  authors(where: {name: {_eq: $name}}, order_by: {books_count: desc_nulls_last}, limit: 5) {
+    id
+    name
+    alternate_names
+    alias { id name }
+    canonical { id name alias { id name } }
   }
 }
 """
@@ -182,18 +200,48 @@ async def fetch_global_anticipated(
     return out
 
 
-async def _author_books(
+def resolve_person_id(rows: object, bb_name: str) -> tuple[int, str] | None:
+    """Walk Hardcover's author graph for `bb_name` to a stable "person id":
+    the best-matching row (most books), then its `canonical` row (Hardcover's
+    own dedup), then that row's `alias` (pen name → real identity).
+
+    Guarded — returns None unless the matched row's `name` or one of its
+    `alternate_names` normalises to `bb_name`, so a fuzzy Hardcover hit for a
+    different person is never trusted.
+
+    Verified live 2026-09-09: `Iain M. Banks` / `Iain Banks` → 95997;
+    `Robert Galbraith` → 80626 (J.K. Rowling); `Richard A. Knaak` → 191045;
+    a plain house pseudonym (`Richard Awlinson`) → its own id, no hops."""
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        return None
+    best = rows[0]  # ordered by books_count desc
+    key = normalize_person_name(bb_name)
+    if not key:
+        return None
+    names = [best.get("name"), *(best.get("alternate_names") or [])]
+    if key not in {normalize_person_name(n) for n in names if isinstance(n, str)}:
+        return None
+    node = best.get("canonical") if isinstance(best.get("canonical"), dict) else best
+    alias = node.get("alias") if isinstance(node.get("alias"), list) else []
+    person = alias[0] if alias and isinstance(alias[0], dict) else node
+    pid = person.get("id")
+    if not isinstance(pid, int):
+        return None
+    name = person.get("name")
+    return pid, name if isinstance(name, str) and name.strip() else str(best.get("name") or bb_name)
+
+
+async def _author_info(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, name: str, since: date
-) -> list[dict] | None:
+) -> tuple[list[dict], tuple[int, str] | None]:
     data = await hardcover_graphql(
-        client, token, _AUTHOR_BOOKS, {"name": name, "since": since.isoformat()}, bucket
+        client, token, _AUTHOR_INFO, {"name": name, "since": since.isoformat()}, bucket
     )
     if data is None:
         raise HardcoverUnavailable  # call failed — don't wipe existing data
-    rows = data.get("books") or []
     books: list[dict] = []
     seen: set[str] = set()
-    for row in rows:
+    for row in data.get("books") or []:
         mapped = _map_book(row) if isinstance(row, dict) else None
         if mapped is None:
             continue
@@ -204,7 +252,7 @@ async def _author_books(
         books.append(mapped)
         if len(books) >= _KEEP:
             break
-    return books
+    return books, resolve_person_id(data.get("authors"), name)
 
 
 async def refresh_new_releases(
@@ -252,14 +300,17 @@ async def refresh_new_releases(
     owns_client = client is None
     http = client or httpx.AsyncClient(timeout=12.0)
     bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
-    counts = {"authors": 0, "with_books": 0, "empty": 0, "failed": 0}
+    counts = {"authors": 0, "with_books": 0, "empty": 0, "with_person_id": 0, "failed": 0}
     stopped_early = False
 
     try:
         for author in authors:
             try:
-                books = await _author_books(http, token, bucket, author.name, since)
+                books, person = await _author_info(http, token, bucket, author.name, since)
                 author.hardcover_json = {"books": books or []}
+                if person is not None:
+                    author.hardcover_person_id = person[0]
+                    counts["with_person_id"] += 1
                 author.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)
                 counts["authors"] += 1
                 counts["with_books" if books else "empty"] += 1

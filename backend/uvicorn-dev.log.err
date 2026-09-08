@@ -1,97 +1,58 @@
-INFO:     Started server process [57788]
+INFO:     Started server process [12024]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-ERROR:    Exception in ASGI application
+cover regeneration failed
 Traceback (most recent call last):
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 422, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
-    await super().__call__(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
-    await self.app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
-    await route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
-    await self.original_router.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
-    await included_router._handle_selected(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1791, in _handle_selected
-    await route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
-    await self.original_router.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
-    await included_router._handle_selected(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
-    await original_route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
-    await app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 352, in run_endpoint_function
-    return await dependant.call(**values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\app\api\routes\library.py", line 131, in refresh_series_catalog
-    return await hardcover_series_service.refresh_series_catalog(db, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\app\services\hardcover_series_service.py", line 248, in refresh_series_catalog
-    existing = series.hardcover_json if isinstance(series.hardcover_json, dict) else {}
-                                                   ^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 569, in __get__
-    return self.impl.get(state, dict_)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 1096, in get
-    value = self._fire_loader_callables(state, key, passive)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
-    return state._load_expired(state, passive)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\state.py", line 828, in _load_expired
-    self.manager.expired_attribute_loader(self, toload, passive)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 1674, in load_scalar_attributes
-    result = load_on_ident(
-             ^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 510, in load_on_ident
-    return load_on_pk_identity(
-           ^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 695, in load_on_pk_identity
-    session.execute(
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 183, in execute
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 343, in _handle_exception
+    raise error
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 165, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 160, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 63, in _connection_worker_thread
+    result = function()
+             ^^^^^^^^^^
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Giant\Documents\epub-librarian\backend\app\services\cover_service.py", line 205, in regenerate_covers
+    await session.execute(
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 448, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2373, in execute
     return self._execute_internal(
            ^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2271, in _execute_internal
     result: Result[Any] = compile_state_cls.orm_execute_statement(
                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\bulk_persistence.py", line 1660, in orm_execute_statement
+    return super().orm_execute_statement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
     result = conn.execute(
              ^^^^^^^^^^^^^
@@ -109,8 +70,8 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1988, in _exec_single_context
     self._handle_dbapi_exception(
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2368, in _handle_dbapi_exception
-    raise exc_info[1].with_traceback(exc_info[2])
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
     self.dialect.do_execute(
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
@@ -119,132 +80,26 @@ Traceback (most recent call last):
     self._adapt_connection._handle_exception(error)
   File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 343, in _handle_exception
     raise error
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 160, in execute
-    _cursor: AsyncIODBAPICursor = self.await_(self._connection.cursor())  # type: ignore[arg-type] # noqa: E501
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 123, in await_only
-    raise exc.MissingGreenlet(
-sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 422, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
-    await super().__call__(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
-    await self.app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
-    await route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
-    await self.original_router.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
-    await included_router._handle_selected(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1791, in _handle_selected
-    await route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
-    await self.original_router.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
-    await included_router._handle_selected(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
-    await original_route.handle(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
-    await app(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\fastapi\routing.py", line 352, in run_endpoint_function
-    return await dependant.call(**values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\app\api\routes\library.py", line 131, in refresh_series_catalog
-    return await hardcover_series_service.refresh_series_catalog(db, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\app\services\hardcover_series_service.py", line 248, in refresh_series_catalog
-    existing = series.hardcover_json if isinstance(series.hardcover_json, dict) else {}
-                                                   ^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 569, in __get__
-    return self.impl.get(state, dict_)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 1096, in get
-    value = self._fire_loader_callables(state, key, passive)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
-    return state._load_expired(state, passive)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\state.py", line 828, in _load_expired
-    self.manager.expired_attribute_loader(self, toload, passive)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 1674, in load_scalar_attributes
-    result = load_on_ident(
-             ^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 510, in load_on_ident
-    return load_on_pk_identity(
-           ^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 695, in load_on_pk_identity
-    session.execute(
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2373, in execute
-    return self._execute_internal(
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2271, in _execute_internal
-    result: Result[Any] = compile_state_cls.orm_execute_statement(
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
-    result = conn.execute(
-             ^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1421, in execute
-    return meth(
-           ^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
-    return connection._execute_clauseelement(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1643, in _execute_clauseelement
-    ret = self._execute_context(
-          ^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1848, in _execute_context
-    return self._exec_single_context(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1988, in _exec_single_context
-    self._handle_dbapi_exception(
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2368, in _handle_dbapi_exception
-    raise exc_info[1].with_traceback(exc_info[2])
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
-    self.dialect.do_execute(
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
-    cursor.execute(statement, parameters)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 183, in execute
-    self._adapt_connection._handle_exception(error)
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 343, in _handle_exception
-    raise error
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 160, in execute
-    _cursor: AsyncIODBAPICursor = self.await_(self._connection.cursor())  # type: ignore[arg-type] # noqa: E501
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 123, in await_only
-    raise exc.MissingGreenlet(
-sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 165, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 160, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Giant\Documents\epub-librarian\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 63, in _connection_worker_thread
+    result = function()
+             ^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: UPDATE files SET cover_phash=CASE files.drive_file_id WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? END WHERE files.drive_file_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('1s5vYvIGoPZ9ncnMlJ61MgaByobVFa7gz', 'eba140c897d9d6d1', '1LX4rBH3AHyZMWreDSCojxD_p5sJkqs4e', 'fa3894c0379f1ed0', '1_KdKbqmjqQedunIkVPPcpEJgCTOgB_bc', 'c518696f96c2f1b8', '1etdxaCOU0GTnwL90uIFVAAKr6liRHLWv', '950de662c2da2db5', '1n59XJMFC-d6xVgRS_eaRQHF-Q_BxGzhR', '9c3a62c59d5ad41d', '15YpZgRlGBWD4ODUvRFBZVODl0rHVVWP2', '99d1568875792a1f', '1uOVtKimKQ3ye21nGDjX-2isIK-ZA7lyl', 'b97f90c1535f8168', '1Id7VPXy2ZB_aw8yWoI9q8hIeEnNtEwkJ', 'a03f87d05e9e0f68', '1qoVP2lx3CsIn-ns9tBD5vBUs9ojyWkHq', '99bf48c432392f72', '1SS7euu6cS7wNQYwZqiuIFohDiNEhOe8h', '96a4698f7453686d', '1PfeSgpu4k2u4uO9_Wh1IN6DV7ICuTwUm', 'c54c34331b9b4f6c', '13IK_DsaS7s75Lvf_h_kZ_dW54VqlVyxq', '82562bc17a9edce8', '1s5vYvIGoPZ9ncnMlJ61MgaByobVFa7gz', '1LX4rBH3AHyZMWreDSCojxD_p5sJkqs4e', '1_KdKbqmjqQedunIkVPPcpEJgCTOgB_bc', '1etdxaCOU0GTnwL90uIFVAAKr6liRHLWv', '1n59XJMFC-d6xVgRS_eaRQHF-Q_BxGzhR', '15YpZgRlGBWD4ODUvRFBZVODl0rHVVWP2', '1uOVtKimKQ3ye21nGDjX-2isIK-ZA7lyl', '1Id7VPXy2ZB_aw8yWoI9q8hIeEnNtEwkJ', '1qoVP2lx3CsIn-ns9tBD5vBUs9ojyWkHq', '1SS7euu6cS7wNQYwZqiuIFohDiNEhOe8h', '1PfeSgpu4k2u4uO9_Wh1IN6DV7ICuTwUm', '13IK_DsaS7s75Lvf_h_kZ_dW54VqlVyxq')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

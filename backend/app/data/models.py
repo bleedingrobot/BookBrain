@@ -89,6 +89,11 @@ class Author(Base):
     # hardcover_synced_at drives the "needs a refresh?" query.
     hardcover_json: Mapped[dict | None] = mapped_column(JSON)
     hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+    # prompts/28 Phase 1 — Hardcover's canonical "person id" for this author
+    # (its id after following canonical_id then alias_id). Two Author rows that
+    # resolve to the same value are the same person even with no shared book
+    # ("Iain M. Banks" / "Iain Banks"). Written by the same per-author pass.
+    hardcover_person_id: Mapped[int | None] = mapped_column()
 
     books: Mapped[list["Book"]] = relationship(back_populates="author")
 

@@ -104,6 +104,19 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       (default off). **Whole feature not browser-verified; live sidecars need
       a `new-releases/refresh` + `series-catalog/refresh?stale_days=0` +
       `POST /library/new-releases` + `POST /library/index`, or the nightly.**
+  - **Hardcover author identity (`prompts/28`)** — merge forked `Author`
+    rows the `normalize_person_name` + shared-book heuristic can't.
+    - **Phase 1 — DONE (2026-09-09)**: `authors.hardcover_person_id` migration;
+      `hardcover_new_releases_service` resolves it in the same per-author call
+      (extra `authors` root field: `canonical` + `alias` walk → a stable
+      person id; `Iain M. Banks` / `Iain Banks` → 95997, `Robert Galbraith` →
+      J.K. Rowling, verified live). `repair_forked_authors.py` pass 2 merges
+      same-`normalize_person_name`-key rows that share a person id (no shared
+      book needed); different-key pen-name pairs are printed `SUGGEST` only.
+      Run `new-releases/refresh?stale_days=0` then the repair script to
+      backfill + apply.
+    - **Phase 2 (optional, not started)**: resolve at scan time in
+      `_find_or_create_author` so new books don't fork.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

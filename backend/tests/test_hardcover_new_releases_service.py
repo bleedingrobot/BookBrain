@@ -11,6 +11,7 @@ from app.services.hardcover_new_releases_service import (
     fetch_global_anticipated,
     real_release_date,
     refresh_new_releases,
+    resolve_person_id,
 )
 
 
@@ -46,13 +47,19 @@ def _iso(days: int) -> str:
     return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
 
 
-def _route(books: list[dict], *, status: int = 200, global_books: list[dict] | None = None):
+def _route(
+    books: list[dict],
+    *,
+    status: int = 200,
+    global_books: list[dict] | None = None,
+    authors: list[dict] | None = None,
+):
     def handler(request: httpx.Request) -> httpx.Response:
         q = json.loads(request.content)["query"]
-        if "AuthorReleases" in q:
+        if "AuthorInfo" in q:
             if status != 200:
                 return httpx.Response(status, json={})
-            return httpx.Response(200, json={"data": {"books": books}})
+            return httpx.Response(200, json={"data": {"books": books, "authors": authors or []}})
         if "GlobalAnticipated" in q:
             return httpx.Response(200, json={"data": {"books": global_books or []}})
         return httpx.Response(200, json={"data": {}})
@@ -77,6 +84,61 @@ def test_real_release_date_rejects_placeholders_and_far_future() -> None:
     assert real_release_date("A Real Book", "2024-05-01") is not None
 
 
+class TestResolvePersonId:
+    # Shapes mirror the live 2026-09-09 probe.
+    def test_follows_alias_pen_name_to_the_real_identity(self) -> None:
+        rows = [
+            {
+                "id": 1205498,
+                "name": "Iain M. Banks",
+                "alternate_names": ["Iain Banks"],
+                "alias": [{"id": 95997, "name": "Iain Banks"}],
+                "canonical": None,
+            }
+        ]
+        assert resolve_person_id(rows, "Iain M. Banks") == (95997, "Iain Banks")
+        # the plain "Iain Banks" row has no hops -> the same id
+        assert resolve_person_id(
+            [{"id": 95997, "name": "Iain Banks", "alternate_names": [], "alias": [], "canonical": None}],
+            "Iain Banks",
+        ) == (95997, "Iain Banks")
+
+    def test_double_hop_canonical_then_alias(self) -> None:
+        rows = [
+            {
+                "id": 247003,
+                "name": "Robert Galbraith",
+                "alternate_names": [],
+                "alias": [],
+                "canonical": {
+                    "id": 200048,
+                    "name": "Robert Galbraith",
+                    "alias": [{"id": 80626, "name": "J.K. Rowling"}],
+                },
+            }
+        ]
+        assert resolve_person_id(rows, "Robert Galbraith") == (80626, "J.K. Rowling")
+
+    def test_house_pseudonym_resolves_to_its_own_id(self) -> None:
+        rows = [
+            {"id": 483649, "name": "Richard Awlinson", "alternate_names": [], "alias": [], "canonical": None}
+        ]
+        assert resolve_person_id(rows, "Richard Awlinson") == (483649, "Richard Awlinson")
+
+    def test_name_guard_rejects_a_wrong_person_hit(self) -> None:
+        rows = [
+            {"id": 1, "name": "Someone Entirely Else", "alternate_names": [], "alias": [], "canonical": None}
+        ]
+        assert resolve_person_id(rows, "The Author I Asked For") is None
+        # ...but an alternate_names spelling counts
+        rows[0]["alternate_names"] = ["The Author I Asked For"]
+        assert resolve_person_id(rows, "The Author I Asked For") == (1, "Someone Entirely Else")
+
+    def test_no_rows(self) -> None:
+        assert resolve_person_id([], "x") is None
+        assert resolve_person_id(None, "x") is None
+
+
 @respx.mock
 async def test_stores_recent_and_future_books_per_author(db_session) -> None:
     await _seed_author(db_session, "Rebecca Yarros")
@@ -97,6 +159,29 @@ async def test_stores_recent_and_future_books_per_author(db_session) -> None:
     assert titles == ["Onyx Storm", "Threshing Day"]
     assert author.hardcover_json["books"][0]["genres"] == ["Fantasy", "Romance"]
     assert author.hardcover_synced_at is not None
+
+
+@respx.mock
+async def test_stores_the_hardcover_person_id(db_session) -> None:
+    await _seed_author(db_session, "Iain M. Banks")
+    _route(
+        [_book("The Hydrogen Sonata", _iso(-100))],
+        authors=[
+            {
+                "id": 1205498,
+                "name": "Iain M. Banks",
+                "alternate_names": ["Iain Banks"],
+                "alias": [{"id": 95997, "name": "Iain Banks"}],
+                "canonical": None,
+            }
+        ],
+    )
+
+    counts = await refresh_new_releases(db_session)
+    assert counts["with_person_id"] == 1
+
+    author = (await db_session.execute(_select("Iain M. Banks"))).scalar_one()
+    assert author.hardcover_person_id == 95997
 
 
 @respx.mock

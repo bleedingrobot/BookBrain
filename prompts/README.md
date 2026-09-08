@@ -44,9 +44,11 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   to merge forked author rows the current `normalize_person_name` + shared-book
   heuristic can't (`Iain M. Banks`/`Iain Banks` with no shared book; pen name
   ↔ legal name). Phase 1 = resolve `authors.hardcover_person_id` (rides the
-  prompts/27 per-author pass) + a cross-key merge pass in
-  `repair_forked_authors.py`. Phase 2 (optional) = resolve at scan time so new
-  books don't fork. **Not started.**
+  prompts/27 per-author pass) + a merge pass in `repair_forked_authors.py`.
+  Phase 2 (optional) = resolve at scan time so new books don't fork.
+  **Phase 1 shipped 2026-09-09** — `resolve_person_id` canonical→alias walk
+  verified live; repair pass 2 merges same-key rows sharing a person id and
+  SUGGESTs pen-name pairs. Phase 2 not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

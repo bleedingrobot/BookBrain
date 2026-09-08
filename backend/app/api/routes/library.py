@@ -156,7 +156,8 @@ async def refresh_new_releases(
 ) -> dict:
     """prompts/27 Part 2 — one Hardcover call per author to top up
     `Author.hardcover_json` with their recent + near-future books (bounded, so
-    it's safe to click; the nightly job does this too). Then POST
+    it's safe to click; the nightly job does this too). The same call also
+    resolves `Author.hardcover_person_id` (prompts/28). Then POST
     /library/new-releases to write the sidecar. No-op without
     HARDCOVER_API_TOKEN. `stale_days=0` forces a re-sync of every author."""
     kwargs: dict = {"limit": max(1, min(limit, 500))}

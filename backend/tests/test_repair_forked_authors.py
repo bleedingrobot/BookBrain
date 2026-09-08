@@ -32,8 +32,8 @@ def _route_db(db_session, monkeypatch):
     return db_session
 
 
-async def _add(session, author_name, title, isbn=None):
-    a = Author(name=author_name)
+async def _add(session, author_name, title, isbn=None, person_id=None):
+    a = Author(name=author_name, hardcover_person_id=person_id)
     session.add(a)
     await session.flush()
     b = Book(canonical_title=title, author_id=a.id)
@@ -100,6 +100,45 @@ async def test_all_collab_group_synthesises_the_primary(db_session) -> None:
 
     authors = [a.name for a in (await db_session.execute(select(Author))).scalars().all()]
     assert authors == ["A"]
+
+
+async def test_pass2_merges_same_key_rows_sharing_a_hardcover_person_id(db_session) -> None:
+    # prompts/28: "Iain M. Banks" / "Iain Banks" normalise the same but share
+    # no book — pass 1 skips them. Hardcover says both are person 95997, and
+    # the names are the same key, so pass 2 merges.
+    await _add(db_session, "Iain M. Banks", "Consider Phlebas", person_id=95997)
+    await _add(db_session, "Iain Banks", "The Wasp Factory", person_id=95997)
+    await db_session.commit()
+
+    await repair.main(write=True)
+
+    authors = (await db_session.execute(select(Author))).scalars().all()
+    assert len(authors) == 1
+    assert authors[0].name == "Iain Banks"  # shortest clean name wins
+    books = (await db_session.execute(select(Book))).scalars().all()
+    assert {b.author_id for b in books} == {authors[0].id}
+
+
+async def test_pass2_does_not_auto_merge_a_pen_name_across_keys(db_session) -> None:
+    # "Robert Galbraith" / "J.K. Rowling" — same Hardcover person, but a
+    # different-key pair is a much bigger claim: SUGGEST only, no merge.
+    await _add(db_session, "Robert Galbraith", "The Cuckoo's Calling", person_id=80626)
+    await _add(db_session, "J.K. Rowling", "Harry Potter", person_id=80626)
+    await db_session.commit()
+
+    await repair.main(write=True)
+
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 2
+
+
+async def test_pass2_ignores_authors_without_a_person_id(db_session) -> None:
+    await _add(db_session, "John Smith", "Book One")
+    await _add(db_session, "Jane Doe", "Book Two")
+    await db_session.commit()
+
+    await repair.main(write=True)
+
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 2
 
 
 async def test_dry_run_changes_nothing(db_session) -> None:

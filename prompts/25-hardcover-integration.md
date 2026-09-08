@@ -440,3 +440,22 @@ Split into its own work-prompt: [`27-new-and-upcoming-releases.md`](27-new-and-u
   `new-releases/refresh` + `series-catalog/refresh?stale_days=0` (for Part 1's
   isbn13) + `POST /library/new-releases` + `POST /library/index`, or a
   nightly run.**
+
+## prompts/28 — Hardcover author identity (merge forked author rows)
+
+Own work-prompt: [`28-hardcover-author-identity.md`](28-hardcover-author-identity.md).
+
+- **Phase 1 — shipped 2026-09-09.** Migration adds
+  `authors.hardcover_person_id`. `hardcover_new_releases_service`'s per-author
+  request gained a second root field (`authors { … canonical { … alias } }`),
+  and `resolve_person_id()` walks it: best-named row → `canonical` (Hardcover's
+  own dedup) → `alias` (pen name → real identity). Name-guarded (the row's
+  `name`/`alternate_names` must normalise to the queried name). Verified live:
+  `Iain M. Banks` / `Iain Banks` → 95997; `Robert Galbraith` → 80626
+  (J.K. Rowling); `Richard A. Knaak` → 191045; `Richard Awlinson` → its own
+  id. `repair_forked_authors.py` pass 2: merge rows that share a
+  `hardcover_person_id` **and** a `normalize_person_name` key (no shared-book
+  requirement — that's the gap it fills); different-key pen-name pairs are
+  `SUGGEST`-only. Backfill = `new-releases/refresh?stale_days=0` then the
+  repair script.
+- **Phase 2 (not started):** resolve at scan time in `_find_or_create_author`.

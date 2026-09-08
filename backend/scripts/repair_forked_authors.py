@@ -9,7 +9,7 @@ their own row, and a collaboration credit ("Dean Koontz; Queenie Chan") got
 its own row instead of resolving to the primary author. New scans no longer
 fork either; this repairs the ones already forked.
 
-Within a `normalize_person_name` key group:
+Pass 1 — within a `normalize_person_name` key group:
 
   * **Solo-name variants** ("J.R.R. Tolkien" / "Tolkien, J.R.R." /
     "Dean R. Koontz" vs "Dean Koontz") merge only with book-level
@@ -20,6 +20,17 @@ Within a `normalize_person_name` key group:
     ("Dean Koontz; Queenie Chan" → "Dean Koontz") always fold in —
     REVIEW-2026-09-08 policy: a co-authored book is filed under the primary
     author.
+
+Pass 2 (prompts/28) — `Author.hardcover_person_id` groups. Hardcover asserts
+these rows are one person (canonical + alias walk, resolved by
+`hardcover_new_releases_service`), which stands in for the shared-book
+requirement:
+
+  * Same `normalize_person_name` key across the group → auto-merge
+    ("Iain M. Banks" / "Iain Banks", which pass 1 skips for want of a shared
+    book).
+  * Different keys (a pen name ↔ legal name) → only printed as SUGGEST;
+    that's a bigger claim, merge it by hand.
 
 Books are repointed to the canonical row; the emptied rows are deleted.
 Mirrors title_merge_repair_service. Dry-run first; `--write` to apply.
@@ -54,6 +65,16 @@ from app.services.text_match import (  # noqa: E402
     person_sort_name,
     primary_author_name,
 )
+
+
+async def _apply_merge(session, canonical: Author, merge_in: list[Author]) -> None:
+    for a in merge_in:
+        for b in list(a.books):
+            b.author = canonical
+        await session.flush()
+        await session.delete(a)
+    if canonical.sort_name is None:
+        canonical.sort_name = person_sort_name(canonical.name) or None
 
 
 def _book_keys(books: list[Book], isbns: dict[int, set[str]]) -> set[str]:
@@ -132,13 +153,40 @@ async def main(write: bool) -> None:
             print(f"  MERGE -> {canonical.name!r}  <=  {[a.name for a in merge_in]}")
             merges += 1
             if write:
-                for a in merge_in:
-                    for b in list(a.books):
-                        b.author = canonical
-                    await session.flush()
-                    await session.delete(a)
-                if canonical.sort_name is None:
-                    canonical.sort_name = person_sort_name(canonical.name) or None
+                await _apply_merge(session, canonical, merge_in)
+
+        # -- Pass 2: prompts/28 Hardcover person-id groups ------------------
+        # Re-load — pass 1 may have deleted rows (flushed, not yet committed).
+        authors = (
+            (await session.execute(select(Author).options(selectinload(Author.books))))
+            .scalars()
+            .all()
+        )
+        by_person: dict[int, list[Author]] = defaultdict(list)
+        for a in authors:
+            if a.hardcover_person_id is not None:
+                by_person[a.hardcover_person_id].append(a)
+
+        for pid, group in by_person.items():
+            if len(group) < 2:
+                continue
+            # Shortest name is the clean form ("Iain Banks" over "Iain M.
+            # Banks") — same rule pass 1 uses for solo variants.
+            canonical = min(group, key=lambda a: (len(a.name), a.id))
+            others = [a for a in group if a.id != canonical.id]
+            if len({normalize_person_name(a.name) for a in group}) == 1:
+                print(
+                    f"  MERGE (Hardcover person {pid}) -> {canonical.name!r}  "
+                    f"<=  {[a.name for a in others]}"
+                )
+                merges += 1
+                if write:
+                    await _apply_merge(session, canonical, others)
+            else:
+                print(
+                    f"  SUGGEST (Hardcover person {pid}, pen name?): "
+                    f"{sorted(a.name for a in group)} — merge by hand if right"
+                )
 
         print(f"\n{merges} author group(s) {'merged' if write else 'would merge'}")
         if write:
