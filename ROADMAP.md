@@ -70,8 +70,10 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       tries `_hc_descriptions_for()` (one bulk `Book.hardcover_json` read, no
       request, no API credit) *before* Google Books / Open Library / the
       model, keeping the "only fill a genuine blank" rule.
-    - **Part D** — characters ("books featuring X"). Scoped in prompts/26,
-      not started; optional, lowest priority.
+    - **Part D** — characters. **Skipped by design (2026-09-08)**:
+      `book_characters` exists but the data is too spotty (many books empty,
+      dup / "(Fictitious character)" names) and the `Character` search is
+      noisy. Not worth the cleanup; revisit only on request.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

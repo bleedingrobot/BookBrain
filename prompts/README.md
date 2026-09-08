@@ -23,7 +23,8 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   badges + genre facet + rating sort. A: series `release_date` → per-entry
   `releaseDate` → viewer "Next in …" / "Coming: … — <month year>" + a "Coming
   soon" filter chip. C: `hardcover_json.meta.description` is tried first (zero
-  cost) by fill-missing-descriptions. **Part D (characters) not started.**
+  cost) by fill-missing-descriptions. **Part D (characters) skipped by design
+  — `book_characters` data is too spotty; see prompts/26 header.**
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

@@ -1,5 +1,27 @@
 # Task 26 — Hardcover Phase 4: metadata badges, new & upcoming, descriptions, characters
 
+> **Status (2026-09-08): Parts B + A + C shipped. Part D not built — see below.**
+> - **B** — `hardcover_recs_service` ISBN call also pulls `rating` /
+>   `ratings_count` / `pages` / `book_category_id` / `literary_type_id` /
+>   `cached_tags` (Genre + Mood) → `Book.hardcover_json.meta` (ids mapped to
+>   strings). Selection query re-picks Phase-3 rows lacking `meta`.
+>   `library_index_service` folds `meta` into each entry, `INDEX_VERSION` → 4.
+>   Viewer: rating pill + category badge + page/ratings line + genre chips on
+>   `BookRow`; `books.ts` `genre:<g>` filter + `topGenres()` facet + "Rating"
+>   sort; `App.tsx` genre facet chips.
+> - **A** — `_SERIES_BOOKS` also selects `release_date` → per-entry
+>   `releaseDate`. `seriesGaps.ts` computes `nextUp` (lowest released entry you
+>   lack above max-owned) + `upcoming` (real future dates; `/^untitled\b/i`
+>   titles and dates >3y out filtered). `BookRow` shows "Next in …" / "Coming
+>   …"; `App.tsx` "Coming soon" chip (`comingSoonSeriesNames`).
+> - **C** — `description_service` reads `hardcover_json.meta.description` (bulk,
+>   free) before every other source.
+> - **D (characters)** — **skipped by design.** Live check: `book_characters`
+>   exists but the data is spotty (many books return `[]` — Mistborn's own
+>   edition did; *Catcher* returns "Holden Caulfield (Fictitious character)"
+>   plus a misspelled dup), and the `Character` search is noisy. Low value for
+>   the cleanup effort; revisit only if asked.
+
 Run as its own fresh session. **Read first:** `prompts/25-hardcover-integration.md`
 (Phases 1–3, already shipped), the `project-bookbrain-hardcover` memory, and
 `SPEC.md` § "Providers". This is the continuation of that work — four
