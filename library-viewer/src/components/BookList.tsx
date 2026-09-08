@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { groupHeading, type BookRow as Row, type SendStatus, type SortKey } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
+import type { RecBook, Recommendations } from '../lib/recommendations'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { SentMap } from '../lib/sentTracker'
 import type { KoboDevice } from '../lib/settings'
-import { BookRow } from './BookRow'
+import { BookRow, type RequestResult } from './BookRow'
 
 const PAGE_SIZE = 120 // rows rendered before the "load more" sentinel grows the window
 
@@ -15,6 +16,7 @@ interface Props {
   sort: SortKey
   token: string
   seriesGaps: Map<string, SeriesGap>
+  recommendations: Recommendations
   selected: Set<string>
   expandedId: string | null
   sentMap: SentMap
@@ -29,6 +31,7 @@ interface Props {
   onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
+  onRequestBook: (rec: RecBook) => Promise<RequestResult>
 }
 
 export function BookList({
@@ -38,6 +41,7 @@ export function BookList({
   sort,
   token,
   seriesGaps,
+  recommendations,
   selected,
   expandedId,
   sentMap,
@@ -52,6 +56,7 @@ export function BookList({
   onRead,
   onFilterAuthor,
   onFilterSeries,
+  onRequestBook,
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const visibleRows = rows.slice(0, visibleCount)
@@ -125,6 +130,7 @@ export function BookList({
                 allRows={allRows}
                 token={token}
                 gap={row.series ? seriesGaps.get(row.series) : undefined}
+                recs={recommendations[row.file.id]}
                 selected={selected.has(row.id)}
                 expanded={expandedId === row.id}
                 sentDevices={koboDevices.filter((d) => sentMap[d.folderId]?.[row.id])}
@@ -138,6 +144,7 @@ export function BookList({
                 onRead={onRead}
                 onFilterAuthor={onFilterAuthor}
                 onFilterSeries={onFilterSeries}
+                onRequestBook={onRequestBook}
               />
             </Fragment>
           )

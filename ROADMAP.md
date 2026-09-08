@@ -29,9 +29,23 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     entries ("#3 *The Hero of Ages*") + a "via Hardcover" link, falling back
     to the `MAX_RUN_GAP` guess when there's no match. `match:"manual"` pins a
     series by hand. Live-validated (6/6 series matched cleanly).
+  - **Phase 3 — DONE (2026-09-08)**: "Readers also liked". Migration
+    `b4c5d6e7f8a9` (`books.hardcover_json` / `hardcover_synced_at`);
+    `hardcover_recs_service.refresh_book_recs` (2 calls/book: ISBN→id+similar
+    ids, then batch-resolve top ~15 to title/author/ISBN, keep Hardcover's
+    ranking); a **separate** `bookbrain-recommendations.json` sidecar
+    (`regenerate_recommendations`, nightly + `POST /api/library/
+    recommendations`); viewer `lib/recommendations.ts` (lazy — fetched on
+    first row expand), `wishlist.addToWishlist()`, a "Readers also liked"
+    block in the expanded `BookRow` with per-rec *In library* / *On wishlist*
+    / **Request** (→ wishlist, requester stamped, `request` activity event).
+    Cover via OL-by-ISBN (never Hardcover's image URLs — DMCA). Live: recs
+    quality is strong (Grey Sister → Holy Sister, Skullsworn, Prince of
+    Fools…).
   - **Phase 1.5** — persistent Hardcover cache (only if the 5,000/day bites).
-  - **Phase 3** — genres / moods / ratings / pages / similar-books / richer
-    descriptions folded into the viewer, piecemeal.
+  - **Phase 4** — "new & upcoming" per author/series + metadata badges
+    (genres/moods/ratings/pages) + description source + characters. Scoped in
+    prompts/25, not started.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

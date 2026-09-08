@@ -195,6 +195,27 @@ export function withStatus(
   }
 }
 
+// Add a book to the wishlist from anywhere (a recommendation card, a
+// "missing from series" entry) in one call: load → dedup → append → save.
+// Returns 'added' | 'already-listed' | 'owned'. Best-effort dedup only —
+// two racing adds could still both write, same as the rest of the wishlist.
+export async function addToWishlist(
+  token: string,
+  libraryFolderId: string,
+  hit: BookHit,
+  requestedBy: string | null,
+  ownedRows: BookRow[] = [],
+): Promise<'added' | 'already-listed' | 'owned'> {
+  if (libraryMatch(hit, ownedRows)) return 'owned'
+  const list = await loadWishlist(token, libraryFolderId)
+  if (alreadyListed(hit, list.items)) return 'already-listed'
+  await saveWishlist(token, libraryFolderId, {
+    ...list,
+    items: [hitToItem(hit, requestedBy), ...list.items],
+  })
+  return 'added'
+}
+
 export function hitToItem(hit: BookHit, requestedBy: string | null): WishlistItem {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

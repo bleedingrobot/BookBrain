@@ -25,6 +25,11 @@ import {
 } from './lib/books'
 import { copyFileToFolder, downloadFile, type DriveFile } from './lib/drive'
 import { pickRecentBooks } from './lib/marquee'
+import {
+  fetchRecommendations,
+  type RecBook,
+  type Recommendations,
+} from './lib/recommendations'
 import { computeSeriesGaps, incompleteSeriesNames } from './lib/seriesGaps'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
@@ -36,6 +41,7 @@ import {
   type ViewerSettings,
 } from './lib/settings'
 import { getViewerName, setViewerName } from './lib/viewerIdentity'
+import { addToWishlist } from './lib/wishlist'
 import { useLibrary } from './hooks/useLibrary'
 
 function sleep(ms: number) {
@@ -79,6 +85,10 @@ export default function App() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // "Readers also liked" data — a separate, larger sidecar, so it's only
+  // fetched the first time someone expands a row.
+  const [recommendations, setRecommendations] = useState<Recommendations>({})
+  const recsLoadedRef = useRef(false)
   const [readingBookId, setReadingBookId] = useState<string | null>(null)
   // Bumped when the reader closes so the "Continue reading" strip re-reads
   // the (localStorage-backed) reading progress.
@@ -120,7 +130,42 @@ export default function App() {
     void cacheStats().then((s) => setOfflineCount(s.count))
   }, [progressTick])
 
+  // Fetch "readers also liked" the first time a row is expanded, not up front.
+  useEffect(() => {
+    if (!expandedId || recsLoadedRef.current || !token || !settings) return
+    let cancelled = false
+    void fetchRecommendations(token, settings.libraryFolderId).then((r) => {
+      if (cancelled) return
+      setRecommendations(r)
+      if (Object.keys(r).length > 0) recsLoadedRef.current = true
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [expandedId, token, settings])
+
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
+
+  async function requestBook(rec: RecBook) {
+    if (!token || !settings || !viewerName) return 'already-listed' as const
+    const result = await addToWishlist(
+      token,
+      settings.libraryFolderId,
+      { title: rec.title, author: rec.author, series: null, isbn13: rec.isbn13, cover: null, year: null },
+      viewerName,
+      allRows,
+    )
+    if (result === 'added') {
+      void logActivity(
+        token,
+        settings.libraryFolderId,
+        viewerName,
+        'request',
+        rec.author ? `${rec.title} — ${rec.author}` : rec.title,
+      )
+    }
+    return result
+  }
   const recentBooks = useMemo(() => pickRecentBooks(allRows), [allRows])
   const seriesGaps = useMemo(
     () => computeSeriesGaps(allRows, index.series),
@@ -647,6 +692,7 @@ export default function App() {
           sort={sort}
           token={token}
           seriesGaps={seriesGaps}
+          recommendations={recommendations}
           selected={selected}
           expandedId={expandedId}
           sentMap={sentMap}
@@ -668,6 +714,7 @@ export default function App() {
           onRead={(row) => setReadingBookId(row.id)}
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}
+          onRequestBook={requestBook}
         />
       )}
     </div>

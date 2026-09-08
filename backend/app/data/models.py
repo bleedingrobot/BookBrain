@@ -130,6 +130,13 @@ class Book(Base):
     first_published: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # prompts/25 Phase 3 — Hardcover's "readers also liked" for this book,
+    # refreshed by hardcover_recs_service on a schedule.
+    #   {id: <hardcover book id>, similar: [{title, author, isbn13}]}  (top ~15)
+    # hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+
     author: Mapped["Author | None"] = relationship(back_populates="books")
     series: Mapped["Series | None"] = relationship(back_populates="books")
     identifiers: Mapped[list["Identifier"]] = relationship(back_populates="book")

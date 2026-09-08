@@ -14,6 +14,7 @@ from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
 from app.services import (
     backup_service,
+    hardcover_recs_service,
     hardcover_series_service,
     library_service,
     recently_organized_service,
@@ -30,7 +31,10 @@ from app.services.metadata_writeback_service import (
     MetadataWritebackService,
     get_metadata_writeback_service,
 )
-from app.services.library_index_service import regenerate_library_index
+from app.services.library_index_service import (
+    regenerate_library_index,
+    regenerate_recommendations,
+)
 from app.services.scan_service import ScanService, estimate_rebuild, get_scan_service
 
 router = APIRouter(prefix="/library", tags=["library"])
@@ -118,6 +122,38 @@ async def refresh_series_catalog(
     index refresh then carries it into bookbrain-index.json. No-op without
     HARDCOVER_API_TOKEN."""
     return await hardcover_series_service.refresh_series_catalog(db, limit=max(1, min(limit, 1000)))
+
+
+@router.post("/book-recs/refresh")
+async def refresh_book_recs(
+    limit: int = 400,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """prompts/25 Phase 3 — fetch/resolve each book's Hardcover "readers also
+    liked" list (bounded). Then POST /library/recommendations to write the
+    sidecar. No-op without HARDCOVER_API_TOKEN."""
+    return await hardcover_recs_service.refresh_book_recs(db, limit=max(1, min(limit, 2000)))
+
+
+@router.post("/recommendations")
+async def refresh_recommendations_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Write bookbrain-recommendations.json from what book-recs/refresh has
+    resolved so far — the viewer's "Readers also liked" strip reads it."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+
+    count = await regenerate_recommendations(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="recommendations refresh failed — see logs")
+    return {"books": count}
 
 
 @router.post("/covers", response_model=CoverJobStatus, status_code=202)

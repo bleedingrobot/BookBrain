@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 
 INDEX_FILENAME = "bookbrain-index.json"
 INDEX_VERSION = 3  # v2 adds per-book isbn; v3 adds the top-level `series` map
+
+# prompts/25 Phase 3 — kept out of the main index (which is ~1MB) so the
+# viewer only fetches "readers also liked" data when a book is actually
+# expanded.
+RECS_FILENAME = "bookbrain-recommendations.json"
+RECS_VERSION = 1
+_RECS_PER_BOOK = 12
 _JSON_MIME = "application/json"
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -163,6 +170,81 @@ def _write_index(provider: DriveProvider, library_folder_id: str, payload: dict)
         provider.upload_new_file(
             name=INDEX_FILENAME, data=data, parent_id=library_folder_id, mime_type=_JSON_MIME
         )
+
+
+async def build_recommendations_payload(session: AsyncSession) -> dict:
+    """`bookbrain-recommendations.json` — "readers also liked" per organised
+    file, from Book.hardcover_json (prompts/25 Phase 3 / hardcover_recs_service).
+    Keyed by drive_file_id so the viewer joins it to the row it already has."""
+    files = (
+        (
+            await session.execute(
+                select(File)
+                .where(File.status == FileStatus.organised, File.book_id.is_not(None))
+                .options(selectinload(File.book))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    books: dict[str, list[dict]] = {}
+    for f in files:
+        hc = f.book.hardcover_json if f.book and isinstance(f.book.hardcover_json, dict) else None
+        similar = (hc or {}).get("similar") or []
+        own_title = _plain_text(f.book.canonical_title) if f.book else None
+        recs = [
+            {"title": r["title"], "author": r.get("author"), "isbn13": r.get("isbn13")}
+            for r in similar
+            if isinstance(r, dict)
+            and isinstance(r.get("title"), str)
+            and (not own_title or r["title"].strip().lower() != own_title.strip().lower())
+        ][:_RECS_PER_BOOK]
+        if recs:
+            books[f.drive_file_id] = recs
+
+    return {
+        "version": RECS_VERSION,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "count": len(books),
+        "books": books,
+    }
+
+
+def _write_json_file(
+    provider: DriveProvider, library_folder_id: str, name: str, payload: dict
+) -> None:
+    data = json.dumps(payload, ensure_ascii=False, indent=0).encode("utf-8")
+    existing = next(
+        (f for f in provider.list_files_in_folder(library_folder_id) if f["name"] == name), None
+    )
+    if existing is not None:
+        provider.update_file_content(existing["id"], new_name=name, data=data, mime_type=_JSON_MIME)
+    else:
+        provider.upload_new_file(
+            name=name, data=data, parent_id=library_folder_id, mime_type=_JSON_MIME
+        )
+
+
+async def regenerate_recommendations(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """Write bookbrain-recommendations.json. Best-effort, never raises into
+    the caller (same contract as regenerate_library_index)."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        async with async_session_factory() as session:
+            payload = await build_recommendations_payload(session)
+        provider = DriveProvider(build_drive_service(creds))
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, RECS_FILENAME, payload
+        )
+        logger.info("recommendations refreshed: %d books", payload["count"])
+        return payload["count"]
+    except Exception:
+        logger.exception("recommendations refresh failed")
+        return None
 
 
 async def regenerate_library_index(

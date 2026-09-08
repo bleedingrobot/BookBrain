@@ -271,19 +271,109 @@ James can eyeball a bad match, only surface **integer** positions, and keep
 - `cd backend && pytest` + `pytest -m corpus` green; viewer `npm test` +
   build + lint green.
 
-## Phase 3 — richer viewer metadata
+## Phase 3 — "Readers also liked" (recommendations → wishlist) — DONE 2026-09-08
 
-Fold Hardcover fields into `bookbrain-index.json` for the viewer to display
-and filter on:
+Every Hardcover `books` row carries `cached_similar_book_ids` — ~100 book ids,
+pre-ranked most→least similar (a precomputed similarity graph, plain
+catalogue data). Validated live: *Mistborn: The Final Empire* → The Way of
+Kings, A Game of Thrones, The Name of the Wind, The Eye of the World, Red
+Rising. This is Hardcover's recommendation engine.
 
-- `genres`, `moods`, `tags`, `content_warnings`, `rating` / `ratings_count`,
-  `pages`, `audio_seconds`, `book_category_id` (Novella / Graphic Novel /
-  Light Novel / Collection…), `literary_type_id` (Fiction / Nonfiction).
-- `cached_similar_book_ids` (~100 per book) → a "readers also liked" strip,
-  cross-referenced against what's in the library.
-- `description` as another source for the fill-missing-descriptions feature
+The feature: on a book's expanded row in the viewer, a **"Readers also
+liked"** list — each entry shows title + author + (OL) cover, and is either
+tagged *In library* / *On wishlist* or carries a one-tap **Request** button
+that drops it straight into the wishlist ([[project_bookbrain_wishlist]]) as
+`requestedBy: <viewer name>`. Recommendations that feed the acquire flow you
+already built.
+
+**Licence:** the similar-books graph is catalogue data → fine on the public
+viewer. Do **not** use Hardcover's cover image URLs (their DMCA clause) — the
+viewer already derives a cover from ISBN via Open Library (`covers.ts
+openLibraryCoverUrl`). A *personalised* Hardcover recommendation feed (built
+from James's own Hardcover reading) is user data → **out of scope** for the
+shared viewer.
+
+### Backend
+
+- **Migration** — mirror Phase 2 but on `books`: `hardcover_json JSON`
+  (`{id, similar: [{title, author, isbn13}]}` — top ~15, resolved) +
+  `hardcover_synced_at TIMESTAMP`.
+- **`app/services/hardcover_recs_service.py`** —
+  `refresh_book_recs(session, *, limit=400, stale_after_days=45)`:
+  1. pick `Book` rows with an ISBN + an `organised` file + null/stale
+     `hardcover_synced_at`, capped.
+  2. per book: `editions(where isbn){ book { id cached_similar_book_ids } }`
+     — one call, gets the Hardcover id + the similar-id list.
+  3. resolve the top ~20 ids: `books(where: {id: {_in: [...]}}) { id title
+     contributions(limit: 1){ author { name } } editions(where: {isbn_13:
+     {_is_null: false}}, limit: 1){ isbn_13 } }` — one call. Keep the first
+     ~15 that resolve to a real title, drop any already == this book.
+  4. store `{id, similar: [...]}`, stamp `hardcover_synced_at`.
+  ~2 Hardcover calls/book. Own `_TokenBucket`. Full library ≈ 4,500 calls →
+  converges over ~2 nights at `limit=400`, or loop the manual route.
+  Returns `{resolved, empty, failed}`.
+- **`library_index_service`** — a **separate** sidecar
+  `bookbrain-recommendations.json` (`INDEX v1`: `{version, generatedAt,
+  books: { "<driveFileId>": [{title, author, isbn13}] }}`), written by a new
+  `regenerate_recommendations(creds, folder)` — kept out of the main index so
+  the ~1MB index stays lean and the viewer fetches recs only on demand.
+- **`nightly.run_nightly`** — recs refresh step + the recs-file write, after
+  the series step, token-gated, never fails the run.
+- **Routes** — `POST /api/library/book-recs/refresh?limit=` (fetch/resolve),
+  `POST /api/library/recommendations` (write the file). Both bounded.
+
+### Viewer
+
+- **`lib/recommendations.ts`** — `RecBook {title, author, isbn13}`;
+  `fetchRecommendations(token, folderId)` → `Record<driveFileId, RecBook[]>`,
+  the same modifiedTime-gated + localStorage-cached pattern as
+  `libraryIndex.ts`. **Lazy**: App only calls it the first time a row is
+  expanded.
+- **`lib/wishlist.ts`** — new `addToWishlist(token, folderId, item, by)`
+  helper: load → dedup (`alreadyListed`) → append `hitToItem` → save. So a
+  Request from anywhere is one call.
+- **`BookRow.tsx`** expanded section — "Readers also liked" block:
+  per rec, title — author, an OL `Cover` by ISBN, and `In library`
+  (`libraryMatch` from `wishlist.ts` vs `allRows`) / `On wishlist` / a
+  **Request** button → `onRequestBook(rec)`.
+- **`App.tsx`** — lazy `recommendations` state; `onExpand` triggers the
+  fetch; pass `recs[row.file.id]` down; `onRequestBook` calls `addToWishlist`
+  and toasts.
+
+### Tests
+
+- `test_hardcover_recs_service.py` (respx): id + similar-ids in one call,
+  batch-resolve, self-reference dropped, no-ISBN book skipped, empty
+  `cached_similar_book_ids` → stored `similar: []`, `limit`/stale selection.
+- `library_index_service` test: recs payload shape.
+- viewer: `recommendations.test.ts` (parse/cache), `wishlist.test.ts`
+  (`addToWishlist` dedup), a `BookRow` render check if feasible.
+
+### Acceptance
+
+- Token unset → no recs file, no "Readers also liked" block.
+- After a refresh → expanding a book shows its similar books; Request adds
+  one to the wishlist with the requester stamped; already-owned ones are
+  tagged, not requestable.
+- `cd backend && pytest` + `pytest -m corpus` green; viewer `npm test` +
+  build + lint green.
+
+## Phase 4 — "New & upcoming" + richer metadata (scoped, not started)
+
+- **New & upcoming** — for every author/series in the library, Hardcover
+  `books` with `release_date` in the last ~18 months **or** future, that
+  aren't already owned → a screen + the same Request button. Gotchas seen
+  live: future *placeholder* rows ("Untitled Stormlight Archive #10", dated
+  2035) need a name filter + `release_date <= today` for "recent" vs a
+  separate "upcoming" bucket; novella positions (5.5, 5.6) as with Phase 2.
+- **Metadata badges/filters** — `genres`, `moods`, `tags`,
+  `content_warnings`, `rating`/`ratings_count`, `pages`, `audio_seconds`,
+  `book_category_id` (Novella / Graphic Novel / Light Novel / Collection),
+  `literary_type_id` (Fiction / Nonfiction) → into the main index, viewer
+  shows badges + facet filters.
+- **`description`** as another source for fill-missing-descriptions
   ([[project_bookbrain_descriptions]]).
-- Characters → "books featuring X" (their `characters` search + `book_characters`).
+- **Characters** → "books featuring X" (`characters` search + `book_characters`).
 
-All read-only catalogue data — no user data. Each field is independent, so
-Phase 3 can land piecemeal.
+All read-only catalogue data. Each item is independent and can land
+piecemeal.

@@ -12,8 +12,9 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
 ## Standalone
 
 - [`25-hardcover-integration.md`](25-hardcover-integration.md) — Hardcover API.
-  **Phase 1 + Phase 2 shipped 2026-09-08** (metadata provider; canonical series
-  membership → named "missing books" in the viewer). Phase 1.5 / 3 scoped.
+  **Phases 1 + 2 + 3 shipped 2026-09-08** (metadata provider; canonical series
+  membership → named "missing books"; "Readers also liked" → wishlist).
+  Phase 1.5 + Phase 4 (new & upcoming, metadata badges) scoped.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

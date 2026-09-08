@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BookRow } from './books'
 import type { BookHit } from './bookSearch'
 import {
+  addToWishlist,
   alreadyListed,
   hitToItem,
   libraryMatch,
@@ -10,6 +11,9 @@ import {
   withStatus,
   type WishlistItem,
 } from './wishlist'
+
+const driveMock = vi.hoisted(() => ({ readJsonFile: vi.fn(), writeJsonFile: vi.fn() }))
+vi.mock('./drive', () => driveMock)
 
 function row(partial: Partial<BookRow>): BookRow {
   return {
@@ -185,6 +189,44 @@ describe('withStatus', () => {
   it('leaves the existing note when none is passed', () => {
     const next = withStatus(item({ status: 'sourced', statusNote: 'from Amazon' }), 'declined', 'Tess')
     expect(next.statusNote).toBe('from Amazon')
+  })
+})
+
+describe('addToWishlist', () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it('appends a new book and stamps the requester', async () => {
+    driveMock.readJsonFile.mockResolvedValue({ id: 'w', modifiedTime: 't', content: { items: [] } })
+    driveMock.writeJsonFile.mockResolvedValue('w')
+
+    const result = await addToWishlist(
+      'tok',
+      'lib',
+      hit({ title: 'Red Rising', author: 'Pierce Brown' }),
+      'Tess',
+    )
+
+    expect(result).toBe('added')
+    const written = driveMock.writeJsonFile.mock.calls[0][3]
+    expect(written.items[0]).toMatchObject({ title: 'Red Rising', requestedBy: 'Tess', status: 'wanted' })
+  })
+
+  it('is a no-op when the book is already owned', async () => {
+    const rows = [row({ title: 'Red Rising', author: 'Pierce Brown' })]
+    const result = await addToWishlist('tok', 'lib', hit({ title: 'Red Rising', author: 'Pierce Brown' }), 'Tess', rows)
+    expect(result).toBe('owned')
+    expect(driveMock.readJsonFile).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op when the book is already on the list', async () => {
+    driveMock.readJsonFile.mockResolvedValue({
+      id: 'w',
+      modifiedTime: 't',
+      content: { items: [{ id: '1', title: 'Red Rising', author: 'Pierce Brown' }] },
+    })
+    const result = await addToWishlist('tok', 'lib', hit({ title: 'Red Rising', author: 'Pierce Brown' }), 'Tess')
+    expect(result).toBe('already-listed')
+    expect(driveMock.writeJsonFile).not.toHaveBeenCalled()
   })
 })
 

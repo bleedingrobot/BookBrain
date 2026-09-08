@@ -1,14 +1,20 @@
+import { useState } from 'react'
 import { sendKey, type BookRow as Row, type SendStatus } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
+import type { RecBook } from '../lib/recommendations'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
+import { libraryMatch } from '../lib/wishlist'
 import { Cover } from './Cover'
+
+export type RequestResult = 'added' | 'already-listed' | 'owned'
 
 interface Props {
   row: Row
   allRows: Row[]
   token: string
   gap: SeriesGap | undefined
+  recs: RecBook[] | undefined
   selected: boolean
   expanded: boolean
   sentDevices: KoboDevice[]
@@ -22,6 +28,78 @@ interface Props {
   onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
+  onRequestBook: (rec: RecBook) => Promise<RequestResult>
+}
+
+function ReadersAlsoLiked({
+  recs,
+  allRows,
+  token,
+  onRequestBook,
+}: {
+  recs: RecBook[]
+  allRows: Row[]
+  token: string
+  onRequestBook: (rec: RecBook) => Promise<RequestResult>
+}) {
+  const [state, setState] = useState<Record<string, 'pending' | RequestResult>>({})
+
+  async function request(rec: RecBook, key: string) {
+    setState((s) => ({ ...s, [key]: 'pending' }))
+    try {
+      const result = await onRequestBook(rec)
+      setState((s) => ({ ...s, [key]: result }))
+    } catch {
+      setState((s) => {
+        const next = { ...s }
+        delete next[key]
+        return next
+      })
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="text-xs font-medium text-neutral-500">Readers also liked</div>
+      <ul className="mt-1.5 divide-y divide-neutral-100 dark:divide-neutral-800/60">
+        {recs.map((rec, i) => {
+          const key = `${rec.title}|${rec.author ?? ''}`
+          const owned = libraryMatch(rec, allRows) != null
+          const st = owned ? 'owned' : state[key]
+          return (
+            <li key={i} className="flex items-center gap-2.5 py-1.5">
+              <Cover token={token} driveId={`rec-${key}`} isbn={rec.isbn13} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                  {rec.title}
+                </div>
+                <div className="truncate text-xs text-neutral-500">
+                  {rec.author ?? 'Unknown author'}
+                </div>
+              </div>
+              {st === 'owned' ? (
+                <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                  In library
+                </span>
+              ) : st === 'added' || st === 'already-listed' ? (
+                <span className="badge bg-neutral-100 text-neutral-500 dark:bg-neutral-800">
+                  On wishlist
+                </span>
+              ) : (
+                <button
+                  className="btn btn-neutral btn-xs"
+                  disabled={st === 'pending'}
+                  onClick={() => request(rec, key)}
+                >
+                  {st === 'pending' ? '…' : 'Request'}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
 }
 
 const isEpub = (name: string) => name.toLowerCase().endsWith('.epub')
@@ -31,6 +109,7 @@ export function BookRow({
   allRows,
   token,
   gap,
+  recs,
   selected,
   expanded,
   sentDevices,
@@ -44,6 +123,7 @@ export function BookRow({
   onRead,
   onFilterAuthor,
   onFilterSeries,
+  onRequestBook,
 }: Props) {
   const seriesPeers = expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
   const authorPeers = expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
@@ -195,6 +275,14 @@ export function BookRow({
                   </button>
                 )}
               </div>
+            )}
+            {recs && recs.length > 0 && (
+              <ReadersAlsoLiked
+                recs={recs}
+                allRows={allRows}
+                token={token}
+                onRequestBook={onRequestBook}
+              />
             )}
           </div>
         </li>

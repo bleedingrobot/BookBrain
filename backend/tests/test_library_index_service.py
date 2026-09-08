@@ -10,7 +10,11 @@ from app.data.models import (
     MetadataSource,
     Series,
 )
-from app.services.library_index_service import _plain_text, build_index_payload
+from app.services.library_index_service import (
+    _plain_text,
+    build_index_payload,
+    build_recommendations_payload,
+)
 
 
 def test_plain_text_strips_html_and_caps() -> None:
@@ -144,3 +148,26 @@ async def test_build_index_payload_includes_matched_hardcover_series(db_session)
         "The Will of the Many",
         "The Strength of the Few",
     ]
+
+
+async def test_build_recommendations_payload(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.hardcover_json = {
+        "id": 1,
+        "similar": [
+            {"title": "The Will of the Many", "author": "James Islington", "isbn13": None},  # self
+            {"title": "Red Rising", "author": "Pierce Brown", "isbn13": "9780553588484"},
+            {"title": "The Poppy War", "author": "R.F. Kuang", "isbn13": None},
+        ],
+    }
+    await db_session.commit()
+
+    payload = await build_recommendations_payload(db_session)
+
+    assert payload["version"] == 1
+    # self-reference dropped, only the file that has recs is present
+    assert list(payload["books"]) == ["drive-will"]
+    assert [r["title"] for r in payload["books"]["drive-will"]] == ["Red Rising", "The Poppy War"]

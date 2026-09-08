@@ -45,6 +45,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.services import (
     backup_service,
+    hardcover_recs_service,
     hardcover_series_service,
     job_run_service,
     local_scan_service,
@@ -52,7 +53,10 @@ from app.services import (
 from app.services.auth_service import get_auth_service
 from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
-from app.services.library_index_service import regenerate_library_index
+from app.services.library_index_service import (
+    regenerate_library_index,
+    regenerate_recommendations,
+)
 from app.services.scan_service import get_scan_service
 from app.schemas.scan import ScanJobState
 
@@ -159,9 +163,10 @@ async def run_nightly(
             f"covers: {cover_counts['done']} new, {cover_counts['nocover']} no-cover, "
             f"{cover_counts.get('rehashed', 0)} re-hashed, {cover_counts['failed']} failed"
         )
-        # prompts/25 Phase 2 — top up Hardcover's canonical series membership
-        # (capped per run; converges over a few nights). Only when a token is
-        # set, and it must never fail the run.
+        # prompts/25 Phase 2 + 3 — top up Hardcover's canonical series
+        # membership and per-book "readers also liked" (both capped per run;
+        # converge over a few nights). Only when a token is set, and neither
+        # may fail the run.
         if get_settings().hardcover_api_token:
             try:
                 async with async_session_factory() as session:
@@ -170,6 +175,17 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: hardcover series refresh failed")
                 steps.append(f"hardcover series: FAILED — {exc}")
+            try:
+                async with async_session_factory() as session:
+                    hr = await hardcover_recs_service.refresh_book_recs(session)
+                steps.append(f"hardcover recs: {hr}")
+                rec_count = await regenerate_recommendations(creds, library_folder_id)
+                steps.append(
+                    f"recs file: {rec_count} books" if rec_count is not None else "recs file: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: hardcover recs refresh failed")
+                steps.append(f"hardcover recs: FAILED — {exc}")
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"
