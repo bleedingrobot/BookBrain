@@ -25,6 +25,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   soon" filter chip. C: `hardcover_json.meta.description` is tried first (zero
   cost) by fill-missing-descriptions. **Part D (characters) skipped by design
   — `book_characters` data is too spotty; see prompts/26 header.**
+- [`27-new-and-upcoming-releases.md`](27-new-and-upcoming-releases.md) —
+  `RecentMarquee`-style scrolling cover strips for new / upcoming releases,
+  filtered to authors + series the library knows, each cover → wishlist
+  Request. Part 1 (series, ~free — Part A data is already in the index) → Part
+  2 (per-author Hardcover pass + sidecar) → Part 3 (optional global "most
+  anticipated"). Not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

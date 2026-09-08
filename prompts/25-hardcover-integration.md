@@ -25,9 +25,12 @@ and compilation/partial filtering that Google Books and Open Library don't.
   account settings page, with scopes and a required expiry. James creates it
   on a (free) Hardcover account; BookBrain stores it in `.env` like
   `ANTHROPIC_API_KEY` (a static secret, not a per-user OAuth token).
-- **Rate limits (Free tier):** 5,000/day, 60/min, burst 10. One request may
-  contain ≤5 top-level queries (or 1 `search`). A `search` counts as 1.
-  Response carries `RateLimit` / `RateLimit-Policy` / `Retry-After` headers.
+- **Rate limits:** Free tier 5,000/day, 60/min, burst 10. **James upgraded to
+  the paid "Supporter" tier 2026-09-08 → 50,000/day**, 60/min, burst 30. One
+  request may contain ≤5 top-level queries (or 1 `search`). A `search` counts
+  as 1. Response carries `RateLimit` / `x-ratelimit-daily-*` / `Retry-After`
+  headers; `hardcover_graphql` raises `HardcoverRateLimited` on a daily 429 so
+  a bulk run stops clean (commit `250ac8b`).
 - **Beta, explicitly unstable:** "anything you build could break", "we may
   reset tokens without notice", GraphQL **max query depth 3 is on the
   roadmap** (our nested queries are depth 4 today — if that lands, the

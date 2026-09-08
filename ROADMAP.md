@@ -74,6 +74,12 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       `book_characters` exists but the data is too spotty (many books empty,
       dup / "(Fictitious character)" names) and the `Character` search is
       noisy. Not worth the cleanup; revisit only on request.
+  - **"New & Upcoming" discovery strips (`prompts/27`)** — scrolling
+    cover strips (the `RecentMarquee` look) for recent + upcoming releases,
+    filtered to authors/series the library knows, each cover → wishlist
+    Request. Part 1 = flatten the per-series `releaseDate` data Part A already
+    ships (nearly free); Part 2 = a per-author Hardcover pass + its own
+    sidecar; Part 3 = optional global "most anticipated". Not started.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB
