@@ -56,9 +56,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   ("meaning") search in the library-viewer: backend pre-embeds every book
   (all-MiniLM-L6-v2, ONNX, no torch) → `bookbrain-embeddings.bin` sidecar;
   viewer loads the same model once (vendored, ~23 MB, SW-cached) and embeds
-  only the query, ranks by cosine. **Phase 0 done 2026-09-09** — free
-  description backfill filled 882 blurbs; effective coverage now 91%
-  (2203/2420). Phases 1 + 2 not started.
+  only the query, ranks by cosine. **Phase 0 + 1 done 2026-09-09** — Phase 0:
+  free description backfill (882 blurbs, effective coverage 91%). Phase 1:
+  `embedding_service` (all-MiniLM-L6-v2 ONNX, no torch) + `books.embedding`
+  migration + `bookbrain-embeddings.bin` sidecar (int8) + nightly step +
+  `POST /library/embeddings[/refresh]` + parity script. **Phase 2 (viewer:
+  vendor model + search UI) not started.**
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

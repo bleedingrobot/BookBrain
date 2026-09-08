@@ -367,10 +367,13 @@ mis-identification guards). The rest of that session's ideas, for later:
     semantic search. The real daily use case for a personal library is "I know
     we own it, I can't remember the title." **Speced: `prompts/29`** — backend
     pre-embeds (all-MiniLM-L6-v2 ONNX, no torch) → `bookbrain-embeddings.bin`
-    sidecar; viewer vendors the model, embeds only the query. **Phase 0 done
-    (2026-09-09)** — free description backfill filled 882 blurbs;
-    `Book.description` 109 → 991, effective coverage (canonical + EPUB
-    fallback) 91% (2203/2420). Phases 1 + 2 not started.
+    sidecar; viewer vendors the model, embeds only the query.
+    **Phase 0 + 1 done (2026-09-09)** — P0: free description backfill (882
+    blurbs, 91% effective coverage). P1: `embedding_service` (all-MiniLM-L6-v2
+    ONNX via onnxruntime, no torch), `books.embedding` migration,
+    `bookbrain-embeddings.bin` int8 sidecar, nightly step, routes, parity
+    script. **Phase 2 (viewer: vendor the model + Keyword/Meaning search UI)
+    not started.**
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".

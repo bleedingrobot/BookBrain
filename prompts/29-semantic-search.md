@@ -50,7 +50,24 @@ its own name.
 
 ---
 
-## Phase 1 — backend embeddings + sidecar
+## Phase 1 — backend embeddings + sidecar — **SHIPPED 2026-09-09**
+
+Built as speced with two deviations, both toward stronger parity:
+- **No `fastembed`** — raw `onnxruntime` + `tokenizers` + numpy against the
+  *exact* file the viewer will vendor (`Xenova/all-MiniLM-L6-v2`
+  `onnx/model_quantized.onnx`), mean-pool + L2-normalise by hand. Same file
+  both sides → parity by construction (still run `scripts/embedding_parity.py
+  --check` in Phase 2).
+- Migration `e7f8a9bacbd0`: `books.embedding` (raw float32 bytes) +
+  `embedding_hash` + `embedding_model`. `refresh_embeddings(session, *,
+  limit, embed_fn=embed_texts)` — `embed_fn` injectable so tests skip the
+  23 MB download. Sidecar via `library_index_service.build_embeddings_payload`
+  (4-byte LE header len → JSON header → int8 block) + `regenerate_embeddings`
+  + `_write_bytes_file`. Nightly step after the index. Routes
+  `POST /api/library/embeddings/refresh?limit=` + `POST /api/library/embeddings`.
+  `scripts/embedding_parity.py` + `embedding_parity_reference.json`.
+
+Original notes kept below for Phase 2.
 
 ### Model
 
