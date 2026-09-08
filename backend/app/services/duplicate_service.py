@@ -154,6 +154,39 @@ async def clear_duplicates(session: AsyncSession, provider: DriveProvider) -> Cl
     return ClearDuplicatesResult(cleared=cleared, failed=failed)
 
 
+async def clear_same_book_duplicates(
+    session: AsyncSession, provider: DriveProvider
+) -> ClearDuplicatesResult:
+    """Bulk-trash every same_book duplicate in one go — the "Trash all" the
+    UI offers on that section once the user has scanned the list. Kept apart
+    from clear_duplicates() on purpose: same_book is a *resolved-identification*
+    match, not a byte match, so a misidentified book could be sitting in this
+    bucket. The UI puts it behind its own confirmation with that warning."""
+    duplicates = (
+        (
+            await session.execute(
+                select(File).where(
+                    File.status == FileStatus.duplicate,
+                    File.status_reason == FileStatusReason.same_book,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    cleared = 0
+    failed = 0
+    for dup in duplicates:
+        if await _trash_and_delete(session, provider, dup):
+            cleared += 1
+        else:
+            failed += 1
+
+    await session.commit()
+    return ClearDuplicatesResult(cleared=cleared, failed=failed)
+
+
 async def clear_one_duplicate(
     session: AsyncSession, provider: DriveProvider, file_id: int
 ) -> ClearDuplicatesResult:

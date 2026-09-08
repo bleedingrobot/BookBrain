@@ -131,6 +131,8 @@ export const api = {
 
   listDuplicates: () => request<DuplicateGroup[]>('/duplicates'),
   clearDuplicates: () => request<ClearDuplicatesResult>('/duplicates/clear', { method: 'POST' }),
+  clearSameBookDuplicates: () =>
+    request<ClearDuplicatesResult>('/duplicates/clear-same-book', { method: 'POST' }),
   clearOneDuplicate: (fileId: number) =>
     request<ClearDuplicatesResult>(`/duplicates/${fileId}/clear`, { method: 'POST' }),
   unflagDuplicate: (fileId: number) =>

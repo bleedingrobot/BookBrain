@@ -9,6 +9,7 @@ from app.services.duplicate_service import (
     DuplicateNotClearableError,
     clear_duplicates,
     clear_one_duplicate,
+    clear_same_book_duplicates,
     list_duplicate_groups,
     unflag_duplicate,
 )
@@ -27,6 +28,14 @@ async def clear_duplicates_route(
     provider: DriveProvider = Depends(require_drive_provider),
 ) -> ClearDuplicatesResult:
     return await clear_duplicates(db, provider)
+
+
+@router.post("/clear-same-book", response_model=ClearDuplicatesResult)
+async def clear_same_book_duplicates_route(
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> ClearDuplicatesResult:
+    return await clear_same_book_duplicates(db, provider)
 
 
 @router.post("/{file_id}/clear", response_model=ClearDuplicatesResult)

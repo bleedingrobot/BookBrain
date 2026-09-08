@@ -45,6 +45,11 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
   const [clearError, setClearError] = useState<string | null>(null)
   const [clearResult, setClearResult] = useState<{ cleared: number; failed: number } | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
+  const [confirmingClearSameBook, setConfirmingClearSameBook] = useState(false)
+  const [sameBookError, setSameBookError] = useState<string | null>(null)
+  const [sameBookResult, setSameBookResult] = useState<{ cleared: number; failed: number } | null>(
+    null,
+  )
 
   const duplicates = useQuery({ queryKey: ['duplicates'], queryFn: api.listDuplicates })
 
@@ -63,6 +68,18 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
     },
     onError: (err: unknown) =>
       setClearError(err instanceof ApiError ? err.message : 'Failed to clear duplicates.'),
+  })
+
+  const clearSameBook = useMutation({
+    mutationFn: api.clearSameBookDuplicates,
+    onSuccess: (result) => {
+      setConfirmingClearSameBook(false)
+      setSameBookError(null)
+      setSameBookResult(result)
+      invalidate()
+    },
+    onError: (err: unknown) =>
+      setSameBookError(err instanceof ApiError ? err.message : 'Failed to trash the copies.'),
   })
 
   const rowError_ = (err: unknown) =>
@@ -167,25 +184,70 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
 
       {sameBook.length > 0 && (
         <section className="mt-6">
-          <h2 className="text-sm font-medium text-neutral-500">Same book, different file</h2>
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="text-sm font-medium text-neutral-500">Same book, different file</h2>
+            <div className="shrink-0 text-right">
+              <button
+                className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+                disabled={clearSameBook.isPending}
+                onClick={() => setConfirmingClearSameBook(true)}
+              >
+                Trash all {sameBook.length}
+              </button>
+              {sameBookResult && (
+                <p className="mt-1 text-xs text-neutral-500">
+                  {sameBookResult.cleared} cleared
+                  {sameBookResult.failed > 0 ? `, ${sameBookResult.failed} failed` : ''}
+                </p>
+              )}
+            </div>
+          </div>
           <p className="mt-1 max-w-xl text-xs text-neutral-400">
             These were matched to a book already in your library by identification, not by content.
             If that's right, trash the extra copy. If it's actually a different book that was
             misidentified, choose "Not a duplicate" — it'll be split off and re-processed.
           </p>
+
+          {confirmingClearSameBook && (
+            <div className="mt-3 max-w-lg space-y-2 rounded border border-red-300 p-3 text-sm dark:border-red-800">
+              <p className="text-red-700 dark:text-red-400">
+                This trashes all {sameBook.length} copies listed below in one go (to Drive's Trash,
+                recoverable there). Because these were matched by identification and not by bytes, a
+                book that was <em>misidentified</em> as one you already own would be trashed too —
+                only do this once you've read the list and every row looks right.
+              </p>
+              {sameBookError && <p className="text-red-600">{sameBookError}</p>}
+              <div className="flex gap-2">
+                <button
+                  className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  disabled={clearSameBook.isPending}
+                  onClick={() => clearSameBook.mutate()}
+                >
+                  Yes, trash all {sameBook.length}
+                </button>
+                <button
+                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  onClick={() => setConfirmingClearSameBook(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
             {sameBook.map((group) => (
               <GroupRow key={group.duplicate_file_id} group={group}>
                 <button
                   className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
-                  disabled={trashOne.isPending || unflagOne.isPending}
+                  disabled={trashOne.isPending || unflagOne.isPending || clearSameBook.isPending}
                   onClick={() => trashOne.mutate(group.duplicate_file_id)}
                 >
                   Trash this copy
                 </button>
                 <button
                   className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300"
-                  disabled={trashOne.isPending || unflagOne.isPending}
+                  disabled={trashOne.isPending || unflagOne.isPending || clearSameBook.isPending}
                   onClick={() => unflagOne.mutate(group.duplicate_file_id)}
                 >
                   Not a duplicate

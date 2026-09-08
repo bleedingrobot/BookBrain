@@ -9,6 +9,7 @@ from app.services.duplicate_service import (
     DuplicateNotClearableError,
     clear_duplicates,
     clear_one_duplicate,
+    clear_same_book_duplicates,
     detect_same_book_duplicates,
     list_duplicate_groups,
     unflag_duplicate,
@@ -320,6 +321,67 @@ async def test_clear_duplicates_leaves_same_book_rows_untouched(db_session) -> N
     assert provider.trashed == ["sha-dup"]
     remaining = (await db_session.execute(select(File.drive_file_id))).scalars().all()
     assert remaining == ["same-book"]
+
+
+async def test_clear_same_book_duplicates_trashes_only_same_book_rows(db_session) -> None:
+    sha_dup = File(
+        drive_file_id="sha-dup",
+        drive_parent_id="p",
+        filename="sha-dup.epub",
+        sha256="shared",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+    )
+    same_a = File(
+        drive_file_id="same-a",
+        drive_parent_id="p",
+        filename="a.epub",
+        sha256="d1",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+    )
+    same_b = File(
+        drive_file_id="same-b",
+        drive_parent_id="p",
+        filename="b.epub",
+        sha256="d2",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+    )
+    db_session.add_all([sha_dup, same_a, same_b])
+    await db_session.commit()
+    provider = _FakeProvider()
+
+    result = await clear_same_book_duplicates(db_session, provider)
+
+    assert result.cleared == 2 and result.failed == 0
+    assert sorted(provider.trashed) == ["same-a", "same-b"]
+    remaining = (await db_session.execute(select(File.drive_file_id))).scalars().all()
+    assert remaining == ["sha-dup"]  # the exact-content dup is left for the other button
+
+
+async def test_clear_same_book_duplicates_counts_failures_without_deleting(db_session) -> None:
+    same = File(
+        drive_file_id="same-x",
+        drive_parent_id="p",
+        filename="x.epub",
+        sha256="d",
+        size_bytes=100,
+        status=FileStatus.duplicate,
+        status_reason=FileStatusReason.same_book,
+    )
+    db_session.add(same)
+    await db_session.commit()
+    provider = _FakeProvider(fail_for={"same-x"})
+
+    result = await clear_same_book_duplicates(db_session, provider)
+
+    assert result.cleared == 0 and result.failed == 1
+    assert (
+        await db_session.execute(select(File).where(File.id == same.id))
+    ).scalar_one_or_none() is not None
 
 
 async def test_clear_one_duplicate_trashes_a_single_same_book_row(db_session) -> None:
