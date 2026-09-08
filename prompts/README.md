@@ -9,6 +9,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   assessment and a fresh batch of numbered work-prompts. Run it every few weeks
   or after a burst of feature work.
 
+## Standalone
+
+- [`25-hardcover-integration.md`](25-hardcover-integration.md) — Hardcover API
+  as a metadata provider. **Phase 1 shipped 2026-09-08** (`HardcoverProvider`,
+  opt-in via `HARDCOVER_API_TOKEN`); Phases 1.5 / 2 / 3 scoped, not started.
+
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
 No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24. **All shipped 2026-09-08.**

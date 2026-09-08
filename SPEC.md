@@ -119,7 +119,12 @@ number.
 **Providers.** Google Books + Open Library now populate
 `MetadataCandidate.series` / `series_number` / `genre` (so series is
 corroboratable and `SERIES_DISAGREEMENT_PENALTY` requires a ≥2-candidate
-consensus).
+consensus). **Hardcover** (`providers/metadata/hardcover.py`) is an optional
+third provider — a human-curated catalogue with markedly better series data —
+added to `default_candidate_service()` only when `HARDCOVER_API_TOKEN` is set.
+Backend only (their API forbids browser use); every failure path returns `[]`
+so it's never load-bearing. Instance-level token bucket keeps it under the
+free tier's 60/min. See `prompts/25-hardcover-integration.md`.
 
 **Fast path.** ISBN match still short-circuits, but now also requires
 `title_similarity >= 0.80` with the ISBN-matched candidate (a wrong-but-valid

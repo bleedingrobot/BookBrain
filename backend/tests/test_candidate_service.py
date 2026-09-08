@@ -81,3 +81,18 @@ async def test_empty_provider_list_is_a_safe_no_op() -> None:
     results = await service.generate_candidates(isbn13="9780441172719", title="Dune")
 
     assert results == []
+
+
+def test_default_service_adds_hardcover_only_when_token_is_set(monkeypatch) -> None:
+    from app.core.config import get_settings
+    from app.services.candidate_service import default_candidate_service
+
+    settings = get_settings()
+
+    monkeypatch.setattr(settings, "hardcover_api_token", "")
+    names = {p.name for p in default_candidate_service()._providers}
+    assert "hardcover" not in names
+    assert {"google_books", "open_library"} <= names
+
+    monkeypatch.setattr(settings, "hardcover_api_token", "tok")
+    assert "hardcover" in {p.name for p in default_candidate_service()._providers}

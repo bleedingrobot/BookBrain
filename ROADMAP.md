@@ -4,6 +4,27 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
 
 ## Later / maybe
 
+- **Hardcover API integration (`prompts/25`)** — human-curated book catalogue,
+  GraphQL, backend only (their API bans browser use). Targets the weak series
+  field.
+  - **Phase 1 — DONE (2026-09-08)**: `providers/metadata/hardcover.py`
+    `HardcoverProvider`, a third `BookMetadataProvider` added to
+    `default_candidate_service()` only when `HARDCOVER_API_TOKEN` is set.
+    ISBN → `editions`→`book`→`book_series` (curated series + position);
+    title/author → the `search` (Typesense) query. Instance-level token
+    bucket (~54/min, burst 8), one 429 retry, every failure path → `[]`.
+    No `confidence_service` change — a Hardcover series just flows into
+    `candidates` and stands down `UNCORROBORATED_SERIES_PENALTY` /
+    corroborates the consensus. `hash_evidence` shifts for newly-scanned
+    books only (correct). Corpus flat by construction; a real delta needs
+    `--live` (Anthropic credit). **James: create the Hardcover account +
+    PAT, put it in `.env`, restart the backend.**
+  - **Phase 1.5** — persistent Hardcover cache (only if the 5,000/day bites).
+  - **Phase 2** — real canonical series membership from Hardcover into
+    `bookbrain-index.json`, replacing `seriesGaps.ts`'s guessed gaps with
+    named missing entries.
+  - **Phase 3** — genres / moods / ratings / pages / similar-books / richer
+    descriptions folded into the viewer, piecemeal.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

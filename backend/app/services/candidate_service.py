@@ -3,6 +3,7 @@ import asyncio
 from app.core.config import get_settings
 from app.providers.metadata.base import BookMetadataProvider
 from app.providers.metadata.google_books import GoogleBooksProvider
+from app.providers.metadata.hardcover import HardcoverProvider
 from app.providers.metadata.open_library import OpenLibraryProvider
 from app.providers.metadata.types import MetadataCandidate
 
@@ -44,9 +45,13 @@ class CandidateService:
 
 def default_candidate_service() -> CandidateService:
     settings = get_settings()
-    return CandidateService(
-        providers=[
-            GoogleBooksProvider(api_key=settings.google_books_api_key),
-            OpenLibraryProvider(),
-        ]
-    )
+    providers: list[BookMetadataProvider] = [
+        GoogleBooksProvider(api_key=settings.google_books_api_key),
+        OpenLibraryProvider(),
+    ]
+    # Hardcover is opt-in: only added when a token is configured, so an
+    # install without one behaves exactly as before (no extra request,
+    # no dependency on a beta API).
+    if settings.hardcover_api_token:
+        providers.append(HardcoverProvider(token=settings.hardcover_api_token))
+    return CandidateService(providers=providers)

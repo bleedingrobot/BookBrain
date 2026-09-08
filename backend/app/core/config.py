@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5"
     google_books_api_key: str = ""
 
+    # Hardcover (https://hardcover.app) as a third metadata provider — a
+    # human-curated catalogue whose series data beats Google Books / Open
+    # Library. A Personal Access Token from hardcover.app account settings
+    # (Hardcover API -> New API Key). Backend only — their API forbids
+    # browser use. Empty = the provider is not added to candidate_service and
+    # nothing changes. See prompts/25-hardcover-integration.md.
+    hardcover_api_token: str = ""
+
     # prompts/15 Stage A — web-search grounding for the identify call. When on
     # (default), the AI identification path may call the Anthropic web_search
     # server tool to verify title/author/series/first-publication year against
