@@ -79,6 +79,25 @@ async def _books_needing_descriptions(session: AsyncSession) -> list[tuple[int, 
     return [(r[0], r[1], r[2]) for r in rows.all()]
 
 
+async def _hc_descriptions_for(session: AsyncSession, book_ids: list[int]) -> dict[int, str]:
+    """prompts/26 Part C — Hardcover's own blurb, stashed in
+    `Book.hardcover_json.meta.description` by hardcover_recs_service. Free
+    (no request, no API credit), so it's tried before Google Books / Open
+    Library / the model."""
+    out: dict[int, str] = {}
+    if not book_ids:
+        return out
+    rows = await session.execute(
+        select(Book.id, Book.hardcover_json).where(Book.id.in_(book_ids))
+    )
+    for bid, hardcover_json in rows.all():
+        meta = hardcover_json.get("meta") if isinstance(hardcover_json, dict) else None
+        desc = meta.get("description") if isinstance(meta, dict) else None
+        if isinstance(desc, str) and len(desc.strip()) >= _MIN_LEN:
+            out[bid] = desc.strip()
+    return out
+
+
 async def _isbns_for(session: AsyncSession, book_ids: list[int]) -> dict[int, tuple[str | None, str | None]]:
     out: dict[int, tuple[str | None, str | None]] = {}
     if not book_ids:
@@ -140,6 +159,7 @@ async def backfill_descriptions(
         async with async_session_factory() as session:
             needing = await _books_needing_descriptions(session)
             isbns = await _isbns_for(session, [b[0] for b in needing])
+            hc_descriptions = await _hc_descriptions_for(session, [b[0] for b in needing])
     except Exception:
         logger.exception("description backfill: query failed")
         return counts
@@ -157,16 +177,19 @@ async def backfill_descriptions(
             source = "not_found"
             try:
                 i13, i10 = isbns.get(book_id, (None, None))
+                # 0. free, no request: Hardcover's own blurb (prompts/26 Part C)
+                desc = _clean(hc_descriptions.get(book_id))
                 # 1. free: Google Books / Open Library search candidates
-                found = await candidates.generate_candidates(
-                    isbn13=i13, isbn10=i10, title=title, authors=author
-                )
-                blurbs = sorted(
-                    (_clean(c.description) for c in found),
-                    key=lambda s: len(s or ""),
-                    reverse=True,
-                )
-                desc = next((b for b in blurbs if b and len(b) >= _MIN_LEN), None)
+                if not desc:
+                    found = await candidates.generate_candidates(
+                        isbn13=i13, isbn10=i10, title=title, authors=author
+                    )
+                    blurbs = sorted(
+                        (_clean(c.description) for c in found),
+                        key=lambda s: len(s or ""),
+                        reverse=True,
+                    )
+                    desc = next((b for b in blurbs if b and len(b) >= _MIN_LEN), None)
                 # 2. free: Open Library's work-level blurb (search results don't carry it)
                 if not desc and (i13 or i10) and ol_dead["count"] < 5:
                     try:

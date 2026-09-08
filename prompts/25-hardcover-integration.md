@@ -362,11 +362,12 @@ shared viewer.
 
 **Split out into its own work-prompt: [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md)**
 (parts B metadata badges → A new & upcoming → C descriptions → D characters).
-Original scoping notes kept below. **Parts B + A shipped 2026-09-08** — B:
-curated rating/pages/category/genres → `hardcover_json.meta` →
+Original scoping notes kept below. **Parts B + A + C shipped 2026-09-08** —
+B: curated rating/pages/category/genres → `hardcover_json.meta` →
 `bookbrain-index.json` v4 → viewer badges, a genre facet, and a rating sort.
 A: series `release_date` per entry → viewer "Next in …" / "Coming …" +
-a "Coming soon" filter chip.
+a "Coming soon" filter chip. C: `meta.description` tried first (free) by
+fill-missing-descriptions. Part D (characters) not started.
 
 - **New & upcoming** — for every author/series in the library, Hardcover
   `books` with `release_date` in the last ~18 months **or** future, that

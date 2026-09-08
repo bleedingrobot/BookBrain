@@ -64,8 +64,14 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       dates >3 years out are filtered as placeholders). `BookRow` shows
       "Next in {series}: #N Title" and "Coming: #N Title — <month year>";
       `App.tsx` adds a "Coming soon" filter chip (`comingSoonSeriesNames`).
-    - **Parts C / D** — description source, characters. Scoped in prompts/26,
-      not started.
+    - **Part C — DONE (2026-09-08)**: Hardcover as a description source.
+      `hardcover_recs_service` already caps + stores `book.description` into
+      `hardcover_json.meta.description` (Part B). `description_service` now
+      tries `_hc_descriptions_for()` (one bulk `Book.hardcover_json` read, no
+      request, no API credit) *before* Google Books / Open Library / the
+      model, keeping the "only fill a genuine blank" rule.
+    - **Part D** — characters ("books featuring X"). Scoped in prompts/26,
+      not started; optional, lowest priority.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

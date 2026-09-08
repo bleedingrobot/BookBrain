@@ -74,6 +74,48 @@ async def test_estimate_makes_no_ai_calls_and_counts_blanks(db_session, monkeypa
     assert est.estimated_cost_usd > 0
 
 
+async def test_hardcover_description_is_used_before_any_provider_or_ai(
+    db_session, monkeypatch
+) -> None:
+    author = Author(name="A")
+    db_session.add(author)
+    await db_session.flush()
+    book = Book(
+        canonical_title="Mistborn",
+        author_id=author.id,
+        hardcover_json={
+            "id": 1,
+            "similar": [],
+            "meta": {"description": "Kelsier recruits a crew to overthrow the Lord Ruler."},
+        },
+    )
+    db_session.add(book)
+    await db_session.flush()
+    db_session.add(
+        File(
+            drive_file_id="d0",
+            filename="m.epub",
+            sha256="s0",
+            size_bytes=1,
+            status=FileStatus.organised,
+            book_id=book.id,
+        )
+    )
+    await db_session.commit()
+
+    class _BoomCandidates:
+        async def generate_candidates(self, **_kw):
+            raise AssertionError("Hardcover blurb should have short-circuited the provider lookup")
+
+    monkeypatch.setattr(description_service, "default_candidate_service", lambda: _BoomCandidates())
+
+    counts = await backfill_descriptions(use_ai=False)
+
+    assert counts["from_provider"] == 1
+    refreshed = await db_session.get(Book, book.id)
+    assert refreshed.description == "Kelsier recruits a crew to overthrow the Lord Ruler."
+
+
 async def test_ai_backfill_respects_the_cap_and_a_rerun_continues(db_session, monkeypatch) -> None:
     await _seed_books(db_session, 5)
     ai = _CountingAI()

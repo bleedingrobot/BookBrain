@@ -18,10 +18,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
 - [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md) — Hardcover Phase 4:
   metadata badges/filters (B), new & upcoming per series (A), Hardcover as a
   description source (C), characters (D). Order B → A → C → D.
-  **Parts B + A shipped 2026-09-08** — B: curated rating/pages/category/genres
-  → `hardcover_json.meta` → index v4 → viewer badges + genre facet + rating
-  sort. A: series `release_date` → per-entry `releaseDate` → viewer "Next in
-  …" / "Coming: … — <month year>" + a "Coming soon" filter chip.
+  **Parts B + A + C shipped 2026-09-08** — B: curated
+  rating/pages/category/genres → `hardcover_json.meta` → index v4 → viewer
+  badges + genre facet + rating sort. A: series `release_date` → per-entry
+  `releaseDate` → viewer "Next in …" / "Coming: … — <month year>" + a "Coming
+  soon" filter chip. C: `hardcover_json.meta.description` is tried first (zero
+  cost) by fill-missing-descriptions. **Part D (characters) not started.**
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
