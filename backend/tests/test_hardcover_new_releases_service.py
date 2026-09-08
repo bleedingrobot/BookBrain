@@ -7,7 +7,11 @@ import respx
 
 from app.data.models import Author, Book, File, FileStatus
 from app.providers.metadata.hardcover import ENDPOINT
-from app.services.hardcover_new_releases_service import real_release_date, refresh_new_releases
+from app.services.hardcover_new_releases_service import (
+    fetch_global_anticipated,
+    real_release_date,
+    refresh_new_releases,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -42,13 +46,15 @@ def _iso(days: int) -> str:
     return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
 
 
-def _route(books: list[dict], *, status: int = 200):
+def _route(books: list[dict], *, status: int = 200, global_books: list[dict] | None = None):
     def handler(request: httpx.Request) -> httpx.Response:
         q = json.loads(request.content)["query"]
         if "AuthorReleases" in q:
             if status != 200:
                 return httpx.Response(status, json={})
             return httpx.Response(200, json={"data": {"books": books}})
+        if "GlobalAnticipated" in q:
+            return httpx.Response(200, json={"data": {"books": global_books or []}})
         return httpx.Response(200, json={"data": {}})
 
     respx.post(ENDPOINT).mock(side_effect=handler)
@@ -117,6 +123,35 @@ async def test_only_stale_authors_are_picked(db_session) -> None:
 
     counts = await refresh_new_releases(db_session, stale_after_days=14)
     assert counts["authors"] == 1  # only "Stale"
+
+
+@respx.mock
+async def test_fetch_global_anticipated_maps_author_and_drops_placeholders() -> None:
+    _route(
+        [],
+        global_books=[
+            {
+                "title": "A Court of Splintered Harmony",
+                "release_date": _iso(60),
+                "book_category_id": 1,
+                "contributions": [{"author": {"name": "Sarah J. Maas"}}],
+                "editions": [{"isbn_13": "9990000000009"}],
+                "cached_tags": {"Genre": [{"tag": "Fantasy"}]},
+            },
+            {
+                "title": "Untitled Stormlight Archive #6",
+                "release_date": "2031-12-01",  # placeholder → dropped
+                "contributions": [],
+                "editions": [],
+                "cached_tags": {},
+            },
+        ],
+    )
+
+    out = await fetch_global_anticipated(limit=10)
+    assert [b["title"] for b in out] == ["A Court of Splintered Harmony"]
+    assert out[0]["author"] == "Sarah J. Maas"
+    assert out[0]["isbn13"] == "9990000000009"
 
 
 def _select(name: str):

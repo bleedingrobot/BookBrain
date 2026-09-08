@@ -85,9 +85,25 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       → v5. `collectSeriesReleases` (in `seriesGaps.ts`) flattens every
       matched series' `nextUp` + `upcoming` into library-wide `recent` /
       `upcoming` lists; a generalised `<Marquee>` (extracted from
-      `RecentMarquee`) drives two `<ReleaseMarquee>` strips ("New in your
-      series" / "Coming soon in your series"), each cover → `<ReleaseCard>`
-      → wishlist Request. Zero new Hardcover calls.
+      `RecentMarquee`) drives the `<ReleaseMarquee>` strips, each cover →
+      `<ReleaseCard>` → wishlist Request. Zero new Hardcover calls.
+    - **Part 2 — DONE (2026-09-08)**: `authors.hardcover_json` migration +
+      `hardcover_new_releases_service` (one call/author,
+      `books(where contributions.author.name…)` — the prompt's
+      `authors→contributions` shape returns [], validated live). New
+      `bookbrain-new-releases.json` sidecar (`build_new_releases_payload`,
+      excludes owned + wishlisted), nightly step, `POST /library/new-releases
+      [/refresh]`. Viewer `lib/newReleases.ts` (lazy fetch) merges the author
+      feed with Part 1's series feed; `<NewReleasesScreen>` behind a "See all"
+      link.
+    - **Part 3 — DONE (2026-09-08)**: `fetch_global_anticipated` (raw
+      `users_count` sort over future releases — no queryable official "Most
+      Anticipated" list; `_ilike` list search is blocked server-side) → the
+      sidecar's `global` array. Viewer shows a third "Most anticipated" strip
+      only when a `showGlobalReleases` toggle in `SettingsForm` is on
+      (default off). **Whole feature not browser-verified; live sidecars need
+      a `new-releases/refresh` + `series-catalog/refresh?stale_days=0` +
+      `POST /library/new-releases` + `POST /library/index`, or the nightly.**
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

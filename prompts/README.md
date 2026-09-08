@@ -30,10 +30,15 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   filtered to authors + series the library knows, each cover → wishlist
   Request. Part 1 (series, ~free — Part A data is already in the index) → Part
   2 (per-author Hardcover pass + sidecar) → Part 3 (optional global "most
-  anticipated"). **Part 1 shipped 2026-09-08** — per-entry `isbn13` in the
-  series catalogue (index → v5), `collectSeriesReleases` + a generalised
-  `<Marquee>` + two `<ReleaseMarquee>` strips + `<ReleaseCard>` → Request.
-  Parts 2 + 3 not started.
+  anticipated"). **All three shipped 2026-09-08.** Part 1: per-entry `isbn13`
+  in the series catalogue (index → v5), `collectSeriesReleases` + a
+  generalised `<Marquee>` + `<ReleaseMarquee>` strips + `<ReleaseCard>` →
+  Request. Part 2: `authors.hardcover_json` + `hardcover_new_releases_service`
+  + `bookbrain-new-releases.json` + `<NewReleasesScreen>`; the strips show a
+  merged series+author feed. Part 3: `fetch_global_anticipated` → sidecar
+  `global` array → a third strip gated on a `showGlobalReleases` setting
+  (default off). Not browser-verified; live sidecars need a refresh + index
+  regen (or the nightly).
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

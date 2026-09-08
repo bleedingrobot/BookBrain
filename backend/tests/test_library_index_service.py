@@ -246,10 +246,17 @@ async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_sessi
     from app.services.library_index_service import _norm_key
 
     wishlist_keys = {_norm_key("The Strength of the Few", "James Islington")}
-    payload = await build_new_releases_payload(db_session, wishlist_keys)
+    global_raw = [
+        {"title": "Blade Breaker", "author": "James Islington", "releaseDate": "2024-01-01"},  # dup
+        {"title": "Some Hyped Book", "author": "Other Person", "releaseDate": "2027-01-01"},
+    ]
+    payload = await build_new_releases_payload(db_session, wishlist_keys, global_raw)
 
     assert payload["version"] == 1
     assert [b["title"] for b in payload["recent"]] == ["Blade Breaker"]
     assert [b["title"] for b in payload["upcoming"]] == ["The Hierarchy 3"]
     assert payload["recent"][0]["source"] == "author"
     assert payload["upcoming"][0]["genres"] == ["Fantasy"]
+    # global: the author-feed dup is dropped, the fresh one kept
+    assert [b["title"] for b in payload["global"]] == ["Some Hyped Book"]
+    assert payload["global"][0]["source"] == "global"

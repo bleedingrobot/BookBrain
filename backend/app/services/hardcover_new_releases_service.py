@@ -67,6 +67,36 @@ query BookBrainAuthorReleases($name: String!, $since: date!) {
 """
 
 
+# prompts/27 Part 3 — Hardcover's most-wanted upcoming books overall. There's
+# no queryable "official Most Anticipated list" (validated live: `_ilike` list
+# search is blocked server-side, and there's no stable list slug to pin), so
+# it's a raw `users_count` sort over future releases with the same placeholder
+# filter as everything else.
+_GLOBAL_ANTICIPATED = """
+query BookBrainGlobalAnticipated($today: date!) {
+  books(
+    where: {
+      release_date: {_gte: $today}
+      compilation: {_eq: false}
+      is_partial_book: {_eq: false}
+      canonical_id: {_is_null: true}
+    }
+    order_by: {users_count: desc}
+    limit: 60
+  ) {
+    title
+    release_date
+    book_category_id
+    contributions(limit: 1) { author { name } }
+    editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
+      isbn_13
+    }
+    cached_tags
+  }
+}
+"""
+
+
 def real_release_date(title: str, release_date: object) -> date | None:
     """Part A's `realReleaseDate` rule, backend side: an "Untitled …" title or
     a date more than `_FAR_FUTURE_YEARS` out is a placeholder, not a real
@@ -83,7 +113,7 @@ def real_release_date(title: str, release_date: object) -> date | None:
     return None if d > cutoff else d
 
 
-def _map_book(row: dict) -> dict | None:
+def _map_book(row: dict, *, with_author: bool = False) -> dict | None:
     title = row.get("title")
     d = real_release_date(title, row.get("release_date"))
     if d is None:
@@ -99,6 +129,56 @@ def _map_book(row: dict) -> dict | None:
         out["category"] = category
     if genres:
         out["genres"] = genres
+    if with_author:
+        contribs = row.get("contributions") or []
+        author = contribs[0].get("author") if contribs and isinstance(contribs[0], dict) else None
+        name = author.get("name") if isinstance(author, dict) else None
+        if isinstance(name, str) and name.strip():
+            out["author"] = name.strip()
+    return out
+
+
+async def fetch_global_anticipated(
+    *, limit: int = 40, client: httpx.AsyncClient | None = None
+) -> list[dict]:
+    """prompts/27 Part 3 — the most-wanted upcoming books overall. One
+    Hardcover call, best-effort: any failure (including a rate limit — it's a
+    single non-critical call) returns []. Not filtered to the library; the
+    viewer excludes what's already owned/wishlisted and only shows the strip
+    when the opt-in setting is on."""
+    settings = get_settings()
+    token = (settings.hardcover_api_token or "").strip()
+    if not token:
+        return []
+    owns_client = client is None
+    http = client or httpx.AsyncClient(timeout=12.0)
+    bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
+    try:
+        data = await hardcover_graphql(
+            http, token, _GLOBAL_ANTICIPATED, {"today": date.today().isoformat()}, bucket
+        )
+    except HardcoverRateLimited:
+        return []
+    except Exception:  # noqa: BLE001
+        logger.exception("hardcover global anticipated fetch failed")
+        return []
+    finally:
+        if owns_client:
+            await http.aclose()
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for row in (data or {}).get("books") or []:
+        mapped = _map_book(row, with_author=True) if isinstance(row, dict) else None
+        if mapped is None:
+            continue
+        key = normalize_title(mapped["title"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(mapped)
+        if len(out) >= limit:
+            break
     return out
 
 

@@ -16,9 +16,12 @@ const CACHE_KEY = 'bookbrain.newReleases'
 export interface NewReleases {
   recent: ReleaseItem[]
   upcoming: ReleaseItem[]
+  // prompts/27 Part 3 — Hardcover's most-anticipated upcoming books overall,
+  // not filtered to the library. Only shown when `showGlobalReleases` is on.
+  global: ReleaseItem[]
 }
 
-export const EMPTY_NEW_RELEASES: NewReleases = { recent: [], upcoming: [] }
+export const EMPTY_NEW_RELEASES: NewReleases = { recent: [], upcoming: [], global: [] }
 
 interface RawItem {
   title?: string
@@ -33,6 +36,7 @@ interface RawFile {
   version?: number
   recent?: RawItem[]
   upcoming?: RawItem[]
+  global?: RawItem[]
 }
 
 interface Cached {
@@ -41,11 +45,11 @@ interface Cached {
   releases: NewReleases
 }
 
-function toItem(raw: RawItem): ReleaseItem | null {
+function toItem(raw: RawItem, source: 'author' | 'global'): ReleaseItem | null {
   if (typeof raw.title !== 'string' || !raw.title) return null
   const author = raw.author ?? null
   return {
-    key: raw.isbn13 || `author:${raw.title.toLowerCase()}|${(author ?? '').toLowerCase()}`,
+    key: raw.isbn13 || `${source}:${raw.title.toLowerCase()}|${(author ?? '').toLowerCase()}`,
     title: raw.title,
     author,
     series: null,
@@ -55,14 +59,18 @@ function toItem(raw: RawItem): ReleaseItem | null {
     description: null,
     hardcoverSlug: typeof raw.hardcoverSlug === 'string' ? raw.hardcoverSlug : null,
     genres: Array.isArray(raw.genres) ? raw.genres.filter((g): g is string => typeof g === 'string') : [],
-    source: 'author',
+    source,
   }
 }
 
 export function normaliseNewReleases(raw: RawFile): NewReleases {
-  const list = (arr: RawItem[] | undefined) =>
-    (arr ?? []).map(toItem).filter((i): i is ReleaseItem => i !== null)
-  return { recent: list(raw.recent), upcoming: list(raw.upcoming) }
+  const list = (arr: RawItem[] | undefined, source: 'author' | 'global') =>
+    (arr ?? []).map((r) => toItem(r, source)).filter((i): i is ReleaseItem => i !== null)
+  return {
+    recent: list(raw.recent, 'author'),
+    upcoming: list(raw.upcoming, 'author'),
+    global: list(raw.global, 'global'),
+  }
 }
 
 function readCache(): Cached | null {

@@ -405,5 +405,38 @@ Split into its own work-prompt: [`27-new-and-upcoming-releases.md`](27-new-and-u
   "Coming soon in your series") with covers via Open Library-by-ISBN
   (`useReleaseCovers`), each cover → `<ReleaseCard>` → wishlist Request.
   Zero new Hardcover calls — pure re-use of Part A's `releaseDate` data.
-- **Parts 2 (per-author pass + `bookbrain-new-releases.json`) + 3 (global
-  "most anticipated")** — not started.
+- **Part 2 — shipped 2026-09-08.** Migration `c5d6e7f8a9ba` adds
+  `authors.hardcover_json` / `hardcover_synced_at`. New
+  `hardcover_new_releases_service.refresh_new_releases(session, *, limit=120,
+  stale_after_days=14)` — one GraphQL call per stale author:
+  `books(where: {contributions: {author: {name: {_eq}}}, release_date: {_gte},
+  compilation/is_partial_book/canonical_id filters}, order_by: {users_count})`.
+  **The prompt's `authors { contributions(where: {book: …}) }` shape returns
+  `[]`** — validated live; the `books`-rooted `contributions.author.name`
+  filter is what works. Rate-limit-aware (daily 429 → break), commit per
+  author. `library_index_service.build_new_releases_payload(session,
+  wishlist_keys, global_raw?)` → `bookbrain-new-releases.json`
+  (`{version, generatedAt, recent, upcoming, global}`), excluding anything
+  already owned (DB) or wishlisted (`_read_wishlist_keys` reads the Drive
+  wishlist). Nightly gains one token-gated step after recs; routes
+  `POST /api/library/new-releases/refresh` + `POST /api/library/new-releases`.
+  Viewer: `lib/newReleases.ts` (lazy modifiedTime-cached fetch, like
+  recommendations), `dedupeReleaseItems` merges the author feed with Part 1's
+  viewer-derived series feed, `<NewReleasesScreen>` (bucket + genre filters)
+  behind a "See all" link.
+- **Part 3 — shipped 2026-09-08.** `hardcover_new_releases_service.
+  fetch_global_anticipated(*, limit=40)` — one best-effort call:
+  `books(where: {release_date: {_gte: today}, …}, order_by: {users_count:
+  desc})`. **No queryable official "Most Anticipated" list** — Hardcover
+  blocks `_ilike` list search server-side and there's no stable slug to pin,
+  so it's the raw `users_count` sort with the shared placeholder filter
+  (`real_release_date`: drop `/^untitled\b/i` + dates > 3y out). Written into
+  the sidecar's `global` array, de-duped against the author feed. Viewer
+  shows a third "Most anticipated" `<ReleaseMarquee>` only when a
+  `showGlobalReleases` checkbox in `SettingsForm` is ticked (default off,
+  browser-local).
+- Tests: backend 633 + corpus green; viewer 141 + build + lint green. **Not
+  browser-verified. Live sidecars are empty until a
+  `new-releases/refresh` + `series-catalog/refresh?stale_days=0` (for Part 1's
+  isbn13) + `POST /library/new-releases` + `POST /library/index`, or a
+  nightly run.**

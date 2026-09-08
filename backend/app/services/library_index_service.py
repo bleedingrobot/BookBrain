@@ -298,11 +298,17 @@ def _norm_key(title: str | None, author: str | None) -> str:
     return f"{normalize_title(title)}|{normalize_person_name(author)}"
 
 
-async def build_new_releases_payload(session: AsyncSession, wishlist_keys: set[str]) -> dict:
+async def build_new_releases_payload(
+    session: AsyncSession,
+    wishlist_keys: set[str],
+    global_raw: list[dict] | None = None,
+) -> dict:
     """`bookbrain-new-releases.json` — every organised author's Hardcover
     recent + near-future books (Author.hardcover_json, from
     hardcover_new_releases_service), split into `recent` / `upcoming` and with
-    anything already owned or on the wishlist removed."""
+    anything already owned or on the wishlist removed. `global_raw` (Part 3)
+    is Hardcover's overall most-anticipated list, filtered the same way and
+    de-duped against the author feed, written under `global`."""
     rows = (
         (
             await session.execute(
@@ -350,13 +356,34 @@ async def build_new_releases_payload(session: AsyncSession, wishlist_keys: set[s
             }
             (upcoming if (book.get("releaseDate") or "") > today else recent).append(item)
 
+    global_items: list[dict] = []
+    for book in global_raw or []:
+        if not isinstance(book, dict) or not isinstance(book.get("title"), str):
+            continue
+        key = _norm_key(book["title"], book.get("author"))
+        if key in seen or key in owned_keys or key in wishlist_keys:
+            continue
+        seen.add(key)
+        global_items.append(
+            {
+                "title": book["title"],
+                "author": book.get("author"),
+                "isbn13": book.get("isbn13"),
+                "releaseDate": book.get("releaseDate"),
+                "genres": book.get("genres") or [],
+                "source": "global",
+            }
+        )
+
     recent.sort(key=lambda b: b.get("releaseDate") or "", reverse=True)
     upcoming.sort(key=lambda b: b.get("releaseDate") or "")
+    global_items.sort(key=lambda b: b.get("releaseDate") or "")
     return {
         "version": NEW_RELEASES_VERSION,
         "generatedAt": datetime.now(UTC).isoformat(),
         "recent": recent[:_NEW_RELEASES_CAP],
         "upcoming": upcoming[:_NEW_RELEASES_CAP],
+        "global": global_items[:_NEW_RELEASES_CAP],
     }
 
 
@@ -394,10 +421,13 @@ async def regenerate_new_releases(
     if creds is None or not library_folder_id:
         return None
     try:
+        from app.services import hardcover_new_releases_service
+
         provider = DriveProvider(build_drive_service(creds))
         wishlist_keys = await asyncio.to_thread(_read_wishlist_keys, provider, library_folder_id)
+        global_raw = await hardcover_new_releases_service.fetch_global_anticipated()
         async with async_session_factory() as session:
-            payload = await build_new_releases_payload(session, wishlist_keys)
+            payload = await build_new_releases_payload(session, wishlist_keys, global_raw)
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, NEW_RELEASES_FILENAME, payload
         )

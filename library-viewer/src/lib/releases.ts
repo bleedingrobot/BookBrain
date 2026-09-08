@@ -22,7 +22,14 @@ export interface ReleaseItem {
   description: string | null
   hardcoverSlug: string | null
   genres: string[]
-  source: 'series' | 'author'
+  source: 'series' | 'author' | 'global'
+}
+
+// Same-book identity for dedup: ISBN-13 when present, else normalised title.
+export function releaseDedupeKey(item: ReleaseItem): string {
+  return item.isbn13
+    ? `isbn:${item.isbn13}`
+    : `t:${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '')}`
 }
 
 export function seriesEntryToItem(entry: SeriesReleaseEntry): ReleaseItem {
@@ -49,9 +56,7 @@ export function dedupeReleaseItems(...lists: ReleaseItem[][]): ReleaseItem[] {
   const seen = new Set<string>()
   const out: ReleaseItem[] = []
   for (const item of lists.flat()) {
-    const key = item.isbn13
-      ? `isbn:${item.isbn13}`
-      : `t:${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '')}`
+    const key = releaseDedupeKey(item)
     if (seen.has(key)) continue
     seen.add(key)
     out.push(item)

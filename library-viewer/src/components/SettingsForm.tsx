@@ -13,6 +13,7 @@ export function SettingsForm({
   const [googleClientId, setGoogleClientId] = useState(initial?.googleClientId ?? '')
   const [libraryFolderId, setLibraryFolderId] = useState(initial?.libraryFolderId ?? '')
   const [koboDevices, setKoboDevices] = useState<KoboDevice[]>(initial?.koboDevices ?? [])
+  const [showGlobalReleases, setShowGlobalReleases] = useState(initial?.showGlobalReleases ?? false)
 
   function updateDevice(index: number, patch: Partial<KoboDevice>) {
     setKoboDevices((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
@@ -46,6 +47,7 @@ export function SettingsForm({
               googleClientId: googleClientId.trim(),
               libraryFolderId: libraryFolderId.trim(),
               koboDevices: cleanDevices.length > 0 ? cleanDevices : undefined,
+              showGlobalReleases,
             })
           }
         }}
@@ -118,6 +120,21 @@ export function SettingsForm({
             "Send to <i>Name</i>" button. Leave empty to hide the Kobo buttons entirely.
           </span>
         </div>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-brand-600"
+            checked={showGlobalReleases}
+            onChange={(e) => setShowGlobalReleases(e.target.checked)}
+          />
+          <span className="text-sm">
+            Show a "Most anticipated" strip
+            <span className="mt-0.5 block text-xs text-neutral-400">
+              Hardcover's most-wanted upcoming books overall — not just your authors and series.
+            </span>
+          </span>
+        </label>
 
         <div className="flex items-center gap-3 pt-1">
           <button type="submit" className="btn btn-primary px-4 py-2 text-sm">

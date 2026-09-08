@@ -40,7 +40,12 @@ import {
   computeSeriesGaps,
   incompleteSeriesNames,
 } from './lib/seriesGaps'
-import { dedupeReleaseItems, seriesEntryToItem, type ReleaseItem } from './lib/releases'
+import {
+  dedupeReleaseItems,
+  releaseDedupeKey,
+  seriesEntryToItem,
+  type ReleaseItem,
+} from './lib/releases'
 import {
   EMPTY_NEW_RELEASES,
   fetchNewReleases,
@@ -258,6 +263,17 @@ export default function App() {
       ).sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? '')),
     [seriesReleases, newReleases],
   )
+  // Part 3 — "Most anticipated" (opt-in): Hardcover's overall top upcoming
+  // books, minus anything already in the library-filtered feeds above.
+  const globalReleaseFeed = useMemo(() => {
+    if (!settings?.showGlobalReleases) return []
+    const known = new Set(
+      [...recentReleaseFeed, ...upcomingReleaseFeed].map(releaseDedupeKey),
+    )
+    return newReleases.global
+      .filter((i) => !known.has(releaseDedupeKey(i)))
+      .sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
+  }, [settings, newReleases, recentReleaseFeed, upcomingReleaseFeed])
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const rows = useMemo(() => {
     const out = allRows.filter(
@@ -687,6 +703,11 @@ export default function App() {
             label="Coming soon"
             items={upcomingReleaseFeed}
             minCards={1}
+            onPick={setReleaseCardItem}
+          />
+          <ReleaseMarquee
+            label="Most anticipated"
+            items={globalReleaseFeed}
             onPick={setReleaseCardItem}
           />
           {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (

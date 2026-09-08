@@ -4,6 +4,7 @@ const CLIENT_ID_KEY = 'bookbrain.googleClientId'
 const FOLDER_ID_KEY = 'bookbrain.libraryFolderId'
 const KOBO_FOLDER_ID_KEY = 'bookbrain.koboFolderId' // legacy single-folder key, migrated on read
 const KOBO_DEVICES_KEY = 'bookbrain.koboDevices'
+const SHOW_GLOBAL_RELEASES_KEY = 'bookbrain.showGlobalReleases'
 
 export interface KoboDevice {
   label: string
@@ -19,6 +20,10 @@ export interface ViewerSettings {
   // bookbrain-viewer-settings.json so every signed-in device shares one
   // list — see koboDeviceSync.ts.
   koboDevices?: KoboDevice[]
+  // prompts/27 Part 3 — show the "Most anticipated" strip (Hardcover's most
+  // wanted upcoming books overall, not filtered to the library). Off by
+  // default; browser-local, not Drive-synced.
+  showGlobalReleases?: boolean
 }
 
 export type PartialSettings = Partial<ViewerSettings>
@@ -53,6 +58,7 @@ export function loadPartialSettings(): PartialSettings {
     googleClientId: localStorage.getItem(CLIENT_ID_KEY) ?? DEFAULT_GOOGLE_CLIENT_ID ?? undefined,
     libraryFolderId: localStorage.getItem(FOLDER_ID_KEY) ?? DEFAULT_LIBRARY_FOLDER_ID ?? undefined,
     koboDevices: loadKoboDevices(),
+    showGlobalReleases: localStorage.getItem(SHOW_GLOBAL_RELEASES_KEY) === 'true',
   }
 }
 
@@ -73,6 +79,8 @@ export function saveSettings(settings: ViewerSettings): void {
   // The legacy key is fully superseded once we've written the new one —
   // drop it so a stale value can't shadow an intentionally-cleared list.
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
+  if (settings.showGlobalReleases) localStorage.setItem(SHOW_GLOBAL_RELEASES_KEY, 'true')
+  else localStorage.removeItem(SHOW_GLOBAL_RELEASES_KEY)
 }
 
 export function clearSettings(): void {
@@ -80,5 +88,6 @@ export function clearSettings(): void {
   localStorage.removeItem(FOLDER_ID_KEY)
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
   localStorage.removeItem(KOBO_DEVICES_KEY)
+  localStorage.removeItem(SHOW_GLOBAL_RELEASES_KEY)
   localStorage.removeItem('bookbrain.readOnly') // orphan from the removed guest mode
 }
