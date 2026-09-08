@@ -36,14 +36,12 @@ async def _seed_book(db_session, title: str, isbn: str | None) -> Book:
     return book
 
 
-def _route(similar_ids: list[int], resolved: list[dict]):
+def _route(similar_ids: list[int], resolved: list[dict], book_extra: dict | None = None):
     def handler(request: httpx.Request) -> httpx.Response:
         q = json.loads(request.content)["query"]
         if "SimilarByIsbn" in q:
-            return httpx.Response(
-                200,
-                json={"data": {"editions": [{"book": {"id": 999, "cached_similar_book_ids": similar_ids}}]}},
-            )
+            book = {"id": 999, "cached_similar_book_ids": similar_ids, **(book_extra or {})}
+            return httpx.Response(200, json={"data": {"editions": [{"book": book}]}})
         if "ResolveBooks" in q:
             return httpx.Response(200, json={"data": {"books": resolved}})
         return httpx.Response(200, json={"data": {}})
@@ -86,6 +84,58 @@ async def test_resolves_and_ranks_recs(db_session) -> None:
     ]
     assert hc["similar"][2]["isbn13"] is None
     assert book.hardcover_synced_at is not None
+
+
+@respx.mock
+async def test_stores_curated_meta(db_session) -> None:
+    await _seed_book(db_session, "Mistborn", "9780765311788")
+    _route(
+        similar_ids=[10],
+        resolved=[_resolved(10, "Elantris", "Brandon Sanderson", None)],
+        book_extra={
+            "rating": 4.4652,
+            "ratings_count": 5645,
+            "pages": 541,
+            "book_category_id": 1,
+            "literary_type_id": 1,
+            "cached_tags": {
+                "Genre": [{"tag": "Fantasy", "count": 9}, {"tag": "Epic Fantasy", "count": 4}],
+                "Mood": [{"tag": "dark", "count": 3}],
+            },
+            "description": "  Kelsier\n\nrecruits   a crew.  ",
+        },
+    )
+
+    await refresh_book_recs(db_session)
+
+    meta = (await db_session.execute(_sel("Mistborn"))).scalar_one().hardcover_json["meta"]
+    assert meta == {
+        "rating": 4.47,
+        "ratingsCount": 5645,
+        "pages": 541,
+        "category": "Book",
+        "literaryType": "Fiction",
+        "genres": ["Fantasy", "Epic Fantasy"],
+        "moods": ["dark"],
+        "description": "Kelsier recruits a crew.",
+    }
+
+
+@respx.mock
+async def test_backfills_meta_for_a_pre_meta_row(db_session) -> None:
+    from datetime import UTC, datetime
+
+    book = await _seed_book(db_session, "Older", "9780765311789")
+    book.hardcover_json = {"id": 999, "similar": [{"title": "x", "author": None, "isbn13": None}]}
+    book.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)  # "fresh"
+    await db_session.commit()
+    _route(similar_ids=[10], resolved=[_resolved(10, "x", "a", None)], book_extra={"pages": 100})
+
+    counts = await refresh_book_recs(db_session, stale_after_days=45)
+    assert counts["resolved"] == 1  # picked up despite the recent sync — it had no meta
+    assert (await db_session.execute(_sel("Older"))).scalar_one().hardcover_json["meta"] == {
+        "pages": 100
+    }
 
 
 @respx.mock

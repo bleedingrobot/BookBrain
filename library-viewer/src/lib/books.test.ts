@@ -5,8 +5,10 @@ import {
   matchesFilter,
   matchesRow,
   SORTS,
+  topGenres,
   type BookRow,
 } from './books'
+import type { IndexMeta } from './libraryIndex'
 import { EMPTY_INDEX, type LibraryIndex } from './libraryIndex'
 import type { SentMap } from './sentTracker'
 
@@ -22,6 +24,7 @@ function row(over: Partial<BookRow> = {}): BookRow {
     description: null,
     addedAt: null,
     isbn: null,
+    meta: null,
     ...over,
   }
 }
@@ -44,11 +47,22 @@ describe('buildRows', () => {
           description: 'x',
           addedAt: '2026-01-01',
           isbn: '9780441172719',
+          meta: {
+            rating: 4.2,
+            ratingsCount: 10,
+            pages: 600,
+            category: 'Book',
+            literaryType: 'Fiction',
+            genres: ['Science Fiction'],
+            moods: [],
+          },
         },
       },
     }
     const rows = buildRows(files, index)
     expect(rows[0]).toMatchObject({ title: 'Dune (Deluxe)', series: 'Dune', seriesNumber: '1', isbn: '9780441172719' })
+    expect(rows[0].meta?.genres).toEqual(['Science Fiction'])
+    expect(rows[1].meta).toBeNull()
     expect(rows[1]).toMatchObject({ title: 'Other Book', author: 'Someone', isbn: null })
   })
 
@@ -96,6 +110,42 @@ describe('matchesFilter', () => {
     expect(m(row({ id: 'c' }), 'unsent')).toBe(true)
     expect(m(row({ id: 'a' }), 'unsent')).toBe(false)
   })
+  it('genre:<g> matches a book carrying that genre', () => {
+    const meta = (genres: string[]): IndexMeta => ({
+      rating: null,
+      ratingsCount: null,
+      pages: null,
+      category: null,
+      literaryType: null,
+      genres,
+      moods: [],
+    })
+    expect(m(row({ meta: meta(['Fantasy', 'Adventure']) }), 'genre:Fantasy')).toBe(true)
+    expect(m(row({ meta: meta(['Fantasy']) }), 'genre:Horror')).toBe(false)
+    expect(m(row({ meta: null }), 'genre:Fantasy')).toBe(false)
+  })
+})
+
+describe('topGenres', () => {
+  const meta = (genres: string[]): IndexMeta => ({
+    rating: null,
+    ratingsCount: null,
+    pages: null,
+    category: null,
+    literaryType: null,
+    genres,
+    moods: [],
+  })
+  it('returns genres most-common first, capped', () => {
+    const rows = [
+      row({ meta: meta(['Fantasy', 'Adventure']) }),
+      row({ meta: meta(['Fantasy']) }),
+      row({ meta: meta(['Adventure']) }),
+      row({ meta: meta(['Horror']) }),
+      row({ meta: null }),
+    ]
+    expect(topGenres(rows, 2)).toEqual(['Adventure', 'Fantasy'])
+  })
 })
 
 describe('SORTS', () => {
@@ -112,6 +162,24 @@ describe('SORTS', () => {
       row({ title: 'B', series: 'Elantris', seriesNumber: null }),
     ].sort(SORTS.series)
     expect(rows.map((r) => r.title)).toEqual(['B', 'A1', 'A2', 'Z'])
+  })
+
+  it('rating sorts highest first, unrated last', () => {
+    const meta = (rating: number | null): IndexMeta => ({
+      rating,
+      ratingsCount: null,
+      pages: null,
+      category: null,
+      literaryType: null,
+      genres: [],
+      moods: [],
+    })
+    const rows = [
+      row({ title: 'mid', meta: meta(3.9) }),
+      row({ title: 'none', meta: null }),
+      row({ title: 'top', meta: meta(4.6) }),
+    ].sort(SORTS.rating)
+    expect(rows.map((r) => r.title)).toEqual(['top', 'mid', 'none'])
   })
 
   it('added sorts newest first, undated last', () => {

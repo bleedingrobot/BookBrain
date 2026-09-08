@@ -31,6 +31,7 @@ interface Props {
   onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
+  onFilterGenre: (genre: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
 }
 
@@ -56,6 +57,7 @@ export function BookList({
   onRead,
   onFilterAuthor,
   onFilterSeries,
+  onFilterGenre,
   onRequestBook,
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -144,6 +146,7 @@ export function BookList({
                 onRead={onRead}
                 onFilterAuthor={onFilterAuthor}
                 onFilterSeries={onFilterSeries}
+                onFilterGenre={onFilterGenre}
                 onRequestBook={onRequestBook}
               />
             </Fragment>

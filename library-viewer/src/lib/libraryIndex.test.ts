@@ -26,7 +26,38 @@ describe('normalise', () => {
       description: 'd',
       addedAt: '2026-01-01',
       isbn: '123',
+      meta: null,
     })
+  })
+
+  it('parses per-book meta, coercing bad fields and dropping empty meta', () => {
+    const out = normalise({
+      books: {
+        full: {
+          title: 'Full',
+          meta: {
+            rating: 4.4,
+            ratingsCount: 12,
+            pages: 500,
+            category: 'Novella',
+            literaryType: 'Fiction',
+            genres: ['Fantasy', 5 as unknown as string],
+            moods: ['dark'],
+          },
+        },
+        bad: { title: 'Bad', meta: { rating: 'nope' as unknown as number, genres: 'x' as unknown as string[] } },
+      },
+    })
+    expect(out.entries.full.meta).toEqual({
+      rating: 4.4,
+      ratingsCount: 12,
+      pages: 500,
+      category: 'Novella',
+      literaryType: 'Fiction',
+      genres: ['Fantasy'],
+      moods: ['dark'],
+    })
+    expect(out.entries.bad.meta).toBeNull()
   })
 
   it('drops entries with no title and coerces missing fields to null', () => {

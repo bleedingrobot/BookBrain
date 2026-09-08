@@ -17,7 +17,9 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   Phase 1.5 scoped.
 - [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md) — Hardcover Phase 4:
   metadata badges/filters (B), new & upcoming per series (A), Hardcover as a
-  description source (C), characters (D). Order B → A → C → D. Not started.
+  description source (C), characters (D). Order B → A → C → D.
+  **Part B shipped 2026-09-08** (curated rating/pages/category/genres →
+  `hardcover_json.meta` → index v4 → viewer badges + genre facet + rating sort).
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

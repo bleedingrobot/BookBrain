@@ -22,6 +22,7 @@ function book(series: string | null, seriesNumber: string | null): BookRow {
     description: null,
     addedAt: null,
     isbn: null,
+    meta: null,
   }
 }
 

@@ -43,9 +43,20 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     quality is strong (Grey Sister → Holy Sister, Skullsworn, Prince of
     Fools…).
   - **Phase 1.5** — persistent Hardcover cache (only if the 5,000/day bites).
-  - **Phase 4** — "new & upcoming" per author/series + metadata badges
-    (genres/moods/ratings/pages) + description source + characters. Scoped in
-    prompts/25, not started.
+  - **Phase 4** (`prompts/26`) — split into parts B → A → C → D.
+    - **Part B — DONE (2026-09-08)**: metadata badges/filters. The Phase-3
+      ISBN call also pulls `rating` / `ratings_count` / `pages` /
+      `book_category_id` / `literary_type_id` / `cached_tags` (Genre + Mood) →
+      `Book.hardcover_json.meta` (enum ids mapped to strings; description
+      capped for Part C). Selection query also re-picks Phase-3 rows that
+      predate `meta`. `library_index_service` folds `meta` into each per-book
+      entry, `INDEX_VERSION` → 4. Viewer: `libraryIndex.ts` parses it,
+      `BookRow` shows a ★ rating pill + a category badge (skips plain "Book") +
+      page/ratings-count line + clickable genre chips, `books.ts` gains a
+      `genre:<g>` filter + `topGenres()` facet + a "Rating" sort,
+      `App.tsx` renders the genre facet chips.
+    - **Parts A / C / D** — new & upcoming per series, description source,
+      characters. Scoped in prompts/26, not started.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

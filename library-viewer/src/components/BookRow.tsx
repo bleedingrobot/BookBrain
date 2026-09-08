@@ -28,7 +28,17 @@ interface Props {
   onRead: (row: Row) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
+  onFilterGenre: (genre: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
+}
+
+// A star rating like "★ 4.4" — Hardcover's community average.
+function RatingPill({ rating }: { rating: number }) {
+  return (
+    <span className="badge bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
+      ★ {rating.toFixed(1)}
+    </span>
+  )
 }
 
 function ReadersAlsoLiked({
@@ -123,10 +133,14 @@ export function BookRow({
   onRead,
   onFilterAuthor,
   onFilterSeries,
+  onFilterGenre,
   onRequestBook,
 }: Props) {
   const seriesPeers = expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
   const authorPeers = expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
+  const meta = row.meta
+  // "Book" is the default category — only worth a badge when it's something else.
+  const category = meta?.category && meta.category !== 'Book' ? meta.category : null
 
   return (
     <>
@@ -177,6 +191,12 @@ export function BookRow({
                 {row.series}
                 {row.seriesNumber && ` #${row.seriesNumber}`}
               </button>
+            )}
+            {meta?.rating != null && <RatingPill rating={meta.rating} />}
+            {category && (
+              <span className="badge bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                {category}
+              </span>
             )}
             {sentDevices.map((d) => (
               <span
@@ -234,6 +254,33 @@ export function BookRow({
               <p className="mt-1.5 text-neutral-400">
                 Added {new Date(row.addedAt).toLocaleDateString()}
               </p>
+            )}
+            {(meta?.pages != null || meta?.literaryType) && (
+              <p className="mt-1.5 text-neutral-400">
+                {[
+                  meta.pages != null ? `${meta.pages} pages` : null,
+                  meta.literaryType,
+                  meta.ratingsCount != null
+                    ? `${meta.ratingsCount.toLocaleString()} ratings`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+            {meta?.genres && meta.genres.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {meta.genres.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className="badge bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-300 dark:hover:bg-brand-950"
+                    onClick={() => onFilterGenre(g)}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
             )}
             {gap && gap.missing.length > 0 && row.series && (
               <p className="mt-1.5 text-amber-700 dark:text-amber-500">

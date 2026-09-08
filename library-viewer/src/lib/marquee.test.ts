@@ -14,6 +14,7 @@ function row(over: Partial<BookRow> = {}): BookRow {
     description: null,
     addedAt: null,
     isbn: null,
+    meta: null,
     ...over,
   }
 }

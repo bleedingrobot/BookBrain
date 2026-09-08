@@ -19,6 +19,7 @@ import {
   sendKey,
   SORT_LABELS,
   SORTS,
+  topGenres,
   type FilterKey,
   type SendStatus,
   type SortKey,
@@ -172,6 +173,7 @@ export default function App() {
     [allRows, index.series],
   )
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
+  const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const rows = useMemo(() => {
     const out = allRows.filter(
       (row) => matchesRow(row, query) && matchesFilter(row, filter, sentMap, incompleteSeries),
@@ -210,6 +212,12 @@ export default function App() {
     setQuery(value)
     setSort(by)
     setFilter('all')
+    window.scrollTo({ top: 0 })
+  }
+
+  function filterToGenre(genre: string) {
+    setQuery('')
+    setFilter(`genre:${genre}`)
     window.scrollTo({ top: 0 })
   }
 
@@ -530,6 +538,7 @@ export default function App() {
     { key: 'all', label: 'All' },
     ...koboDevices.map((d) => ({ key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` })),
     ...(incompleteSeries.size > 0 ? [{ key: 'gaps' as FilterKey, label: 'Missing books' }] : []),
+    ...genreFacets.map((g) => ({ key: `genre:${g}` as FilterKey, label: g })),
   ]
 
   const koboStatus = koboError || koboMessage
@@ -714,6 +723,7 @@ export default function App() {
           onRead={(row) => setReadingBookId(row.id)}
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}
+          onFilterGenre={filterToGenre}
           onRequestBook={requestBook}
         />
       )}

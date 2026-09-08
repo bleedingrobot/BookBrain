@@ -24,7 +24,15 @@ from app.providers.drive.provider import DriveProvider
 logger = logging.getLogger(__name__)
 
 INDEX_FILENAME = "bookbrain-index.json"
-INDEX_VERSION = 3  # v2 adds per-book isbn; v3 adds the top-level `series` map
+# v2 adds per-book isbn; v3 adds the top-level `series` map; v4 adds per-book
+# `meta` (Hardcover rating / pages / category / genres — prompts/26 Part B).
+INDEX_VERSION = 4
+
+# Per-book Hardcover metadata surfaced to the viewer as badges + a genre
+# facet. `description` stays out — the viewer already gets a blurb from the
+# `description` field; Hardcover's copy is folded in server-side instead
+# (description_service, prompts/26 Part C).
+_META_KEYS = ("rating", "ratingsCount", "pages", "category", "literaryType", "genres", "moods")
 
 # prompts/25 Phase 3 — kept out of the main index (which is ~1MB) so the
 # viewer only fetches "readers also liked" data when a book is actually
@@ -57,6 +65,22 @@ def _plain_text(html: str | None) -> str | None:
     if not text:
         return None
     return text[:_DESCRIPTION_CAP]
+
+
+def _book_meta(hardcover_json: object) -> dict:
+    """The subset of `Book.hardcover_json.meta` (written by hardcover_recs_service)
+    the viewer shows — dropping unset keys and empty lists so the index stays
+    lean."""
+    meta = hardcover_json.get("meta") if isinstance(hardcover_json, dict) else None
+    if not isinstance(meta, dict):
+        return {}
+    out: dict = {}
+    for key in _META_KEYS:
+        value = meta.get(key)
+        if value in (None, "", []):
+            continue
+        out[key] = value
+    return out
 
 
 async def build_index_payload(session: AsyncSession) -> dict:
@@ -112,7 +136,7 @@ async def build_index_payload(session: AsyncSession) -> dict:
     for f in files:
         book = f.book
         assert book is not None  # guarded by the query's book_id filter
-        books[f.drive_file_id] = {
+        entry = {
             "title": book.canonical_title,
             "author": book.author.name if book.author else None,
             "series": book.series.name if book.series else None,
@@ -121,6 +145,10 @@ async def build_index_payload(session: AsyncSession) -> dict:
             "addedAt": f.discovered_at.isoformat() if f.discovered_at else None,
             "isbn": isbn_by_book.get(book.id),
         }
+        meta = _book_meta(book.hardcover_json)
+        if meta:
+            entry["meta"] = meta
+        books[f.drive_file_id] = entry
 
     # prompts/25 Phase 2 — Hardcover's canonical membership for each series in
     # the library, keyed by the same Series.name the per-book `series` field

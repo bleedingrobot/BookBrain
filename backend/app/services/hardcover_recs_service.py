@@ -10,13 +10,18 @@ swallowed — a book just keeps its old recs (or none) and is retried later.
 
 Two Hardcover calls per book: one to turn the ISBN into a Hardcover book id
 + its similar-id list, one to resolve the top ids to title / author / ISBN.
+
+prompts/26 Part B — the first call also pulls the book's own curated metadata
+(rating, page count, category, genres, moods) into `hardcover_json.meta`, so
+the library-viewer can show badges and offer a genre facet. Part C adds
+`meta.description` as a zero-cost source for fill-missing-descriptions.
 """
 
 import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -28,6 +33,24 @@ logger = logging.getLogger(__name__)
 
 _KEEP = 15  # recs stored per book
 _RESOLVE = 25  # top similar ids we bother resolving (some won't have a title)
+_META_TAGS = 5  # genres / moods kept per book
+_DESCRIPTION_CAP = 1500
+
+# Hardcover's `book_category_id` / `literary_type_id` enums (from their docs) —
+# mapped to strings here so the viewer never has to know the numbers.
+_BOOK_CATEGORY = {
+    1: "Book",
+    2: "Novella",
+    3: "Short Story",
+    4: "Graphic Novel",
+    5: "Fan Fiction",
+    6: "Research Paper",
+    7: "Poetry",
+    8: "Collection",
+    9: "Web Novel",
+    10: "Light Novel",
+}
+_LITERARY_TYPE = {1: "Fiction", 2: "Nonfiction"}
 
 _BOOK_BY_ISBN = """
 query BookBrainSimilarByIsbn($isbn: String!) {
@@ -36,7 +59,17 @@ query BookBrainSimilarByIsbn($isbn: String!) {
     limit: 1
     order_by: {users_count: desc}
   ) {
-    book { id cached_similar_book_ids }
+    book {
+      id
+      cached_similar_book_ids
+      rating
+      ratings_count
+      pages
+      book_category_id
+      literary_type_id
+      cached_tags
+      description
+    }
   }
 }
 """
@@ -57,9 +90,55 @@ query BookBrainResolveBooks($ids: [Int!]!) {
 """
 
 
+def _tag_names(cached_tags: object, key: str) -> list[str]:
+    """Pull the top few tag names out of one `cached_tags` bucket
+    (`Genre` / `Mood` / …). The bucket is a list of {tag, count, …}, already
+    ordered most-used first."""
+    bucket = cached_tags.get(key) if isinstance(cached_tags, dict) else None
+    out: list[str] = []
+    for entry in bucket or []:
+        name = entry.get("tag") if isinstance(entry, dict) else None
+        if isinstance(name, str) and name.strip():
+            out.append(name.strip())
+        if len(out) >= _META_TAGS:
+            break
+    return out
+
+
+def _book_meta(book: dict) -> dict:
+    """The curated per-book fields the viewer shows as badges / facets. Only
+    keys that are actually set land in the dict."""
+    meta: dict = {}
+    rating = book.get("rating")
+    if isinstance(rating, int | float):
+        meta["rating"] = round(float(rating), 2)
+    ratings_count = book.get("ratings_count")
+    if isinstance(ratings_count, int) and ratings_count > 0:
+        meta["ratingsCount"] = ratings_count
+    pages = book.get("pages")
+    if isinstance(pages, int) and pages > 0:
+        meta["pages"] = pages
+    category = _BOOK_CATEGORY.get(book.get("book_category_id"))
+    if category:
+        meta["category"] = category
+    literary_type = _LITERARY_TYPE.get(book.get("literary_type_id"))
+    if literary_type:
+        meta["literaryType"] = literary_type
+    genres = _tag_names(book.get("cached_tags"), "Genre")
+    if genres:
+        meta["genres"] = genres
+    moods = _tag_names(book.get("cached_tags"), "Mood")
+    if moods:
+        meta["moods"] = moods
+    description = book.get("description")
+    if isinstance(description, str) and description.strip():
+        meta["description"] = " ".join(description.split())[:_DESCRIPTION_CAP]
+    return meta
+
+
 async def _similar_ids(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, isbn: str
-) -> tuple[int, list[int]] | None:
+) -> tuple[int, list[int], dict] | None:
     data = await hardcover_graphql(client, token, _BOOK_BY_ISBN, {"isbn": isbn}, bucket)
     editions = (data or {}).get("editions") or []
     if not editions:
@@ -69,7 +148,7 @@ async def _similar_ids(
     if not isinstance(hc_id, int):
         return None
     ids = [i for i in (book.get("cached_similar_book_ids") or []) if isinstance(i, int)]
-    return hc_id, ids
+    return hc_id, ids, _book_meta(book)
 
 
 async def _resolve(
@@ -128,6 +207,13 @@ async def refresh_book_recs(
                     or_(
                         Book.hardcover_synced_at.is_(None),
                         Book.hardcover_synced_at < cutoff,
+                        # prompts/26 Part B — rows synced by Phase 3 before
+                        # `meta` existed get one backfill pass now rather than
+                        # waiting out the 45-day staleness window.
+                        and_(
+                            Book.hardcover_json.is_not(None),
+                            func.json_extract(Book.hardcover_json, "$.meta").is_(None),
+                        ),
                     )
                 )
                 .distinct()
@@ -160,13 +246,16 @@ async def refresh_book_recs(
             try:
                 found = await _similar_ids(http, token, bucket, isbn) if isbn else None
                 if found is None:
-                    book.hardcover_json = {"similar": []}
+                    # `meta: {}` records "we looked, Hardcover doesn't have
+                    # this ISBN" so the backfill query above doesn't re-pick it
+                    # every night.
+                    book.hardcover_json = {"similar": [], "meta": {}}
                     book.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)
                     counts["empty"] += 1
                     continue
-                hc_id, ids = found
+                hc_id, ids, meta = found
                 similar = await _resolve(http, token, bucket, ids, hc_id)
-                book.hardcover_json = {"id": hc_id, "similar": similar}
+                book.hardcover_json = {"id": hc_id, "similar": similar, "meta": meta}
                 book.hardcover_synced_at = datetime.now(UTC).replace(tzinfo=None)
                 counts["resolved" if similar else "empty"] += 1
             except Exception:  # noqa: BLE001 — one bad book must not stop the run

@@ -8,6 +8,19 @@
 const INDEX_FILENAME = 'bookbrain-index.json'
 const CACHE_KEY = 'bookbrain.metadataIndex'
 
+// bookbrain-index.json v4: Hardcover's curated per-book metadata (prompts/26
+// Part B), shown as badges and offered as a genre facet. Every field is
+// optional — only what Hardcover had is present.
+export interface IndexMeta {
+  rating: number | null
+  ratingsCount: number | null
+  pages: number | null
+  category: string | null // "Novella" / "Graphic Novel" / "Light Novel" / …
+  literaryType: string | null // "Fiction" | "Nonfiction"
+  genres: string[]
+  moods: string[]
+}
+
 export interface IndexEntry {
   title: string
   author: string | null
@@ -16,6 +29,7 @@ export interface IndexEntry {
   description: string | null
   addedAt: string | null
   isbn: string | null
+  meta: IndexMeta | null
 }
 
 // bookbrain-index.json v3: Hardcover's canonical view of a series (prompts/25
@@ -51,8 +65,32 @@ interface CachedIndex {
 export interface RawIndexFile {
   version?: number
   coversFolder?: string | null
-  books?: Record<string, Partial<IndexEntry>>
+  books?: Record<string, Omit<Partial<IndexEntry>, 'meta'> & { meta?: Partial<IndexMeta> | null }>
   series?: Record<string, Partial<SeriesCatalog>>
+}
+
+function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | null {
+  if (!raw || typeof raw !== 'object') return null
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []
+  const meta: IndexMeta = {
+    rating: typeof raw.rating === 'number' ? raw.rating : null,
+    ratingsCount: typeof raw.ratingsCount === 'number' ? raw.ratingsCount : null,
+    pages: typeof raw.pages === 'number' ? raw.pages : null,
+    category: typeof raw.category === 'string' ? raw.category : null,
+    literaryType: typeof raw.literaryType === 'string' ? raw.literaryType : null,
+    genres: strings(raw.genres),
+    moods: strings(raw.moods),
+  }
+  const empty =
+    meta.rating == null &&
+    meta.ratingsCount == null &&
+    meta.pages == null &&
+    meta.category == null &&
+    meta.literaryType == null &&
+    meta.genres.length === 0 &&
+    meta.moods.length === 0
+  return empty ? null : meta
 }
 
 function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCatalog> {
@@ -89,6 +127,7 @@ export function normalise(raw: RawIndexFile): LibraryIndex {
       description: entry.description ?? null,
       addedAt: entry.addedAt ?? null,
       isbn: typeof entry.isbn === 'string' ? entry.isbn : null,
+      meta: normaliseMeta(entry.meta),
     }
   }
   return { entries, series: normaliseSeries(raw.series), coversFolder: raw.coversFolder ?? null }

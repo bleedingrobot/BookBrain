@@ -95,7 +95,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 3
+    assert payload["version"] == 4
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -148,6 +148,46 @@ async def test_build_index_payload_includes_matched_hardcover_series(db_session)
         "The Will of the Many",
         "The Strength of the Few",
     ]
+
+
+async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.hardcover_json = {
+        "id": 1,
+        "similar": [],
+        "meta": {
+            "rating": 4.42,
+            "ratingsCount": 5645,
+            "pages": 541,
+            "category": "Book",
+            "literaryType": "Fiction",
+            "genres": ["Fantasy", "Epic Fantasy"],
+            "moods": ["dark", "tense"],
+            "description": "A boy hides who he is.",  # not carried into the index
+        },
+    }
+    scion = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))
+    ).scalar_one()
+    scion.hardcover_json = {"similar": [], "meta": {}}  # looked, found nothing
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    meta = payload["books"]["drive-will"]["meta"]
+    assert meta == {
+        "rating": 4.42,
+        "ratingsCount": 5645,
+        "pages": 541,
+        "category": "Book",
+        "literaryType": "Fiction",
+        "genres": ["Fantasy", "Epic Fantasy"],
+        "moods": ["dark", "tense"],
+    }
+    assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
 
 
 async def test_build_recommendations_payload(db_session) -> None:
