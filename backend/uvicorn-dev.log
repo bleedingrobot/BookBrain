@@ -1,0 +1,26 @@
+INFO:     127.0.0.1:56839 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56959 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59163 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63071 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64778 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50047 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51700 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52613 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53609 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53622 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53635 - "POST /api/library/new-releases/refresh?limit=80 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53637 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56109 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53680 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56029 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:56292 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:56563 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50495 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52942 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50877 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57571 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59948 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50071 - "POST /api/library/series-catalog/refresh?limit=60&stale_days=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62925 - "POST /api/library/new-releases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63099 - "POST /api/library/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52410 - "POST /api/library/new-releases HTTP/1.1" 200 OK

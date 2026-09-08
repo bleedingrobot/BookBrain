@@ -36,7 +36,7 @@ function Track({
   ariaHidden?: boolean
   onPick: (key: string) => void
 }) {
-  const size = large ? 'h-[210px] w-[140px]' : 'h-[72px] w-[48px]'
+  const size = large ? 'h-[210px] w-[140px]' : 'h-[144px] w-[96px]'
   return (
     <ul
       aria-hidden={ariaHidden}
@@ -61,10 +61,10 @@ function Track({
 }
 
 function Skeleton({ large }: { large: boolean }) {
-  const size = large ? 'h-[210px] w-[140px]' : 'h-[72px] w-[48px]'
+  const size = large ? 'h-[210px] w-[140px]' : 'h-[144px] w-[96px]'
   return (
     <div className={`flex items-center ${large ? 'gap-4 px-2' : 'gap-3 px-1.5'}`}>
-      {Array.from({ length: large ? 8 : 14 }).map((_, i) => (
+      {Array.from({ length: large ? 8 : 9 }).map((_, i) => (
         <div
           key={i}
           className={`${size} shrink-0 animate-pulse rounded bg-neutral-200/70 dark:bg-neutral-800`}
@@ -101,8 +101,8 @@ export function Marquee({ label, cards, loading, minCards = 2, onPick }: Props) 
         </div>
         {!large && (
           <>
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-neutral-50 to-transparent dark:from-neutral-950" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-neutral-50 to-transparent dark:from-neutral-950" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-neutral-50 to-transparent dark:from-neutral-950" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-neutral-50 to-transparent dark:from-neutral-950" />
           </>
         )}
       </div>
