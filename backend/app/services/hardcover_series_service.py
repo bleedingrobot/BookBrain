@@ -254,8 +254,17 @@ async def refresh_series_catalog(
             except Exception:  # noqa: BLE001 — one bad series must not stop the run
                 logger.exception("hardcover series refresh failed for %r", series.name)
                 counts["failed"] += 1
-
-        await session.commit()
+                await session.rollback()
+            finally:
+                # Commit per series, not once at the end — each iteration does
+                # ~2 slow HTTP calls, so a single transaction would hold the
+                # SQLite write lock for minutes and time out anything else
+                # (a Torrents scan, an organize) that needs to write meanwhile.
+                try:
+                    await session.commit()
+                except Exception:  # noqa: BLE001
+                    logger.exception("hardcover series: per-row commit failed")
+                    await session.rollback()
     finally:
         if owns_client:
             await http.aclose()

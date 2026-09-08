@@ -261,8 +261,17 @@ async def refresh_book_recs(
             except Exception:  # noqa: BLE001 — one bad book must not stop the run
                 logger.exception("hardcover recs failed for book %s", book.id)
                 counts["failed"] += 1
-
-        await session.commit()
+                await session.rollback()
+            finally:
+                # Commit per book, not once at the end — each iteration does
+                # ~2 slow HTTP calls, so a single transaction would hold the
+                # SQLite write lock for minutes and time out anything else
+                # trying to write meanwhile.
+                try:
+                    await session.commit()
+                except Exception:  # noqa: BLE001
+                    logger.exception("hardcover recs: per-row commit failed")
+                    await session.rollback()
     finally:
         if owns_client:
             await http.aclose()
