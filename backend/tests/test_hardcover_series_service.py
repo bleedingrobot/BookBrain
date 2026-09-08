@@ -122,6 +122,40 @@ async def test_stores_release_dates_when_present(db_session) -> None:
 
 
 @respx.mock
+async def test_stores_isbn13_for_entries_that_have_an_edition(db_session) -> None:
+    # prompts/27 Part 1 — the per-entry ISBN-13 the viewer covers a
+    # not-yet-owned release with.
+    await _seed_series(db_session, "Mistborn")
+    _route(
+        search_hits=[{"id": "5452", "name": "Mistborn", "author_name": "Brandon Sanderson", "slug": "m"}],
+        series_books={
+            "id": 5452,
+            "name": "Mistborn",
+            "slug": "m",
+            "primary_books_count": 2,
+            "book_series": [
+                {
+                    "position": 1,
+                    "book": {
+                        "title": "The Final Empire",
+                        "editions": [{"isbn_13": "9780765311788"}],
+                    },
+                },
+                {"position": 2, "book": {"title": "The Well of Ascension", "editions": []}},
+            ],
+        },
+    )
+
+    await refresh_series_catalog(db_session)
+
+    hc = (await db_session.execute(_select_series("Mistborn"))).scalar_one().hardcover_json
+    assert hc["books"] == [
+        {"position": 1.0, "title": "The Final Empire", "isbn13": "9780765311788"},
+        {"position": 2.0, "title": "The Well of Ascension"},
+    ]
+
+
+@respx.mock
 async def test_no_match_records_none_and_stops_re_searching(db_session) -> None:
     await _seed_series(db_session, "Some Obscure Series")
     _route(search_hits=[{"id": "1", "name": "Totally Different", "author_name": "Someone Else"}], series_books=None)

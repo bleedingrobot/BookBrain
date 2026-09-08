@@ -2,11 +2,16 @@ import type { BookRow } from './books'
 import type { SeriesCatalog } from './libraryIndex'
 
 // A catalogue entry above what you own — the next released book you're
-// missing, or a not-yet-published one. prompts/26 Part A.
+// missing, or a not-yet-published one. prompts/26 Part A; prompts/27 Part 1
+// adds the series name / slug / isbn13 so `collectSeriesReleases` can flatten
+// these into a library-wide "new & upcoming" feed.
 export interface SeriesReleaseEntry {
+  seriesName: string
+  hardcoverSlug: string | null
   position: number
   title: string
   releaseDate: string | null
+  isbn13: string | null
 }
 
 export interface SeriesGap {
@@ -68,7 +73,7 @@ function ownedWholeNumbers(rows: BookRow[]): Map<string, Set<number>> {
 // entry at or below the highest owned position that isn't owned. Capping at
 // the highest owned position keeps unreleased / not-yet-bought later books
 // out of "missing" — those are "what's next", not "what's absent".
-function fromCatalog(owned: Set<number>, catalog: SeriesCatalog): SeriesGap | null {
+function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): SeriesGap | null {
   const have = [...owned].sort((a, b) => a - b)
   const maxOwned = have[have.length - 1]
 
@@ -99,9 +104,12 @@ function fromCatalog(owned: Set<number>, catalog: SeriesCatalog): SeriesGap | nu
   for (const b of aboveOwned) {
     const date = realReleaseDate(b)
     const entry: SeriesReleaseEntry = {
+      seriesName: name,
+      hardcoverSlug: catalog.hardcoverSlug,
       position: b.position,
       title: b.title,
       releaseDate: b.releaseDate ?? null,
+      isbn13: b.isbn13 ?? null,
     }
     if (date && date.getTime() > now) {
       upcoming.push(entry)
@@ -154,7 +162,8 @@ export function computeSeriesGaps(
   const out = new Map<string, SeriesGap>()
   for (const [name, owned] of ownedWholeNumbers(rows)) {
     const cat = catalog[name]
-    const gap = (cat && cat.books.length > 0 ? fromCatalog(owned, cat) : null) ?? fromGuess(owned)
+    const gap =
+      (cat && cat.books.length > 0 ? fromCatalog(name, owned, cat) : null) ?? fromGuess(owned)
     if (gap) out.set(name, gap)
   }
   return out
@@ -166,6 +175,52 @@ export function incompleteSeriesNames(gaps: Map<string, SeriesGap>): Set<string>
     if (gap.missing.length > 0) names.add(name)
   }
   return names
+}
+
+// prompts/27 Part 1 — flatten every series' above-what-you-own entries into
+// two library-wide lists for the "New in your series" / "Coming soon in your
+// series" strips. "recent" = the released-but-unowned `nextUp`, plus any
+// `upcoming` entry whose announced date has since passed (Hardcover data
+// lags); "upcoming" = still-future entries, soonest first. Deduped (a book
+// can sit in two overlapping series) and capped.
+export interface CollectedReleases {
+  recent: SeriesReleaseEntry[]
+  upcoming: SeriesReleaseEntry[]
+}
+
+const RELEASE_CAP = 30
+
+function dedupeReleases(list: SeriesReleaseEntry[]): SeriesReleaseEntry[] {
+  const seen = new Set<string>()
+  const out: SeriesReleaseEntry[] = []
+  for (const entry of list) {
+    const key = entry.isbn13 || `${entry.seriesName}#${entry.position}|${entry.title.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out
+}
+
+export function collectSeriesReleases(gaps: Map<string, SeriesGap>): CollectedReleases {
+  const now = Date.now()
+  const recent: SeriesReleaseEntry[] = []
+  const upcoming: SeriesReleaseEntry[] = []
+  for (const gap of gaps.values()) {
+    if (gap.source !== 'hardcover') continue
+    if (gap.nextUp) recent.push(gap.nextUp)
+    for (const entry of gap.upcoming ?? []) {
+      const d = entry.releaseDate ? new Date(entry.releaseDate) : null
+      const hasPassed = d != null && !Number.isNaN(d.getTime()) && d.getTime() <= now
+      ;(hasPassed ? recent : upcoming).push(entry)
+    }
+  }
+  recent.sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+  upcoming.sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
+  return {
+    recent: dedupeReleases(recent).slice(0, RELEASE_CAP),
+    upcoming: dedupeReleases(upcoming).slice(0, RELEASE_CAP),
+  }
 }
 
 // Series with a book announced for the future you don't own — the "Coming

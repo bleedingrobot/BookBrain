@@ -389,3 +389,21 @@ fill-missing-descriptions. Part D (characters) not started.
 
 All read-only catalogue data. Each item is independent and can land
 piecemeal.
+
+## prompts/27 — "New & Upcoming" discovery strips
+
+Split into its own work-prompt: [`27-new-and-upcoming-releases.md`](27-new-and-upcoming-releases.md).
+
+- **Part 1 — shipped 2026-09-08.** `hardcover_series_service._fetch_books`
+  now also pulls each entry's most-popular edition's `isbn_13` (one extra
+  GraphQL field on the existing series-books query, no extra call);
+  `bookbrain-index.json` → **v5** (per-entry `isbn13` inside the `series`
+  map). Viewer: `collectSeriesReleases(gaps)` flattens every matched
+  series' above-what-you-own entries into library-wide `recent` / `upcoming`
+  lists; `RecentMarquee` was generalised into a presentational `<Marquee>`,
+  now also driving two `<ReleaseMarquee>` strips ("New in your series" /
+  "Coming soon in your series") with covers via Open Library-by-ISBN
+  (`useReleaseCovers`), each cover → `<ReleaseCard>` → wishlist Request.
+  Zero new Hardcover calls — pure re-use of Part A's `releaseDate` data.
+- **Parts 2 (per-author pass + `bookbrain-new-releases.json`) + 3 (global
+  "most anticipated")** — not started.

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sendKey, type BookRow as Row, type SendStatus } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { RecBook } from '../lib/recommendations'
+import { monthYear } from '../lib/releases'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
 import { libraryMatch } from '../lib/wishlist'
@@ -113,14 +114,6 @@ function ReadersAlsoLiked({
 }
 
 const isEpub = (name: string) => name.toLowerCase().endsWith('.epub')
-
-// "December 2024" from an ISO date, best-effort.
-function monthYear(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-}
 
 export function BookRow({
   row,
@@ -323,7 +316,7 @@ export function BookRow({
                   .map(
                     (u) =>
                       `#${u.position} ${u.title}${
-                        u.releaseDate ? ` — ${monthYear(u.releaseDate)}` : ''
+                        monthYear(u.releaseDate) ? ` — ${monthYear(u.releaseDate)}` : ''
                       }`,
                   )
                   .join(', ')}

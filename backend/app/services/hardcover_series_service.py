@@ -67,7 +67,13 @@ query BookBrainSeriesBooks($id: Int!) {
       }
     ) {
       position
-      book { title release_date }
+      book {
+        title
+        release_date
+        editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
+          isbn_13
+        }
+      }
     }
   }
 }
@@ -160,9 +166,11 @@ async def _fetch_books(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, hc_id: int
 ) -> tuple[list[dict], int | None, str, str] | None:
     """Returns (books, primary_count, name, slug) — books as
-    [{position: float, title: str, releaseDate: str|None}], numeric positions
-    only, capped. `releaseDate` (prompts/26 Part A) drives the viewer's
-    "next up" / "coming soon" split — it's an ISO date string or absent."""
+    [{position: float, title: str, releaseDate: str|None, isbn13: str|None}],
+    numeric positions only, capped. `releaseDate` (prompts/26 Part A) drives the
+    viewer's "next up" / "coming soon" split — it's an ISO date string or absent.
+    `isbn13` (prompts/27 Part 1) lets the viewer pull an Open Library cover for a
+    not-yet-owned entry — the most-popular edition's ISBN-13, or absent."""
     data = await hardcover_graphql(client, token, _SERIES_BOOKS, {"id": hc_id}, bucket)
     if data is None:
         raise HardcoverUnavailable
@@ -185,6 +193,10 @@ async def _fetch_books(
         release_date = book.get("release_date")
         if isinstance(release_date, str) and release_date.strip():
             item["releaseDate"] = release_date.strip()
+        editions = book.get("editions") or []
+        isbn13 = editions[0].get("isbn_13") if editions and isinstance(editions[0], dict) else None
+        if isinstance(isbn13, str) and isbn13.strip():
+            item["isbn13"] = isbn13.strip()
         books.append(item)
         if len(books) >= _MAX_ENTRIES:
             break

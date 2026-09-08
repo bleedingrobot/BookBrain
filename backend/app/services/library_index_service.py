@@ -25,8 +25,10 @@ logger = logging.getLogger(__name__)
 
 INDEX_FILENAME = "bookbrain-index.json"
 # v2 adds per-book isbn; v3 adds the top-level `series` map; v4 adds per-book
-# `meta` (Hardcover rating / pages / category / genres — prompts/26 Part B).
-INDEX_VERSION = 4
+# `meta` (Hardcover rating / pages / category / genres — prompts/26 Part B);
+# v5 adds per-entry `isbn13` inside the `series` map's book lists (so the
+# viewer can cover a not-yet-owned release — prompts/27 Part 1).
+INDEX_VERSION = 5
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
 # facet. `description` stays out — the viewer already gets a blurb from the

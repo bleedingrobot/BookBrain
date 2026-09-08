@@ -95,7 +95,8 @@ class Series(Base):
 
     # prompts/25 Phase 2 — Hardcover's canonical view of this series, refreshed
     # by hardcover_series_service on a schedule. hardcover_json:
-    #   {id, name, slug, primaryCount, books: [{position, title}],
+    #   {id, name, slug, primaryCount,
+    #    books: [{position, title, releaseDate?, isbn13?}],
     #    match: "auto" | "manual" | "none"}
     # "none" = we searched and found no good match (don't re-search nightly);
     # "manual" = James pinned hardcover_json.id (never re-matched, list still

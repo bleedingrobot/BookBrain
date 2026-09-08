@@ -1,0 +1,51 @@
+// The "New & Upcoming" feed the release strips + <NewReleasesScreen> read
+// from. prompts/27.
+//
+// Part 1 fills it entirely from data already in bookbrain-index.json — the
+// per-series Hardcover catalogues (see collectSeriesReleases in seriesGaps.ts).
+// Part 2 adds a backend sidecar (bookbrain-new-releases.json) covering the
+// authors James reads, merged in here so the viewer has one feed.
+
+import type { SeriesReleaseEntry } from './seriesGaps'
+
+export interface ReleaseItem {
+  // Stable identity for React keys + cover dedup: the ISBN-13 when we have
+  // one, else a synthetic series+position / title+author key.
+  key: string
+  title: string
+  author: string | null
+  series: string | null
+  seriesPosition: number | null
+  isbn13: string | null
+  // ISO date, or null for a "recent" entry we can't date precisely.
+  releaseDate: string | null
+  description: string | null
+  hardcoverSlug: string | null
+  genres: string[]
+  source: 'series' | 'author'
+}
+
+export function seriesEntryToItem(entry: SeriesReleaseEntry): ReleaseItem {
+  return {
+    key: entry.isbn13 || `series:${entry.seriesName}#${entry.position}`,
+    title: entry.title,
+    author: null,
+    series: entry.seriesName,
+    seriesPosition: entry.position,
+    isbn13: entry.isbn13,
+    releaseDate: entry.releaseDate,
+    description: null,
+    hardcoverSlug: entry.hardcoverSlug,
+    genres: [],
+    source: 'series',
+  }
+}
+
+// "December 2024" from an ISO date, best-effort (shared with BookRow's copy).
+export function monthYear(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}

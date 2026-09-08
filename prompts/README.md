@@ -30,7 +30,10 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   filtered to authors + series the library knows, each cover → wishlist
   Request. Part 1 (series, ~free — Part A data is already in the index) → Part
   2 (per-author Hardcover pass + sidecar) → Part 3 (optional global "most
-  anticipated"). Not started.
+  anticipated"). **Part 1 shipped 2026-09-08** — per-entry `isbn13` in the
+  series catalogue (index → v5), `collectSeriesReleases` + a generalised
+  `<Marquee>` + two `<ReleaseMarquee>` strips + `<ReleaseCard>` → Request.
+  Parts 2 + 3 not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

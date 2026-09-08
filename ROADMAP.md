@@ -79,7 +79,15 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     filtered to authors/series the library knows, each cover → wishlist
     Request. Part 1 = flatten the per-series `releaseDate` data Part A already
     ships (nearly free); Part 2 = a per-author Hardcover pass + its own
-    sidecar; Part 3 = optional global "most anticipated". Not started.
+    sidecar; Part 3 = optional global "most anticipated".
+    - **Part 1 — DONE (2026-09-08)**: `_fetch_books` now stores a per-entry
+      `isbn13` (one extra GraphQL field, no extra call); `bookbrain-index.json`
+      → v5. `collectSeriesReleases` (in `seriesGaps.ts`) flattens every
+      matched series' `nextUp` + `upcoming` into library-wide `recent` /
+      `upcoming` lists; a generalised `<Marquee>` (extracted from
+      `RecentMarquee`) drives two `<ReleaseMarquee>` strips ("New in your
+      series" / "Coming soon in your series"), each cover → `<ReleaseCard>`
+      → wishlist Request. Zero new Hardcover calls.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

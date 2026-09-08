@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BookRow } from './books'
 import type { SeriesCatalog } from './libraryIndex'
 import {
+  collectSeriesReleases,
   comingSoonSeriesNames,
   computeSeriesGaps,
   incompleteSeriesNames,
@@ -9,7 +10,7 @@ import {
 
 function catalog(
   slug: string,
-  books: { position: number; title: string; releaseDate?: string | null }[],
+  books: { position: number; title: string; releaseDate?: string | null; isbn13?: string | null }[],
 ): SeriesCatalog {
   return { hardcoverId: 1, hardcoverName: slug, hardcoverSlug: slug, primaryCount: books.length, books }
 }
@@ -146,8 +147,9 @@ describe('computeSeriesGaps — next up / upcoming (Part A)', () => {
       ]),
     }
     const gap = computeSeriesGaps(owned, cat).get('Stormlight')!
-    expect(gap.nextUp).toEqual({ position: 3, title: 'Oathbringer', releaseDate: iso(-30) })
-    expect(gap.upcoming).toEqual([{ position: 4, title: 'Rhythm of War', releaseDate: iso(90) }])
+    expect(gap.nextUp).toMatchObject({ position: 3, title: 'Oathbringer', releaseDate: iso(-30) })
+    expect(gap.nextUp).toMatchObject({ seriesName: 'Stormlight', hardcoverSlug: 'stormlight' })
+    expect(gap.upcoming).toMatchObject([{ position: 4, title: 'Rhythm of War', releaseDate: iso(90) }])
   })
 
   it('ignores far-future placeholder rows', () => {
@@ -172,7 +174,9 @@ describe('computeSeriesGaps — next up / upcoming (Part A)', () => {
       ]),
     }
     const gap = computeSeriesGaps([book('Stormlight', '1')], cat).get('Stormlight')!
-    expect(gap.upcoming).toEqual([{ position: 2, title: 'Words of Radiance', releaseDate: iso(120) }])
+    expect(gap.upcoming).toMatchObject([
+      { position: 2, title: 'Words of Radiance', releaseDate: iso(120) },
+    ])
   })
 
   it('comingSoonSeriesNames is only series with a future entry', () => {
@@ -185,6 +189,75 @@ describe('computeSeriesGaps — next up / upcoming (Part A)', () => {
     }
     const gaps = computeSeriesGaps(owned, cat)
     expect([...comingSoonSeriesNames(gaps)]).toEqual(['Stormlight'])
+  })
+})
+
+describe('collectSeriesReleases (Part 1)', () => {
+  it('flattens nextUp + upcoming across every series, recent newest-first', () => {
+    const gaps = computeSeriesGaps(
+      [
+        book('A', '1'),
+        book('A', '2'),
+        book('B', '1'),
+        book('B', '2'),
+      ],
+      {
+        A: catalog('a', [
+          { position: 1, title: 'A1', releaseDate: '2010-01-01' },
+          { position: 2, title: 'A2', releaseDate: '2012-01-01' },
+          { position: 3, title: 'A3', releaseDate: iso(-10), isbn13: '9990000000001' }, // out
+          { position: 4, title: 'A4', releaseDate: iso(200) }, // future
+        ]),
+        B: catalog('b', [
+          { position: 1, title: 'B1', releaseDate: '2015-01-01' },
+          { position: 2, title: 'B2', releaseDate: '2018-01-01' },
+          { position: 3, title: 'B3', releaseDate: iso(50) }, // future
+        ]),
+      },
+    )
+    const { recent, upcoming } = collectSeriesReleases(gaps)
+    expect(recent.map((e) => e.title)).toEqual(['A3'])
+    expect(recent[0].isbn13).toBe('9990000000001')
+    expect(upcoming.map((e) => e.title)).toEqual(['B3', 'A4']) // soonest first
+  })
+
+  it('reclassifies an "upcoming" entry whose announced date has since passed', () => {
+    const gaps = computeSeriesGaps([book('S', '1'), book('S', '2')], {
+      S: catalog('s', [
+        { position: 1, title: 'S1', releaseDate: '2010-01-01' },
+        { position: 2, title: 'S2', releaseDate: '2012-01-01' },
+        { position: 3, title: 'S3', releaseDate: iso(-3) }, // announced future, now out
+      ]),
+    })
+    // fromCatalog already routes a past date to nextUp, so it lands in recent
+    const { recent, upcoming } = collectSeriesReleases(gaps)
+    expect(recent.map((e) => e.title)).toEqual(['S3'])
+    expect(upcoming).toEqual([])
+  })
+
+  it('dedupes a shared book across two overlapping series and caps each list', () => {
+    const shared = { position: 3, title: 'Shared', releaseDate: iso(-5), isbn13: '9991112223334' }
+    const gaps = computeSeriesGaps(
+      [book('X', '1'), book('X', '2'), book('Y', '1'), book('Y', '2')],
+      {
+        X: catalog('x', [
+          { position: 1, title: 'X1', releaseDate: '2010-01-01' },
+          { position: 2, title: 'X2', releaseDate: '2011-01-01' },
+          shared,
+        ]),
+        Y: catalog('y', [
+          { position: 1, title: 'Y1', releaseDate: '2010-01-01' },
+          { position: 2, title: 'Y2', releaseDate: '2011-01-01' },
+          shared,
+        ]),
+      },
+    )
+    expect(collectSeriesReleases(gaps).recent.map((e) => e.title)).toEqual(['Shared'])
+  })
+
+  it('ignores guess-path series (no Hardcover catalogue)', () => {
+    const gaps = computeSeriesGaps([book('G', '1'), book('G', '3')])
+    expect(collectSeriesReleases(gaps)).toEqual({ recent: [], upcoming: [] })
   })
 })
 

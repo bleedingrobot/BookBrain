@@ -95,7 +95,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 4
+    assert payload["version"] == 5
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -128,7 +128,12 @@ async def test_build_index_payload_includes_matched_hardcover_series(db_session)
         "slug": "the-hierarchy",
         "primaryCount": 3,
         "books": [
-            {"position": 1.0, "title": "The Will of the Many", "releaseDate": "2023-05-23"},
+            {
+                "position": 1.0,
+                "title": "The Will of the Many",
+                "releaseDate": "2023-05-23",
+                "isbn13": "9781234567890",
+            },
             {"position": 2.0, "title": "The Strength of the Few"},
         ],
         "match": "auto",
@@ -149,6 +154,7 @@ async def test_build_index_payload_includes_matched_hardcover_series(db_session)
         "The Strength of the Few",
     ]
     assert entry["books"][0]["releaseDate"] == "2023-05-23"  # prompts/26 Part A
+    assert entry["books"][0]["isbn13"] == "9781234567890"  # prompts/27 Part 1
 
 
 async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:

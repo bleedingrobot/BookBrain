@@ -6,6 +6,8 @@ import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { Reader } from './components/Reader'
 import { RecentMarquee } from './components/RecentMarquee'
+import { ReleaseCard } from './components/ReleaseCard'
+import { ReleaseMarquee } from './components/ReleaseMarquee'
 import { SettingsForm } from './components/SettingsForm'
 import { SetupChecklist } from './components/SetupChecklist'
 import { WhoAmI } from './components/WhoAmI'
@@ -32,10 +34,12 @@ import {
   type Recommendations,
 } from './lib/recommendations'
 import {
+  collectSeriesReleases,
   comingSoonSeriesNames,
   computeSeriesGaps,
   incompleteSeriesNames,
 } from './lib/seriesGaps'
+import { seriesEntryToItem, type ReleaseItem } from './lib/releases'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -94,6 +98,8 @@ export default function App() {
   // fetched the first time someone expands a row.
   const [recommendations, setRecommendations] = useState<Recommendations>({})
   const recsLoadedRef = useRef(false)
+  // The release strip cover that's been clicked — opens <ReleaseCard>.
+  const [releaseCardItem, setReleaseCardItem] = useState<ReleaseItem | null>(null)
   const [readingBookId, setReadingBookId] = useState<string | null>(null)
   // Bumped when the reader closes so the "Continue reading" strip re-reads
   // the (localStorage-backed) reading progress.
@@ -171,6 +177,35 @@ export default function App() {
     }
     return result
   }
+
+  async function requestRelease(item: ReleaseItem) {
+    if (!token || !settings || !viewerName) return 'already-listed' as const
+    const result = await addToWishlist(
+      token,
+      settings.libraryFolderId,
+      {
+        title: item.title,
+        author: item.author,
+        series: item.series,
+        isbn13: item.isbn13,
+        cover: null,
+        year: null,
+      },
+      viewerName,
+      allRows,
+    )
+    if (result === 'added') {
+      void logActivity(
+        token,
+        settings.libraryFolderId,
+        viewerName,
+        'request',
+        item.author ? `${item.title} — ${item.author}` : item.title,
+      )
+    }
+    return result
+  }
+
   const recentBooks = useMemo(() => pickRecentBooks(allRows), [allRows])
   const seriesGaps = useMemo(
     () => computeSeriesGaps(allRows, index.series),
@@ -178,6 +213,17 @@ export default function App() {
   )
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const comingSoonSeries = useMemo(() => comingSoonSeriesNames(seriesGaps), [seriesGaps])
+  // prompts/27 Part 1 — "New / Coming soon in your series" strips, flattened
+  // straight out of the per-series Hardcover catalogues already in the index.
+  const seriesReleases = useMemo(() => collectSeriesReleases(seriesGaps), [seriesGaps])
+  const recentReleaseItems = useMemo(
+    () => seriesReleases.recent.map(seriesEntryToItem),
+    [seriesReleases],
+  )
+  const upcomingReleaseItems = useMemo(
+    () => seriesReleases.upcoming.map(seriesEntryToItem),
+    [seriesReleases],
+  )
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const rows = useMemo(() => {
     const out = allRows.filter(
@@ -582,6 +628,30 @@ export default function App() {
 
       {!lib.loading && (
         <RecentMarquee books={recentBooks} token={token} onPick={jumpToRecent} />
+      )}
+
+      {!lib.loading && (
+        <>
+          <ReleaseMarquee
+            label="New in your series"
+            items={recentReleaseItems}
+            onPick={setReleaseCardItem}
+          />
+          <ReleaseMarquee
+            label="Coming soon in your series"
+            items={upcomingReleaseItems}
+            minCards={1}
+            onPick={setReleaseCardItem}
+          />
+        </>
+      )}
+
+      {releaseCardItem && (
+        <ReleaseCard
+          item={releaseCardItem}
+          onRequest={requestRelease}
+          onClose={() => setReleaseCardItem(null)}
+        />
       )}
 
       {!lib.loading && token && (

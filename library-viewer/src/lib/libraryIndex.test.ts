@@ -82,7 +82,7 @@ describe('normalise', () => {
 })
 
 describe('normalise — series catalog', () => {
-  it('keeps release dates and coerces a missing one to null', () => {
+  it('keeps release dates + isbn13 and coerces missing ones to null', () => {
     const out = normalise({
       series: {
         Mistborn: {
@@ -91,7 +91,12 @@ describe('normalise — series catalog', () => {
           hardcoverSlug: 'the-mistborn-saga',
           primaryCount: 3,
           books: [
-            { position: 1, title: 'The Final Empire', releaseDate: '2006-07-17' },
+            {
+              position: 1,
+              title: 'The Final Empire',
+              releaseDate: '2006-07-17',
+              isbn13: '9780765311788',
+            },
             { position: 2, title: 'The Well of Ascension' },
             { position: 3, title: 5 as unknown as string }, // dropped
           ],
@@ -99,8 +104,13 @@ describe('normalise — series catalog', () => {
       },
     })
     expect(out.series.Mistborn.books).toEqual([
-      { position: 1, title: 'The Final Empire', releaseDate: '2006-07-17' },
-      { position: 2, title: 'The Well of Ascension', releaseDate: null },
+      {
+        position: 1,
+        title: 'The Final Empire',
+        releaseDate: '2006-07-17',
+        isbn13: '9780765311788',
+      },
+      { position: 2, title: 'The Well of Ascension', releaseDate: null, isbn13: null },
     ])
   })
 })

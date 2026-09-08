@@ -41,6 +41,10 @@ export interface SeriesCatalogBook {
   // ISO date string, or null. Placeholder rows ("Untitled … #10", dated
   // decades out) are filtered viewer-side, not here. prompts/26 Part A.
   releaseDate?: string | null
+  // The most-popular edition's ISBN-13, or null — lets the viewer pull an
+  // Open Library cover for an entry that isn't in the library yet.
+  // prompts/27 Part 1.
+  isbn13?: string | null
 }
 
 export interface SeriesCatalog {
@@ -109,6 +113,7 @@ function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCata
         position: b.position,
         title: b.title,
         releaseDate: typeof b.releaseDate === 'string' ? b.releaseDate : null,
+        isbn13: typeof b.isbn13 === 'string' ? b.isbn13 : null,
       }))
     if (books.length === 0) continue
     out[name] = {
