@@ -6,10 +6,12 @@ import { Marquee, type MarqueeCard } from './Marquee'
 interface Props {
   label: string
   items: ReleaseItem[]
-  // "New in your series" wants at least a couple; "Coming soon" is worth
-  // showing even for a single announced book.
+  // "New for you" wants at least a couple; "Coming soon" is worth showing
+  // even for a single announced book.
   minCards?: number
   onPick: (item: ReleaseItem) => void
+  fullscreen?: boolean
+  onOpenFullscreen?: () => void
 }
 
 function caption(item: ReleaseItem): string {
@@ -24,7 +26,14 @@ function caption(item: ReleaseItem): string {
   return bits.join(' — ')
 }
 
-export function ReleaseMarquee({ label, items, minCards = 2, onPick }: Props) {
+export function ReleaseMarquee({
+  label,
+  items,
+  minCards = 2,
+  onPick,
+  fullscreen,
+  onOpenFullscreen,
+}: Props) {
   const { urls, done } = useReleaseCovers(items)
   const byKey = useMemo(() => new Map(items.map((i) => [i.key, i])), [items])
 
@@ -44,6 +53,8 @@ export function ReleaseMarquee({ label, items, minCards = 2, onPick }: Props) {
       cards={cards}
       loading={!done}
       minCards={minCards}
+      fullscreen={fullscreen}
+      onOpenFullscreen={onOpenFullscreen}
       onPick={(key) => {
         const item = byKey.get(key)
         if (item) onPick(item)

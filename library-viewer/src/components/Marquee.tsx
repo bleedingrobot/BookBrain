@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
-
 // The scrolling cover strip, shared by "Recently added" (RecentMarquee) and
-// the "New / Coming soon in your series" release strips (ReleaseMarquee).
-// Purely presentational: the caller resolves covers and hands in only the
-// cards it has a known-good image for.
+// the "New for you" / "Coming soon" / "Most anticipated" release strips
+// (ReleaseMarquee). Purely presentational: the caller resolves covers and
+// hands in only the cards it has a known-good image for.
+//
+// Two layouts: the inline strip (small covers + a "Full screen" button that
+// calls `onOpenFullscreen`), and `fullscreen` — a big centred strip with no
+// chrome, which App stacks several of behind one overlay.
 
 // Roughly one cover every this-many seconds passes a fixed point — the loop
 // duration scales with the card count so the speed stays constant.
@@ -23,6 +25,11 @@ interface Props {
   // Below this many resolvable covers the strip hides itself entirely.
   minCards?: number
   onPick: (key: string) => void
+  // Render the big, centred, chrome-less variant (App places it in the
+  // shared full-screen overlay).
+  fullscreen?: boolean
+  // Inline only: what the "Full screen ⤢" button does. Omit to hide it.
+  onOpenFullscreen?: () => void
 }
 
 function Track({
@@ -74,16 +81,15 @@ function Skeleton({ large }: { large: boolean }) {
   )
 }
 
-export function Marquee({ label, cards, loading, minCards = 2, onPick }: Props) {
-  const [tv, setTv] = useState(false)
-
-  useEffect(() => {
-    if (!tv) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setTv(false)
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tv])
-
+export function Marquee({
+  label,
+  cards,
+  loading,
+  minCards = 2,
+  onPick,
+  fullscreen = false,
+  onOpenFullscreen,
+}: Props) {
   const duration = `${Math.max(18, Math.max(cards.length, 8) * SECONDS_PER_COVER)}s`
   const showSkeleton = loading && cards.length < 2
 
@@ -99,7 +105,12 @@ export function Marquee({ label, cards, loading, minCards = 2, onPick }: Props) 
           <Track cards={cards} large={large} onPick={onPick} />
           <Track cards={cards} large={large} ariaHidden onPick={onPick} />
         </div>
-        {!large && (
+        {large ? (
+          <>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-neutral-950 to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-neutral-950 to-transparent" />
+          </>
+        ) : (
           <>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-neutral-50 to-transparent dark:from-neutral-950" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-neutral-50 to-transparent dark:from-neutral-950" />
@@ -108,37 +119,34 @@ export function Marquee({ label, cards, loading, minCards = 2, onPick }: Props) 
       </div>
     )
 
-  return (
-    <>
-      <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between px-1">
-          <span className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
-            {label}
-          </span>
-          {!showSkeleton && (
-            <button
-              type="button"
-              className="text-[11px] text-neutral-400 hover:text-brand-600 dark:hover:text-brand-400"
-              onClick={() => setTv(true)}
-            >
-              Full screen ⤢
-            </button>
-          )}
+  if (fullscreen) {
+    return (
+      <div className="w-full">
+        <div className="mb-2 px-1 text-center text-xs font-semibold tracking-wide text-neutral-400 uppercase">
+          {label}
         </div>
-        {strip(false)}
+        {strip(true)}
       </div>
+    )
+  }
 
-      {tv && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-neutral-950/95 backdrop-blur">
-          <span className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">
-            {label}
-          </span>
-          <div className="w-full">{strip(true)}</div>
-          <button type="button" className="btn btn-neutral" onClick={() => setTv(false)}>
-            Close (Esc)
+  return (
+    <div className="mb-3">
+      <div className="mb-1 flex items-center justify-between px-1">
+        <span className="text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
+          {label}
+        </span>
+        {!showSkeleton && onOpenFullscreen && (
+          <button
+            type="button"
+            className="text-[11px] text-neutral-400 hover:text-brand-600 dark:hover:text-brand-400"
+            onClick={onOpenFullscreen}
+          >
+            Full screen ⤢
           </button>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+      {strip(false)}
+    </div>
   )
 }

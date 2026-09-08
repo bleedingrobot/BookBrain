@@ -111,6 +111,8 @@ export default function App() {
   const recsLoadedRef = useRef(false)
   // The release strip cover that's been clicked — opens <ReleaseCard>.
   const [releaseCardItem, setReleaseCardItem] = useState<ReleaseItem | null>(null)
+  // "Full screen ⤢" on any strip opens one overlay showing all of them.
+  const [stripsFullscreen, setStripsFullscreen] = useState(false)
   // prompts/27 Part 2 — the "From authors you read" sidecar, fetched lazily.
   const [newReleases, setNewReleases] = useState<NewReleases>(EMPTY_NEW_RELEASES)
   const newReleasesLoadedRef = useRef(false)
@@ -155,6 +157,13 @@ export default function App() {
   useEffect(() => {
     void cacheStats().then((s) => setOfflineCount(s.count))
   }, [progressTick])
+
+  useEffect(() => {
+    if (!stripsFullscreen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setStripsFullscreen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stripsFullscreen])
 
   // Fetch "readers also liked" the first time a row is expanded, not up front.
   useEffect(() => {
@@ -689,26 +698,31 @@ export default function App() {
       />
 
       {!lib.loading && (
-        <RecentMarquee books={recentBooks} token={token} onPick={jumpToRecent} />
-      )}
-
-      {!lib.loading && (
         <>
+          <RecentMarquee
+            books={recentBooks}
+            token={token}
+            onPick={jumpToRecent}
+            onOpenFullscreen={() => setStripsFullscreen(true)}
+          />
           <ReleaseMarquee
             label="New for you"
             items={recentReleaseFeed}
             onPick={setReleaseCardItem}
+            onOpenFullscreen={() => setStripsFullscreen(true)}
           />
           <ReleaseMarquee
             label="Coming soon"
             items={upcomingReleaseFeed}
             minCards={1}
             onPick={setReleaseCardItem}
+            onOpenFullscreen={() => setStripsFullscreen(true)}
           />
           <ReleaseMarquee
             label="Most anticipated"
             items={globalReleaseFeed}
             onPick={setReleaseCardItem}
+            onOpenFullscreen={() => setStripsFullscreen(true)}
           />
           {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (
             <button
@@ -720,6 +734,59 @@ export default function App() {
             </button>
           )}
         </>
+      )}
+
+      {stripsFullscreen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-950/95 backdrop-blur">
+          <div className="flex min-h-full flex-col items-center justify-center gap-8 px-2 py-12">
+            <div className="w-full max-w-5xl space-y-8">
+              <RecentMarquee
+                books={recentBooks}
+                token={token}
+                fullscreen
+                onPick={(id) => {
+                  setStripsFullscreen(false)
+                  jumpToRecent(id)
+                }}
+              />
+              <ReleaseMarquee
+                label="New for you"
+                items={recentReleaseFeed}
+                fullscreen
+                onPick={(item) => {
+                  setStripsFullscreen(false)
+                  setReleaseCardItem(item)
+                }}
+              />
+              <ReleaseMarquee
+                label="Coming soon"
+                items={upcomingReleaseFeed}
+                minCards={1}
+                fullscreen
+                onPick={(item) => {
+                  setStripsFullscreen(false)
+                  setReleaseCardItem(item)
+                }}
+              />
+              <ReleaseMarquee
+                label="Most anticipated"
+                items={globalReleaseFeed}
+                fullscreen
+                onPick={(item) => {
+                  setStripsFullscreen(false)
+                  setReleaseCardItem(item)
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-neutral"
+              onClick={() => setStripsFullscreen(false)}
+            >
+              Close (Esc)
+            </button>
+          </div>
+        </div>
       )}
 
       {releaseCardItem && (

@@ -7,9 +7,11 @@ interface Props {
   books: BookRow[]
   token: string
   onPick: (id: string) => void
+  fullscreen?: boolean
+  onOpenFullscreen?: () => void
 }
 
-export function RecentMarquee({ books, token, onPick }: Props) {
+export function RecentMarquee({ books, token, onPick, fullscreen, onOpenFullscreen }: Props) {
   const { urls, done } = useMarqueeCovers(books, token)
 
   // Only books with a resolved, known-good cover — never a blank tile.
@@ -28,6 +30,13 @@ export function RecentMarquee({ books, token, onPick }: Props) {
   if (books.length < 2) return null
 
   return (
-    <Marquee label="Recently added" cards={cards} loading={!done} onPick={onPick} />
+    <Marquee
+      label="Recently added"
+      cards={cards}
+      loading={!done}
+      onPick={onPick}
+      fullscreen={fullscreen}
+      onOpenFullscreen={onOpenFullscreen}
+    />
   )
 }
