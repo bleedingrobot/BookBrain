@@ -14,7 +14,10 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
 - [`25-hardcover-integration.md`](25-hardcover-integration.md) — Hardcover API.
   **Phases 1 + 2 + 3 shipped 2026-09-08** (metadata provider; canonical series
   membership → named "missing books"; "Readers also liked" → wishlist).
-  Phase 1.5 + Phase 4 (new & upcoming, metadata badges) scoped.
+  Phase 1.5 scoped.
+- [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md) — Hardcover Phase 4:
+  metadata badges/filters (B), new & upcoming per series (A), Hardcover as a
+  description source (C), characters (D). Order B → A → C → D. Not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

@@ -358,7 +358,11 @@ shared viewer.
 - `cd backend && pytest` + `pytest -m corpus` green; viewer `npm test` +
   build + lint green.
 
-## Phase 4 — "New & upcoming" + richer metadata (scoped, not started)
+## Phase 4 — "New & upcoming" + richer metadata
+
+**Split out into its own work-prompt: [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md)**
+(parts B metadata badges → A new & upcoming → C descriptions → D characters).
+Original scoping notes kept below.
 
 - **New & upcoming** — for every author/series in the library, Hardcover
   `books` with `release_date` in the last ~18 months **or** future, that
