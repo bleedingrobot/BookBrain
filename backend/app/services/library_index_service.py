@@ -431,8 +431,14 @@ async def regenerate_new_releases(
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, NEW_RELEASES_FILENAME, payload
         )
-        total = len(payload["recent"]) + len(payload["upcoming"])
-        logger.info("new releases refreshed: %d books", total)
+        total = len(payload["recent"]) + len(payload["upcoming"]) + len(payload["global"])
+        logger.info(
+            "new releases refreshed: %d books (%d recent, %d upcoming, %d global)",
+            total,
+            len(payload["recent"]),
+            len(payload["upcoming"]),
+            len(payload["global"]),
+        )
         return total
     except Exception:
         logger.exception("new releases refresh failed")
