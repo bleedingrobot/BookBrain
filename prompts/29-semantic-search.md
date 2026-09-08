@@ -33,22 +33,15 @@ indexing cost is paid once, server-side, not per device.
 
 ## Phase 0 — descriptions (prerequisite, not code)
 
-**Semantic search is only as good as the text it embeds.** Right now
-(2026-09-09): `Book.description` is set for **109 / 2420** organised books.
-But there's far more available for free:
+**Semantic search is only as good as the text it embeds.**
 
-- ~1033 books have a Hardcover `meta.description` already sitting in
-  `hardcover_json` (prompts/26 Part C).
-- ~1236 files have an EPUB embedded `<dc:description>` in `metadata_sources`
-  — and `build_index_payload` already falls back to it
-  (`book.description or epub_desc.get(f.id)`), so the *viewer's* coverage is
-  higher than 109.
-
-**Before Phase 2 is worth shipping:** run the free description backfill
-(`POST /api/library/descriptions` — Hardcover + Google Books + Open Library,
-**no `ai=true`**). Report coverage before/after. If Google Books 429s (empty
-`GOOGLE_BOOKS_API_KEY`), that's fine — Hardcover + OL + the EPUB fallback
-still get most books to *some* blurb.
+**Phase 0 was run 2026-09-09** — `POST /api/library/descriptions?ai=false`
+filled 882 blurbs from providers (mostly Hardcover). Coverage now:
+`Book.description` = **991 / 2420 (40%)**; **effective (canonical OR the EPUB
+`<dc:description>` fallback `build_index_payload` already applies) = 2203 /
+2420 (91%)**. That's deep enough — don't block on it. The optional
+`ai=true` pass (capped 200/run, ~$2) could mop up the last ~217, James's
+call.
 
 Embedding input per book (mirror the index's own fallback):
 `f"{title}. {author}. {series}. {plain_text(description or epub_description)}"`
