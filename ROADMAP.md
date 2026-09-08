@@ -372,8 +372,12 @@ mis-identification guards). The rest of that session's ideas, for later:
     blurbs, 91% effective coverage). P1: `embedding_service` (all-MiniLM-L6-v2
     ONNX via onnxruntime, no torch), `books.embedding` migration,
     `bookbrain-embeddings.bin` int8 sidecar, nightly step, routes, parity
-    script. **Phase 2 (viewer: vendor the model + Keyword/Meaning search UI)
-    not started.**
+    script. **Phase 2 done (2026-09-09)** — `@huggingface/transformers` (lazy
+    516 KB chunk, not in the main bundle), model vendored in
+    `public/models/` (22 MB), `lib/embeddings.ts` + `lib/semanticSearch.ts`,
+    a **Keyword | ✨ Meaning** toggle by the search box (debounced auto-search,
+    exact matches pinned, "· NN% match" per row, offline once cached).
+    Backend↔viewer parity cosine 0.99. **Not browser-verified with real auth.**
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".

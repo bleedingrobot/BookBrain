@@ -14,6 +14,10 @@ interface Props {
   allRows: Row[]
   totalCount: number
   sort: SortKey
+  // prompts/29 — meaning-search results: score-ordered, so no group headings,
+  // and each row shows a "· NN% match".
+  ranked?: boolean
+  semanticScores?: Map<string, number> | null
   token: string
   seriesGaps: Map<string, SeriesGap>
   recommendations: Recommendations
@@ -40,6 +44,8 @@ export function BookList({
   allRows,
   totalCount,
   sort,
+  ranked = false,
+  semanticScores,
   token,
   seriesGaps,
   recommendations,
@@ -67,7 +73,7 @@ export function BookList({
   // result set not just the rendered window.
   const groupIndex = useMemo(() => {
     const map = new Map<string, string[]>()
-    if (sort === 'author' || sort === 'series') {
+    if (!ranked && (sort === 'author' || sort === 'series')) {
       for (const row of rows) {
         const heading = groupHeading(row, sort)
         if (heading == null) continue
@@ -77,7 +83,7 @@ export function BookList({
       }
     }
     return map
-  }, [rows, sort])
+  }, [rows, sort, ranked])
 
   useEffect(() => setVisibleCount(PAGE_SIZE), [rows])
 
@@ -98,14 +104,16 @@ export function BookList({
   return (
     <>
       <p className="mt-4 text-xs font-medium text-neutral-400">
-        {rows.length === totalCount
-          ? `${totalCount} book${totalCount === 1 ? '' : 's'}`
-          : `${rows.length} of ${totalCount} books`}
+        {ranked
+          ? `${rows.length} book${rows.length === 1 ? '' : 's'}, ranked by meaning`
+          : rows.length === totalCount
+            ? `${totalCount} book${totalCount === 1 ? '' : 's'}`
+            : `${rows.length} of ${totalCount} books`}
       </p>
 
       <ul className="mt-1 text-sm">
         {visibleRows.map((row, i) => {
-          const heading = groupHeading(row, sort)
+          const heading = ranked ? null : groupHeading(row, sort)
           const showHeading =
             heading != null && heading !== (i > 0 ? groupHeading(visibleRows[i - 1], sort) : null)
           const groupIds = showHeading ? (groupIndex.get(heading) ?? []) : []
@@ -131,6 +139,7 @@ export function BookList({
                 row={row}
                 allRows={allRows}
                 token={token}
+                matchScore={semanticScores?.get(row.id)}
                 gap={row.series ? seriesGaps.get(row.series) : undefined}
                 recs={recommendations[row.file.id]}
                 selected={selected.has(row.id)}

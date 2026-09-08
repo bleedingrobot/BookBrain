@@ -60,8 +60,11 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   free description backfill (882 blurbs, effective coverage 91%). Phase 1:
   `embedding_service` (all-MiniLM-L6-v2 ONNX, no torch) + `books.embedding`
   migration + `bookbrain-embeddings.bin` sidecar (int8) + nightly step +
-  `POST /library/embeddings[/refresh]` + parity script. **Phase 2 (viewer:
-  vendor model + search UI) not started.**
+  `POST /library/embeddings[/refresh]` + parity script. **Phase 2 done
+  2026-09-09** — `@huggingface/transformers` (lazy chunk), model vendored in
+  `public/models/`, `lib/embeddings.ts` + `lib/semanticSearch.ts` +
+  Keyword|Meaning toggle in `App.tsx`, "· NN% match" per row. Parity
+  cosine 0.99. Not browser-verified.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

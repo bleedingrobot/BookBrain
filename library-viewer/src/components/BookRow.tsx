@@ -14,6 +14,8 @@ interface Props {
   row: Row
   allRows: Row[]
   token: string
+  // prompts/29 — semantic-search similarity (0..1), shown as a "· NN% match".
+  matchScore?: number
   gap: SeriesGap | undefined
   recs: RecBook[] | undefined
   selected: boolean
@@ -119,6 +121,7 @@ export function BookRow({
   row,
   allRows,
   token,
+  matchScore,
   gap,
   recs,
   selected,
@@ -192,6 +195,11 @@ export function BookRow({
                 {row.series}
                 {row.seriesNumber && ` #${row.seriesNumber}`}
               </button>
+            )}
+            {matchScore != null && (
+              <span className="text-xs text-neutral-400">
+                · {Math.round(matchScore * 100)}% match
+              </span>
             )}
             {meta?.rating != null && <RatingPill rating={meta.rating} />}
             {category && (

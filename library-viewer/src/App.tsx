@@ -61,6 +61,9 @@ import {
   type ViewerSettings,
 } from './lib/settings'
 import { getViewerName, setViewerName } from './lib/viewerIdentity'
+import { fetchEmbeddings, type Embeddings } from './lib/embeddings'
+import { getSearchMode, setSearchMode, type SearchMode } from './lib/searchMode'
+import { ensureModel, isModelLoaded, semanticSearch, type ScoredHit } from './lib/semanticSearch'
 import { addToWishlist } from './lib/wishlist'
 import { useLibrary } from './hooks/useLibrary'
 
@@ -102,6 +105,12 @@ export default function App() {
 
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('title')
+  // Keyword vs. meaning (semantic) search. prompts/29.
+  const [searchMode, setSearchModeState] = useState<SearchMode>(getSearchMode)
+  const [semanticHits, setSemanticHits] = useState<ScoredHit[] | null>(null)
+  const [semanticBusy, setSemanticBusy] = useState(false)
+  const [semanticError, setSemanticError] = useState<string | null>(null)
+  const embeddingsRef = useRef<Embeddings | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -284,7 +293,78 @@ export default function App() {
       .sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
   }, [settings, newReleases, recentReleaseFeed, upcomingReleaseFeed])
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
+
+  // Meaning mode: run the semantic search a beat after typing settles. The
+  // first call downloads the model (~23 MB, then cached); later ones are
+  // instant. A miss (no sidecar, model failed) falls back to a message, not
+  // keyword results — the two modes stay distinct.
+  const runSemanticSearch = useMemo(
+    () => async (q: string) => {
+      if (!token || !settings || q.trim().length < 2) {
+        setSemanticHits(null)
+        return
+      }
+      setSemanticBusy(true)
+      setSemanticError(null)
+      try {
+        if (!embeddingsRef.current) {
+          embeddingsRef.current = await fetchEmbeddings(token, settings.libraryFolderId)
+        }
+        const emb = embeddingsRef.current
+        if (!emb) {
+          setSemanticError('Meaning search isn’t set up for this library yet.')
+          setSemanticHits(null)
+          return
+        }
+        setSemanticHits(await semanticSearch(q.trim(), emb))
+      } catch {
+        setSemanticError('The search model didn’t load — try again, or switch to Keyword.')
+        setSemanticHits(null)
+      } finally {
+        setSemanticBusy(false)
+      }
+    },
+    [token, settings],
+  )
+
+  useEffect(() => {
+    if (searchMode !== 'meaning') return
+    if (query.trim().length < 2) {
+      setSemanticHits(null)
+      setSemanticError(null)
+      return
+    }
+    const id = setTimeout(() => void runSemanticSearch(query), 400)
+    return () => clearTimeout(id)
+  }, [query, searchMode, runSemanticSearch])
+
+  const semanticScores = useMemo(
+    () =>
+      searchMode === 'meaning' && semanticHits
+        ? new Map(semanticHits.map((h) => [h.id, h.score]))
+        : null,
+    [searchMode, semanticHits],
+  )
+
   const rows = useMemo(() => {
+    if (semanticScores) {
+      const q = query.trim().toLowerCase()
+      const hits = allRows
+        .filter(
+          (r) =>
+            semanticScores.has(r.id) &&
+            matchesFilter(r, filter, sentMap, incompleteSeries, comingSoonSeries),
+        )
+        .map((r) => ({
+          r,
+          score: semanticScores.get(r.id)!,
+          exact:
+            q.length > 0 &&
+            `${r.title} ${r.author ?? ''} ${r.series ?? ''}`.toLowerCase().includes(q),
+        }))
+      hits.sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score)
+      return hits.map((h) => h.r)
+    }
     const out = allRows.filter(
       (row) =>
         matchesRow(row, query) &&
@@ -292,7 +372,15 @@ export default function App() {
     )
     out.sort(SORTS[sort])
     return out
-  }, [allRows, query, sort, filter, sentMap, incompleteSeries, comingSoonSeries])
+  }, [allRows, query, sort, filter, sentMap, incompleteSeries, comingSoonSeries, semanticScores])
+
+  function switchSearchMode(mode: SearchMode) {
+    setSearchMode(mode)
+    setSearchModeState(mode)
+    setSemanticHits(null)
+    setSemanticError(null)
+    if (mode === 'meaning') void ensureModel().catch(() => {})
+  }
 
   // Log a search a beat after typing settles, not on every keystroke — a
   // read+write to Drive per character would be both wasteful and racy.
@@ -844,24 +932,56 @@ export default function App() {
           </div>
         )}
         <div className="flex gap-2">
-          <input
-            className="field min-w-0 flex-1"
-            placeholder="Search title, author, or series…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select
-            className="field shrink-0"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            aria-label="Sort books"
-          >
-            {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-              <option key={key} value={key}>
-                {SORT_LABELS[key]}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0 flex-1">
+            <input
+              className="field w-full"
+              placeholder={
+                searchMode === 'meaning'
+                  ? 'Describe the book — "generation ship sci-fi"…'
+                  : 'Search title, author, or series…'
+              }
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="mt-1 flex items-center gap-1.5">
+              {(['keyword', 'meaning'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => switchSearchMode(m)}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                    searchMode === m
+                      ? 'border-brand-600 bg-brand-600 text-white'
+                      : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  {m === 'keyword' ? 'Keyword' : '✨ Meaning'}
+                </button>
+              ))}
+              {searchMode === 'meaning' && semanticBusy && (
+                <span className="text-[11px] text-neutral-400">
+                  {isModelLoaded() ? 'Searching…' : 'Loading search model (one-time ~23 MB)…'}
+                </span>
+              )}
+              {searchMode === 'meaning' && semanticError && (
+                <span className="text-[11px] text-red-500">{semanticError}</span>
+              )}
+            </div>
+          </div>
+          {searchMode === 'keyword' && (
+            <select
+              className="field h-min shrink-0"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label="Sort books"
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                <option key={key} value={key}>
+                  {SORT_LABELS[key]}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         {filterChips.length > 1 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -922,6 +1042,8 @@ export default function App() {
           allRows={allRows}
           totalCount={files.length}
           sort={sort}
+          ranked={semanticScores != null}
+          semanticScores={semanticScores}
           token={token}
           seriesGaps={seriesGaps}
           recommendations={recommendations}

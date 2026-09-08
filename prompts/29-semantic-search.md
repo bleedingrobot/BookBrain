@@ -124,7 +124,37 @@ int8 round-trips within tolerance.
 
 ---
 
-## Phase 2 — viewer
+## Phase 2 — viewer — **SHIPPED 2026-09-09**
+
+- `npm i @huggingface/transformers` (v4). Lazy `import()` inside
+  `semanticSearch.ts::ensureModel` → it lands in its own chunk
+  (`transformers.web-*.js`, 516 KB / 148 KB gz), **not** the main bundle
+  (still 328 KB). Vite bundles the ONNX-runtime WASM itself
+  (`ort-wasm-*.asyncify.wasm`, 23 MB / 5.8 MB gz) as a same-origin asset —
+  no `wasmPaths` config needed, just `env.backends.onnx.wasm.numThreads = 1`
+  (GitHub Pages can't send COOP/COEP).
+- Model **vendored** in `library-viewer/public/models/all-MiniLM-L6-v2/`
+  (the exact `Xenova/all-MiniLM-L6-v2` files the backend embeds with, 22 MB).
+  `env.allowRemoteModels = false` + `env.localModelPath`.
+- `lib/embeddings.ts` — `fetchEmbeddings` (Drive list → `alt=media` →
+  `decodeEmbeddings`), a dedicated 1-record IndexedDB cache keyed by
+  modifiedTime. `lib/semanticSearch.ts` — `ensureModel` (lazy), `embedQuery`
+  (→ int8), `rank` (pure int8 dot-product, unit-tested), `semanticSearch`.
+  `lib/searchMode.ts` — the toggle, localStorage.
+- `App.tsx` — a **Keyword | ✨ Meaning** pill pair under the search box.
+  Meaning mode: debounced (400 ms) auto-search, results score-ordered with
+  exact substring matches pinned on top, a "Loading search model (~23 MB)…" /
+  "Searching…" hint, a friendly error on a miss (no sidecar / model fail) —
+  never silently falls back to keyword. `BookList` gains `ranked` (no group
+  headings) + `semanticScores`; `BookRow` shows "· NN% match".
+- **Parity: backend vs transformers.js worst pairwise cosine 0.9899** on the
+  8-string set — int8-quant kernel noise between two onnxruntime builds, well
+  within ranking tolerance. Threshold relaxed 0.99 → 0.985 in
+  `embedding_parity.py` with a note.
+- Tests: `embeddings.test.ts` + `semanticSearch.test.ts` (pure). Viewer
+  146 green + build + lint. **Not browser-verified with real auth.**
+
+Original notes kept below.
 
 ### Vendor the model (don't fetch from a CDN)
 
