@@ -56,13 +56,25 @@ describe('loadCachedIndex', () => {
   })
 
   it('returns the cached index only for a matching library folder', () => {
-    const index = { entries: { a: { title: 'A' } }, coversFolder: null }
+    const index = { entries: { a: { title: 'A' } }, series: {}, coversFolder: null }
     localStorage.setItem(
       'bookbrain.metadataIndex',
       JSON.stringify({ libraryFolderId: 'lib-1', modifiedTime: 't', index }),
     )
     expect(loadCachedIndex('lib-1')).toEqual(index)
     expect(loadCachedIndex('other')).toBe(EMPTY_INDEX)
+  })
+
+  it('back-fills series:{} into a pre-v3 cached index', () => {
+    localStorage.setItem(
+      'bookbrain.metadataIndex',
+      JSON.stringify({
+        libraryFolderId: 'lib-1',
+        modifiedTime: 't',
+        index: { entries: { a: { title: 'A' } }, coversFolder: null },
+      }),
+    )
+    expect(loadCachedIndex('lib-1').series).toEqual({})
   })
 
   it('rejects the pre-restructure cache shape', () => {

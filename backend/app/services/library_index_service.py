@@ -24,7 +24,7 @@ from app.providers.drive.provider import DriveProvider
 logger = logging.getLogger(__name__)
 
 INDEX_FILENAME = "bookbrain-index.json"
-INDEX_VERSION = 2  # v2 adds per-book isbn
+INDEX_VERSION = 3  # v2 adds per-book isbn; v3 adds the top-level `series` map
 _JSON_MIME = "application/json"
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -115,11 +115,30 @@ async def build_index_payload(session: AsyncSession) -> dict:
             "isbn": isbn_by_book.get(book.id),
         }
 
+    # prompts/25 Phase 2 — Hardcover's canonical membership for each series in
+    # the library, keyed by the same Series.name the per-book `series` field
+    # uses. Only series with an actual match; the viewer falls back to its own
+    # gap heuristic for everything else.
+    series_map: dict[str, dict] = {}
+    seen_series = {f.book.series for f in files if f.book and f.book.series}
+    for s in seen_series:
+        hc = s.hardcover_json if isinstance(s.hardcover_json, dict) else None
+        if not hc or hc.get("match") == "none" or not hc.get("books"):
+            continue
+        series_map[s.name] = {
+            "hardcoverId": hc.get("id"),
+            "hardcoverName": hc.get("name"),
+            "hardcoverSlug": hc.get("slug"),
+            "primaryCount": hc.get("primaryCount"),
+            "books": hc["books"],
+        }
+
     return {
         "version": INDEX_VERSION,
         "generatedAt": datetime.now(UTC).isoformat(),
         "count": len(books),
         "books": books,
+        "series": series_map,
     }
 
 

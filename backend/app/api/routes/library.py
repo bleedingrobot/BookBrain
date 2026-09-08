@@ -12,7 +12,12 @@ from app.schemas.backup import BackupInfo, BackupResult
 from app.schemas.metadata_writeback import MetadataWritebackJobStatus
 from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
-from app.services import backup_service, library_service, recently_organized_service
+from app.services import (
+    backup_service,
+    hardcover_series_service,
+    library_service,
+    recently_organized_service,
+)
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
 from app.services.description_service import (
@@ -101,6 +106,18 @@ async def refresh_library_index(
     if count is None:
         raise HTTPException(status_code=500, detail="index refresh failed — see server logs")
     return {"books": count}
+
+
+@router.post("/series-catalog/refresh")
+async def refresh_series_catalog(
+    limit: int = 300,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """prompts/25 Phase 2 — top up each series' Hardcover canonical book list
+    (bounded, so it's safe to click; the nightly job does this too). The next
+    index refresh then carries it into bookbrain-index.json. No-op without
+    HARDCOVER_API_TOKEN."""
+    return await hardcover_series_service.refresh_series_catalog(db, limit=max(1, min(limit, 1000)))
 
 
 @router.post("/covers", response_model=CoverJobStatus, status_code=202)

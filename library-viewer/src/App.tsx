@@ -122,7 +122,10 @@ export default function App() {
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
   const recentBooks = useMemo(() => pickRecentBooks(allRows), [allRows])
-  const seriesGaps = useMemo(() => computeSeriesGaps(allRows), [allRows])
+  const seriesGaps = useMemo(
+    () => computeSeriesGaps(allRows, index.series),
+    [allRows, index.series],
+  )
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const rows = useMemo(() => {
     const out = allRows.filter(

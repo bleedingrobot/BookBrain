@@ -19,10 +19,17 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
     books only (correct). Corpus flat by construction; a real delta needs
     `--live` (Anthropic credit). **James: create the Hardcover account +
     PAT, put it in `.env`, restart the backend.**
+  - **Phase 2 — DONE (2026-09-08)**: `series.hardcover_json` /
+    `hardcover_synced_at` (migration `a3b4c5d6e7f8`);
+    `hardcover_series_service.refresh_series_catalog` (capped/incremental,
+    nightly + `POST /api/library/series-catalog/refresh`) matches each
+    library series to a Hardcover series (name-overlap + author) and stores
+    its canonical book list; `bookbrain-index.json` v3 gains a top-level
+    `series` map; viewer `seriesGaps.ts` uses it to show **named** missing
+    entries ("#3 *The Hero of Ages*") + a "via Hardcover" link, falling back
+    to the `MAX_RUN_GAP` guess when there's no match. `match:"manual"` pins a
+    series by hand. Live-validated (6/6 series matched cleanly).
   - **Phase 1.5** — persistent Hardcover cache (only if the 5,000/day bites).
-  - **Phase 2** — real canonical series membership from Hardcover into
-    `bookbrain-index.json`, replacing `seriesGaps.ts`'s guessed gaps with
-    named missing entries.
   - **Phase 3** — genres / moods / ratings / pages / similar-books / richer
     descriptions folded into the viewer, piecemeal.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per

@@ -157,7 +157,23 @@ export function BookRow({
             )}
             {gap && gap.missing.length > 0 && row.series && (
               <p className="mt-1.5 text-amber-700 dark:text-amber-500">
-                Missing from {row.series}: {gap.missing.map((n) => `#${n}`).join(', ')}
+                Missing from {row.series}:{' '}
+                {gap.missing
+                  .map((n) => (gap.missingTitles?.[n] ? `#${n} ${gap.missingTitles[n]}` : `#${n}`))
+                  .join(', ')}
+                {gap.source === 'hardcover' && gap.hardcoverSlug && (
+                  <>
+                    {' '}
+                    <a
+                      href={`https://hardcover.app/series/${gap.hardcoverSlug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+                    >
+                      (via Hardcover)
+                    </a>
+                  </>
+                )}
               </p>
             )}
             {(seriesPeers.length > 1 || authorPeers.length > 1) && (

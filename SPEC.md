@@ -124,7 +124,11 @@ third provider â€” a human-curated catalogue with markedly better series data â€
 added to `default_candidate_service()` only when `HARDCOVER_API_TOKEN` is set.
 Backend only (their API forbids browser use); every failure path returns `[]`
 so it's never load-bearing. Instance-level token bucket keeps it under the
-free tier's 60/min. See `prompts/25-hardcover-integration.md`.
+free tier's 60/min. Phase 2 (`hardcover_series_service`) also caches each
+`Series` row's canonical Hardcover book list in `series.hardcover_json`
+(nightly, capped) and the viewer sidecar's `series` map carries it so the
+library-viewer shows named "missing from this series" entries. See
+`prompts/25-hardcover-integration.md`.
 
 **Fast path.** ISBN match still short-circuits, but now also requires
 `title_similarity >= 0.80` with the ISBN-matched candidate (a wrong-but-valid

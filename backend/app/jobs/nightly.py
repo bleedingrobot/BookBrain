@@ -43,7 +43,12 @@ from app.data.models import JobRunStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
-from app.services import backup_service, job_run_service, local_scan_service
+from app.services import (
+    backup_service,
+    hardcover_series_service,
+    job_run_service,
+    local_scan_service,
+)
 from app.services.auth_service import get_auth_service
 from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
@@ -154,6 +159,17 @@ async def run_nightly(
             f"covers: {cover_counts['done']} new, {cover_counts['nocover']} no-cover, "
             f"{cover_counts.get('rehashed', 0)} re-hashed, {cover_counts['failed']} failed"
         )
+        # prompts/25 Phase 2 — top up Hardcover's canonical series membership
+        # (capped per run; converges over a few nights). Only when a token is
+        # set, and it must never fail the run.
+        if get_settings().hardcover_api_token:
+            try:
+                async with async_session_factory() as session:
+                    hc = await hardcover_series_service.refresh_series_catalog(session)
+                steps.append(f"hardcover series: {hc}")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: hardcover series refresh failed")
+                steps.append(f"hardcover series: FAILED — {exc}")
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"

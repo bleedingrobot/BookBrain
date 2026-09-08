@@ -93,6 +93,16 @@ class Series(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # prompts/25 Phase 2 — Hardcover's canonical view of this series, refreshed
+    # by hardcover_series_service on a schedule. hardcover_json:
+    #   {id, name, slug, primaryCount, books: [{position, title}],
+    #    match: "auto" | "manual" | "none"}
+    # "none" = we searched and found no good match (don't re-search nightly);
+    # "manual" = James pinned hardcover_json.id (never re-matched, list still
+    # refreshed). hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+
     aliases: Mapped[list["SeriesAlias"]] = relationship(back_populates="series")
     books: Mapped[list["Book"]] = relationship(back_populates="series")
 

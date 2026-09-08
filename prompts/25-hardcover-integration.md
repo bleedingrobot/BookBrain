@@ -178,24 +178,98 @@ Do this only if the daily 5,000 limit actually starts biting.
 
 ---
 
-## Phase 2 — real series membership in the library index
+## Phase 2 — real series membership in the library index — DONE 2026-09-08
 
-`library-viewer/src/lib/seriesGaps.ts` currently *guesses* missing series
-entries from what's already in the library. Replace/augment with Hardcover's
-actual canonical series list.
+`library-viewer/src/lib/seriesGaps.ts` *guesses* missing series entries from
+what's in the library. Phase 2 adds Hardcover's canonical list on top, as an
+**"According to Hardcover…"** informational layer — the heuristic stays as
+the fallback.
 
-- Backend: `series_service.hardcover_series_books(series_id)` running the
-  "Getting All Books in a Series" query with the dedup filters
-  (`canonical_id: {_is_null: true}`, `is_partial_book: {_eq: false}`,
-  `compilation: {_eq: false}`, `distinct_on: position`,
-  `order_by: [{position: asc}, {book: {users_count: desc}}]`).
-- Store the resolved list (position → title) on the series, surfaced in
-  `bookbrain-index.json` per book's series.
-- The viewer's "Missing books" filter then shows **named** missing entries
-  ("you have 1, 2, 4 — missing #3 *Title*") instead of computed gaps, and
-  `computeSeriesGaps` / `MAX_RUN_GAP` heuristics can be retired.
-- Match a BookBrain series to a Hardcover series once (by name + author, or a
-  stored `hardcover_series_id` on first match), then refresh on a schedule.
+### What the live API actually gives (validated with the real token)
+
+- `search(query_type: "Series")` → `document` with `id` (a **string** in
+  search results, int elsewhere), `name`, `author_name`, `books` (top-5
+  titles), `books_count`, `primary_books_count`, `slug`.
+- The "books in a series" query works, but the data is **good, not clean**:
+  positions like `0.5` / `3.5` / `null` (novellas, companion), occasional
+  foreign-language titles in a slot, and **overlapping series** ("The
+  Mistborn Saga" id 5452 = 10 primary books vs "The Mistborn Saga: The
+  Original Trilogy" id 10001 = 3). `order_by: [{position: asc}, {book:
+  {users_count: desc}}]` + `distinct_on: position` is essential — without the
+  `users_count` tiebreak you get a random (often foreign) edition's title.
+
+So the feature is deliberately conservative: match best-effort, show it
+**labelled as Hardcover's** with a link to the Hardcover series page so
+James can eyeball a bad match, only surface **integer** positions, and keep
+`computeSeriesGaps` as the fallback when there's no match.
+
+### Backend
+
+- **Migration** — 2 nullable columns on `series`:
+  `hardcover_synced_at TIMESTAMP` (drives the "needs refresh?" query) and
+  `hardcover_json JSON` (`{id, name, slug, primaryCount, books: [{position,
+  title}], match: "auto"|"manual"|"none"}`). One JSON blob keeps the column
+  count down; `match: "none"` records "we looked, found nothing" so the
+  nightly job doesn't re-search it every night; `match: "manual"` (James
+  sets `hardcover_json.id` by hand) is never re-matched, only its book list
+  is refreshed.
+- **`app/providers/metadata/hardcover.py`** — extract the POST/429/retry/
+  error boilerplate into a module fn `hardcover_graphql(client, token, query,
+  variables, bucket)`; `HardcoverProvider` uses it. Export `ENDPOINT`,
+  `_USER_AGENT`, `_TokenBucket`.
+- **`app/services/hardcover_series_service.py`** —
+  `refresh_series_catalog(session, *, limit=300, stale_after_days=30)`:
+  1. pick `Series` rows that (a) have a book on an `organised` file and
+     (b) `hardcover_synced_at` is null or older than `stale_after_days`,
+     capped at `limit` (converges over a few nights, stays well under the
+     5,000/day Hardcover cap).
+  2. per series: if `match == "manual"` keep the id; else
+     `search(query_type:"Series")` → best hit by
+     `_series_match_key`-overlap + author agreement → id, or record
+     `match:"none"`.
+  3. fetch the book list (the dedup-filtered query), keep entries with a
+     numeric position, store `hardcover_json`, stamp `hardcover_synced_at`.
+  Its own `_TokenBucket`. Returns `{matched, refreshed, unmatched, skipped}`.
+- **`nightly.run_nightly`** — one new step, right before
+  `regenerate_library_index`, only when `settings.hardcover_api_token` is set.
+- **`library_index_service.build_index_payload`** — add a top-level
+  `series` map: `{ "<Series.name>": {hardcoverId, hardcoverName,
+  hardcoverSlug, books: [{position, title}]} }` for every series with a
+  match. `INDEX_VERSION` → 3.
+- **`POST /api/library/series-catalog/refresh`** — manual trigger (bounded,
+  same as `/index`), so James can run it against the live backend without
+  waiting for nightly.
+
+### Viewer
+
+- **`libraryIndex.ts`** — parse the new `series` map into
+  `LibraryIndex.series: Record<string, SeriesCatalog>`.
+- **`seriesGaps.ts`** — `computeSeriesGaps(rows, catalog?)`: when a catalog
+  entry exists for a series, `missing` = its integer positions not owned
+  (capped at `max(ownedMax, lastCatalogInt)`), each **with a title**;
+  otherwise the current heuristic unchanged. `SeriesGap` gains
+  `missingTitles?: Record<number, string>` and `source: 'hardcover' | 'guess'`.
+- **`BookRow.tsx`** — "Missing from {series}: #3 *The Hero of Ages*, #4 …"
+  when titled; a small "via Hardcover" caption linking
+  `https://hardcover.app/series/{slug}`.
+- Keep `MAX_RUN_GAP` and all its tests — still the no-match path.
+
+### Tests
+
+- `test_hardcover_series_service.py` (respx): series search → match, no-match
+  → `match:"none"`, manual → not re-matched, non-integer positions dropped,
+  stale-only selection, `limit` bound.
+- `library_index_service` test: `series` map shape.
+- viewer `seriesGaps.test.ts`: catalog path (titled missing), fallback path
+  unchanged, cap logic.
+
+### Acceptance
+
+- Token unset → nothing changes (no `series` map, heuristic as today).
+- Token set, after a refresh → a matched series shows Hardcover's named
+  missing entries + a link; an unmatched series falls back to the guess.
+- `cd backend && pytest` + `pytest -m corpus` green; viewer `npm test` +
+  build + lint green.
 
 ## Phase 3 — richer viewer metadata
 

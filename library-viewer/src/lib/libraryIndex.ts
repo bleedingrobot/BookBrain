@@ -18,12 +18,29 @@ export interface IndexEntry {
   isbn: string | null
 }
 
+// bookbrain-index.json v3: Hardcover's canonical view of a series (prompts/25
+// Phase 2), keyed by the same series name IndexEntry.series uses. Only series
+// the backend could match to a Hardcover series appear here.
+export interface SeriesCatalogBook {
+  position: number
+  title: string
+}
+
+export interface SeriesCatalog {
+  hardcoverId: number | null
+  hardcoverName: string | null
+  hardcoverSlug: string | null
+  primaryCount: number | null
+  books: SeriesCatalogBook[]
+}
+
 export interface LibraryIndex {
   entries: Record<string, IndexEntry>
+  series: Record<string, SeriesCatalog>
   coversFolder: string | null
 }
 
-export const EMPTY_INDEX: LibraryIndex = { entries: {}, coversFolder: null }
+export const EMPTY_INDEX: LibraryIndex = { entries: {}, series: {}, coversFolder: null }
 
 interface CachedIndex {
   libraryFolderId: string
@@ -35,6 +52,29 @@ export interface RawIndexFile {
   version?: number
   coversFolder?: string | null
   books?: Record<string, Partial<IndexEntry>>
+  series?: Record<string, Partial<SeriesCatalog>>
+}
+
+function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCatalog> {
+  const out: Record<string, SeriesCatalog> = {}
+  for (const [name, entry] of Object.entries(raw ?? {})) {
+    if (!entry || !Array.isArray(entry.books)) continue
+    const books = entry.books
+      .filter(
+        (b): b is SeriesCatalogBook =>
+          !!b && typeof b.position === 'number' && typeof b.title === 'string',
+      )
+      .map((b) => ({ position: b.position, title: b.title }))
+    if (books.length === 0) continue
+    out[name] = {
+      hardcoverId: typeof entry.hardcoverId === 'number' ? entry.hardcoverId : null,
+      hardcoverName: entry.hardcoverName ?? null,
+      hardcoverSlug: entry.hardcoverSlug ?? null,
+      primaryCount: typeof entry.primaryCount === 'number' ? entry.primaryCount : null,
+      books,
+    }
+  }
+  return out
 }
 
 export function normalise(raw: RawIndexFile): LibraryIndex {
@@ -51,7 +91,7 @@ export function normalise(raw: RawIndexFile): LibraryIndex {
       isbn: typeof entry.isbn === 'string' ? entry.isbn : null,
     }
   }
-  return { entries, coversFolder: raw.coversFolder ?? null }
+  return { entries, series: normaliseSeries(raw.series), coversFolder: raw.coversFolder ?? null }
 }
 
 function readCache(): CachedIndex | null {
@@ -61,6 +101,8 @@ function readCache(): CachedIndex | null {
     const parsed = JSON.parse(raw) as CachedIndex
     // tolerate the pre-restructure cache shape
     if (parsed.index && !('entries' in parsed.index)) return null
+    // a cache written before v3 has no `series` map
+    if (parsed.index && !parsed.index.series) parsed.index.series = {}
     return parsed
   } catch {
     return null

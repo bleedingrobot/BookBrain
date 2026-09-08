@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 from app.data.models import (
     Author,
     Book,
@@ -89,7 +91,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -106,3 +108,39 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     assert scion["seriesNumber"] is None
     assert scion["description"] == "John Wick meets Ghost in the Shell."
     assert scion["isbn"] == "1668239248"
+
+    # No Hardcover data seeded → empty series map.
+    assert payload["series"] == {}
+
+
+async def test_build_index_payload_includes_matched_hardcover_series(db_session) -> None:
+    await _seed(db_session)
+    series = (
+        await db_session.execute(select(Series).where(Series.name == "The Hierarchy"))
+    ).scalar_one()
+    series.hardcover_json = {
+        "id": 55,
+        "name": "The Hierarchy",
+        "slug": "the-hierarchy",
+        "primaryCount": 3,
+        "books": [
+            {"position": 1.0, "title": "The Will of the Many"},
+            {"position": 2.0, "title": "The Strength of the Few"},
+        ],
+        "match": "auto",
+    }
+    # An unmatched series must not appear.
+    other = Series(name="Ghostwater", hardcover_json={"match": "none"})
+    db_session.add(other)
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    assert set(payload["series"]) == {"The Hierarchy"}
+    entry = payload["series"]["The Hierarchy"]
+    assert entry["hardcoverSlug"] == "the-hierarchy"
+    assert entry["primaryCount"] == 3
+    assert [b["title"] for b in entry["books"]] == [
+        "The Will of the Many",
+        "The Strength of the Few",
+    ]

@@ -99,6 +99,51 @@ class _TokenBucket:
                 self._tokens -= 1.0
 
 
+async def hardcover_graphql(
+    client: httpx.AsyncClient,
+    token: str,
+    query: str,
+    variables: dict,
+    bucket: _TokenBucket,
+) -> dict | None:
+    """POST one GraphQL request; return the `data` object, or None on ANY
+    failure (network, HTTP != 200, GraphQL `errors`, unparseable body). One
+    429 retry honouring `Retry-After`. Shared by HardcoverProvider and
+    hardcover_series_service so the rate-limit / error handling lives once."""
+    if not token:
+        return None
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": _USER_AGENT,
+    }
+    payload = {"query": query, "variables": variables}
+    for attempt in range(2):
+        await bucket.take()
+        try:
+            response = await client.post(ENDPOINT, json=payload, headers=headers)
+        except httpx.HTTPError as exc:
+            logger.info("hardcover request failed: %s", exc)
+            return None
+        if response.status_code == 429 and attempt == 0:
+            retry_after = _retry_after_seconds(response)
+            logger.info("hardcover rate-limited, retrying in %ss", retry_after)
+            await asyncio.sleep(retry_after)
+            continue
+        if response.status_code != 200:
+            logger.info("hardcover HTTP %s", response.status_code)
+            return None
+        try:
+            body = response.json()
+        except ValueError:
+            return None
+        if body.get("errors"):
+            logger.info("hardcover GraphQL errors: %s", body["errors"])
+            return None
+        return body.get("data")
+    return None
+
+
 class HardcoverProvider(BookMetadataProvider):
     name = "hardcover"
 
@@ -149,40 +194,8 @@ class HardcoverProvider(BookMetadataProvider):
         self._cache[key] = out
         return out
 
-    # -- HTTP ---------------------------------------------------------------
-
     async def _post(self, query: str, variables: dict) -> dict | None:
-        """Returns the GraphQL `data` object, or None on any failure."""
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-            "User-Agent": _USER_AGENT,
-        }
-        payload = {"query": query, "variables": variables}
-        for attempt in range(2):
-            await self._bucket.take()
-            try:
-                response = await self._client.post(ENDPOINT, json=payload, headers=headers)
-            except httpx.HTTPError as exc:
-                logger.info("hardcover request failed: %s", exc)
-                return None
-            if response.status_code == 429 and attempt == 0:
-                retry_after = _retry_after_seconds(response)
-                logger.info("hardcover rate-limited, retrying in %ss", retry_after)
-                await asyncio.sleep(retry_after)
-                continue
-            if response.status_code != 200:
-                logger.info("hardcover HTTP %s", response.status_code)
-                return None
-            try:
-                body = response.json()
-            except ValueError:
-                return None
-            if body.get("errors"):
-                logger.info("hardcover GraphQL errors: %s", body["errors"])
-                return None
-            return body.get("data")
-        return None
+        return await hardcover_graphql(self._client, self._token, query, variables, self._bucket)
 
     # -- mapping ----------------------------------------------------------
 
