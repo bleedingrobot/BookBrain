@@ -52,6 +52,13 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   `HardcoverProvider.resolve_person_id` + `scan_service` resolves it pre-lock
   and `_find_or_create_author` reuses a row by `hardcover_person_id` when the
   name-key misses (pen names, `George R. R. Martin` vs `George Martin`).
+- [`29-semantic-search.md`](29-semantic-search.md) — natural-language
+  ("meaning") search in the library-viewer: backend pre-embeds every book
+  (all-MiniLM-L6-v2, ONNX, no torch) → `bookbrain-embeddings.bin` sidecar;
+  viewer loads the same model once (vendored, ~23 MB, SW-cached) and embeds
+  only the query, ranks by cosine. **Phase 0 = run the free description
+  backfill first** (only 109/2420 books have `Book.description`, though
+  ~1200 more have an EPUB blurb the index already falls back to). Not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

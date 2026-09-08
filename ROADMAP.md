@@ -365,7 +365,12 @@ mis-identification guards). The rest of that session's ideas, for later:
   - **Natural-language search** — "that sci-fi one about a generation ship."
     Embed the descriptions locally (`sentence-transformers`, no API cost) and do
     semantic search. The real daily use case for a personal library is "I know
-    we own it, I can't remember the title."
+    we own it, I can't remember the title." **Speced: `prompts/29`** — backend
+    pre-embeds (all-MiniLM-L6-v2 ONNX, no torch) → `bookbrain-embeddings.bin`
+    sidecar; viewer vendors the model, embeds only the query. **Phase 0 =
+    run the free description backfill** — `Book.description` is set for only
+    109/2420 (an EPUB-blurb fallback covers ~1200 more; ~1033 have a Hardcover
+    blurb available). Not started.
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".
