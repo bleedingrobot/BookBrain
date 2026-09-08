@@ -45,6 +45,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.services import (
     backup_service,
+    hardcover_new_releases_service,
     hardcover_recs_service,
     hardcover_series_service,
     job_run_service,
@@ -55,6 +56,7 @@ from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
 from app.services.library_index_service import (
     regenerate_library_index,
+    regenerate_new_releases,
     regenerate_recommendations,
 )
 from app.services.scan_service import get_scan_service
@@ -186,6 +188,22 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: hardcover recs refresh failed")
                 steps.append(f"hardcover recs: FAILED — {exc}")
+            # prompts/27 Part 2 — per-author recent + upcoming books, then the
+            # bookbrain-new-releases.json sidecar the viewer's release strips
+            # read. Token-gated, never fails the run.
+            try:
+                async with async_session_factory() as session:
+                    hn = await hardcover_new_releases_service.refresh_new_releases(session)
+                steps.append(f"hardcover new releases: {hn}")
+                nr_count = await regenerate_new_releases(creds, library_folder_id)
+                steps.append(
+                    f"new-releases file: {nr_count} books"
+                    if nr_count is not None
+                    else "new-releases file: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: hardcover new releases refresh failed")
+                steps.append(f"hardcover new releases: FAILED — {exc}")
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"

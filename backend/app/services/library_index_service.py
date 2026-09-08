@@ -17,9 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.data.db import async_session_factory
-from app.data.models import Book, File, FileStatus, Identifier, IdentifierType, MetadataSource
+from app.data.models import (
+    Author,
+    Book,
+    File,
+    FileStatus,
+    Identifier,
+    IdentifierType,
+    MetadataSource,
+)
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
+from app.services.text_match import normalize_person_name, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +52,14 @@ RECS_FILENAME = "bookbrain-recommendations.json"
 RECS_VERSION = 1
 _RECS_PER_BOOK = 12
 _JSON_MIME = "application/json"
+
+# prompts/27 Part 2 — "From authors you read": Hardcover's recent + near-future
+# books for every author in the library, minus what's already owned or
+# wishlisted. Its own sidecar (like recommendations) so it's a lazy fetch.
+NEW_RELEASES_FILENAME = "bookbrain-new-releases.json"
+NEW_RELEASES_VERSION = 1
+_NEW_RELEASES_CAP = 60
+_WISHLIST_FILENAME = "bookbrain-wishlist.json"
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -274,6 +291,121 @@ async def regenerate_recommendations(
         return payload["count"]
     except Exception:
         logger.exception("recommendations refresh failed")
+        return None
+
+
+def _norm_key(title: str | None, author: str | None) -> str:
+    return f"{normalize_title(title)}|{normalize_person_name(author)}"
+
+
+async def build_new_releases_payload(session: AsyncSession, wishlist_keys: set[str]) -> dict:
+    """`bookbrain-new-releases.json` — every organised author's Hardcover
+    recent + near-future books (Author.hardcover_json, from
+    hardcover_new_releases_service), split into `recent` / `upcoming` and with
+    anything already owned or on the wishlist removed."""
+    rows = (
+        (
+            await session.execute(
+                select(Author)
+                .join(Book, Book.author_id == Author.id)
+                .join(File, File.book_id == Book.id)
+                .where(File.status == FileStatus.organised)
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    owned_titles = (
+        await session.execute(
+            select(Book.canonical_title, Author.name)
+            .join(File, File.book_id == Book.id)
+            .join(Author, Author.id == Book.author_id, isouter=True)
+            .where(File.status == FileStatus.organised)
+        )
+    ).all()
+    owned_keys = {_norm_key(t, a) for t, a in owned_titles}
+
+    today = datetime.now(UTC).date().isoformat()
+    recent: list[dict] = []
+    upcoming: list[dict] = []
+    seen: set[str] = set()
+    for author in rows:
+        hc = author.hardcover_json if isinstance(author.hardcover_json, dict) else None
+        for book in (hc or {}).get("books") or []:
+            if not isinstance(book, dict) or not isinstance(book.get("title"), str):
+                continue
+            key = _norm_key(book["title"], author.name)
+            if key in seen or key in owned_keys or key in wishlist_keys:
+                continue
+            seen.add(key)
+            item = {
+                "title": book["title"],
+                "author": author.name,
+                "isbn13": book.get("isbn13"),
+                "releaseDate": book.get("releaseDate"),
+                "genres": book.get("genres") or [],
+                "source": "author",
+            }
+            (upcoming if (book.get("releaseDate") or "") > today else recent).append(item)
+
+    recent.sort(key=lambda b: b.get("releaseDate") or "", reverse=True)
+    upcoming.sort(key=lambda b: b.get("releaseDate") or "")
+    return {
+        "version": NEW_RELEASES_VERSION,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "recent": recent[:_NEW_RELEASES_CAP],
+        "upcoming": upcoming[:_NEW_RELEASES_CAP],
+    }
+
+
+def _read_wishlist_keys(provider: DriveProvider, library_folder_id: str) -> set[str]:
+    """Normalised title|author keys for everything on the Drive wishlist, so
+    the new-releases feed doesn't re-surface a book someone already asked
+    for. Best-effort — no wishlist file yet just means an empty set."""
+    try:
+        found = next(
+            (
+                f
+                for f in provider.list_files_in_folder(library_folder_id)
+                if f["name"] == _WISHLIST_FILENAME
+            ),
+            None,
+        )
+        if found is None:
+            return set()
+        raw = json.loads(provider.download_file(found["id"]).decode("utf-8"))
+        return {
+            _norm_key(i.get("title"), i.get("author"))
+            for i in raw.get("items") or []
+            if isinstance(i, dict) and isinstance(i.get("title"), str)
+        }
+    except Exception:
+        logger.exception("new-releases: could not read the wishlist for exclusion")
+        return set()
+
+
+async def regenerate_new_releases(
+    creds: Credentials | None, library_folder_id: str | None
+) -> dict | None:
+    """Write bookbrain-new-releases.json. Best-effort, never raises into the
+    caller (same contract as regenerate_recommendations)."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        provider = DriveProvider(build_drive_service(creds))
+        wishlist_keys = await asyncio.to_thread(_read_wishlist_keys, provider, library_folder_id)
+        async with async_session_factory() as session:
+            payload = await build_new_releases_payload(session, wishlist_keys)
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, NEW_RELEASES_FILENAME, payload
+        )
+        total = len(payload["recent"]) + len(payload["upcoming"])
+        logger.info("new releases refreshed: %d books", total)
+        return total
+    except Exception:
+        logger.exception("new releases refresh failed")
         return None
 
 

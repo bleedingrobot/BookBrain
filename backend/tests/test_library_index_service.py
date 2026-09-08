@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 
 from app.data.models import (
@@ -13,6 +15,7 @@ from app.data.models import (
 from app.services.library_index_service import (
     _plain_text,
     build_index_payload,
+    build_new_releases_payload,
     build_recommendations_payload,
 )
 
@@ -218,3 +221,35 @@ async def test_build_recommendations_payload(db_session) -> None:
     # self-reference dropped, only the file that has recs is present
     assert list(payload["books"]) == ["drive-will"]
     assert [r["title"] for r in payload["books"]["drive-will"]] == ["Red Rising", "The Poppy War"]
+
+
+async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_session) -> None:
+    await _seed(db_session)  # James Islington owns "The Will of the Many" + "Scion"
+    author = (
+        await db_session.execute(select(Author).where(Author.name == "James Islington"))
+    ).scalar_one()
+    today = datetime.now(UTC).date()
+    author.hardcover_json = {
+        "books": [
+            {"title": "The Will of the Many", "releaseDate": "2023-05-23"},  # owned → drop
+            {"title": "The Strength of the Few", "releaseDate": "2020-01-01"},  # wishlisted → drop
+            {"title": "Blade Breaker", "releaseDate": "2024-01-01", "isbn13": "9990000000001"},
+            {
+                "title": "The Hierarchy 3",
+                "releaseDate": (today.replace(year=today.year + 1)).isoformat(),
+                "genres": ["Fantasy"],
+            },
+        ]
+    }
+    await db_session.commit()
+
+    from app.services.library_index_service import _norm_key
+
+    wishlist_keys = {_norm_key("The Strength of the Few", "James Islington")}
+    payload = await build_new_releases_payload(db_session, wishlist_keys)
+
+    assert payload["version"] == 1
+    assert [b["title"] for b in payload["recent"]] == ["Blade Breaker"]
+    assert [b["title"] for b in payload["upcoming"]] == ["The Hierarchy 3"]
+    assert payload["recent"][0]["source"] == "author"
+    assert payload["upcoming"][0]["genres"] == ["Fantasy"]

@@ -83,6 +83,13 @@ class Author(Base):
     sort_name: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # prompts/27 Part 2 — Hardcover's recent + near-future books for this
+    # author, refreshed by hardcover_new_releases_service on a schedule.
+    #   {books: [{title, releaseDate, isbn13, category, genres}]}
+    # hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+
     books: Mapped[list["Book"]] = relationship(back_populates="author")
 
 

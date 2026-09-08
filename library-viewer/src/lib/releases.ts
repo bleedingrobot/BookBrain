@@ -41,6 +41,24 @@ export function seriesEntryToItem(entry: SeriesReleaseEntry): ReleaseItem {
   }
 }
 
+// Concatenate feeds (series-derived first, then author-sidecar) and drop a
+// later entry that's the same book as an earlier one — keyed by ISBN-13 when
+// both have one, else normalised title. Keeps the list stably ordered:
+// callers sort by date themselves.
+export function dedupeReleaseItems(...lists: ReleaseItem[][]): ReleaseItem[] {
+  const seen = new Set<string>()
+  const out: ReleaseItem[] = []
+  for (const item of lists.flat()) {
+    const key = item.isbn13
+      ? `isbn:${item.isbn13}`
+      : `t:${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
+}
+
 // "December 2024" from an ISO date, best-effort (shared with BookRow's copy).
 export function monthYear(iso: string | null): string | null {
   if (!iso) return null

@@ -5,6 +5,7 @@ import { ContinueReading } from './components/ContinueReading'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { Reader } from './components/Reader'
+import { NewReleasesScreen } from './components/NewReleasesScreen'
 import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
 import { ReleaseMarquee } from './components/ReleaseMarquee'
@@ -39,7 +40,12 @@ import {
   computeSeriesGaps,
   incompleteSeriesNames,
 } from './lib/seriesGaps'
-import { seriesEntryToItem, type ReleaseItem } from './lib/releases'
+import { dedupeReleaseItems, seriesEntryToItem, type ReleaseItem } from './lib/releases'
+import {
+  EMPTY_NEW_RELEASES,
+  fetchNewReleases,
+  type NewReleases,
+} from './lib/newReleases'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -100,6 +106,10 @@ export default function App() {
   const recsLoadedRef = useRef(false)
   // The release strip cover that's been clicked — opens <ReleaseCard>.
   const [releaseCardItem, setReleaseCardItem] = useState<ReleaseItem | null>(null)
+  // prompts/27 Part 2 — the "From authors you read" sidecar, fetched lazily.
+  const [newReleases, setNewReleases] = useState<NewReleases>(EMPTY_NEW_RELEASES)
+  const newReleasesLoadedRef = useRef(false)
+  const [showNewReleases, setShowNewReleases] = useState(false)
   const [readingBookId, setReadingBookId] = useState<string | null>(null)
   // Bumped when the reader closes so the "Continue reading" strip re-reads
   // the (localStorage-backed) reading progress.
@@ -154,6 +164,19 @@ export default function App() {
       cancelled = true
     }
   }, [expandedId, token, settings])
+
+  // Fetch the "new & upcoming" sidecar once, on first idle — never blocking
+  // first paint. It's small and its own file, like recommendations.
+  useEffect(() => {
+    if (newReleasesLoadedRef.current || !token || !settings) return
+    newReleasesLoadedRef.current = true
+    const folderId = settings.libraryFolderId
+    const run = () => void fetchNewReleases(token, folderId).then(setNewReleases)
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => void })
+      .requestIdleCallback
+    if (ric) ric(run)
+    else setTimeout(run, 1200)
+  }, [token, settings])
 
   const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
 
@@ -216,13 +239,24 @@ export default function App() {
   // prompts/27 Part 1 — "New / Coming soon in your series" strips, flattened
   // straight out of the per-series Hardcover catalogues already in the index.
   const seriesReleases = useMemo(() => collectSeriesReleases(seriesGaps), [seriesGaps])
-  const recentReleaseItems = useMemo(
-    () => seriesReleases.recent.map(seriesEntryToItem),
-    [seriesReleases],
+  // The feed powering the two release strips + <NewReleasesScreen>: series
+  // entries (viewer-derived) merged with the author sidecar, deduped, sorted
+  // by date (recent newest-first, upcoming soonest-first).
+  const recentReleaseFeed = useMemo(
+    () =>
+      dedupeReleaseItems(
+        seriesReleases.recent.map(seriesEntryToItem),
+        newReleases.recent,
+      ).sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '')),
+    [seriesReleases, newReleases],
   )
-  const upcomingReleaseItems = useMemo(
-    () => seriesReleases.upcoming.map(seriesEntryToItem),
-    [seriesReleases],
+  const upcomingReleaseFeed = useMemo(
+    () =>
+      dedupeReleaseItems(
+        seriesReleases.upcoming.map(seriesEntryToItem),
+        newReleases.upcoming,
+      ).sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? '')),
+    [seriesReleases, newReleases],
   )
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const rows = useMemo(() => {
@@ -575,6 +609,18 @@ export default function App() {
     )
   }
 
+  if (showNewReleases) {
+    return (
+      <NewReleasesScreen
+        recent={recentReleaseFeed}
+        upcoming={upcomingReleaseFeed}
+        allRows={allRows}
+        onRequest={requestRelease}
+        onBack={() => setShowNewReleases(false)}
+      />
+    )
+  }
+
   if (showWishlist) {
     return (
       <WishlistScreen
@@ -633,16 +679,25 @@ export default function App() {
       {!lib.loading && (
         <>
           <ReleaseMarquee
-            label="New in your series"
-            items={recentReleaseItems}
+            label="New for you"
+            items={recentReleaseFeed}
             onPick={setReleaseCardItem}
           />
           <ReleaseMarquee
-            label="Coming soon in your series"
-            items={upcomingReleaseItems}
+            label="Coming soon"
+            items={upcomingReleaseFeed}
             minCards={1}
             onPick={setReleaseCardItem}
           />
+          {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (
+            <button
+              type="button"
+              className="mb-3 -mt-1 text-[11px] text-neutral-400 hover:text-brand-600 dark:hover:text-brand-400"
+              onClick={() => setShowNewReleases(true)}
+            >
+              See all new &amp; upcoming →
+            </button>
+          )}
         </>
       )}
 

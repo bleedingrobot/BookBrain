@@ -14,6 +14,7 @@ from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
 from app.services import (
     backup_service,
+    hardcover_new_releases_service,
     hardcover_recs_service,
     hardcover_series_service,
     library_service,
@@ -33,6 +34,7 @@ from app.services.metadata_writeback_service import (
 )
 from app.services.library_index_service import (
     regenerate_library_index,
+    regenerate_new_releases,
     regenerate_recommendations,
 )
 from app.services.scan_service import ScanService, estimate_rebuild, get_scan_service
@@ -144,6 +146,45 @@ async def refresh_book_recs(
     if stale_days is not None:
         kwargs["stale_after_days"] = max(0, stale_days)
     return await hardcover_recs_service.refresh_book_recs(db, **kwargs)
+
+
+@router.post("/new-releases/refresh")
+async def refresh_new_releases(
+    limit: int = 120,
+    stale_days: int | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """prompts/27 Part 2 — one Hardcover call per author to top up
+    `Author.hardcover_json` with their recent + near-future books (bounded, so
+    it's safe to click; the nightly job does this too). Then POST
+    /library/new-releases to write the sidecar. No-op without
+    HARDCOVER_API_TOKEN. `stale_days=0` forces a re-sync of every author."""
+    kwargs: dict = {"limit": max(1, min(limit, 500))}
+    if stale_days is not None:
+        kwargs["stale_after_days"] = max(0, stale_days)
+    return await hardcover_new_releases_service.refresh_new_releases(db, **kwargs)
+
+
+@router.post("/new-releases")
+async def refresh_new_releases_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Write bookbrain-new-releases.json from what new-releases/refresh has
+    resolved so far, minus everything already owned or on the wishlist — the
+    viewer's "From authors you read" strip reads it."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+
+    count = await regenerate_new_releases(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="new-releases refresh failed — see logs")
+    return {"books": count}
 
 
 @router.post("/recommendations")
