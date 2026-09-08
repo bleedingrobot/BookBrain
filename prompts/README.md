@@ -46,9 +46,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   ↔ legal name). Phase 1 = resolve `authors.hardcover_person_id` (rides the
   prompts/27 per-author pass) + a merge pass in `repair_forked_authors.py`.
   Phase 2 (optional) = resolve at scan time so new books don't fork.
-  **Phase 1 shipped 2026-09-09** — `resolve_person_id` canonical→alias walk
-  verified live; repair pass 2 merges same-key rows sharing a person id and
-  SUGGESTs pen-name pairs. Phase 2 not started.
+  **Both phases shipped 2026-09-09** — Phase 1: `resolve_person_id`
+  canonical→alias walk verified live; repair pass 2 merges same-key rows
+  sharing a person id and SUGGESTs pen-name pairs. Phase 2:
+  `HardcoverProvider.resolve_person_id` + `scan_service` resolves it pre-lock
+  and `_find_or_create_author` reuses a row by `hardcover_person_id` when the
+  name-key misses (pen names, `George R. R. Martin` vs `George Martin`).
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

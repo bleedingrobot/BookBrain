@@ -389,3 +389,55 @@ async def test_expanse_style_subtitles_still_resolve_separately(db_session) -> N
         isbn10=None,
     )
     assert a.id != b.id
+
+
+# -- prompts/28 Phase 2: scan-time Hardcover person-id resolution -------------
+
+
+async def _book(db_session, title, author, person_id=None):
+    return await resolve_book(
+        db_session,
+        title=title,
+        author=author,
+        series=None,
+        series_number=None,
+        isbn13=None,
+        isbn10=None,
+        author_person_id=person_id,
+    )
+
+
+async def test_person_id_reuses_a_row_across_a_pen_name(db_session) -> None:
+    # "J.K. Rowling" and "Robert Galbraith" are different normalize_person_name
+    # keys, so without the person id they fork. Hardcover says both are person
+    # 80626 → one row.
+    await _book(db_session, "Harry Potter", "J.K. Rowling", person_id=80626)
+    await _book(db_session, "The Cuckoo's Calling", "Robert Galbraith", person_id=80626)
+
+    authors = (await db_session.execute(select(Author))).scalars().all()
+    assert len(authors) == 1
+    book_authors = {b.author_id for b in (await db_session.execute(select(Book))).scalars().all()}
+    assert book_authors == {authors[0].id}
+
+
+async def test_person_id_stamps_an_existing_name_match(db_session) -> None:
+    await _book(db_session, "Neverwhere", "Neil Gaiman")
+    await _book(db_session, "Stardust", "Neil Gaiman", person_id=555)
+
+    author = (await db_session.execute(select(Author))).scalar_one()
+    assert author.hardcover_person_id == 555
+
+
+async def test_person_id_never_overwrites_a_stored_one(db_session) -> None:
+    await _book(db_session, "A", "Some Author", person_id=111)
+    await _book(db_session, "B", "Some Author", person_id=222)  # bogus later hit
+
+    author = (await db_session.execute(select(Author))).scalar_one()
+    assert author.hardcover_person_id == 111
+
+
+async def test_no_person_id_forks_the_pen_name_as_before(db_session) -> None:
+    await _book(db_session, "Harry Potter", "J.K. Rowling")
+    await _book(db_session, "The Cuckoo's Calling", "Robert Galbraith")
+
+    assert len((await db_session.execute(select(Author))).scalars().all()) == 2

@@ -36,6 +36,18 @@ class CandidateService:
 
         return []
 
+    async def resolve_author_person_id(self, name: str | None) -> int | None:
+        """prompts/28 Phase 2 — delegate to the Hardcover provider (if
+        configured) for an author name's canonical "person id". None when
+        there's no Hardcover provider or it can't resolve one; the caller
+        then falls back to name-only author matching."""
+        if not name:
+            return None
+        for provider in self._providers:
+            if isinstance(provider, HardcoverProvider):
+                return await provider.resolve_person_id(name)
+        return None
+
     async def _query_all(self, call) -> list[MetadataCandidate]:
         # Providers are independent network calls (httpx.AsyncClient) — no
         # reason to wait for Google Books before even starting Open Library.

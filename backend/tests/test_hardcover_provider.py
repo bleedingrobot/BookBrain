@@ -257,3 +257,55 @@ async def test_response_is_cached_per_key() -> None:
         await provider.search_by_isbn("9780765311788")
 
     assert route.call_count == 1
+
+
+@respx.mock
+async def test_resolve_person_id_walks_canonical_and_alias() -> None:
+    route = respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "authors": [
+                        {
+                            "id": 1205498,
+                            "name": "Iain M. Banks",
+                            "alternate_names": ["Iain Banks"],
+                            "alias": [{"id": 95997, "name": "Iain Banks"}],
+                            "canonical": None,
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        provider = HardcoverProvider(token="t", client=client)
+        _fast_bucket(provider)
+        assert await provider.resolve_person_id("Iain M. Banks") == 95997
+        # cached (positive) — no second call
+        assert await provider.resolve_person_id("Iain M. Banks") == 95997
+
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_resolve_person_id_none_when_no_row_and_caches_the_miss() -> None:
+    route = respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(200, json={"data": {"authors": []}})
+    )
+
+    async with httpx.AsyncClient() as client:
+        provider = HardcoverProvider(token="t", client=client)
+        _fast_bucket(provider)
+        assert await provider.resolve_person_id("Nobody In Particular") is None
+        assert await provider.resolve_person_id("Nobody In Particular") is None
+
+    assert route.call_count == 1  # the None is cached too
+
+
+async def test_resolve_person_id_no_token() -> None:
+    async with httpx.AsyncClient() as client:
+        provider = HardcoverProvider(token="", client=client)
+        assert await provider.resolve_person_id("Iain Banks") is None

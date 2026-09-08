@@ -26,6 +26,7 @@ import httpx
 
 from app.providers.metadata.base import BookMetadataProvider
 from app.providers.metadata.types import MetadataCandidate, split_series_and_number
+from app.services.text_match import normalize_person_name
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,54 @@ query BookBrainBookSearch($q: String!) {
   }
 }
 """
+
+# prompts/28 — the same-named author row(s) plus the two hops that resolve one
+# person: `canonical` (Hardcover's own duplicate-row pointer) and `alias` (pen
+# name → real identity). Ordered by book count so row 0 is the real one.
+_AUTHOR_IDENTITY = """
+query BookBrainAuthorIdentity($name: String!) {
+  authors(where: {name: {_eq: $name}}, order_by: {books_count: desc_nulls_last}, limit: 5) {
+    id
+    name
+    alternate_names
+    alias { id name }
+    canonical { id name alias { id name } }
+  }
+}
+"""
+
+
+def resolve_person_id(rows: object, queried_name: str) -> tuple[int, str] | None:
+    """Walk Hardcover's author graph for `queried_name` to a stable "person
+    id": the best-matching row (most books), then its `canonical` row
+    (Hardcover's own dedup), then that row's `alias` (pen name → real
+    identity).
+
+    Guarded — returns None unless the matched row's `name` or one of its
+    `alternate_names` normalises to `queried_name`, so a fuzzy Hardcover hit
+    for a different person is never trusted.
+
+    Verified live 2026-09-09: `Iain M. Banks` / `Iain Banks` → 95997;
+    `Robert Galbraith` → 80626 (J.K. Rowling); `Richard A. Knaak` → 191045;
+    a plain house pseudonym (`Richard Awlinson`) → its own id, no hops."""
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        return None
+    best = rows[0]  # ordered by books_count desc
+    key = normalize_person_name(queried_name)
+    if not key:
+        return None
+    names = [best.get("name"), *(best.get("alternate_names") or [])]
+    if key not in {normalize_person_name(n) for n in names if isinstance(n, str)}:
+        return None
+    node = best.get("canonical") if isinstance(best.get("canonical"), dict) else best
+    alias = node.get("alias") if isinstance(node.get("alias"), list) else []
+    person = alias[0] if alias and isinstance(alias[0], dict) else node
+    pid = person.get("id")
+    if not isinstance(pid, int):
+        return None
+    name = person.get("name")
+    is_str = isinstance(name, str) and name.strip()
+    return pid, name if is_str else str(best.get("name") or queried_name)
 
 
 class _TokenBucket:
@@ -184,6 +233,28 @@ class HardcoverProvider(BookMetadataProvider):
         # 60/min with burst 10 upstream — aim for ~54/min, burst 8.
         self._bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
         self._cache: dict[str, list[MetadataCandidate]] = {}
+        # prompts/28 Phase 2 — name (lowercased) → resolved person id, or None
+        # when Hardcover has no trustworthy row. One entry per distinct author
+        # in a scan, so the whole batch costs at most one call per author.
+        self._person_cache: dict[str, int | None] = {}
+
+    async def resolve_person_id(self, name: str | None) -> int | None:
+        """The canonical Hardcover "person id" for an author name — the id
+        after following `canonical` then `alias` (see the module-level
+        `resolve_person_id`). Lets scan-time author resolution reuse an
+        existing row for a pen name or initial-variant. Any failure (no
+        token, network, rate limit, no trustworthy row) → None, and the
+        caller falls back to today's name-only match."""
+        if not self._token or not name or not name.strip():
+            return None
+        key = name.strip().lower()
+        if key in self._person_cache:
+            return self._person_cache[key]
+        data = await self._post(_AUTHOR_IDENTITY, {"name": name.strip()})
+        resolved = resolve_person_id((data or {}).get("authors"), name)
+        pid = resolved[0] if resolved else None
+        self._person_cache[key] = pid
+        return pid
 
     async def search_by_isbn(self, isbn: str) -> list[MetadataCandidate]:
         if not self._token or not isbn:

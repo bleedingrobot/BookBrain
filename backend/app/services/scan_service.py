@@ -633,6 +633,16 @@ class ScanService:
             identification.series, identification.series_number, identification.raw_response
         )
 
+        # prompts/28 Phase 2 — resolve the author's Hardcover "person id" now,
+        # while still outside the DB lock (it's a network call). resolve_book
+        # uses it to reuse an existing Author row for a pen name / initial
+        # variant that normalize_person_name alone wouldn't match. Cached per
+        # scan, so at most one call per distinct author; None on any failure.
+        with _timed(timings, "hc_person"):
+            author_person_id = await self._candidate_service.resolve_author_person_id(
+                identification.author
+            )
+
         # Everything from here is DB-only — no more network calls — so the
         # lock is held only briefly despite doing the fuzzy Author/Series
         # find-or-create that must not race across concurrently-processing
@@ -674,6 +684,7 @@ class ScanService:
                     isbn13=evidence.isbn13,
                     isbn10=evidence.isbn10,
                     match_cache=match_cache,
+                    author_person_id=author_person_id,
                 )
                 file_row.book_id = book.id
 

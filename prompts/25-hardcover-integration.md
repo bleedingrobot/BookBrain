@@ -458,4 +458,14 @@ Own work-prompt: [`28-hardcover-author-identity.md`](28-hardcover-author-identit
   requirement — that's the gap it fills); different-key pen-name pairs are
   `SUGGEST`-only. Backfill = `new-releases/refresh?stale_days=0` then the
   repair script.
-- **Phase 2 (not started):** resolve at scan time in `_find_or_create_author`.
+- **Phase 2 — shipped 2026-09-09.** `HardcoverProvider.resolve_person_id(name)`
+  (own `_AUTHOR_IDENTITY` query, per-instance cache incl. the misses, the pure
+  walk `resolve_person_id` moved to `hardcover.py`). `CandidateService.
+  resolve_author_person_id` delegates to it. `scan_service` resolves it in the
+  unlocked phase (new `hc_person` timing) and passes `author_person_id` into
+  `resolve_book` → `_find_or_create_author`: after the `normalize_person_name`
+  miss it reuses an existing `Author` whose `hardcover_person_id` matches (a
+  pen name / a `George R. R. Martin` vs `George Martin` split), and stamps the
+  id onto rows it matches or creates. Falls back to name-only on any failure.
+  ~1 call per distinct new author per scan. Live: `Robert Galbraith` /
+  `J.K. Rowling` → both 80626.

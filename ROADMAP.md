@@ -115,8 +115,14 @@ Loose backlog — not commitments, just the ideas worth not forgetting.
       book needed); different-key pen-name pairs are printed `SUGGEST` only.
       Run `new-releases/refresh?stale_days=0` then the repair script to
       backfill + apply.
-    - **Phase 2 (optional, not started)**: resolve at scan time in
-      `_find_or_create_author` so new books don't fork.
+    - **Phase 2 — DONE (2026-09-09)**: `HardcoverProvider.resolve_person_id`
+      (own query + per-instance cache); `scan_service` resolves it in the
+      unlocked phase and threads `author_person_id` through `resolve_book` →
+      `_find_or_create_author`, which reuses an existing row by
+      `hardcover_person_id` when the `normalize_person_name` key misses (pen
+      names, `George R. R. Martin` vs `George Martin`) and stamps the id on
+      rows it matches/creates. ~1 Hardcover call per distinct new author per
+      scan; name-only fallback on any failure.
 - **Four review follow-ups (2026-09-06)** — briefs in `prompts/`, one per
   session: (1) ship series-merge *(done, see below)*, (2) scheduled nightly
   runs *(done, see below)*, (3) write resolved metadata + cover into the EPUB

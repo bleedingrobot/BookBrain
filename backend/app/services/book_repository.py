@@ -89,8 +89,13 @@ async def resolve_book(
     isbn13: str | None,
     isbn10: str | None,
     match_cache: MatchCache | None = None,
+    author_person_id: int | None = None,
 ) -> Book:
-    author_row = await _find_or_create_author(session, author, match_cache) if author else None
+    author_row = (
+        await _find_or_create_author(session, author, match_cache, person_id=author_person_id)
+        if author
+        else None
+    )
     series_row = await _find_or_create_series(session, series, match_cache) if series else None
 
     # normalize_title_strict, not exact string equality and not the loose
@@ -167,8 +172,19 @@ def _upgrade_author_row(row: Author, display: str) -> Author:
     return row
 
 
+def _stamp_person_id(row: Author, person_id: int | None) -> None:
+    """Opportunistically backfill a matched row's Hardcover person id during a
+    scan, so it doesn't have to wait for the nightly pass. Never overwrites."""
+    if person_id is not None and row.hardcover_person_id is None:
+        row.hardcover_person_id = person_id
+
+
 async def _find_or_create_author(
-    session: AsyncSession, name: str, cache: MatchCache | None = None
+    session: AsyncSession,
+    name: str,
+    cache: MatchCache | None = None,
+    *,
+    person_id: int | None = None,
 ) -> Author:
     # prompts/15 Stage J: match on normalize_person_name so "J.R.R. Tolkien",
     # "J. R. R. Tolkien" and "Tolkien, J.R.R." reuse one row instead of forking
@@ -177,6 +193,10 @@ async def _find_or_create_author(
     # Koontz" row (the review policy). Fall back to the old word-set match for
     # a name that normalises to nothing (so junk names don't all collapse onto
     # one empty key).
+    #
+    # prompts/28 Phase 2: if the name-key misses but Hardcover resolved this
+    # author to a `person_id` we already have a row for (a pen name, or an
+    # initial variant with no shared book), reuse that row rather than fork.
     key = normalize_person_name(name)
     fallback = normalize_words(name)
     display = _display_name(name)
@@ -186,9 +206,12 @@ async def _find_or_create_author(
         if cached_id is not None:
             row = await session.get(Author, cached_id)
             if row is not None:
+                _stamp_person_id(row, person_id)
                 return _upgrade_author_row(row, display)
 
-    for existing in (await session.execute(select(Author))).scalars().all():
+    authors = list((await session.execute(select(Author))).scalars().all())
+
+    for existing in authors:
         matched = (
             normalize_person_name(existing.name) == key
             if key
@@ -197,12 +220,35 @@ async def _find_or_create_author(
         if matched:
             if cache is not None and key:
                 cache[f"author:{key}"] = existing.id
+            _stamp_person_id(existing, person_id)
             return _upgrade_author_row(existing, display)
-    row = Author(name=display, sort_name=person_sort_name(display) or None)
+
+    if person_id is not None:
+        if cache is not None:
+            hit = cache.get(f"hcperson:{person_id}")
+            if hit is not None:
+                row = await session.get(Author, hit)
+                if row is not None:
+                    return _upgrade_author_row(row, display)
+        for existing in authors:
+            if existing.hardcover_person_id == person_id:
+                if cache is not None:
+                    cache[f"hcperson:{person_id}"] = existing.id
+                    if key:
+                        cache[f"author:{key}"] = existing.id
+                return _upgrade_author_row(existing, display)
+
+    row = Author(
+        name=display,
+        sort_name=person_sort_name(display) or None,
+        hardcover_person_id=person_id,
+    )
     session.add(row)
     await session.flush()
     if cache is not None and key:
         cache[f"author:{key}"] = row.id
+    if cache is not None and person_id is not None:
+        cache[f"hcperson:{person_id}"] = row.id
     return row
 
 

@@ -31,9 +31,10 @@ from app.providers.metadata.hardcover import (
     HardcoverUnavailable,
     _TokenBucket,
     hardcover_graphql,
+    resolve_person_id,
 )
 from app.services.hardcover_recs_service import _BOOK_CATEGORY, _tag_names
-from app.services.text_match import normalize_person_name, normalize_title
+from app.services.text_match import normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -198,37 +199,6 @@ async def fetch_global_anticipated(
         if len(out) >= limit:
             break
     return out
-
-
-def resolve_person_id(rows: object, bb_name: str) -> tuple[int, str] | None:
-    """Walk Hardcover's author graph for `bb_name` to a stable "person id":
-    the best-matching row (most books), then its `canonical` row (Hardcover's
-    own dedup), then that row's `alias` (pen name → real identity).
-
-    Guarded — returns None unless the matched row's `name` or one of its
-    `alternate_names` normalises to `bb_name`, so a fuzzy Hardcover hit for a
-    different person is never trusted.
-
-    Verified live 2026-09-09: `Iain M. Banks` / `Iain Banks` → 95997;
-    `Robert Galbraith` → 80626 (J.K. Rowling); `Richard A. Knaak` → 191045;
-    a plain house pseudonym (`Richard Awlinson`) → its own id, no hops."""
-    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-        return None
-    best = rows[0]  # ordered by books_count desc
-    key = normalize_person_name(bb_name)
-    if not key:
-        return None
-    names = [best.get("name"), *(best.get("alternate_names") or [])]
-    if key not in {normalize_person_name(n) for n in names if isinstance(n, str)}:
-        return None
-    node = best.get("canonical") if isinstance(best.get("canonical"), dict) else best
-    alias = node.get("alias") if isinstance(node.get("alias"), list) else []
-    person = alias[0] if alias and isinstance(alias[0], dict) else node
-    pid = person.get("id")
-    if not isinstance(pid, int):
-        return None
-    name = person.get("name")
-    return pid, name if isinstance(name, str) and name.strip() else str(best.get("name") or bb_name)
 
 
 async def _author_info(
