@@ -60,6 +60,14 @@ NEW_RELEASES_FILENAME = "bookbrain-new-releases.json"
 NEW_RELEASES_VERSION = 1
 _NEW_RELEASES_CAP = 60
 _WISHLIST_FILENAME = "bookbrain-wishlist.json"
+
+# prompts/29 — one binary sidecar of int8-quantised sentence embeddings for
+# the viewer's semantic search. A 4-byte LE uint32 header length, then a JSON
+# header, then `count * dim` int8 bytes (component * 127, clamped) row-major
+# in `ids` order.
+EMBEDDINGS_FILENAME = "bookbrain-embeddings.bin"
+EMBEDDINGS_VERSION = 1
+_OCTET_MIME = "application/octet-stream"
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -258,19 +266,33 @@ async def build_recommendations_payload(session: AsyncSession) -> dict:
     }
 
 
-def _write_json_file(
-    provider: DriveProvider, library_folder_id: str, name: str, payload: dict
+def _write_bytes_file(
+    provider: DriveProvider,
+    library_folder_id: str,
+    name: str,
+    data: bytes,
+    mime_type: str = _JSON_MIME,
 ) -> None:
-    data = json.dumps(payload, ensure_ascii=False, indent=0).encode("utf-8")
     existing = next(
         (f for f in provider.list_files_in_folder(library_folder_id) if f["name"] == name), None
     )
     if existing is not None:
-        provider.update_file_content(existing["id"], new_name=name, data=data, mime_type=_JSON_MIME)
+        provider.update_file_content(existing["id"], new_name=name, data=data, mime_type=mime_type)
     else:
         provider.upload_new_file(
-            name=name, data=data, parent_id=library_folder_id, mime_type=_JSON_MIME
+            name=name, data=data, parent_id=library_folder_id, mime_type=mime_type
         )
+
+
+def _write_json_file(
+    provider: DriveProvider, library_folder_id: str, name: str, payload: dict
+) -> None:
+    _write_bytes_file(
+        provider,
+        library_folder_id,
+        name,
+        json.dumps(payload, ensure_ascii=False, indent=0).encode("utf-8"),
+    )
 
 
 async def regenerate_recommendations(
@@ -291,6 +313,76 @@ async def regenerate_recommendations(
         return payload["count"]
     except Exception:
         logger.exception("recommendations refresh failed")
+        return None
+
+
+async def build_embeddings_payload(session: AsyncSession) -> bytes:
+    """`bookbrain-embeddings.bin` — every organised book that has an embedding
+    (from embedding_service), int8-quantised. 4-byte LE header length, JSON
+    header, then the int8 vector block."""
+    import numpy as np
+
+    rows = (
+        await session.execute(
+            select(File.drive_file_id, Book.embedding, Book.embedding_model)
+            .join(Book, Book.id == File.book_id)
+            .where(File.status == FileStatus.organised, Book.embedding.is_not(None))
+        )
+    ).all()
+
+    ids: list[str] = []
+    vectors: list[np.ndarray] = []
+    model = None
+    dim = 0
+    for drive_id, blob, emb_model in rows:
+        vec = np.frombuffer(blob, dtype=np.float32)
+        if dim == 0:
+            dim = int(vec.shape[0])
+        if vec.shape[0] != dim:
+            continue  # a stale row from a different model — skip, next refresh fixes it
+        ids.append(drive_id)
+        vectors.append(vec)
+        model = model or emb_model
+
+    header = json.dumps(
+        {
+            "version": EMBEDDINGS_VERSION,
+            "generatedAt": datetime.now(UTC).isoformat(),
+            "model": model,
+            "dim": dim,
+            "count": len(ids),
+            "ids": ids,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    if vectors:
+        block = np.clip(np.round(np.stack(vectors) * 127.0), -127, 127).astype(np.int8).tobytes()
+    else:
+        block = b""
+    return len(header).to_bytes(4, "little") + header + block
+
+
+async def regenerate_embeddings(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """Write bookbrain-embeddings.bin. Best-effort, never raises (same
+    contract as regenerate_recommendations)."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        async with async_session_factory() as session:
+            data = await build_embeddings_payload(session)
+        provider = DriveProvider(build_drive_service(creds))
+        await asyncio.to_thread(
+            _write_bytes_file, provider, library_folder_id, EMBEDDINGS_FILENAME, data, _OCTET_MIME
+        )
+        count = int.from_bytes(data[:4], "little")
+        header = json.loads(data[4 : 4 + count])
+        logger.info("embeddings sidecar: %d books", header["count"])
+        return int(header["count"])
+    except Exception:
+        logger.exception("embeddings sidecar refresh failed")
         return None
 
 

@@ -45,6 +45,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.services import (
     backup_service,
+    embedding_service,
     hardcover_new_releases_service,
     hardcover_recs_service,
     hardcover_series_service,
@@ -55,6 +56,7 @@ from app.services.auth_service import get_auth_service
 from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
 from app.services.library_index_service import (
+    regenerate_embeddings,
     regenerate_library_index,
     regenerate_new_releases,
     regenerate_recommendations,
@@ -208,6 +210,23 @@ async def run_nightly(
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"
         )
+        # prompts/29 — top up the local sentence embeddings + the
+        # bookbrain-embeddings.bin sidecar the viewer's semantic search reads.
+        # Incremental (only re-embeds changed blurbs), CPU-only, no AI cost,
+        # never fails the run.
+        try:
+            async with async_session_factory() as session:
+                emb = await embedding_service.refresh_embeddings(session)
+            steps.append(f"embeddings: {emb}")
+            emb_count = await regenerate_embeddings(creds, library_folder_id)
+            steps.append(
+                f"embeddings file: {emb_count} books"
+                if emb_count is not None
+                else "embeddings file: skipped"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("nightly: embeddings refresh failed")
+            steps.append(f"embeddings: FAILED — {exc}")
     else:
         steps.append("covers/index: skipped (no library folder)")
 

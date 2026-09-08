@@ -14,6 +14,7 @@ from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
 from app.services import (
     backup_service,
+    embedding_service,
     hardcover_new_releases_service,
     hardcover_recs_service,
     hardcover_series_service,
@@ -33,6 +34,7 @@ from app.services.metadata_writeback_service import (
     get_metadata_writeback_service,
 )
 from app.services.library_index_service import (
+    regenerate_embeddings,
     regenerate_library_index,
     regenerate_new_releases,
     regenerate_recommendations,
@@ -185,6 +187,36 @@ async def refresh_new_releases_file(
     count = await regenerate_new_releases(creds, library.folder_id)
     if count is None:
         raise HTTPException(status_code=500, detail="new-releases refresh failed — see logs")
+    return {"books": count}
+
+
+@router.post("/embeddings/refresh")
+async def refresh_embeddings(limit: int = 500, db: AsyncSession = Depends(get_db)) -> dict:
+    """prompts/29 — re-embed organised books whose blurb changed (or that were
+    never embedded), capped at `limit`. CPU-only, no AI cost. Then POST
+    /library/embeddings to write the sidecar. First run over the whole library
+    is ~1–2 min; loop the call until `pending` is 0."""
+    return await embedding_service.refresh_embeddings(db, limit=max(1, min(limit, 5000)))
+
+
+@router.post("/embeddings")
+async def refresh_embeddings_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Write bookbrain-embeddings.bin from whatever embeddings/refresh has
+    computed so far — the viewer's semantic search reads it."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+
+    count = await regenerate_embeddings(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="embeddings sidecar refresh failed — see logs")
     return {"books": count}
 
 

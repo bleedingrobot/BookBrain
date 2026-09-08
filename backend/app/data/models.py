@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -149,6 +150,15 @@ class Book(Base):
     # hardcover_synced_at drives the "needs a refresh?" query.
     hardcover_json: Mapped[dict | None] = mapped_column(JSON)
     hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+
+    # prompts/29 — a local sentence embedding (all-MiniLM-L6-v2, 384-dim
+    # float32, L2-normalised, stored raw) of this book's title/author/series +
+    # blurb, for the library-viewer's semantic search. embedding_hash is a
+    # hash of the embed input so a refresh only re-embeds what changed;
+    # embedding_model guards against a model swap.
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    embedding_hash: Mapped[str | None] = mapped_column(String)
+    embedding_model: Mapped[str | None] = mapped_column(String)
 
     author: Mapped["Author | None"] = relationship(back_populates="books")
     series: Mapped["Series | None"] = relationship(back_populates="books")
