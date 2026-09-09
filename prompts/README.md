@@ -103,7 +103,18 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   sync (resurrects `prompts/17` §E, Hardcover-backed — the big one, do last).
   A–H are catalogue data (shared-viewer safe) except B/C/D which use James's
   own synced data; I is the licence-sensitive one. Every query needs live
-  verification first — field names in the doc are unverified. **Not started.**
+  verification first — field names in the doc are unverified. **Parts A + B
+  shipped 2026-09-10** (moods + content-warning tags → index v6 + mood chips +
+  a content-warning disclosure; author-affinity rec re-rank + want-to-read
+  quick-wins sort). C–I not started.
+- [`32-sff-news-feeds.md`](32-sff-news-feeds.md) — an SFF-news section under
+  the release marquees: the backend fetches ~9 curated RSS/Atom feeds
+  (Reactor, Locus, File 770, Grimdark Mag, Book Riot SF/F…), writes
+  `bookbrain-news.json`, the viewer shows the latest merged headlines +
+  excerpt + link-out. Same static-site/CORS → backend-sidecar pattern as the
+  release strips. Adds `feedparser`. Part 1 backend + Part 2 viewer
+  (`<NewsFeed>` compact list + `<NewsScreen>`), `showNews` setting default-on.
+  **Not started.**
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

@@ -378,14 +378,22 @@ mis-identification guards). The rest of that session's ideas, for later:
     counts-only for licence) → a "From your Hardcover want-to-read" card on the
     Wishlist screen, one-tap Request (106 candidates live). Not
     browser-verified.
-  - **More from Hardcover (`prompts/31`, speced 2026-09-10, not started)** —
-    nine parts, one commit each: A moods/pace/content-warning tags · B
-    rating-aware recs + want-to-read triage · C reading-goal progress + a
-    stats screen · D followed-authors release signal · E community lists
+  - **More from Hardcover (`prompts/31`, speced 2026-09-10; A + B shipped)** —
+    nine parts, one commit each: **A moods + content-warning tags — SHIPPED**
+    (index v6, mood chips, content-warning disclosure; pace dropped — not in
+    the API) · **B rating-aware recs + want-to-read quick-wins — SHIPPED**
+    (author-affinity re-rank, `quickWinScore` sort) · C reading-goal progress +
+    a stats screen · D followed-authors release signal · E community lists
     ("on N lists" + list-sourced wishlist candidates) · F Hardcover Prompts →
     "your library answers" screen · G a gated "trending" strip · H edition
     metadata gap-fill · I reading-progress two-way sync (resurrects the
     dropped `prompts/17` §E, Hardcover-backed — biggest, do last).
+  - **SFF news feed (`prompts/32`, speced 2026-09-10, not started)** — a
+    "From around the SFF world" section under the release marquees: backend
+    fetches ~9 curated RSS/Atom feeds (Reactor, Locus, File 770, Grimdark Mag,
+    Book Riot SF/F, FanFiAddict…) → `bookbrain-news.json` → viewer shows the
+    latest merged headlines + excerpt + link-out. Adds `feedparser`; same
+    static-site → backend-sidecar pattern as everything else.
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."
