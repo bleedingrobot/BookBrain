@@ -15,7 +15,9 @@ export interface ReadingChange {
   isbn13: string | null
   title: string
   author: string | null
-  status: ReadingStatus
+  // A change carries a status, a reader position (prompts/31 Part I), or both.
+  status?: ReadingStatus
+  progressPercent?: number
   at: string
   by: string
 }
@@ -25,23 +27,31 @@ interface RawFile {
   changes?: Partial<ReadingChange>[]
 }
 
-// load → drop any earlier change for this book → append → save. Best-effort,
-// same as the wishlist: two racing writes could clobber, acceptable here.
+// load → merge into any earlier change for this book (so a later progress
+// push doesn't drop an unsynced status change, or vice versa) → save.
+// Best-effort, same as the wishlist: two racing writes could clobber.
 export async function queueReadingChange(
   token: string,
   libraryFolderId: string,
   change: ReadingChange,
 ): Promise<void> {
   const found = await readJsonFile<RawFile>(token, libraryFolderId, FILENAME)
-  const kept = (found?.content.changes ?? []).filter(
-    (c): c is ReadingChange =>
-      !!c && typeof c.driveFileId === 'string' && c.driveFileId !== change.driveFileId,
+  const all = (found?.content.changes ?? []).filter(
+    (c): c is ReadingChange => !!c && typeof c.driveFileId === 'string',
   )
+  const prev = all.find((c) => c.driveFileId === change.driveFileId)
+  const merged: ReadingChange = {
+    ...prev,
+    ...change,
+    status: change.status ?? prev?.status,
+    progressPercent: change.progressPercent ?? prev?.progressPercent,
+  }
+  const kept = all.filter((c) => c.driveFileId !== change.driveFileId)
   await writeJsonFile(
     token,
     libraryFolderId,
     FILENAME,
-    { version: 1, changes: [...kept, change] },
+    { version: 1, changes: [...kept, merged] },
     found?.id ?? null,
   )
 }

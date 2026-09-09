@@ -386,12 +386,45 @@ fallbacks; build + lint green.
 
 ---
 
-## Part I — reading-progress two-way sync (the big one)
+## Part I — reading-progress two-way sync — SHIPPED 2026-09-10 (James: "take it on")
 
-Resurrects `prompts/17` §E (cross-device reading position), which was dropped
-because a Drive sidecar felt like overkill. Hardcover already stores reading
-progress — use it as the backing store. **Do this last; check in with James
-before starting — it's the largest part and the most licence-sensitive.**
+Live-verified: `user_book_reads { id progress_pages progress_seconds started_at
+finished_at edition_id }`; mutations `update_user_book_read(id, object:
+DatesReadInput)` + `insert_user_book_read(user_book_id, user_book_read:
+DatesReadInput)` (`DatesReadInput` has `progress_pages`, `progress_seconds`,
+`started_at`, `finished_at`, `edition_id`, `action`, `action_at`). James
+tracks no page progress on Hardcover currently, so his read-direction is
+mostly empty — but the mechanism is right.
+
+- **Backend read side:** `_READING` query gains `book { pages }` +
+  `user_book_reads(order_by:{id:desc},limit:1){progress_pages}`; `_map_row`
+  → `progress` (fraction). `build_reading_payload` → `entry["progress"]` only
+  while `0 < p < 0.98`. **`READING_VERSION` → 4.**
+- **Backend write side:** `apply_pending` now takes a `progressPercent` (0..1)
+  on a `ReadingChange` (status now optional — a change can be status-only,
+  progress-only, or both). `_EXISTING_UB` also fetches `book{pages}` +
+  `user_book_reads{id progress_pages}`. `_apply_progress`: percent × pages →
+  `progress_pages`; **advance-only** (never reduce, skip if <2% move); creates
+  a `user_book` (status "reading") + a `user_book_read` row if none exists.
+  Not pushed onto a book just marked read.
+- **Viewer:** `reading.ts` `ReadingEntry.progress`. `readingQueue.ts`
+  `ReadingChange.status` optional + `progressPercent`; `queueReadingChange`
+  now **merges** into an existing unsynced change for the same book (so a
+  progress push doesn't drop a queued status, or vice versa); `loadPendingReading`
+  ignores status-less entries. `App.tsx` `pushReadingProgress(row, percent)` —
+  Reader `onClose` calls it (when not finishing → not marking read), guarded
+  advance-only + ≥5% ahead of the known Hardcover position. `<ReadingBadge>`
+  shows "Reading · 62%" for a mid-read book.
+- **Deferred:** resuming the epub *at* the Hardcover position (foliate can't
+  seek to a bare fraction cleanly) — the viewer shows the % but the reader
+  still opens at the local CFI / start. Note in the commit.
+- Tests: `test_hardcover_reading_service.py` +4 (`_map_row` progress,
+  `apply_pending` insert-read / advance / no-backwards), `build_reading_payload`
+  progress passthrough, `readingQueue.test.ts` merge. Backend + corpus green;
+  viewer + build + lint green. **NOT browser-verified — needs a real
+  read-in-BookBrain → check-on-Hardcover round-trip.**
+
+### Original plan
 
 ### What Hardcover has
 `user_book_reads` (per read-through): `progress_pages` / `progress_seconds`,

@@ -388,10 +388,13 @@ mis-identification guards). The rest of that session's ideas, for later:
     **H edition pages/pub-year/audio-hours gap-fill — SHIPPED** · **F
     Hardcover Prompts → "Your library answers" accordion screen — SHIPPED**
     (+ a shared `match_hardcover_book_ids` helper) · **E2 curated lists → a
-    "From lists you'd like" Wishlist-screen card — SHIPPED** · **D dropped**
-    (Hardcover exposes no followed-authors to a PAT). Index → v7,
-    new-releases sidecar → v2. **Left: I** (reading-progress two-way sync —
-    resurrects the dropped `prompts/17` §E, Hardcover-backed — the big one).
+    "From lists you'd like" Wishlist-screen card — SHIPPED** · **I
+    reading-progress two-way sync — SHIPPED** (`user_book_reads`: advance-only
+    `progress_pages` writes on reader close + "Reading · 62%" pulled back;
+    reading sidecar v4; resuming the epub *at* that fraction deferred —
+    foliate can't seek it cleanly) · **D dropped** (Hardcover exposes no
+    followed-authors to a PAT). Index → v7, new-releases sidecar → v2,
+    reading sidecar → v4. **prompts/31 complete bar browser verification.**
   - **SFF news feed (`prompts/32`) — SHIPPED 2026-09-10.** A "From around the
     SFF world" section under the release marquees: `sff_news_service` fetches
     9 curated RSS/Atom feeds (Reactor, Locus, File 770, Grimdark Mag, Fantasy

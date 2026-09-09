@@ -100,7 +100,7 @@ _OCTET_MIME = "application/octet-stream"
 # library book. Its own sidecar (lazy fetch). USER data, not catalogue — see
 # hardcover_reading_service's licence note.
 READING_FILENAME = "bookbrain-reading.json"
-READING_VERSION = 3  # v2 adds wantUnowned[]; v3 adds goal{} (prompts/31 Part C)
+READING_VERSION = 4  # v2 wantUnowned[]; v3 goal{}; v4 per-book progress (Part I)
 # prompts/30 Phase 3 — the viewer queues "mark read" here; a sync applies it
 # to Hardcover then drops the applied entries.
 READING_PENDING_FILENAME = "bookbrain-reading-pending.json"
@@ -850,6 +850,11 @@ async def build_reading_payload(
             entry["readDate"] = row["readDate"]
         if row.get("readCount"):
             entry["readCount"] = row["readCount"]
+        # prompts/31 Part I — Hardcover's reader position, only worth showing
+        # while the book is genuinely mid-read.
+        prog = row.get("progress")
+        if isinstance(prog, int | float) and 0.0 < prog < 0.98:
+            entry["progress"] = round(float(prog), 3)
         books.setdefault(drive, entry)
 
     payload = {

@@ -368,7 +368,8 @@ async def test_build_reading_payload_matches_and_counts_unmatched(db_session) ->
         {"title": "The Will of the Many", "author": "?", "isbn13": "9781234567890",
          "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1},
         {"title": "Scion", "author": "James Islington", "isbn13": None,
-         "status": "reading", "rating": None, "readDate": None, "readCount": 0},
+         "status": "reading", "rating": None, "readDate": None, "readCount": 0,
+         "progress": 0.42},
         {"title": "A Book Not In The Library", "author": "Someone", "isbn13": "9990000000000",
          "status": "read", "rating": 5.0, "readDate": None, "readCount": 1},
     ]
@@ -379,11 +380,12 @@ async def test_build_reading_payload_matches_and_counts_unmatched(db_session) ->
     goal = {"year": 2026, "target": 50, "progress": 48}
     payload = await build_reading_payload(db_session, rows, "James", goal)
 
-    assert payload["version"] == 3 and payload["reader"] == "James" and payload["count"] == 2
+    assert payload["version"] == 4 and payload["reader"] == "James" and payload["count"] == 2
     assert payload["books"]["drive-will"] == {
         "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1
     }
-    assert payload["books"]["drive-scion"] == {"status": "reading"}  # no rating/date/count keys
+    # prompts/31 Part I — mid-read progress carried through
+    assert payload["books"]["drive-scion"] == {"status": "reading", "progress": 0.42}
     assert payload["unmatched"] == {"read": 1, "want": 1, "reading": 0}
     # want-to-read not in the library → a wishlist candidate (read/reading stay counts-only)
     assert payload["wantUnowned"] == [

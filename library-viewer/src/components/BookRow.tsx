@@ -70,13 +70,19 @@ function ReadingBadge({ reading, reader }: { reading: Row['reading']; reader: st
       ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
       : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
   const when = reading.readDate ? ` · ${reading.readDate.slice(0, 4)}` : ''
+  // prompts/31 Part I — Hardcover's reader position while mid-read.
+  const pct =
+    reading.status === 'reading' && typeof reading.progress === 'number'
+      ? ` · ${Math.round(reading.progress * 100)}%`
+      : ''
   const title = `${reader || 'Reader'}${
     reading.status === 'read' ? `${reading.readDate ? ` — read ${reading.readDate}` : ' — read'}` : ` — ${label}`
-  }${reading.rating ? ` · rated ${reading.rating}` : ''}`
+  }${pct ? ` (${pct.trim().replace('· ', '')} on Hardcover)` : ''}${reading.rating ? ` · rated ${reading.rating}` : ''}`
   return (
     <span className={`badge ${tone}`} title={title}>
       {label}
       {reading.status === 'read' && when}
+      {pct}
       {reading.rating ? ` ★${reading.rating}` : ''}
     </span>
   )

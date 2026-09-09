@@ -17,6 +17,9 @@ export interface ReadingEntry {
   rating?: number
   readDate?: string
   readCount?: number
+  // prompts/31 Part I — Hardcover's reader position (0..1), when it has one
+  // and the book is mid-read.
+  progress?: number
   // prompts/30 Phase 3 — set locally when the change is queued but hasn't
   // reached Hardcover yet.
   pending?: boolean
@@ -108,6 +111,9 @@ export function normaliseReading(raw: RawFile): Reading {
       ...(typeof e.rating === 'number' ? { rating: e.rating } : {}),
       ...(typeof e.readDate === 'string' ? { readDate: e.readDate } : {}),
       ...(typeof e.readCount === 'number' ? { readCount: e.readCount } : {}),
+      ...(typeof e.progress === 'number' && e.progress > 0 && e.progress < 1
+        ? { progress: e.progress }
+        : {}),
     }
   }
   const u = raw.unmatched ?? {}

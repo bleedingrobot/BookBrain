@@ -288,6 +288,23 @@ export default function App() {
     }
   }
 
+  // prompts/31 Part I — push the reader's position to Hardcover (advance-only,
+  // the backend guards against going backwards). Fire-and-forget on reader close.
+  function pushReadingProgress(row: (typeof allRows)[number], percent: number) {
+    if (!token || !settings) return
+    const known = row.reading?.progress ?? 0
+    if (percent <= 0.02 || percent >= 0.98 || percent - known < 0.05) return
+    void queueReadingChange(token, settings.libraryFolderId, {
+      driveFileId: row.id,
+      isbn13: row.isbn,
+      title: row.title,
+      author: row.author,
+      progressPercent: Math.round(percent * 1000) / 1000,
+      at: new Date().toISOString(),
+      by: viewerName ?? '',
+    })
+  }
+
   async function requestBook(rec: RecBook) {
     if (!token || !settings || !viewerName) return 'already-listed' as const
     const result = await addToWishlist(
@@ -811,14 +828,13 @@ export default function App() {
           book={readingBook}
           onAuthError={lib.flagAuthError}
           onClose={() => {
-            // Finished the book in the reader → mark it read on Hardcover too.
             const p = getProgress(readingBook.id)
-            if (
-              p &&
-              p.percent >= FINISHED_FRACTION &&
-              readingBook.reading?.status !== 'read'
-            ) {
+            if (p && p.percent >= FINISHED_FRACTION && readingBook.reading?.status !== 'read') {
+              // Finished the book in the reader → mark it read on Hardcover too.
               void markReadingStatus(readingBook, 'read')
+            } else if (p) {
+              // Otherwise push the position forward (Part I, advance-only).
+              pushReadingProgress(readingBook, p.percent)
             }
             setReadingBookId(null)
             setProgressTick((t) => t + 1)

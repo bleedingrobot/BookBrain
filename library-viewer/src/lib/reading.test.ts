@@ -25,6 +25,14 @@ describe('normaliseReading', () => {
     expect(out.books.b).toEqual({ status: 'want' })
     expect(out.books.c).toEqual({ status: null }) // bad status → null, bad rating dropped
     expect(out.books.d).toBeUndefined()
+    // Part I — a mid-read progress fraction is kept; 0 and 1 are dropped
+    expect(normaliseReading({ books: { x: { status: 'reading', progress: 0.4 } } }).books.x).toEqual({
+      status: 'reading',
+      progress: 0.4,
+    })
+    expect(normaliseReading({ books: { x: { status: 'read', progress: 1 } } }).books.x).toEqual({
+      status: 'read',
+    })
     expect(out.wantUnowned).toEqual([
       { title: 'Wanted One', author: 'A', isbn13: '9990000000001' },
     ])

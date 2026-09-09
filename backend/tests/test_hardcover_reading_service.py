@@ -15,15 +15,29 @@ def _token(monkeypatch):
     monkeypatch.setattr(get_settings(), "hardcover_api_token", "tok")
 
 
-def _ub(status_id, *, title="A Book", author="An Author", isbn="9990000000001", rating=None, date=None):
+def _ub(
+    status_id,
+    *,
+    title="A Book",
+    author="An Author",
+    isbn="9990000000001",
+    rating=None,
+    date=None,
+    pages=None,
+    progress_pages=None,
+):
     return {
         "status_id": status_id,
         "rating": rating,
         "last_read_date": date,
         "first_read_date": None,
         "read_count": 1 if status_id == 3 else 0,
+        "user_book_reads": (
+            [{"progress_pages": progress_pages}] if progress_pages is not None else []
+        ),
         "book": {
             "title": title,
+            "pages": pages,
             "contributions": [{"author": {"name": author}}] if author else [],
             "editions": [{"isbn_13": isbn}] if isbn else [],
         },
@@ -66,6 +80,17 @@ async def test_maps_statuses_and_paginates() -> None:
     assert len(rows) == 104  # the no-status-no-rating row is gone
     read = next(r for r in rows if r["status"] == "read")
     assert read["rating"] == 4.0 and read["readCount"] == 1
+
+
+@respx.mock
+async def test_maps_reader_progress_as_a_fraction() -> None:
+    _route([[_ub(2, title="Mid", pages=400, progress_pages=100)]])
+    rows, _ = await fetch_reading()
+    assert rows[0]["progress"] == 0.25
+    # no pages → no fraction
+    _route([[_ub(2, title="NoPages", pages=None, progress_pages=100)]])
+    rows, _ = await fetch_reading()
+    assert rows[0]["progress"] is None
 
 
 @respx.mock
@@ -190,6 +215,86 @@ async def test_apply_pending_no_token_is_noop() -> None:
         assert await apply_pending([_change()]) == {"applied": [], "failed": []}
     finally:
         get_settings().hardcover_api_token = "tok"
+
+
+# --- prompts/31 Part I: reading-progress write-back --------------------------
+
+
+def _progress_route(*, pages=400, existing_read=None, muts=None):
+    muts = muts if muts is not None else []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        q = body["query"]
+        if "editions(" in q and "isbn" in q:
+            return httpx.Response(200, json={"data": {"editions": [{"book": {"id": 555}}]}})
+        if "user_books(where:" in q:
+            reads = [{"id": 7, "progress_pages": existing_read}] if existing_read is not None else []
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "me": [
+                            {
+                                "user_books": [
+                                    {
+                                        "id": 42,
+                                        "status_id": 2,
+                                        "book": {"pages": pages},
+                                        "user_book_reads": reads,
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+            )
+        if "update_user_book_read" in q:
+            muts.append(("update_read", body["variables"]))
+            return httpx.Response(200, json={"data": {"update_user_book_read": {"id": 7}}})
+        if "insert_user_book_read" in q:
+            muts.append(("insert_read", body["variables"]))
+            return httpx.Response(200, json={"data": {"insert_user_book_read": {"id": 8}}})
+        return httpx.Response(200, json={"data": {}})
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    return muts
+
+
+def _prog_change(pct):
+    return {
+        "driveFileId": "d1",
+        "isbn13": "9990000000001",
+        "title": "A Book",
+        "author": "An Author",
+        "progressPercent": pct,
+        "at": "2026-09-10T00:00:00Z",
+        "by": "James",
+    }
+
+
+@respx.mock
+async def test_progress_inserts_a_read_row_when_none_exists() -> None:
+    muts = _progress_route(pages=400, existing_read=None)
+    assert await apply_pending([_prog_change(0.5)]) == {"applied": ["d1"], "failed": []}
+    assert muts[0][0] == "insert_read"
+    assert muts[0][1]["obj"]["progress_pages"] == 200
+
+
+@respx.mock
+async def test_progress_advances_an_existing_read_row() -> None:
+    muts = _progress_route(pages=400, existing_read=100)
+    assert await apply_pending([_prog_change(0.75)]) == {"applied": ["d1"], "failed": []}
+    assert muts[0][0] == "update_read"
+    assert muts[0][1]["obj"]["progress_pages"] == 300
+
+
+@respx.mock
+async def test_progress_never_goes_backwards_or_makes_a_trivial_move() -> None:
+    muts = _progress_route(pages=400, existing_read=300)
+    # 0.72 → 288 pages, which is < the current 300 → no-op, still "applied"
+    assert await apply_pending([_prog_change(0.72)]) == {"applied": ["d1"], "failed": []}
+    assert muts == []
 
 
 # --- prompts/31 Part C: reading goal -----------------------------------------

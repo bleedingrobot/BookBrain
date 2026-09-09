@@ -42,6 +42,27 @@ describe('queueReadingChange', () => {
     expect(body.changes[0].status).toBe('read')
   })
 
+  it('merges a progress push into an unsynced status change (Part I)', async () => {
+    driveMock.readJsonFile.mockResolvedValue({
+      id: 'pending-file',
+      modifiedTime: 't',
+      content: { version: 1, changes: [change({ status: 'reading' })] },
+    })
+    await queueReadingChange('tok', 'lib', {
+      driveFileId: 'file-1',
+      isbn13: null,
+      title: 'A Book',
+      author: null,
+      progressPercent: 0.4,
+      at: '2026-09-10T00:00:00.000Z',
+      by: 'James',
+    })
+    const body = driveMock.writeJsonFile.mock.calls[0][3]
+    expect(body.changes).toHaveLength(1)
+    expect(body.changes[0].status).toBe('reading') // not lost
+    expect(body.changes[0].progressPercent).toBe(0.4)
+  })
+
   it('keeps queued changes for other books', async () => {
     driveMock.readJsonFile.mockResolvedValue({
       id: 'pending-file',

@@ -13,8 +13,11 @@ revisit whether this still holds.
 prompts/30 Phase 3 adds **write-back**: the viewer queues "mark read" (etc.)
 in a Drive file and `apply_pending` applies it to Hardcover on the next sync.
 Same licence rationale — the owner marking their own books read via their own
-token is the personal-automation case a PAT exists for. Only *status* is
-written (read/reading/want/dnf), never reviews or anyone else's data.
+token is the personal-automation case a PAT exists for. Only *status*
+(read/reading/want/dnf) and, since prompts/31 Part I, *reader position*
+(`progress_pages`, advance-only) are written — never reviews or anyone else's
+data. Part I also pulls Hardcover's own position back into the sidecar so the
+viewer can show "N% on Hardcover" for a book you started on another device.
 
 Fetch is stateless: pull live, match in build_reading_payload, write the
 sidecar. One paged query per night.
@@ -49,8 +52,10 @@ query BookBrainReading($limit: Int!, $offset: Int!) {
       last_read_date
       first_read_date
       read_count
+      user_book_reads(order_by: {id: desc}, limit: 1) { progress_pages }
       book {
         title
+        pages
         contributions(limit: 1) { author { name } }
         editions(where: {isbn_13: {_is_null: false}}, limit: 1,
                  order_by: {users_count: desc}) { isbn_13 }
@@ -97,6 +102,13 @@ def _map_row(row: dict) -> dict | None:
             author = a["name"].strip()
     editions = book.get("editions") or []
     isbn13 = editions[0].get("isbn_13") if editions and isinstance(editions[0], dict) else None
+    # prompts/31 Part I — reader position, as a fraction, when Hardcover has one.
+    pages = book.get("pages")
+    reads = row.get("user_book_reads") or []
+    pp = reads[0].get("progress_pages") if reads and isinstance(reads[0], dict) else None
+    progress = None
+    if isinstance(pp, int) and pp > 0 and isinstance(pages, int) and pages > 0:
+        progress = round(min(1.0, pp / pages), 3)
     return {
         "title": title.strip(),
         "author": author,
@@ -105,6 +117,7 @@ def _map_row(row: dict) -> dict | None:
         "rating": round(rating, 2) if rating is not None else None,
         "readDate": row.get("last_read_date") or row.get("first_read_date"),
         "readCount": row.get("read_count") if isinstance(row.get("read_count"), int) else 0,
+        "progress": progress,
     }
 
 
@@ -125,7 +138,14 @@ query BookBrainReadingBookSearch($q: String!) {
 """
 _EXISTING_UB = """
 query BookBrainExistingUserBook($id: Int!) {
-  me { user_books(where: {book_id: {_eq: $id}}, limit: 1) { id status_id } }
+  me {
+    user_books(where: {book_id: {_eq: $id}}, limit: 1) {
+      id
+      status_id
+      book { pages }
+      user_book_reads(order_by: {id: desc}, limit: 1) { id progress_pages }
+    }
+  }
 }
 """
 _UPDATE_UB = """
@@ -136,6 +156,17 @@ mutation BookBrainUpdateUserBook($id: Int!, $obj: UserBookUpdateInput!) {
 _INSERT_UB = """
 mutation BookBrainInsertUserBook($obj: UserBookCreateInput!) {
   insert_user_book(object: $obj) { id }
+}
+"""
+# prompts/31 Part I — reading-progress write-back.
+_UPDATE_UBR = """
+mutation BookBrainUpdateRead($id: Int!, $obj: DatesReadInput!) {
+  update_user_book_read(id: $id, object: $obj) { id }
+}
+"""
+_INSERT_UBR = """
+mutation BookBrainInsertRead($ubId: Int!, $obj: DatesReadInput!) {
+  insert_user_book_read(user_book_id: $ubId, user_book_read: $obj) { id }
 }
 """
 
@@ -168,11 +199,89 @@ async def _resolve_book_id(
     return None
 
 
+async def _apply_status(
+    http: httpx.AsyncClient, token: str, bucket: _TokenBucket, ub: dict | None, book_id: int, status_id: int
+) -> bool:
+    from datetime import date
+
+    obj: dict = {"status_id": status_id}
+    if status_id == 3:
+        obj["last_read_date"] = date.today().isoformat()
+    if ub is not None:
+        if ub.get("status_id") == status_id:
+            return True  # already there
+        res = await hardcover_graphql(http, token, _UPDATE_UB, {"id": ub["id"], "obj": obj}, bucket)
+    else:
+        res = await hardcover_graphql(
+            http, token, _INSERT_UB, {"obj": {"book_id": book_id, **obj}}, bucket
+        )
+    return res is not None
+
+
+async def _apply_progress(
+    http: httpx.AsyncClient,
+    token: str,
+    bucket: _TokenBucket,
+    ub: dict | None,
+    book_id: int,
+    percent: float,
+) -> bool:
+    """Advance-only: push the reader's position to Hardcover as
+    `progress_pages`, never reduce it, skip if within ~2%. `ub` is the row
+    from `_EXISTING_UB` (has `book.pages` + the latest `user_book_reads`)."""
+    from datetime import date
+
+    percent = max(0.0, min(1.0, percent))
+    pages = ((ub or {}).get("book") or {}).get("pages") if ub else None
+    if not isinstance(pages, int) or pages <= 0:
+        return True  # can't convert a % to pages — nothing to do, not a failure
+    target = round(percent * pages)
+    if target <= 0:
+        return True
+
+    if ub is None:
+        # No user_book at all — start it as "currently reading" with this progress.
+        res = await hardcover_graphql(
+            http, token, _INSERT_UB, {"obj": {"book_id": book_id, "status_id": 2}}, bucket
+        )
+        if res is None:
+            return False
+        data = await hardcover_graphql(http, token, _EXISTING_UB, {"id": book_id}, bucket)
+        ub = (((data or {}).get("me") or [{}])[0].get("user_books") or [None])[0]
+        if ub is None:
+            return False
+
+    reads = ub.get("user_book_reads") or []
+    existing = reads[0] if reads and isinstance(reads[0], dict) else None
+    current = existing.get("progress_pages") if existing else None
+    if isinstance(current, int):
+        if target <= current or (target - current) / pages < 0.02:
+            return True  # already there / trivial advance
+        return (
+            await hardcover_graphql(
+                http, token, _UPDATE_UBR, {"id": existing["id"], "obj": {"progress_pages": target}}, bucket
+            )
+            is not None
+        )
+    obj = {"progress_pages": target, "started_at": date.today().isoformat()}
+    if existing:
+        return (
+            await hardcover_graphql(
+                http, token, _UPDATE_UBR, {"id": existing["id"], "obj": obj}, bucket
+            )
+            is not None
+        )
+    return (
+        await hardcover_graphql(http, token, _INSERT_UBR, {"ubId": ub["id"], "obj": obj}, bucket)
+        is not None
+    )
+
+
 async def apply_pending(changes: list[dict], *, client: httpx.AsyncClient | None = None) -> dict:
-    """Apply queued reading-status changes to Hardcover. Returns
-    `{applied: [driveFileId...], failed: [driveFileId...]}` — the caller drops
-    the applied ones from the Drive queue. Idempotent: a change that already
-    matches Hardcover counts as applied. Best-effort per change."""
+    """Apply queued reading changes to Hardcover — a status (`status`), a
+    reader position (`progressPercent`, 0..1, advance-only), or both. Returns
+    `{applied: [driveFileId...], failed: [driveFileId...]}`; the caller drops
+    the applied ones. Idempotent, best-effort per change."""
     settings = get_settings()
     token = (settings.hardcover_api_token or "").strip()
     if not token or not changes:
@@ -183,13 +292,14 @@ async def apply_pending(changes: list[dict], *, client: httpx.AsyncClient | None
     bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
     applied: list[str] = []
     failed: list[str] = []
-    from datetime import date
 
     try:
         for change in changes:
             drive_id = change.get("driveFileId")
             status_id = _STATUS_ID.get(change.get("status"))
-            if not isinstance(drive_id, str) or status_id is None:
+            progress = change.get("progressPercent")
+            has_progress = isinstance(progress, int | float) and 0.0 < progress < 1.0
+            if not isinstance(drive_id, str) or (status_id is None and not has_progress):
                 continue
             try:
                 book_id = await _resolve_book_id(http, token, bucket, change)
@@ -197,22 +307,15 @@ async def apply_pending(changes: list[dict], *, client: httpx.AsyncClient | None
                     failed.append(drive_id)
                     continue
                 data = await hardcover_graphql(http, token, _EXISTING_UB, {"id": book_id}, bucket)
-                ubs = ((data or {}).get("me") or [{}])[0].get("user_books") or []
-                obj: dict = {"status_id": status_id}
-                if status_id == 3:
-                    obj["last_read_date"] = date.today().isoformat()
-                if ubs:
-                    if ubs[0].get("status_id") == status_id:
-                        applied.append(drive_id)  # already there
-                        continue
-                    res = await hardcover_graphql(
-                        http, token, _UPDATE_UB, {"id": ubs[0]["id"], "obj": obj}, bucket
-                    )
-                else:
-                    res = await hardcover_graphql(
-                        http, token, _INSERT_UB, {"obj": {"book_id": book_id, **obj}}, bucket
-                    )
-                (applied if res is not None else failed).append(drive_id)
+                ub = (((data or {}).get("me") or [{}])[0].get("user_books") or [None])[0]
+
+                ok = True
+                if status_id is not None:
+                    ok = await _apply_status(http, token, bucket, ub, book_id, status_id)
+                # Don't push a partial position onto a book just marked read.
+                if ok and has_progress and status_id != 3:
+                    ok = await _apply_progress(http, token, bucket, ub, book_id, float(progress))
+                (applied if ok else failed).append(drive_id)
             except HardcoverRateLimited:
                 failed.append(drive_id)
                 break

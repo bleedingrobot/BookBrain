@@ -104,16 +104,19 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   A–H are catalogue data (shared-viewer safe) except B/C/D which use James's
   own synced data; I is the licence-sensitive one. Every query needs live
   verification first — field names in the doc are unverified. **Parts A, B,
-  C, E, F, G, H shipped 2026-09-10; D dropped (no data)** — A: mood/content-
+  C, E, F, G, H, I shipped 2026-09-10; D dropped (no data)** — A: mood/content-
   warning tags; B: author-affinity rec re-rank + want-to-read quick-wins;
   C: `me{goals}` → goal bar + `<ReadingStatsScreen>`; E1: "on N lists" + a
   "Most listed" sort; E2: curated Hardcover lists → a "From lists you'd like"
   card on the Wishlist screen (`bookbrain-lists.json`); F: Hardcover Prompts
   → `bookbrain-prompts.json` + a "Your library answers" screen (+ a shared
   `match_hardcover_book_ids` helper); G: opt-in "Trending on Hardcover" strip
-  (`new-releases` sidecar v2); H: edition pages/pub-year/audio-hours gap-fill.
-  Index → v7. **D skipped** — Hardcover exposes no followed-authors to a PAT.
-  **Left: I** (reading-progress two-way sync — the big one).
+  (`new-releases` sidecar v2); H: edition pages/pub-year/audio-hours gap-fill;
+  I: reading-progress two-way sync (`user_book_reads` — advance-only writes on
+  reader close + "Reading · 62%" from Hardcover; reading sidecar v4). Index →
+  v7. **D skipped** — Hardcover exposes no followed-authors to a PAT.
+  **prompts/31 done bar the epub resume-at-position deferral + browser
+  verification.**
 - [`32-sff-news-feeds.md`](32-sff-news-feeds.md) — an SFF-news section under
   the release marquees: the backend fetches ~9 curated RSS/Atom feeds
   (Reactor, Locus, File 770, Grimdark Mag, Book Riot SF/F…), writes
