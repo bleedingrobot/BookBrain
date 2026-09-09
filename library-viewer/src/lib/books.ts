@@ -32,7 +32,7 @@ export function sendKey(fileId: string, deviceFolderId: string): string {
 
 export type SendStatus = 'pending' | 'error'
 
-export type SortKey = 'title' | 'author' | 'series' | 'added' | 'rating'
+export type SortKey = 'title' | 'author' | 'series' | 'added' | 'rating' | 'lists'
 
 export const SORT_LABELS: Record<SortKey, string> = {
   title: 'Title',
@@ -40,6 +40,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
   series: 'Series',
   added: 'Recently added',
   rating: 'Rating',
+  lists: 'Most listed',
 }
 
 export function buildRows(
@@ -170,6 +171,9 @@ export const SORTS: Record<SortKey, (a: BookRow, b: BookRow) => number> = {
   // Highest Hardcover rating first; unrated books sink to the bottom.
   rating: (a, b) =>
     (b.meta?.rating ?? -1) - (a.meta?.rating ?? -1) || a.title.localeCompare(b.title),
+  // On the most Hardcover lists first — a "most canonical / talked-about" sort.
+  lists: (a, b) =>
+    (b.meta?.listsCount ?? -1) - (a.meta?.listsCount ?? -1) || a.title.localeCompare(b.title),
 }
 
 // prompts/31 Part B — "quick wins" score for the want-to-read view: a short,

@@ -75,6 +75,7 @@ query BookBrainSimilarByIsbn($isbn: String!) {
       book_category_id
       literary_type_id
       cached_tags
+      lists_count
       description
     }
   }
@@ -140,6 +141,9 @@ def _book_meta(book: dict) -> dict:
     warnings = _tag_names(book.get("cached_tags"), "Content Warning", _WARNING_TAGS)
     if warnings:
         meta["contentWarnings"] = warnings
+    lists_count = book.get("lists_count")
+    if isinstance(lists_count, int) and lists_count > 0:
+        meta["listsCount"] = lists_count
     description = book.get("description")
     if isinstance(description, str) and description.strip():
         meta["description"] = " ".join(description.split())[:_DESCRIPTION_CAP]

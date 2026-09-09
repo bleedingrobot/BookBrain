@@ -38,8 +38,8 @@ INDEX_FILENAME = "bookbrain-index.json"
 # v5 adds per-entry `isbn13` inside the `series` map's book lists (so the
 # viewer can cover a not-yet-owned release — prompts/27 Part 1);
 # v6 adds per-book `contentWarnings` to `meta` and surfaces `moods` in the
-# viewer (prompts/31 Part A).
-INDEX_VERSION = 6
+# viewer (prompts/31 Part A); v7 adds `listsCount` (prompts/31 Part E1).
+INDEX_VERSION = 7
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
 # facet. `description` stays out — the viewer already gets a blurb from the
@@ -54,6 +54,7 @@ _META_KEYS = (
     "genres",
     "moods",
     "contentWarnings",
+    "listsCount",
 )
 
 # prompts/25 Phase 3 — kept out of the main index (which is ~1MB) so the

@@ -209,26 +209,18 @@ backend test for the goal query mapping; build + lint green.
 
 ---
 
-## Part D — followed authors → release priority
+## Part D — followed authors → release priority — SKIPPED 2026-09-10 (no data)
 
-**Extends `prompts/27`.** The release strips currently rank by *inferred*
-author interest (`readingProfile` = how many of their books you've read). An
-explicit **follow** is a stronger signal.
+Live schema check: **Hardcover has no followed-authors data reachable by a
+PAT.** The `users`/`me` type exposes `followed_lists`, `followed_prompts`,
+`followed_users`, `follows` — but **no `followed_authors`**, and `me { follows }`
+returns `[]` with or without a `followable_type: "Author"` filter (the site's
+author "Follow" button doesn't surface here). Nothing to build. The release
+strips keep ranking by `readingProfile` (Part 2) — the inferred signal is the
+only one available.
 
-- **Backend** `hardcover_new_releases_service` (or the reading service — pick
-  the one that already has a `me {` query) — pull `me { followed_authors { ... } }`
-  (confirm field; might be `user_followed_authors`). Store the set of followed
-  author names/ids in the new-releases sidecar (`followedAuthors: string[]`) or
-  the reading sidecar — whichever the release feed already reads.
-- **Viewer** `App.tsx` — in the `recentReleaseFeed` / `upcomingReleaseFeed`
-  sort, bump `tier` for a followed author above the read-count tiers
-  (`followed` → tier 4, then `min(readCount, 3)`).
-- Small: also show a `following` dot on the `<ReleaseCard>` for a followed
-  author's book.
-
-**Done when:** a followed author's upcoming book sorts to the front of the
-strip ahead of a heavily-read-but-unfollowed author; sidecar carries the list;
-build + lint green.
+Silver lining for Parts E/F: `followed_lists` and `followed_prompts` **are**
+readable — a strong signal for list- and prompt-based discovery there.
 
 ---
 
@@ -237,13 +229,15 @@ build + lint green.
 Public Hardcover lists ("Best Cozy Fantasy 2025", "If you liked Dungeon
 Crawler Carl"). **Catalogue data — shared-viewer safe.** Two payoffs:
 
-### E1 — "on N lists" signal
-- **Backend** `hardcover_recs_service` — the first per-book call can also ask
-  `book { lists_count }` (or count via `list_books_aggregate`). One extra
-  field, no extra call. → `meta.listsCount`. Index v6 (fold into Part A's bump
-  if done together) / v7.
-- **Viewer** — `BookRow.tsx` a muted *"on 14 lists"* line in the expanded
-  section; optional sort "most-listed".
+### E1 — "on N lists" signal — SHIPPED 2026-09-10
+`book { lists_count }` added to `hardcover_recs_service._BOOK_BY_ISBN` (no
+extra call). `_book_meta` → `meta.listsCount` (only when > 0). `_META_KEYS` +=
+`listsCount`; **INDEX_VERSION → 7**. Viewer `IndexMeta.listsCount`; `BookRow`
+expanded stats line shows "· on 3,223 lists"; `SORTS.lists` / `SORT_LABELS`
+"Most listed" (auto-appears in the sort dropdown). Backend 678 + corpus green;
+viewer 177 + build + lint green. **Live effect needs a full recs re-sync**
+(`POST /api/library/book-recs/refresh?stale_days=0`) — same as Part A's
+content warnings; the today backfill predates both fields.
 
 ### E2 — list-based discovery
 - **Backend** a new `hardcover_lists_service` + `bookbrain-lists.json` sidecar:

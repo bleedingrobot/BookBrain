@@ -50,6 +50,7 @@ function metaPages(pages: number): BookRow['meta'] {
     genres: [],
     moods: [],
     contentWarnings: [],
+    listsCount: null,
   }
 }
 

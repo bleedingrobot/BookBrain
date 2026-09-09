@@ -44,6 +44,7 @@ describe('normalise', () => {
             genres: ['Fantasy', 5 as unknown as string],
             moods: ['dark'],
             contentWarnings: ['Violence', 7 as unknown as string],
+            listsCount: 3223,
           },
         },
         bad: { title: 'Bad', meta: { rating: 'nope' as unknown as number, genres: 'x' as unknown as string[] } },
@@ -58,6 +59,7 @@ describe('normalise', () => {
       genres: ['Fantasy'],
       moods: ['dark'],
       contentWarnings: ['Violence'],
+      listsCount: 3223,
     })
     expect(out.entries.bad.meta).toBeNull()
   })

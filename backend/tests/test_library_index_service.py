@@ -135,7 +135,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 6
+    assert payload["version"] == 7
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -214,6 +214,7 @@ async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
             "genres": ["Fantasy", "Epic Fantasy"],
             "moods": ["dark", "tense"],
             "contentWarnings": ["Violence", "Death"],
+            "listsCount": 3223,
             "description": "A boy hides who he is.",  # not carried into the index
         },
     }
@@ -235,6 +236,7 @@ async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
         "genres": ["Fantasy", "Epic Fantasy"],
         "moods": ["dark", "tense"],
         "contentWarnings": ["Violence", "Death"],
+        "listsCount": 3223,
     }
     assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
 

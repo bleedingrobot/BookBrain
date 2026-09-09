@@ -98,6 +98,7 @@ async def test_stores_curated_meta(db_session) -> None:
             "pages": 541,
             "book_category_id": 1,
             "literary_type_id": 1,
+            "lists_count": 3223,
             "cached_tags": {
                 "Genre": [{"tag": "Fantasy", "count": 9}, {"tag": "Epic Fantasy", "count": 4}],
                 "Mood": [{"tag": "dark", "count": 3}],
@@ -122,6 +123,7 @@ async def test_stores_curated_meta(db_session) -> None:
         "genres": ["Fantasy", "Epic Fantasy"],
         "moods": ["dark"],
         "contentWarnings": ["Violence", "Slavery"],
+        "listsCount": 3223,
         "description": "Kelsier recruits a crew.",
     }
 

@@ -22,6 +22,9 @@ export interface IndexMeta {
   // Crowd-sourced content warnings (prompts/31 Part A). Raw Hardcover tag
   // names, shown in a collapsed disclosure — informational, not a gate.
   contentWarnings: string[]
+  // How many Hardcover lists this book appears on (prompts/31 Part E1) — a
+  // rough "how canonical / talked-about is this" signal.
+  listsCount: number | null
 }
 
 export interface IndexEntry {
@@ -92,6 +95,7 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     genres: strings(raw.genres),
     moods: strings(raw.moods),
     contentWarnings: strings(raw.contentWarnings),
+    listsCount: typeof raw.listsCount === 'number' ? raw.listsCount : null,
   }
   const empty =
     meta.rating == null &&
@@ -101,7 +105,8 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     meta.literaryType == null &&
     meta.genres.length === 0 &&
     meta.moods.length === 0 &&
-    meta.contentWarnings.length === 0
+    meta.contentWarnings.length === 0 &&
+    meta.listsCount == null
   return empty ? null : meta
 }
 
