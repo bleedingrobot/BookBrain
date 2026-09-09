@@ -362,14 +362,14 @@ mis-identification guards). The rest of that session's ideas, for later:
     Read / rated / want-to-read, pulled read-only (his own token/data/tool —
     the deliberate exception to "catalogue data only") into
     `bookbrain-reading.json` → Read/Unread/Want filters + rating badges.
-    **Phase 1 shipped 2026-09-09** — `hardcover_reading_service` + sidecar +
-    nightly + viewer badges/chips; 385 books matched live (231 read / 120
-    want / 29 reading). **Phase 2 (the payoff, not started)**: "read next in
-    a series you own", an author-frequency signal for the release strips,
-    want-to-read ↔ wishlist — feeds the two items below.
-  - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,
-    you own #2" on the home screen; "you own #3 but not #1–2" → offer to add to
-    the wishlist. **Needs `prompts/30` (reading status) as the input.**
+    **Phases 1 + 2 shipped 2026-09-09** — P1: `hardcover_reading_service` +
+    sidecar + nightly + viewer badges/chips (385 books matched: 231 read /
+    120 want / 29 reading). P2: `nextInSeries` + `<ReadNext>` "read next in a
+    series you own" strip (~56 candidates, most-recently-active first);
+    `readingProfile` weights the release strips by how much you read the
+    author; `★ Favourites` filter (rating ≥ 4). **Not done**: want-to-read ↔
+    wishlist (needs the backend to expose the unmatched list). Not
+    browser-verified.
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."
