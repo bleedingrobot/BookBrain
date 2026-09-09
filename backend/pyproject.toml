@@ -20,6 +20,9 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "cryptography>=43.0",
     "httpx>=0.27",
+    # prompts/32 — parse the SFF news RSS/Atom feeds server-side (the static
+    # viewer can't: CORS). Pure-Python, no C deps.
+    "feedparser>=6.0",
     "pillow>=10.4",
     "imagehash>=4.3",
     # prompts/29 — local sentence embeddings for the viewer's semantic search.

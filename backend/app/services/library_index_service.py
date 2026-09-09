@@ -69,6 +69,10 @@ _JSON_MIME = "application/json"
 # wishlisted. Its own sidecar (like recommendations) so it's a lazy fetch.
 NEW_RELEASES_FILENAME = "bookbrain-new-releases.json"
 NEW_RELEASES_VERSION = 1
+
+# prompts/32 — the SFF news feed sidecar.
+NEWS_FILENAME = "bookbrain-news.json"
+NEWS_VERSION = 1
 _NEW_RELEASES_CAP = 60
 _WISHLIST_FILENAME = "bookbrain-wishlist.json"
 
@@ -554,6 +558,35 @@ async def regenerate_new_releases(
         return total
     except Exception:
         logger.exception("new releases refresh failed")
+        return None
+
+
+async def regenerate_news(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """prompts/32 — fetch the SFF news feeds and write bookbrain-news.json.
+    Best-effort, never raises. The fetch needs no creds; the Drive write does."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        from app.services import sff_news_service
+
+        items = await sff_news_service.fetch_news()
+        if not items:
+            return None
+        payload = {
+            "version": NEWS_VERSION,
+            "generatedAt": datetime.now(UTC).isoformat(),
+            "items": items,
+        }
+        provider = DriveProvider(build_drive_service(creds))
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, NEWS_FILENAME, payload
+        )
+        logger.info("sff news sidecar: %d items", len(items))
+        return len(items)
+    except Exception:
+        logger.exception("sff news refresh failed")
         return None
 
 

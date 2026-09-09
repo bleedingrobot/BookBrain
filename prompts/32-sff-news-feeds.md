@@ -55,7 +55,21 @@ Attribute every item to its source visibly.
 
 ---
 
-## Part 1 — backend: fetch, parse, sidecar
+## Part 1 — backend: fetch, parse, sidecar — SHIPPED 2026-09-10
+
+`feedparser>=6.0` added. `app/services/sff_news_service.py` — `_FEEDS` (the 9
+below; **`www.fantasybookcritic.com` no longer resolves → use
+`fantasybookcritic.blogspot.com`**), `fetch_news()` fans out with
+`asyncio.gather`, `feedparser.parse` in a thread, per-feed best-effort,
+newest 6/feed, HTML unescape→strip→unescape, WordPress "The post…" +
+"Continue reading →" + "Read more" trailers stripped, dedupe by link, sort by
+`published` desc, cap 50. `library_index_service.regenerate_news` +
+`NEWS_FILENAME`/`NEWS_VERSION`. Nightly step (no token needed, never fails
+the run) + `POST /api/library/news`. Live: **50 items from all 9 feeds**.
+Tests: `test_sff_news_service.py` (merge/sort/dedupe/clean, dead feed
+skipped, all-down → empty, `_plain`). Backend 676 + corpus green.
+
+### Original notes
 
 ### Dependency
 Add **`feedparser>=6.0`** to `pyproject.toml` `dependencies`. Pure-Python,

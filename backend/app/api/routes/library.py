@@ -37,6 +37,7 @@ from app.services.library_index_service import (
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_new_releases,
+    regenerate_news,
     regenerate_reading,
     regenerate_recommendations,
 )
@@ -189,6 +190,27 @@ async def refresh_new_releases_file(
     if count is None:
         raise HTTPException(status_code=500, detail="new-releases refresh failed — see logs")
     return {"books": count}
+
+
+@router.post("/news")
+async def refresh_news_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """prompts/32 — fetch the curated SFF news feeds and write
+    bookbrain-news.json (the viewer's "From around the SFF world" section).
+    No API token needed; best-effort per feed."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    count = await regenerate_news(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="news refresh failed — see logs")
+    return {"items": count}
 
 
 @router.post("/reading")
