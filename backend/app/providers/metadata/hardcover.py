@@ -165,12 +165,23 @@ class _TokenBucket:
 
 def _is_daily_limit(response: httpx.Response) -> bool:
     """A 429 for the *daily* quota (not the per-minute burst). Header forms
-    seen live: `x-ratelimit-daily-remaining: 0` and
-    `ratelimit: "daily";r=0;t=65817`."""
+    seen live: `x-ratelimit-daily-remaining: 0` and a structured `RateLimit`
+    header with comma-separated policies, e.g.
+    `"Supporter";r=0;t=41, "daily";r=46892;t=2837`.
+
+    The per-minute ("Supporter") bucket runs dry constantly during a bulk
+    backfill; that is NOT a reason to abort the whole run. Only stop when the
+    **daily** policy's own `r=` is 0 (checked segment-by-segment — a naive
+    `"r=0" in header` matched the Supporter segment and aborted every
+    backfill early)."""
     if response.headers.get("x-ratelimit-daily-remaining") == "0":
         return True
-    rl = response.headers.get("ratelimit", "").replace(" ", "")
-    return '"daily"' in rl and "r=0" in rl
+    rl = response.headers.get("ratelimit", "")
+    for segment in rl.split(","):
+        seg = segment.strip()
+        if seg.lower().startswith('"daily"'):
+            return any(p.strip() == "r=0" for p in seg.split(";"))
+    return False
 
 
 async def hardcover_graphql(
@@ -193,7 +204,8 @@ async def hardcover_graphql(
         "User-Agent": _USER_AGENT,
     }
     payload = {"query": query, "variables": variables}
-    for attempt in range(2):
+    attempts = 3
+    for attempt in range(attempts):
         await bucket.take()
         try:
             response = await client.post(ENDPOINT, json=payload, headers=headers)
@@ -204,7 +216,7 @@ async def hardcover_graphql(
             if _is_daily_limit(response):
                 logger.warning("hardcover daily rate limit exhausted — aborting run")
                 raise HardcoverRateLimited
-            if attempt == 0:
+            if attempt < attempts - 1:
                 retry_after = _retry_after_seconds(response)
                 logger.info("hardcover burst-limited, retrying in %ss", retry_after)
                 await asyncio.sleep(retry_after)

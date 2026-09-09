@@ -196,7 +196,7 @@ async def test_graphql_errors_response_yields_empty() -> None:
 
 
 @respx.mock
-async def test_rate_limited_retries_once_then_gives_up() -> None:
+async def test_burst_limit_retries_then_gives_up() -> None:
     route = respx.post(ENDPOINT).mock(
         return_value=httpx.Response(429, headers={"Retry-After": "0"}, json={})
     )
@@ -207,7 +207,28 @@ async def test_rate_limited_retries_once_then_gives_up() -> None:
         results = await provider.search_by_isbn("9780765311788")
 
     assert results == []
-    assert route.call_count == 2
+    assert route.call_count == 3  # two retries, then give up
+
+
+@respx.mock
+async def test_a_dry_per_minute_bucket_is_not_a_daily_limit() -> None:
+    # The RateLimit header carries both policies; the per-minute ("Supporter")
+    # one is at r=0 but the daily one is fine — a bulk caller must NOT abort.
+    route = respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            429,
+            headers={
+                "Retry-After": "0",
+                "ratelimit": '"Supporter";r=0;t=41, "daily";r=46892;t=2837',
+            },
+            json={},
+        )
+    )
+    bucket = _TokenBucket(rate_per_sec=1e6, burst=1e6)
+    async with httpx.AsyncClient() as client:
+        result = await hardcover_graphql(client, "t", "query{x}", {}, bucket)
+    assert result is None  # gave up after retries, but did NOT raise
+    assert route.call_count == 3
 
 
 @respx.mock
