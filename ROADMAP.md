@@ -367,9 +367,14 @@ mis-identification guards). The rest of that session's ideas, for later:
     120 want / 29 reading). P2: `nextInSeries` + `<ReadNext>` "read next in a
     series you own" strip (~56 candidates, most-recently-active first);
     `readingProfile` weights the release strips by how much you read the
-    author; `★ Favourites` filter (rating ≥ 4). **Not done**: want-to-read ↔
-    wishlist (needs the backend to expose the unmatched list). Not
-    browser-verified.
+    author; `★ Favourites` filter (rating ≥ 4). **Phase 3 (write-back) shipped
+    2026-09-09** — James asked for two-way sync. Viewer queues status changes
+    (expanded-row "Reading status" buttons + auto-"read" on finishing an epub)
+    to `bookbrain-reading-pending.json`; backend `apply_pending` resolves the
+    book and `insert`/`update_user_book`s it (idempotent), flushed on every
+    `regenerate_reading`. Status only — ratings/reviews stay read-only. **Not
+    done**: want-to-read ↔ wishlist (needs the backend to expose the unmatched
+    list). Not browser-verified.
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."

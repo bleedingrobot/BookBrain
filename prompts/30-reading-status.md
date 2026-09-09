@@ -32,9 +32,8 @@ catalogue data. This task is the deliberate exception, and it's defensible
   anonymous/aggregate community data.
 
 **Rules for this task:**
-- **Read only.** No write-back to Hardcover in this task (marking a book read
-  from the reader is a separate, more licence-sensitive question — note it as
-  a follow-on, don't build it).
+- ~~**Read only.**~~ Phase 3 (shipped 2026-09-09) adds status write-back —
+  still James's own account/token/books, status only.
 - The sidecar carries a `reader` name; the viewer labels the status with it.
 - If James ever opens the viewer to a wider audience than his household,
   this gets revisited — leave a comment saying so where the sidecar is built.
@@ -146,12 +145,31 @@ eyeball the Read chip + badges in the deployed viewer.
 - **Your favourites** — a filter/sort for your 4–5★ books; could seed the
   "readers also liked" pool weighting.
 
-## Phase 3 — write-back (only if James asks)
+## Phase 3 — write-back — SHIPPED 2026-09-09 (James asked: "have it go both ways")
 
-Finishing an `.epub` in the reader → set `status_id: 3` on Hardcover. This is
-*writing* user data through the API — a different licence question (acting as
-a Hardcover client) and needs its own look at their write terms. Not in scope
-unless explicitly requested.
+Two-way now. The viewer can't call Hardcover (static site, token is a backend
+secret), so:
+
+- **Viewer** writes a `bookbrain-reading-pending.json` queue to the Drive
+  library folder. Sources: the expanded row's "Reading status" buttons
+  (`onMarkRead` → `queueReadingChange`), and finishing an `.epub` in the
+  reader (progress ≥ `FINISHED_FRACTION` on close → auto `markReadingStatus`
+  `'read'`). The change is overlaid on the reading badges immediately with a
+  `pending` flag ("syncing to Hardcover…"). Marking read also logs an
+  `activity` event (`'read'`).
+- **Backend** `hardcover_reading_service.apply_pending(changes)` resolves each
+  book by ISBN (then title/author search), reads the existing `user_book`,
+  and `insert_user_book` / `update_user_book` with `status_id` (+ today's
+  `last_read_date` for `read`). Idempotent — a change already matching
+  Hardcover counts as applied. `regenerate_reading` flushes the queue first,
+  drops applied entries, then re-pulls and rewrites `bookbrain-reading.json`.
+  Runs on `POST /api/library/reading` and nightly.
+
+*Licence:* still the personal-automation case — James's own account, own
+token, own books, only *status* written (never reviews or anyone else's
+data). The module docstring carries the note.
+
+Only status writes. Ratings/reviews stay read-only.
 
 ## Constraints / gotchas
 

@@ -5,7 +5,7 @@ import pytest
 import respx
 
 from app.providers.metadata.hardcover import ENDPOINT
-from app.services.hardcover_reading_service import fetch_reading
+from app.services.hardcover_reading_service import apply_pending, fetch_reading
 
 
 @pytest.fixture(autouse=True)
@@ -91,3 +91,102 @@ async def test_a_failure_keeps_what_came_back() -> None:
     respx.post(ENDPOINT).mock(side_effect=handler)
     rows, user = await fetch_reading()
     assert len(rows) == 100  # page 1 survived the page-2 failure
+
+
+# --- prompts/30 Phase 3: write-back --------------------------------------------
+
+
+def _change(drive_id="d1", *, isbn="9990000000001", status="read", title="A Book"):
+    return {
+        "driveFileId": drive_id,
+        "isbn13": isbn,
+        "title": title,
+        "author": "An Author",
+        "status": status,
+        "at": "2026-09-09T00:00:00Z",
+        "by": "James",
+    }
+
+
+def _writeback_route(*, existing_status_id=None, book_id=555, mutations: list | None = None):
+    """Routes the ISBN lookup, the existing-user_book query, and the mutation."""
+    mutations = mutations if mutations is not None else []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        q = body["query"]
+        if "editions(" in q and "isbn" in q:
+            return httpx.Response(200, json={"data": {"editions": [{"book": {"id": book_id}}]}})
+        if "user_books(where:" in q:
+            ubs = (
+                [{"id": 42, "status_id": existing_status_id}]
+                if existing_status_id is not None
+                else []
+            )
+            return httpx.Response(200, json={"data": {"me": [{"user_books": ubs}]}})
+        if "update_user_book" in q:
+            mutations.append(("update", body["variables"]))
+            return httpx.Response(200, json={"data": {"update_user_book": {"id": 42}}})
+        if "insert_user_book" in q:
+            mutations.append(("insert", body["variables"]))
+            return httpx.Response(200, json={"data": {"insert_user_book": {"id": 99}}})
+        return httpx.Response(200, json={"data": {}})
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    return mutations
+
+
+@respx.mock
+async def test_apply_pending_inserts_when_no_existing_user_book() -> None:
+    muts = _writeback_route(existing_status_id=None)
+    result = await apply_pending([_change(status="read")])
+    assert result == {"applied": ["d1"], "failed": []}
+    assert muts[0][0] == "insert"
+    assert muts[0][1]["obj"]["book_id"] == 555
+    assert muts[0][1]["obj"]["status_id"] == 3
+    assert "last_read_date" in muts[0][1]["obj"]
+
+
+@respx.mock
+async def test_apply_pending_updates_when_status_differs() -> None:
+    muts = _writeback_route(existing_status_id=2)  # currently "reading"
+    result = await apply_pending([_change(status="read")])
+    assert result == {"applied": ["d1"], "failed": []}
+    assert muts[0][0] == "update"
+    assert muts[0][1]["id"] == 42
+    assert muts[0][1]["obj"]["status_id"] == 3
+
+
+@respx.mock
+async def test_apply_pending_is_idempotent_when_already_matching() -> None:
+    muts = _writeback_route(existing_status_id=3)  # already "read"
+    result = await apply_pending([_change(status="read")])
+    assert result == {"applied": ["d1"], "failed": []}
+    assert muts == []  # no mutation issued
+
+
+@respx.mock
+async def test_apply_pending_reports_failure_when_book_cannot_be_resolved() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        q = body["query"]
+        if "editions(" in q:
+            return httpx.Response(200, json={"data": {"editions": []}})
+        if "search(" in q:
+            return httpx.Response(200, json={"data": {"search": {"results": {"hits": []}}}})
+        return httpx.Response(200, json={"data": {}})
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    result = await apply_pending([_change(isbn=None)])
+    assert result == {"applied": [], "failed": ["d1"]}
+
+
+@respx.mock
+async def test_apply_pending_no_token_is_noop() -> None:
+    from app.core.config import get_settings
+
+    get_settings().hardcover_api_token = ""
+    try:
+        assert await apply_pending([_change()]) == {"applied": [], "failed": []}
+    finally:
+        get_settings().hardcover_api_token = "tok"

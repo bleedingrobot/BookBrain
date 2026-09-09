@@ -39,7 +39,12 @@ and compilation/partial filtering that Google Books and Open Library don't.
   characters) is free to use — "we make no copyright or proprietary rights
   over this data". **User-owned data (reviews, ratings, lists, reading
   journals, goals) may NOT be used by a public-facing or commercial product**
-  — BookBrain must only ever read catalogue data. Not for training publicly-
+  — BookBrain reads catalogue data on the shared viewer. The one exception is
+  `prompts/30` (reading status): James's *own* `user_books`, via his *own*
+  PAT, for his *own* self-hosted tool, never redistributed — read in Phase 1,
+  and **written back (status only) in Phase 3, shipped 2026-09-09**. That's
+  the personal-automation case a PAT exists for; it does not generalise to
+  anyone else's data or a wider audience. Not for training publicly-
   available/commercial LLMs (feeding metadata into a Claude *identification*
   prompt is inference, not training — fine). If Hardcover cover images are
   ever displayed publicly, the site needs a DMCA takedown policy — but

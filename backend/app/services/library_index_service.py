@@ -74,6 +74,9 @@ _OCTET_MIME = "application/octet-stream"
 # hardcover_reading_service's licence note.
 READING_FILENAME = "bookbrain-reading.json"
 READING_VERSION = 1
+# prompts/30 Phase 3 — the viewer queues "mark read" here; a sync applies it
+# to Hardcover then drops the applied entries.
+READING_PENDING_FILENAME = "bookbrain-reading-pending.json"
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -603,17 +606,59 @@ async def build_reading_payload(
     }
 
 
+def _read_pending_reading(provider: DriveProvider, library_folder_id: str) -> list[dict]:
+    """The viewer's queued reading-status changes. Best-effort."""
+    try:
+        found = next(
+            (
+                f
+                for f in provider.list_files_in_folder(library_folder_id)
+                if f["name"] == READING_PENDING_FILENAME
+            ),
+            None,
+        )
+        if found is None:
+            return []
+        raw = json.loads(provider.download_file(found["id"]).decode("utf-8"))
+        return [
+            c
+            for c in raw.get("changes") or []
+            if isinstance(c, dict) and isinstance(c.get("driveFileId"), str)
+        ]
+    except Exception:
+        logger.exception("reading: could not read the pending-changes queue")
+        return []
+
+
 async def regenerate_reading(
     creds: Credentials | None, library_folder_id: str | None
 ) -> int | None:
-    """Fetch the owner's Hardcover reading data and write
-    bookbrain-reading.json. Best-effort, never raises (same contract as
-    regenerate_recommendations). No-op without a Hardcover token."""
+    """prompts/30. Two-way: apply any queued write-back changes to Hardcover,
+    drop the applied ones from the Drive queue, then re-pull the owner's
+    Hardcover reading data and write bookbrain-reading.json. Best-effort,
+    never raises. No-op without a Hardcover token."""
     if creds is None or not library_folder_id:
         return None
     try:
         from app.core.config import get_settings
         from app.services import hardcover_reading_service
+
+        provider = DriveProvider(build_drive_service(creds))
+
+        # Phase 3 — flush the viewer's queued "mark read" etc. to Hardcover first.
+        pending = await asyncio.to_thread(_read_pending_reading, provider, library_folder_id)
+        if pending:
+            result = await hardcover_reading_service.apply_pending(pending)
+            done = set(result["applied"])
+            left = [c for c in pending if c["driveFileId"] not in done]
+            await asyncio.to_thread(
+                _write_json_file,
+                provider,
+                library_folder_id,
+                READING_PENDING_FILENAME,
+                {"version": 1, "changes": left},
+            )
+            logger.info("reading write-back: %d applied, %d left queued", len(done), len(left))
 
         rows, username = await hardcover_reading_service.fetch_reading()
         if not rows:
@@ -621,7 +666,6 @@ async def regenerate_reading(
         reader = (get_settings().hardcover_reader_name or "").strip() or username or "reader"
         async with async_session_factory() as session:
             payload = await build_reading_payload(session, rows, reader)
-        provider = DriveProvider(build_drive_service(creds))
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, READING_FILENAME, payload
         )

@@ -17,6 +17,9 @@ export interface ReadingEntry {
   rating?: number
   readDate?: string
   readCount?: number
+  // prompts/30 Phase 3 — set locally when the change is queued but hasn't
+  // reached Hardcover yet.
+  pending?: boolean
 }
 
 export interface Reading {

@@ -12,13 +12,49 @@ from app.data.models import (
     MetadataSource,
     Series,
 )
+import json
+
 from app.services.library_index_service import (
     _plain_text,
+    _read_pending_reading,
     build_index_payload,
     build_new_releases_payload,
     build_reading_payload,
     build_recommendations_payload,
 )
+
+
+class _FakeProvider:
+    """Minimal stand-in: one folder, files addressed by name."""
+
+    def __init__(self, files: dict[str, bytes]):
+        self._by_name = files
+        self._ids = {name: f"id-{name}" for name in files}
+
+    def list_files_in_folder(self, _folder_id: str):
+        return [{"id": self._ids[n], "name": n} for n in self._by_name]
+
+    def download_file(self, file_id: str) -> bytes:
+        name = next(n for n, i in self._ids.items() if i == file_id)
+        return self._by_name[name]
+
+
+def test_read_pending_reading_filters_to_valid_changes() -> None:
+    raw = {
+        "version": 1,
+        "changes": [
+            {"driveFileId": "d1", "status": "read", "title": "A"},
+            {"status": "read"},  # no driveFileId → dropped
+            "nonsense",  # not a dict → dropped
+        ],
+    }
+    provider = _FakeProvider({"bookbrain-reading-pending.json": json.dumps(raw).encode()})
+    out = _read_pending_reading(provider, "folder")
+    assert [c["driveFileId"] for c in out] == ["d1"]
+
+
+def test_read_pending_reading_missing_file_is_empty() -> None:
+    assert _read_pending_reading(_FakeProvider({}), "folder") == []
 
 
 def test_plain_text_strips_html_and_caps() -> None:

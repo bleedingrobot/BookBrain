@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { groupHeading, type BookRow as Row, type SendStatus, type SortKey } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { RecBook, Recommendations } from '../lib/recommendations'
+import type { ReadingStatus } from '../lib/reading'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { SentMap } from '../lib/sentTracker'
 import type { KoboDevice } from '../lib/settings'
@@ -34,6 +35,7 @@ interface Props {
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
   onRead: (row: Row) => void
+  onMarkRead?: (row: Row, status: ReadingStatus) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
   onFilterGenre: (genre: string) => void
@@ -63,6 +65,7 @@ export function BookList({
   onSend,
   onDownload,
   onRead,
+  onMarkRead,
   onFilterAuthor,
   onFilterSeries,
   onFilterGenre,
@@ -156,6 +159,7 @@ export function BookList({
                 onSend={onSend}
                 onDownload={onDownload}
                 onRead={onRead}
+                onMarkRead={onMarkRead}
                 onFilterAuthor={onFilterAuthor}
                 onFilterSeries={onFilterSeries}
                 onFilterGenre={onFilterGenre}

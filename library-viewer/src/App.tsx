@@ -52,7 +52,15 @@ import {
   fetchNewReleases,
   type NewReleases,
 } from './lib/newReleases'
-import { EMPTY_READING, fetchReading, readingProfile, type Reading } from './lib/reading'
+import {
+  EMPTY_READING,
+  fetchReading,
+  readingProfile,
+  type Reading,
+  type ReadingStatus,
+} from './lib/reading'
+import { loadPendingReading, queueReadingChange } from './lib/readingQueue'
+import { FINISHED_FRACTION, getProgress } from './lib/readingProgress'
 import { ReadNext } from './components/ReadNext'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
@@ -130,8 +138,10 @@ export default function App() {
   const newReleasesLoadedRef = useRef(false)
   const [showNewReleases, setShowNewReleases] = useState(false)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
-  // alongside the new-releases sidecar.
+  // alongside the new-releases sidecar. `pendingReading` overlays changes
+  // made here that haven't synced to Hardcover yet (Phase 3).
   const [reading, setReading] = useState<Reading>(EMPTY_READING)
+  const [pendingReading, setPendingReading] = useState<Map<string, ReadingStatus>>(new Map())
   const [readingBookId, setReadingBookId] = useState<string | null>(null)
   // Bumped when the reader closes so the "Continue reading" strip re-reads
   // the (localStorage-backed) reading progress.
@@ -205,12 +215,58 @@ export default function App() {
     const run = () => {
       void fetchNewReleases(token, folderId).then(setNewReleases)
       void fetchReading(token, folderId).then(setReading)
+      void loadPendingReading(token, folderId).then(setPendingReading)
     }
     if (ric) ric(run)
     else setTimeout(run, 1200)
   }, [token, settings])
 
-  const allRows = useMemo(() => buildRows(files ?? [], index, reading), [files, index, reading])
+  // The reading data the UI sees: Hardcover's, with any locally-queued
+  // (not-yet-synced) change layered on top and flagged `pending`.
+  const mergedReading = useMemo<Reading>(() => {
+    if (pendingReading.size === 0) return reading
+    const books = { ...reading.books }
+    for (const [id, status] of pendingReading) {
+      books[id] = { ...(books[id] ?? { status: null }), status, pending: true }
+    }
+    return { ...reading, books }
+  }, [reading, pendingReading])
+
+  const allRows = useMemo(
+    () => buildRows(files ?? [], index, mergedReading),
+    [files, index, mergedReading],
+  )
+
+  async function markReadingStatus(row: (typeof allRows)[number], status: ReadingStatus) {
+    if (!token || !settings) return
+    setPendingReading((m) => new Map(m).set(row.id, status))
+    try {
+      await queueReadingChange(token, settings.libraryFolderId, {
+        driveFileId: row.id,
+        isbn13: row.isbn,
+        title: row.title,
+        author: row.author,
+        status,
+        at: new Date().toISOString(),
+        by: viewerName ?? '',
+      })
+      if (status === 'read' && viewerName) {
+        void logActivity(
+          token,
+          settings.libraryFolderId,
+          viewerName,
+          'read',
+          row.author ? `${row.title} — ${row.author}` : row.title,
+        )
+      }
+    } catch {
+      setPendingReading((m) => {
+        const next = new Map(m)
+        next.delete(row.id)
+        return next
+      })
+    }
+  }
 
   async function requestBook(rec: RecBook) {
     if (!token || !settings || !viewerName) return 'already-listed' as const
@@ -707,6 +763,15 @@ export default function App() {
           book={readingBook}
           onAuthError={lib.flagAuthError}
           onClose={() => {
+            // Finished the book in the reader → mark it read on Hardcover too.
+            const p = getProgress(readingBook.id)
+            if (
+              p &&
+              p.percent >= FINISHED_FRACTION &&
+              readingBook.reading?.status !== 'read'
+            ) {
+              void markReadingStatus(readingBook, 'read')
+            }
             setReadingBookId(null)
             setProgressTick((t) => t + 1)
           }}
@@ -1109,6 +1174,7 @@ export default function App() {
               })
           }
           onRead={(row) => setReadingBookId(row.id)}
+          onMarkRead={markReadingStatus}
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}
           onFilterGenre={filterToGenre}

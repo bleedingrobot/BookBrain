@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sendKey, type BookRow as Row, type SendStatus } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { RecBook } from '../lib/recommendations'
+import type { ReadingStatus } from '../lib/reading'
 import { monthYear } from '../lib/releases'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
@@ -31,10 +32,19 @@ interface Props {
   onSend: (file: DriveFile, device: KoboDevice) => void
   onDownload: (file: DriveFile) => void
   onRead: (row: Row) => void
+  // prompts/30 Phase 3 — queue a reading-status change for Hardcover write-back.
+  onMarkRead?: (row: Row, status: ReadingStatus) => void
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
   onFilterGenre: (genre: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
+}
+
+const READING_STATUS_LABELS: Record<ReadingStatus, string> = {
+  read: 'Read',
+  reading: 'Reading',
+  want: 'Want to read',
+  dnf: 'DNF',
 }
 
 // A star rating like "★ 4.4" — Hardcover's community average.
@@ -161,6 +171,7 @@ export function BookRow({
   onSend,
   onDownload,
   onRead,
+  onMarkRead,
   onFilterAuthor,
   onFilterSeries,
   onFilterGenre,
@@ -374,6 +385,29 @@ export function BookRow({
                   >
                     Select all {authorPeers.length} by {row.author}
                   </button>
+                )}
+              </div>
+            )}
+            {onMarkRead && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-medium tracking-wide text-neutral-400 uppercase">
+                  Reading status
+                </span>
+                {(Object.keys(READING_STATUS_LABELS) as ReadingStatus[]).map((s) => {
+                  const active = row.reading?.status === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`btn btn-xs ${active ? 'btn-primary' : 'btn-neutral'}`}
+                      onClick={() => onMarkRead(row, s)}
+                    >
+                      {READING_STATUS_LABELS[s]}
+                    </button>
+                  )
+                })}
+                {row.reading?.pending && (
+                  <span className="text-xs text-neutral-400">syncing to Hardcover…</span>
                 )}
               </div>
             )}

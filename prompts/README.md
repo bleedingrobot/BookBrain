@@ -73,8 +73,8 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   reading data into a `bookbrain-reading.json` sidecar → Read/Unread/Want
   filters + rating badges in the viewer. Phase 2 unlocks "read next in a
   series you own" + an author-frequency signal for the release strips.
-  **Read-only** (licence: James's own data / own token / own tool; no
-  write-back). **Phase 1 shipped 2026-09-09** — `hardcover_reading_service`
+  Licence: James's own data / own token / own tool. **Phase 1 shipped
+  2026-09-09** — `hardcover_reading_service`
   (paged `me{user_books}`) + `build_reading_payload` (ISBN then title match) +
   nightly + `POST /library/reading`; viewer `lib/reading.ts` + `ReadingBadge`
   + Read/Unread/Want chips. **Live: 385 matched** (231 read / 120 want / 29
@@ -82,7 +82,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   — `nextInSeries` + `<ReadNext>` strip (~56 candidates, most-recently-active
   first), `readingProfile` weights the release strips by how much you read
   the author, `★ Favourites` filter (rating ≥ 4). Not done: want-to-read ↔
-  wishlist.
+  wishlist. **Phase 3 (write-back) shipped 2026-09-09** — James asked for it
+  ("both ways"). Viewer queues status changes (expanded-row buttons + auto
+  "read" on finishing an epub) to `bookbrain-reading-pending.json`; backend
+  `apply_pending` (ISBN/search resolve → `insert`/`update_user_book`,
+  idempotent) flushes it on each `regenerate_reading`. Status only, never
+  reviews.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
