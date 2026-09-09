@@ -115,6 +115,30 @@ export function readingProfile(
   return counts
 }
 
+// prompts/31 Part B — your mean rating per author, from the reading sidecar
+// joined to the library rows. Used to re-rank "readers also liked": a rec by
+// an author you rate highly floats up, one you rate low (or DNF'd) sinks.
+// Only authors with at least one rated book appear.
+export function authorAffinity(
+  reading: Reading,
+  rowsById: Map<string, { author: string | null }>,
+): Map<string, number> {
+  const sum = new Map<string, number>()
+  const n = new Map<string, number>()
+  for (const [id, entry] of Object.entries(reading.books)) {
+    // a DNF with no rating still reads as "not for me"
+    const score = entry.rating ?? (entry.status === 'dnf' ? 2 : null)
+    if (score == null) continue
+    const author = rowsById.get(id)?.author
+    if (!author) continue
+    sum.set(author, (sum.get(author) ?? 0) + score)
+    n.set(author, (n.get(author) ?? 0) + 1)
+  }
+  const out = new Map<string, number>()
+  for (const [author, total] of sum) out.set(author, total / (n.get(author) ?? 1))
+  return out
+}
+
 function readCache(): Cached | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)

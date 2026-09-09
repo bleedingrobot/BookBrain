@@ -21,6 +21,8 @@ interface Props {
   reader?: string
   gap: SeriesGap | undefined
   recs: RecBook[] | undefined
+  // prompts/31 Part B — mean rating per author, re-ranks the recs list.
+  recAffinity?: Map<string, number>
   selected: boolean
   expanded: boolean
   sentDevices: KoboDevice[]
@@ -84,14 +86,26 @@ function ReadersAlsoLiked({
   recs,
   allRows,
   token,
+  affinity,
   onRequestBook,
 }: {
   recs: RecBook[]
   allRows: Row[]
   token: string
+  // prompts/31 Part B — your mean rating per author. Recs by an author you
+  // rate highly float up; ones you rate low (or DNF'd) sink. Unknown = neutral.
+  affinity?: Map<string, number>
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
 }) {
   const [state, setState] = useState<Record<string, 'pending' | RequestResult>>({})
+
+  const ordered =
+    affinity && affinity.size > 0
+      ? recs
+          .map((rec, i) => ({ rec, i, score: affinity.get(rec.author ?? '') ?? 3.5 }))
+          .sort((a, b) => b.score - a.score || a.i - b.i)
+          .map((x) => x.rec)
+      : recs
 
   async function request(rec: RecBook, key: string) {
     setState((s) => ({ ...s, [key]: 'pending' }))
@@ -111,7 +125,7 @@ function ReadersAlsoLiked({
     <div className="mt-3">
       <div className="text-xs font-medium text-neutral-500">Readers also liked</div>
       <ul className="mt-1.5 divide-y divide-neutral-100 dark:divide-neutral-800/60">
-        {recs.map((rec, i) => {
+        {ordered.map((rec, i) => {
           const key = `${rec.title}|${rec.author ?? ''}`
           const owned = libraryMatch(rec, allRows) != null
           const st = owned ? 'owned' : state[key]
@@ -161,6 +175,7 @@ export function BookRow({
   reader,
   gap,
   recs,
+  recAffinity,
   selected,
   expanded,
   sentDevices,
@@ -441,6 +456,7 @@ export function BookRow({
                 recs={recs}
                 allRows={allRows}
                 token={token}
+                affinity={recAffinity}
                 onRequestBook={onRequestBook}
               />
             )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normaliseReading, readingProfile } from './reading'
+import { authorAffinity, normaliseReading, readingProfile } from './reading'
 
 describe('normaliseReading', () => {
   it('keeps valid entries, coerces bad status to null, drops junk keys', () => {
@@ -60,5 +60,31 @@ describe('readingProfile', () => {
     const profile = readingProfile(reading, rows)
     expect(profile.get('Sanderson')).toBe(2)
     expect(profile.get('Le Guin')).toBe(1)
+  })
+})
+
+describe('authorAffinity', () => {
+  it('averages your ratings per author and treats an unrated DNF as ~2', () => {
+    const reading = normaliseReading({
+      books: {
+        a: { status: 'read', rating: 5 },
+        b: { status: 'read', rating: 4 },
+        c: { status: 'dnf' }, // no rating → 2
+        d: { status: 'read' }, // read, no rating → ignored
+        e: { status: 'want' }, // no rating → ignored
+      },
+    })
+    const rows = new Map([
+      ['a', { author: 'Fave' }],
+      ['b', { author: 'Fave' }],
+      ['c', { author: 'Nope' }],
+      ['d', { author: 'Unknown' }],
+      ['e', { author: 'Later' }],
+    ])
+    const aff = authorAffinity(reading, rows)
+    expect(aff.get('Fave')).toBe(4.5)
+    expect(aff.get('Nope')).toBe(2)
+    expect(aff.has('Unknown')).toBe(false)
+    expect(aff.has('Later')).toBe(false)
   })
 })

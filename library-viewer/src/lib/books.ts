@@ -172,6 +172,17 @@ export const SORTS: Record<SortKey, (a: BookRow, b: BookRow) => number> = {
     (b.meta?.rating ?? -1) - (a.meta?.rating ?? -1) || a.title.localeCompare(b.title),
 }
 
+// prompts/31 Part B — "quick wins" score for the want-to-read view: a short,
+// highly-rated book scores high; a long one scores low. Books with no page
+// count or rating land in the middle. Used to reorder the `want` filter so the
+// easy, promising reads float to the top.
+export function quickWinScore(row: BookRow): number {
+  const pages = row.meta?.pages ?? null
+  const lengthTier = pages == null ? 0 : pages < 350 ? 1 : pages <= 600 ? 0 : -1
+  const rating = row.reading?.rating ?? row.meta?.rating ?? 3.5
+  return lengthTier + (rating - 3.5)
+}
+
 // The heading shown above a run of rows when a name sort is active — null
 // means "no heading here" (title/added sorts, or the value is unknown).
 export function groupHeading(row: BookRow, sort: SortKey): string | null {

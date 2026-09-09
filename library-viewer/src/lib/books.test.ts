@@ -4,6 +4,7 @@ import {
   groupHeading,
   matchesFilter,
   matchesRow,
+  quickWinScore,
   SORTS,
   topGenres,
   type BookRow,
@@ -159,6 +160,38 @@ describe('matchesFilter', () => {
     expect(m(row({ meta: meta(['dark', 'tense']) }), 'mood:dark')).toBe(true)
     expect(m(row({ meta: meta(['dark']) }), 'mood:hopeful')).toBe(false)
     expect(m(row({ meta: null }), 'mood:dark')).toBe(false)
+  })
+})
+
+describe('quickWinScore', () => {
+  const metaWith = (over: Partial<IndexMeta>): IndexMeta => ({
+    rating: null,
+    ratingsCount: null,
+    pages: null,
+    category: null,
+    literaryType: null,
+    genres: [],
+    moods: [],
+    contentWarnings: [],
+    ...over,
+  })
+
+  it('ranks a short, highly-rated book above a long one', () => {
+    const quick = row({ meta: metaWith({ pages: 280, rating: 4.5 }) })
+    const slog = row({ meta: metaWith({ pages: 900, rating: 3.8 }) })
+    expect(quickWinScore(quick)).toBeGreaterThan(quickWinScore(slog))
+  })
+
+  it('a book with no page count or rating scores neutral (0)', () => {
+    expect(quickWinScore(row())).toBe(0)
+  })
+
+  it('prefers your own rating over the community rating', () => {
+    const r = row({
+      meta: metaWith({ pages: 300, rating: 2 }),
+      reading: { status: 'want', rating: 5 },
+    })
+    expect(quickWinScore(r)).toBeGreaterThan(1) // length +1, rating +1.5
   })
 })
 

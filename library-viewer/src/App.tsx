@@ -19,6 +19,7 @@ import {
   buildRows,
   matchesFilter,
   matchesRow,
+  quickWinScore,
   sendKey,
   SORT_LABELS,
   SORTS,
@@ -56,6 +57,7 @@ import {
 import {
   EMPTY_READING,
   fetchReading,
+  authorAffinity,
   readingProfile,
   type Reading,
   type ReadingStatus,
@@ -332,6 +334,12 @@ export default function App() {
     () => readingProfile(reading, new Map(allRows.map((r) => [r.id, { author: r.author }]))),
     [reading, allRows],
   )
+  // prompts/31 Part B — your mean rating per author, to re-rank "readers also
+  // liked". Same row join as authorReadCounts.
+  const authorAffinityMap = useMemo(
+    () => authorAffinity(reading, new Map(allRows.map((r) => [r.id, { author: r.author }]))),
+    [reading, allRows],
+  )
   // prompts/27 Part 1 — "New / Coming soon in your series" strips, flattened
   // straight out of the per-series Hardcover catalogues already in the index.
   const seriesReleases = useMemo(() => collectSeriesReleases(seriesGaps), [seriesGaps])
@@ -444,6 +452,11 @@ export default function App() {
         matchesFilter(row, filter, sentMap, incompleteSeries, comingSoonSeries),
     )
     out.sort(SORTS[sort])
+    // prompts/31 Part B — in the want-to-read view, float the "quick wins"
+    // (short + highly rated) to the top; the chosen sort stays the tiebreak.
+    if (filter === 'want') {
+      out.sort((a, b) => quickWinScore(b) - quickWinScore(a) || SORTS[sort](a, b))
+    }
     return out
   }, [allRows, query, sort, filter, sentMap, incompleteSeries, comingSoonSeries, semanticScores])
 
@@ -1122,6 +1135,11 @@ export default function App() {
             {reading.unmatched.read === 1 ? '' : 's'} that aren&rsquo;t in the library.
           </p>
         )}
+        {filter === 'want' && (
+          <p className="mt-1.5 truncate text-xs text-neutral-400">
+            Quick wins first — shorter, higher-rated books up top.
+          </p>
+        )}
       </div>
 
       {lib.loading && (
@@ -1165,6 +1183,7 @@ export default function App() {
           token={token}
           seriesGaps={seriesGaps}
           recommendations={recommendations}
+          authorAffinity={authorAffinityMap}
           selected={selected}
           expandedId={expandedId}
           sentMap={sentMap}

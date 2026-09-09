@@ -23,6 +23,8 @@ interface Props {
   token: string
   seriesGaps: Map<string, SeriesGap>
   recommendations: Recommendations
+  // prompts/31 Part B — mean rating per author, re-ranks "readers also liked".
+  authorAffinity?: Map<string, number>
   selected: Set<string>
   expandedId: string | null
   sentMap: SentMap
@@ -54,6 +56,7 @@ export function BookList({
   token,
   seriesGaps,
   recommendations,
+  authorAffinity,
   selected,
   expandedId,
   sentMap,
@@ -150,6 +153,7 @@ export function BookList({
                 reader={reader}
                 gap={row.series ? seriesGaps.get(row.series) : undefined}
                 recs={recommendations[row.file.id]}
+                recAffinity={authorAffinity}
                 selected={selected.has(row.id)}
                 expanded={expandedId === row.id}
                 sentDevices={koboDevices.filter((d) => sentMap[d.folderId]?.[row.id])}

@@ -112,34 +112,35 @@ pace + content-warning extraction.
 
 ---
 
-## Part B — rating-aware recommendations & want-to-read triage
+## Part B — rating-aware recommendations & want-to-read triage — SHIPPED 2026-09-10
 
 The reading sidecar (`bookbrain-reading.json`, `prompts/30`) already carries
-`books[driveId].rating`. Use it.
+`books[driveId].rating`. Uses it, viewer-only, no backend change / no backfill.
 
-### B1 — weight "readers also liked" by your taste
-- `BookRow.tsx` `ReadersAlsoLiked` (or wherever the rec list is ordered) —
-  when a rec book's own similar-set overlaps books you rated ≥ 4, nudge it up;
-  when it overlaps books you rated ≤ 2 or DNF'd, nudge it down. Cheap version:
-  the rec payload already has `meta.genres` per rec; score each rec by
-  `Σ (your avg rating in that genre − 3)` and stable-sort by it. Keep it a
-  gentle re-rank, not a hard filter.
-- Purely viewer-side — no backend change. `reading.ts` gets a
-  `genreAffinity(reading, rowsById)` helper (mirror `readingProfile`) →
-  `Map<genre, number>` of your mean rating per genre.
+### B1 — weight "readers also liked" by your taste — SHIPPED
+- **`RecBook` has no genres** (the recs sidecar is `{title, author, isbn13}`
+  only), so the genre-affinity idea would need a backend change + another
+  backfill. Shipped the **author-affinity** version instead:
+  `reading.ts` `authorAffinity(reading, rowsById)` → `Map<author, meanRating>`
+  (an unrated DNF counts as 2). `App.tsx` `authorAffinityMap` memo →
+  `<BookList authorAffinity>` → `<BookRow recAffinity>` → `ReadersAlsoLiked`
+  stable-sorts recs by `affinity.get(rec.author) ?? 3.5` desc, Hardcover order
+  as the tiebreak. Gentle re-rank, no hard filter.
+- Follow-up if ever worth it: add `genres` to the recs sidecar
+  (`hardcover_recs_service` already resolves each rec book — one `cached_tags`
+  field) for genre-affinity, which beats author-affinity for discovery.
 
-### B2 — want-to-read triage
-- The `want` filter already lists owned books you want to read. Add a
-  **sort/segment** on that view:
-  - **Quick wins** — `meta.pages` small (< ~350) and `meta.rating` high (≥ 4).
-  - **Big commitments** — `meta.pages` large (> ~600).
-  - **Everything else** in the middle.
-- A segmented control above the list when the `want` filter is active, or just
-  a "Quick wins first" sort option. Viewer-only.
+### B2 — want-to-read triage — SHIPPED
+- `books.ts` `quickWinScore(row)` = length tier (`pages<350` → +1, `≤600` → 0,
+  `>600` → −1; unknown 0) + `(rating − 3.5)` where rating is your own then the
+  community `meta.rating` then 3.5. `App.tsx` `rows` memo: when
+  `filter === 'want'`, re-sort by `quickWinScore` desc with the chosen sort as
+  the tiebreak, + a "Quick wins first — shorter, higher-rated books up top."
+  hint line. No segmented control — the reorder + hint was enough.
 
-**Done when:** rec ordering visibly responds to your ratings (eyeball with a
-genre you rate high vs low); want-to-read view has the quick-win segmentation;
-`genreAffinity` unit-tested; build + lint green.
+**Done:** `authorAffinity` + `quickWinScore` unit-tested; viewer 167 + build +
+lint green. Backend untouched. Live effect needs the reading sidecar (already
+v2/v3) + ratings, which are there.
 
 ---
 
