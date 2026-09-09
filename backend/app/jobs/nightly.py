@@ -60,6 +60,7 @@ from app.services.library_index_service import (
     regenerate_library_index,
     regenerate_new_releases,
     regenerate_news,
+    regenerate_prompts,
     regenerate_reading,
     regenerate_recommendations,
 )
@@ -218,6 +219,15 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: reading refresh failed")
                 steps.append(f"reading: FAILED — {exc}")
+            # prompts/31 Part F — Hardcover Prompts → bookbrain-prompts.json.
+            try:
+                pr = await regenerate_prompts(creds, library_folder_id)
+                steps.append(
+                    f"prompts: {pr} questions" if pr is not None else "prompts: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: prompts refresh failed")
+                steps.append(f"prompts: FAILED — {exc}")
         # prompts/32 — the SFF news feeds → bookbrain-news.json. No token
         # needed; best-effort per feed, never fails the run.
         try:

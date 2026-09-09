@@ -19,8 +19,10 @@ from app.services.library_index_service import (
     _read_pending_reading,
     build_index_payload,
     build_new_releases_payload,
+    build_prompts_payload,
     build_reading_payload,
     build_recommendations_payload,
+    match_hardcover_book_ids,
 )
 
 
@@ -239,6 +241,34 @@ async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
         "listsCount": 3223,
     }
     assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
+
+
+async def test_match_hardcover_book_ids_and_prompts_payload(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    scion = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))
+    ).scalar_one()
+    will.hardcover_json = {"id": 100, "similar": [], "meta": {}}
+    scion.hardcover_json = {"id": 200, "similar": [], "meta": {}}
+    await db_session.commit()
+
+    assert await match_hardcover_book_ids(db_session, {100, 200, 999}) == {
+        100: "drive-will",
+        200: "drive-scion",
+    }
+
+    prompts_raw = [
+        {"question": "Two owned?", "slug": "a", "bookIds": [100, 200, 999]},  # kept: 2 owned
+        {"question": "One owned?", "slug": "b", "bookIds": [100, 999]},  # dropped: < 2
+        {"question": "None owned?", "slug": "c", "bookIds": [999]},  # dropped
+    ]
+    payload = await build_prompts_payload(db_session, prompts_raw)
+    assert payload["version"] == 1
+    assert [p["question"] for p in payload["prompts"]] == ["Two owned?"]
+    assert payload["prompts"][0]["driveIds"] == ["drive-will", "drive-scion"]
 
 
 async def test_build_recommendations_payload(db_session) -> None:

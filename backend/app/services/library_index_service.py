@@ -12,7 +12,7 @@ import re
 from datetime import UTC, datetime
 
 from google.oauth2.credentials import Credentials
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -77,6 +77,10 @@ NEW_RELEASES_VERSION = 2  # v2 adds trending[] (prompts/31 Part G)
 # prompts/32 — the SFF news feed sidecar.
 NEWS_FILENAME = "bookbrain-news.json"
 NEWS_VERSION = 1
+
+# prompts/31 Part F — Hardcover "Prompts" → the books James owns that answer them.
+PROMPTS_FILENAME = "bookbrain-prompts.json"
+PROMPTS_VERSION = 1
 _NEW_RELEASES_CAP = 60
 _WISHLIST_FILENAME = "bookbrain-wishlist.json"
 
@@ -418,6 +422,34 @@ def _norm_key(title: str | None, author: str | None) -> str:
     return f"{normalize_title(title)}|{normalize_person_name(author)}"
 
 
+async def match_hardcover_book_ids(
+    session: AsyncSession, hc_ids: set[int]
+) -> dict[int, str]:
+    """Hardcover book id → the Drive file id of the organised book we own with
+    that id, for the `hc_ids` given. Uses `Book.hardcover_json.id` (written by
+    hardcover_recs_service), so it's exact — no ISBN/title fuzz. Shared by the
+    lists (E2) and prompts (F) sidecars, which both deal in Hardcover ids."""
+    if not hc_ids:
+        return {}
+    hc_id_col = func.json_extract(Book.hardcover_json, "$.id")
+    rows = (
+        await session.execute(
+            select(File.drive_file_id, hc_id_col)
+            .join(Book, Book.id == File.book_id)
+            .where(
+                File.status == FileStatus.organised,
+                Book.hardcover_json.is_not(None),
+                hc_id_col.in_(hc_ids),
+            )
+        )
+    ).all()
+    out: dict[int, str] = {}
+    for drive_id, hc_id in rows:
+        if isinstance(hc_id, int):
+            out.setdefault(hc_id, drive_id)
+    return out
+
+
 async def build_new_releases_payload(
     session: AsyncSession,
     wishlist_keys: set[str],
@@ -619,6 +651,61 @@ async def regenerate_news(
         return len(items)
     except Exception:
         logger.exception("sff news refresh failed")
+        return None
+
+
+async def build_prompts_payload(session: AsyncSession, prompts_raw: list[dict]) -> dict:
+    """`bookbrain-prompts.json` — each Hardcover prompt with the Drive file ids
+    of the books James owns that answer it. Keeps only prompts with >= 2
+    owned answers (a one-book match isn't interesting)."""
+    all_ids = {i for p in prompts_raw for i in p.get("bookIds") or []}
+    owned = await match_hardcover_book_ids(session, all_ids)
+
+    prompts: list[dict] = []
+    for p in prompts_raw:
+        drive_ids = [owned[i] for i in p.get("bookIds") or [] if i in owned]
+        # dedupe, keep order
+        seen: set[str] = set()
+        drive_ids = [d for d in drive_ids if not (d in seen or seen.add(d))]
+        if len(drive_ids) < 2:
+            continue
+        prompts.append(
+            {
+                "question": p["question"],
+                "slug": p.get("slug"),
+                "driveIds": drive_ids,
+            }
+        )
+    prompts.sort(key=lambda p: len(p["driveIds"]), reverse=True)
+    return {
+        "version": PROMPTS_VERSION,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "prompts": prompts,
+    }
+
+
+async def regenerate_prompts(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """prompts/31 Part F. Best-effort, never raises. No-op without a token."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        from app.services import hardcover_prompts_service
+
+        prompts_raw = await hardcover_prompts_service.fetch_prompts()
+        if not prompts_raw:
+            return None
+        async with async_session_factory() as session:
+            payload = await build_prompts_payload(session, prompts_raw)
+        provider = DriveProvider(build_drive_service(creds))
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, PROMPTS_FILENAME, payload
+        )
+        logger.info("prompts sidecar: %d your-library questions", len(payload["prompts"]))
+        return len(payload["prompts"])
+    except Exception:
+        logger.exception("prompts sidecar refresh failed")
         return None
 
 

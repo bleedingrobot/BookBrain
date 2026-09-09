@@ -259,11 +259,31 @@ listed; backend tests for the list cross-reference; build + lint green.
 
 ---
 
-## Part F — Hardcover Prompts ("your library answers")
+## Part F — Hardcover Prompts ("your library answers") — SHIPPED 2026-09-10
 
-Hardcover's **Prompts** feature = a community question with book answers
-("Books with an unreliable narrator", "Cozy fantasy, no romance"). Public →
-shared-viewer safe.
+Live-verified: `prompts(order_by: {answers_count: desc}, limit: N) { id
+question slug }` then `prompts(where: {id: {_in: $ids}}) { id prompt_books(limit:
+N) { book_id } }` (the `prompt_books` + `votes_count` order fields error;
+default order is fine). **Shared matcher extracted:**
+`library_index_service.match_hardcover_book_ids(session, hc_ids) ->
+{hc_id: drive_id}` off `Book.hardcover_json.id` (exact, no ISBN/title fuzz) —
+reused by E2.
+
+- Backend: `hardcover_prompts_service.fetch_prompts()` (2 calls, top 60
+  prompts × 40 books each, best-effort → []). `build_prompts_payload` keeps
+  only questions with **≥ 2 owned** answers, `driveIds` deduped+ordered,
+  sorted by owned-count. `regenerate_prompts` → `bookbrain-prompts.json`
+  (`PROMPTS_VERSION 1`). Nightly step after reading + `POST /api/library/prompts`.
+- Viewer: `lib/prompts.ts` (`fetchPrompts` modifiedTime-cached, `normalisePrompts`
+  re-applies the ≥2 filter). `<PromptsScreen>` — an accordion of questions,
+  each expands to a horizontal cover strip of the owned books, click → jump
+  to that row (`jumpToRecent`). "Your library answers" in the header menu
+  (shown only when `prompts.prompts` non-empty).
+- Tests: `test_hardcover_prompts_service.py` (join + empty + no-token),
+  `test_library_index_service.py` `match_hardcover_book_ids` + `build_prompts_payload`
+  (≥2 filter), viewer `prompts.test.ts`. Backend 686 + corpus green; viewer
+  179 + build + lint green. **Needs `POST /api/library/prompts`** (and the
+  recs re-sync first, so `Book.hardcover_json.id` is populated for matching).
 
 - **Backend** a new `hardcover_prompts_service` + `bookbrain-prompts.json`
   sidecar: pull the top ~40 prompts by answer/follower count

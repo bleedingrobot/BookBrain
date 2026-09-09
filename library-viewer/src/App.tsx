@@ -8,6 +8,7 @@ import { Reader } from './components/Reader'
 import { NewReleasesScreen } from './components/NewReleasesScreen'
 import { NewsFeed } from './components/NewsFeed'
 import { NewsScreen } from './components/NewsScreen'
+import { PromptsScreen } from './components/PromptsScreen'
 import { ReadingGoalBar, ReadingStatsScreen } from './components/ReadingStats'
 import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
@@ -58,6 +59,7 @@ import {
   type NewReleases,
 } from './lib/newReleases'
 import { EMPTY_NEWS, fetchNews, type News } from './lib/news'
+import { EMPTY_PROMPTS, fetchPrompts, type Prompts } from './lib/prompts'
 import {
   EMPTY_READING,
   fetchReading,
@@ -148,6 +150,8 @@ export default function App() {
   const [news, setNews] = useState<News>(EMPTY_NEWS)
   const [showNewsScreen, setShowNewsScreen] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
+  const [showPromptsScreen, setShowPromptsScreen] = useState(false)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
   // alongside the new-releases sidecar. `pendingReading` overlays changes
   // made here that haven't synced to Hardcover yet (Phase 3).
@@ -228,6 +232,7 @@ export default function App() {
       void fetchReading(token, folderId).then(setReading)
       void loadPendingReading(token, folderId).then(setPendingReading)
       void fetchNews(token, folderId).then(setNews)
+      void fetchPrompts(token, folderId).then(setPrompts)
     }
     if (ric) ric(run)
     else setTimeout(run, 1200)
@@ -868,6 +873,21 @@ export default function App() {
     )
   }
 
+  if (showPromptsScreen) {
+    return (
+      <PromptsScreen
+        prompts={prompts}
+        rows={allRows}
+        token={token}
+        onBack={() => setShowPromptsScreen(false)}
+        onOpen={(row) => {
+          setShowPromptsScreen(false)
+          jumpToRecent(row.id)
+        }}
+      />
+    )
+  }
+
   if (showWishlist) {
     return (
       <WishlistScreen
@@ -927,6 +947,9 @@ export default function App() {
           Object.keys(reading.books).length > 0 || reading.goal
             ? () => setShowStats(true)
             : undefined
+        }
+        onShowPrompts={
+          prompts.prompts.length > 0 ? () => setShowPromptsScreen(true) : undefined
         }
         onShare={handleShare}
         onCopyLink={handleCopyLink}
