@@ -5,7 +5,7 @@ import pytest
 import respx
 
 from app.providers.metadata.hardcover import ENDPOINT
-from app.services.hardcover_reading_service import apply_pending, fetch_reading
+from app.services.hardcover_reading_service import apply_pending, fetch_goal, fetch_reading
 
 
 @pytest.fixture(autouse=True)
@@ -190,3 +190,55 @@ async def test_apply_pending_no_token_is_noop() -> None:
         assert await apply_pending([_change()]) == {"applied": [], "failed": []}
     finally:
         get_settings().hardcover_api_token = "tok"
+
+
+# --- prompts/31 Part C: reading goal -----------------------------------------
+
+
+@respx.mock
+async def test_fetch_goal_picks_the_current_book_goal() -> None:
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "me": [
+                        {
+                            "goals": [
+                                {  # an old, finished goal
+                                    "goal": 40,
+                                    "progress": 40,
+                                    "metric": "book",
+                                    "start_date": "2024-12-31",
+                                    "end_date": "2025-12-30",
+                                },
+                                {  # a page goal — ignored
+                                    "goal": 12000,
+                                    "progress": 5000,
+                                    "metric": "page",
+                                    "start_date": "2025-12-31",
+                                    "end_date": "2026-12-30",
+                                },
+                                {  # the current book goal
+                                    "goal": 50,
+                                    "progress": 48.0,
+                                    "metric": "book",
+                                    "start_date": "2025-12-31",
+                                    "end_date": "2026-12-30",
+                                },
+                            ]
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    assert await fetch_goal() == {"year": 2026, "target": 50, "progress": 48}
+
+
+@respx.mock
+async def test_fetch_goal_returns_none_when_no_book_goal() -> None:
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(200, json={"data": {"me": [{"goals": []}]}})
+    )
+    assert await fetch_goal() is None

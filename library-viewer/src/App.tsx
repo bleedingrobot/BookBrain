@@ -8,6 +8,7 @@ import { Reader } from './components/Reader'
 import { NewReleasesScreen } from './components/NewReleasesScreen'
 import { NewsFeed } from './components/NewsFeed'
 import { NewsScreen } from './components/NewsScreen'
+import { ReadingGoalBar, ReadingStatsScreen } from './components/ReadingStats'
 import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
 import { ReleaseMarquee } from './components/ReleaseMarquee'
@@ -146,6 +147,7 @@ export default function App() {
   // prompts/32 — the SFF news sidecar, fetched lazily with the others.
   const [news, setNews] = useState<News>(EMPTY_NEWS)
   const [showNewsScreen, setShowNewsScreen] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
   // alongside the new-releases sidecar. `pendingReading` overlays changes
   // made here that haven't synced to Hardcover yet (Phase 3).
@@ -846,6 +848,16 @@ export default function App() {
     return <NewsScreen news={news} onBack={() => setShowNewsScreen(false)} />
   }
 
+  if (showStats) {
+    return (
+      <ReadingStatsScreen
+        reading={mergedReading}
+        rows={allRows}
+        onBack={() => setShowStats(false)}
+      />
+    )
+  }
+
   if (showWishlist) {
     return (
       <WishlistScreen
@@ -901,6 +913,11 @@ export default function App() {
         onShowWishlist={() => setShowWishlist(true)}
         onShowActivity={() => setShowActivity(true)}
         onShowNews={() => setShowNewsScreen(true)}
+        onShowStats={
+          Object.keys(reading.books).length > 0 || reading.goal
+            ? () => setShowStats(true)
+            : undefined
+        }
         onShare={handleShare}
         onCopyLink={handleCopyLink}
         onEditSettings={() => setEditingSettings(true)}
@@ -911,6 +928,10 @@ export default function App() {
           void clearBookCache().then(() => setOfflineCount(0))
         }}
       />
+
+      {!lib.loading && mergedReading.goal && (
+        <ReadingGoalBar goal={mergedReading.goal} onOpen={() => setShowStats(true)} />
+      )}
 
       {!lib.loading && (
         <>

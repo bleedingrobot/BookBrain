@@ -30,10 +30,20 @@ export interface WantCandidate {
   isbn13: string | null
 }
 
+// prompts/31 Part C — the owner's Hardcover reading goal. `progress` is
+// Hardcover's own count (all books, not just ones in this library), which is
+// what the viewer should show.
+export interface ReadingGoal {
+  year: number
+  target: number
+  progress: number
+}
+
 export interface Reading {
   reader: string
   unmatched: { read: number; want: number; reading: number }
   wantUnowned: WantCandidate[]
+  goal: ReadingGoal | null
   // keyed by Drive file id
   books: Record<string, ReadingEntry>
 }
@@ -42,6 +52,7 @@ export const EMPTY_READING: Reading = {
   reader: '',
   unmatched: { read: 0, want: 0, reading: 0 },
   wantUnowned: [],
+  goal: null,
   books: {},
 }
 
@@ -52,7 +63,30 @@ interface RawFile {
   reader?: string
   unmatched?: Partial<Reading['unmatched']>
   wantUnowned?: Partial<WantCandidate>[]
+  goal?: Partial<ReadingGoal>
   books?: Record<string, Partial<ReadingEntry>>
+}
+
+function normaliseGoal(raw: Partial<ReadingGoal> | undefined): ReadingGoal | null {
+  if (
+    !raw ||
+    typeof raw.year !== 'number' ||
+    typeof raw.target !== 'number' ||
+    typeof raw.progress !== 'number' ||
+    raw.target <= 0
+  ) {
+    return null
+  }
+  return { year: raw.year, target: raw.target, progress: Math.max(0, raw.progress) }
+}
+
+// How many books ahead of (or behind, if negative) an even year-long pace the
+// reader is right now. `now` is injectable for tests.
+export function goalPace(goal: ReadingGoal, now = new Date()): number {
+  const start = Date.UTC(goal.year - 1, 11, 31)
+  const end = Date.UTC(goal.year, 11, 31)
+  const frac = Math.min(1, Math.max(0, (now.getTime() - start) / (end - start)))
+  return Math.round(goal.progress - goal.target * frac)
 }
 
 interface Cached {
@@ -95,6 +129,7 @@ export function normaliseReading(raw: RawFile): Reading {
       reading: typeof u.reading === 'number' ? u.reading : 0,
     },
     wantUnowned,
+    goal: normaliseGoal(raw.goal),
     books,
   }
 }

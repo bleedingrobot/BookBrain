@@ -9,6 +9,7 @@ interface Props {
   onShowWishlist: () => void
   onShowActivity: () => void
   onShowNews: () => void
+  onShowStats?: () => void
   onShare: () => void
   onCopyLink: () => void
   onEditSettings: () => void
@@ -27,6 +28,7 @@ export function LibraryHeader({
   onShowWishlist,
   onShowActivity,
   onShowNews,
+  onShowStats,
   onShare,
   onCopyLink,
   onEditSettings,
@@ -39,6 +41,7 @@ export function LibraryHeader({
 
   const items = [
     { label: 'Activity', fn: onShowActivity },
+    ...(onShowStats ? [{ label: 'Reading stats', fn: onShowStats }] : []),
     { label: 'SFF news', fn: onShowNews },
     { label: 'Wishlist & requests', fn: onShowWishlist },
     { label: 'Rebuild library', fn: onRebuild, disabled: busy },

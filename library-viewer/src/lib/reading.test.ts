@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authorAffinity, normaliseReading, readingProfile } from './reading'
+import { authorAffinity, goalPace, normaliseReading, readingProfile } from './reading'
 
 describe('normaliseReading', () => {
   it('keeps valid entries, coerces bad status to null, drops junk keys', () => {
@@ -36,6 +36,7 @@ describe('normaliseReading', () => {
       reader: '',
       unmatched: { read: 0, want: 0, reading: 0 },
       wantUnowned: [],
+      goal: null,
       books: {},
     })
   })
@@ -60,6 +61,25 @@ describe('readingProfile', () => {
     const profile = readingProfile(reading, rows)
     expect(profile.get('Sanderson')).toBe(2)
     expect(profile.get('Le Guin')).toBe(1)
+  })
+})
+
+describe('reading goal', () => {
+  it('parses a valid goal and rejects a broken one', () => {
+    expect(
+      normaliseReading({ goal: { year: 2026, target: 50, progress: 48 } }).goal,
+    ).toEqual({ year: 2026, target: 50, progress: 48 })
+    expect(normaliseReading({ goal: { year: 2026, target: 0, progress: 3 } }).goal).toBeNull()
+    expect(normaliseReading({ goal: { target: 50 } as never }).goal).toBeNull()
+    expect(normaliseReading({}).goal).toBeNull()
+  })
+
+  it('goalPace is ahead/behind an even year-long pace', () => {
+    const goal = { year: 2026, target: 50, progress: 30 }
+    // half way through the year, pace wants 25 → 30 read = +5 ahead
+    expect(goalPace(goal, new Date('2026-07-02T00:00:00Z'))).toBe(5)
+    // 90% through, pace wants 45 → 30 read = 15 behind
+    expect(goalPace(goal, new Date('2026-11-25T00:00:00Z'))).toBe(-15)
   })
 })
 

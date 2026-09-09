@@ -60,6 +60,24 @@ query BookBrainReading($limit: Int!, $offset: Int!) {
 }
 """
 
+# prompts/31 Part C — the owner's reading goal. `progress` is Hardcover's own
+# count (all books, not just ones in the library), which is exactly what the
+# viewer should show. Verified live: {goal: 50, progress: 48.0, metric: "book",
+# start_date: "2025-12-31", end_date: "2026-12-30", description: "2026 Reading Goal"}.
+_GOAL = """
+query BookBrainReadingGoal {
+  me {
+    goals {
+      goal
+      progress
+      metric
+      start_date
+      end_date
+    }
+  }
+}
+"""
+
 
 def _map_row(row: dict) -> dict | None:
     book = row.get("book") or {}
@@ -249,3 +267,50 @@ async def fetch_reading(*, client: httpx.AsyncClient | None = None) -> tuple[lis
 
     logger.info("hardcover reading: %d rows (reader %s)", len(out), username)
     return out, username
+
+
+async def fetch_goal(*, client: httpx.AsyncClient | None = None) -> dict | None:
+    """The owner's current book-count reading goal (prompts/31 Part C), or None.
+    Picks the `book`-metric goal whose date range covers today; falls back to
+    the first book goal. Best-effort — any failure returns None."""
+    from datetime import date
+
+    settings = get_settings()
+    token = (settings.hardcover_api_token or "").strip()
+    if not token:
+        return None
+
+    owns_client = client is None
+    http = client or httpx.AsyncClient(timeout=15.0)
+    bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
+    try:
+        data = await hardcover_graphql(http, token, _GOAL, {}, bucket)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception("hardcover reading goal fetch failed")
+        return None
+    finally:
+        if owns_client:
+            await http.aclose()
+
+    me = (data or {}).get("me") or []
+    goals = me[0].get("goals") if me and isinstance(me[0], dict) else None
+    book_goals = [
+        g
+        for g in (goals or [])
+        if isinstance(g, dict) and g.get("metric") == "book" and isinstance(g.get("goal"), int)
+    ]
+    if not book_goals:
+        return None
+    today = date.today().isoformat()
+    current = next(
+        (g for g in book_goals if (g.get("start_date") or "") <= today <= (g.get("end_date") or "9999")),
+        book_goals[0],
+    )
+    end = current.get("end_date") or ""
+    year = int(end[:4]) if end[:4].isdigit() else date.today().year
+    progress = current.get("progress")
+    return {
+        "year": year,
+        "target": current["goal"],
+        "progress": int(progress) if isinstance(progress, int | float) else 0,
+    }

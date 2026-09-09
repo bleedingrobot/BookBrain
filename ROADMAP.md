@@ -382,8 +382,10 @@ mis-identification guards). The rest of that session's ideas, for later:
     nine parts, one commit each: **A moods + content-warning tags — SHIPPED**
     (index v6, mood chips, content-warning disclosure; pace dropped — not in
     the API) · **B rating-aware recs + want-to-read quick-wins — SHIPPED**
-    (author-affinity re-rank, `quickWinScore` sort) · C reading-goal progress +
-    a stats screen · D followed-authors release signal · E community lists
+    (author-affinity re-rank, `quickWinScore` sort) · **C reading-goal
+    progress + stats screen — SHIPPED** (`me{goals}` → reading sidecar v3
+    `goal{}`, a home-screen goal bar, a `<ReadingStatsScreen>` derived from
+    the sidecar) · D followed-authors release signal · E community lists
     ("on N lists" + list-sourced wishlist candidates) · F Hardcover Prompts →
     "your library answers" screen · G a gated "trending" strip · H edition
     metadata gap-fill · I reading-progress two-way sync (resurrects the

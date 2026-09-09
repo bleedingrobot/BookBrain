@@ -144,9 +144,37 @@ v2/v3) + ratings, which are there.
 
 ---
 
-## Part C — reading goal + stats
+## Part C — reading goal + stats — SHIPPED 2026-09-10
 
-### C1 — goal progress
+Live-verified query: `me { goals { goal progress metric start_date end_date } }`.
+James: `{goal: 50, progress: 48.0, metric: "book", start_date: "2025-12-31",
+end_date: "2026-12-30"}`. **`progress` is Hardcover's own count (all books,
+not just library ones)** — exactly what to show, so the sidecar uses it as-is
+(the spec's "compute it yourself" was wrong: the sidecar only sees owned
+books, which would undercount badly).
+
+- Backend: `hardcover_reading_service.fetch_goal()` — companion fn, `_GOAL`
+  query, picks the `book`-metric goal whose date range covers today, year =
+  `end_date[:4]`. `build_reading_payload(session, rows, reader, goal=None)` →
+  sidecar `goal: {year, target, progress}` (key omitted when None).
+  `regenerate_reading` calls `fetch_goal()`. **`READING_VERSION` → 3.**
+- Viewer: `reading.ts` `Reading.goal: ReadingGoal | null` + `normaliseGoal` +
+  `goalPace(goal, now?)` (books ahead/behind an even year-long pace).
+  `components/ReadingStats.tsx` — `<ReadingGoalBar>` (slim clickable line on
+  the home above the marquees: "2026 reading goal — 48 / 50 · on track" + a
+  thin bar) and `<ReadingStatsScreen>` (C2).
+- C2 stats screen — **no new call**, all from `readingStats(reading, rows)` in
+  `lib/readingStats.ts`: read this year / all-time, pages this year, this vs
+  last month, avg rating you give, a 1–5★ histogram, top-5 authors + series,
+  longest book this year. Labelled "counts books in this library **and** on
+  the shelves" (the sidecar can't see unowned reads). Nav: "Reading stats" in
+  the header menu (when `reading.books` non-empty or a goal is set).
+- Tests: backend `fetch_goal` (current-goal pick, no-book-goal → None) +
+  `build_reading_payload` goal passthrough/omit; viewer `goalPace` +
+  `normaliseGoal` + a full `readingStats.test.ts`. Backend 678 + corpus green;
+  viewer 177 + build + lint green. **Live: sidecar v3, goal 48/50.**
+
+### C1 — goal progress (original notes)
 - **Backend** `hardcover_reading_service` — a second query
   `me { goal: ... }` for the current-year reading goal (books target). Confirm
   the field — might be `goals(where: {...})` with a `goal` count + `progress`,

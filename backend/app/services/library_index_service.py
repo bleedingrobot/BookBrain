@@ -88,7 +88,7 @@ _OCTET_MIME = "application/octet-stream"
 # library book. Its own sidecar (lazy fetch). USER data, not catalogue — see
 # hardcover_reading_service's licence note.
 READING_FILENAME = "bookbrain-reading.json"
-READING_VERSION = 2  # v2 adds wantUnowned[] (want↔wishlist)
+READING_VERSION = 3  # v2 adds wantUnowned[]; v3 adds goal{} (prompts/31 Part C)
 # prompts/30 Phase 3 — the viewer queues "mark read" here; a sync applies it
 # to Hardcover then drops the applied entries.
 READING_PENDING_FILENAME = "bookbrain-reading-pending.json"
@@ -591,7 +591,7 @@ async def regenerate_news(
 
 
 async def build_reading_payload(
-    session: AsyncSession, reading_rows: list[dict], reader: str
+    session: AsyncSession, reading_rows: list[dict], reader: str, goal: dict | None = None
 ) -> dict:
     """`bookbrain-reading.json` — the Hardcover reading rows matched to
     organised library files (ISBN-13 first, then normalised title+author).
@@ -655,7 +655,7 @@ async def build_reading_payload(
             entry["readCount"] = row["readCount"]
         books.setdefault(drive, entry)
 
-    return {
+    payload = {
         "version": READING_VERSION,
         "generatedAt": datetime.now(UTC).isoformat(),
         "reader": reader,
@@ -664,6 +664,9 @@ async def build_reading_payload(
         "wantUnowned": want_unowned,
         "books": books,
     }
+    if goal is not None:
+        payload["goal"] = goal
+    return payload
 
 
 def _read_pending_reading(provider: DriveProvider, library_folder_id: str) -> list[dict]:
@@ -723,9 +726,10 @@ async def regenerate_reading(
         rows, username = await hardcover_reading_service.fetch_reading()
         if not rows:
             return None
+        goal = await hardcover_reading_service.fetch_goal()
         reader = (get_settings().hardcover_reader_name or "").strip() or username or "reader"
         async with async_session_factory() as session:
-            payload = await build_reading_payload(session, rows, reader)
+            payload = await build_reading_payload(session, rows, reader, goal)
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, READING_FILENAME, payload
         )
