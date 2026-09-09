@@ -23,6 +23,7 @@ import {
   SORT_LABELS,
   SORTS,
   topGenres,
+  topMoods,
   type FilterKey,
   type SendStatus,
   type SortKey,
@@ -364,6 +365,7 @@ export default function App() {
       .sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
   }, [settings, newReleases, recentReleaseFeed, upcomingReleaseFeed])
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
+  const moodFacets = useMemo(() => topMoods(allRows), [allRows])
 
   // Meaning mode: run the semantic search a beat after typing settles. The
   // first call downloads the model (~23 MB, then cached); later ones are
@@ -489,6 +491,12 @@ export default function App() {
   function filterToGenre(genre: string) {
     setQuery('')
     setFilter(`genre:${genre}`)
+    window.scrollTo({ top: 0 })
+  }
+
+  function filterToMood(mood: string) {
+    setQuery('')
+    setFilter(`mood:${mood}`)
     window.scrollTo({ top: 0 })
   }
 
@@ -847,6 +855,7 @@ export default function App() {
         ]
       : []),
     ...genreFacets.map((g) => ({ key: `genre:${g}` as FilterKey, label: g })),
+    ...moodFacets.map((m) => ({ key: `mood:${m}` as FilterKey, label: m })),
   ]
 
   const koboStatus = koboError || koboMessage
@@ -1179,6 +1188,7 @@ export default function App() {
           onFilterAuthor={(a) => filterTo(a, 'author')}
           onFilterSeries={(s) => filterTo(s, 'series')}
           onFilterGenre={filterToGenre}
+          onFilterMood={filterToMood}
           onRequestBook={requestBook}
         />
       )}

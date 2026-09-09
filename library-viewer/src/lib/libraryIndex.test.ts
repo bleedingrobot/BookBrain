@@ -43,6 +43,7 @@ describe('normalise', () => {
             literaryType: 'Fiction',
             genres: ['Fantasy', 5 as unknown as string],
             moods: ['dark'],
+            contentWarnings: ['Violence', 7 as unknown as string],
           },
         },
         bad: { title: 'Bad', meta: { rating: 'nope' as unknown as number, genres: 'x' as unknown as string[] } },
@@ -56,6 +57,7 @@ describe('normalise', () => {
       literaryType: 'Fiction',
       genres: ['Fantasy'],
       moods: ['dark'],
+      contentWarnings: ['Violence'],
     })
     expect(out.entries.bad.meta).toBeNull()
   })

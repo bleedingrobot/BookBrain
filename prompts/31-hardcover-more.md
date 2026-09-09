@@ -48,12 +48,36 @@ names below are best-guess from the public site, not verified.
 
 ---
 
-## Part A — moods, pace & content warnings
+## Part A — moods & content warnings — SHIPPED 2026-09-10 (commit pending)
 
 **Extends `prompts/26` Part B.** `cached_tags` (already fetched in
-`hardcover_recs_service._book_meta`) is a bucketed blob: `Genre`, `Mood`,
-`Pace`, `Content Warning`, `Tag`. Today we extract `Genre` and `Mood`; `Mood`
-is stored but never shown; `Pace` and `Content Warning` aren't pulled.
+`hardcover_recs_service._book_meta`) is a bucketed blob. Live check
+2026-09-10: the buckets are `Genre`, `Mood`, `Content Warning`, `Tag`,
+`Group` — **there is no `Pace` bucket and `book.pace` is null**, so pace was
+dropped from this part (Hardcover's slow/med/fast is derived from reader
+speed data, not exposed cleanly). Shipped: pull `Content Warning`, surface
+the already-stored `Mood`.
+
+- `_book_meta` → `meta["contentWarnings"]` (top 8 `Content Warning` tags);
+  `_tag_names` gained a `limit` arg.
+- `library_index_service._META_KEYS` += `"contentWarnings"`; **INDEX_VERSION
+  6**.
+- Viewer: `IndexMeta.contentWarnings`; `books.ts` `topMoods` + `mood:<n>`
+  filter key; `App.tsx` `moodFacets` chips after the genre chips +
+  `filterToMood`; `BookRow.tsx` clickable mood badges (violet) + a
+  `<details>` "Content warnings (N)" disclosure in the expanded row.
+- Backend 672 + corpus green; viewer 163 + build + lint green. Needs a
+  book-recs refresh + index regen to populate `contentWarnings` live (nightly
+  will converge; force with `POST /api/library/book-recs/refresh?stale_days=0`
+  then `POST /api/library/index`).
+
+---
+
+### Original notes
+
+`cached_tags`: `Genre` / `Mood` / `Content Warning` / `Tag` buckets. Today we
+extract `Genre` and `Mood`; `Mood` is stored but never shown; `Content
+Warning` wasn't pulled.
 
 ### Backend
 - `hardcover_recs_service._book_meta` — add:

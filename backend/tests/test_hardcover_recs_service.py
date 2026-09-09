@@ -101,6 +101,10 @@ async def test_stores_curated_meta(db_session) -> None:
             "cached_tags": {
                 "Genre": [{"tag": "Fantasy", "count": 9}, {"tag": "Epic Fantasy", "count": 4}],
                 "Mood": [{"tag": "dark", "count": 3}],
+                "Content Warning": [
+                    {"tag": "Violence", "count": 32},
+                    {"tag": "Slavery", "count": 8},
+                ],
             },
             "description": "  Kelsier\n\nrecruits   a crew.  ",
         },
@@ -117,6 +121,7 @@ async def test_stores_curated_meta(db_session) -> None:
         "literaryType": "Fiction",
         "genres": ["Fantasy", "Epic Fantasy"],
         "moods": ["dark"],
+        "contentWarnings": ["Violence", "Slavery"],
         "description": "Kelsier recruits a crew.",
     }
 

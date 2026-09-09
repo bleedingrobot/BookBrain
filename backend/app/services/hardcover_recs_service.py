@@ -12,7 +12,8 @@ Two Hardcover calls per book: one to turn the ISBN into a Hardcover book id
 + its similar-id list, one to resolve the top ids to title / author / ISBN.
 
 prompts/26 Part B — the first call also pulls the book's own curated metadata
-(rating, page count, category, genres, moods) into `hardcover_json.meta`, so
+(rating, page count, category, genres, moods, content warnings — prompts/31
+Part A) into `hardcover_json.meta`, so
 the library-viewer can show badges and offer a genre facet. Part C adds
 `meta.description` as a zero-cost source for fill-missing-descriptions.
 """
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 _KEEP = 15  # recs stored per book
 _RESOLVE = 25  # top similar ids we bother resolving (some won't have a title)
 _META_TAGS = 5  # genres / moods kept per book
+_WARNING_TAGS = 8  # content warnings kept per book (worth showing more of)
 _DESCRIPTION_CAP = 1500
 
 # Hardcover's `book_category_id` / `literary_type_id` enums (from their docs) —
@@ -95,17 +97,17 @@ query BookBrainResolveBooks($ids: [Int!]!) {
 """
 
 
-def _tag_names(cached_tags: object, key: str) -> list[str]:
+def _tag_names(cached_tags: object, key: str, limit: int = _META_TAGS) -> list[str]:
     """Pull the top few tag names out of one `cached_tags` bucket
-    (`Genre` / `Mood` / …). The bucket is a list of {tag, count, …}, already
-    ordered most-used first."""
+    (`Genre` / `Mood` / `Content Warning` / …). The bucket is a list of
+    {tag, count, …}, already ordered most-used first."""
     bucket = cached_tags.get(key) if isinstance(cached_tags, dict) else None
     out: list[str] = []
     for entry in bucket or []:
         name = entry.get("tag") if isinstance(entry, dict) else None
         if isinstance(name, str) and name.strip():
             out.append(name.strip())
-        if len(out) >= _META_TAGS:
+        if len(out) >= limit:
             break
     return out
 
@@ -135,6 +137,9 @@ def _book_meta(book: dict) -> dict:
     moods = _tag_names(book.get("cached_tags"), "Mood")
     if moods:
         meta["moods"] = moods
+    warnings = _tag_names(book.get("cached_tags"), "Content Warning", _WARNING_TAGS)
+    if warnings:
+        meta["contentWarnings"] = warnings
     description = book.get("description")
     if isinstance(description, str) and description.strip():
         meta["description"] = " ".join(description.split())[:_DESCRIPTION_CAP]

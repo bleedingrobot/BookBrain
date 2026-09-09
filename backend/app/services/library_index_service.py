@@ -36,14 +36,25 @@ INDEX_FILENAME = "bookbrain-index.json"
 # v2 adds per-book isbn; v3 adds the top-level `series` map; v4 adds per-book
 # `meta` (Hardcover rating / pages / category / genres — prompts/26 Part B);
 # v5 adds per-entry `isbn13` inside the `series` map's book lists (so the
-# viewer can cover a not-yet-owned release — prompts/27 Part 1).
-INDEX_VERSION = 5
+# viewer can cover a not-yet-owned release — prompts/27 Part 1);
+# v6 adds per-book `contentWarnings` to `meta` and surfaces `moods` in the
+# viewer (prompts/31 Part A).
+INDEX_VERSION = 6
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
 # facet. `description` stays out — the viewer already gets a blurb from the
 # `description` field; Hardcover's copy is folded in server-side instead
 # (description_service, prompts/26 Part C).
-_META_KEYS = ("rating", "ratingsCount", "pages", "category", "literaryType", "genres", "moods")
+_META_KEYS = (
+    "rating",
+    "ratingsCount",
+    "pages",
+    "category",
+    "literaryType",
+    "genres",
+    "moods",
+    "contentWarnings",
+)
 
 # prompts/25 Phase 3 — kept out of the main index (which is ~1MB) so the
 # viewer only fetches "readers also liked" data when a book is actually

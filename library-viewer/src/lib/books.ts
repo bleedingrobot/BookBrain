@@ -82,6 +82,19 @@ export function topGenres(rows: BookRow[], limit = 12): string[] {
     .map(([g]) => g)
 }
 
+// The moods present across the library, most common first — the source for
+// the mood facet chips (prompts/31 Part A). Same shape as topGenres.
+export function topMoods(rows: BookRow[], limit = 10): string[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    for (const m of row.meta?.moods ?? []) counts.set(m, (counts.get(m) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([m]) => m)
+}
+
 export function matchesRow(row: BookRow, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
@@ -105,6 +118,7 @@ export type FilterKey =
   | `off:${string}`
   | 'unsent'
   | `genre:${string}`
+  | `mood:${string}`
 
 export function matchesFilter(
   row: BookRow,
@@ -125,6 +139,7 @@ export function matchesFilter(
   if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
   if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]
   if (filter.startsWith('genre:')) return row.meta?.genres.includes(filter.slice(6)) ?? false
+  if (filter.startsWith('mood:')) return row.meta?.moods.includes(filter.slice(5)) ?? false
   return true
 }
 

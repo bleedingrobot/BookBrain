@@ -19,6 +19,9 @@ export interface IndexMeta {
   literaryType: string | null // "Fiction" | "Nonfiction"
   genres: string[]
   moods: string[]
+  // Crowd-sourced content warnings (prompts/31 Part A). Raw Hardcover tag
+  // names, shown in a collapsed disclosure — informational, not a gate.
+  contentWarnings: string[]
 }
 
 export interface IndexEntry {
@@ -88,6 +91,7 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     literaryType: typeof raw.literaryType === 'string' ? raw.literaryType : null,
     genres: strings(raw.genres),
     moods: strings(raw.moods),
+    contentWarnings: strings(raw.contentWarnings),
   }
   const empty =
     meta.rating == null &&
@@ -96,7 +100,8 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     meta.category == null &&
     meta.literaryType == null &&
     meta.genres.length === 0 &&
-    meta.moods.length === 0
+    meta.moods.length === 0 &&
+    meta.contentWarnings.length === 0
   return empty ? null : meta
 }
 

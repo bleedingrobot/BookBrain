@@ -56,6 +56,7 @@ describe('buildRows', () => {
             literaryType: 'Fiction',
             genres: ['Science Fiction'],
             moods: [],
+            contentWarnings: [],
           },
         },
       },
@@ -137,10 +138,27 @@ describe('matchesFilter', () => {
       literaryType: null,
       genres,
       moods: [],
+      contentWarnings: [],
     })
     expect(m(row({ meta: meta(['Fantasy', 'Adventure']) }), 'genre:Fantasy')).toBe(true)
     expect(m(row({ meta: meta(['Fantasy']) }), 'genre:Horror')).toBe(false)
     expect(m(row({ meta: null }), 'genre:Fantasy')).toBe(false)
+  })
+
+  it('mood:<m> matches a book carrying that mood', () => {
+    const meta = (moods: string[]): IndexMeta => ({
+      rating: null,
+      ratingsCount: null,
+      pages: null,
+      category: null,
+      literaryType: null,
+      genres: [],
+      moods,
+      contentWarnings: [],
+    })
+    expect(m(row({ meta: meta(['dark', 'tense']) }), 'mood:dark')).toBe(true)
+    expect(m(row({ meta: meta(['dark']) }), 'mood:hopeful')).toBe(false)
+    expect(m(row({ meta: null }), 'mood:dark')).toBe(false)
   })
 })
 
@@ -153,6 +171,7 @@ describe('topGenres', () => {
     literaryType: null,
     genres,
     moods: [],
+    contentWarnings: [],
   })
   it('returns genres most-common first, capped', () => {
     const rows = [
@@ -191,6 +210,7 @@ describe('SORTS', () => {
       literaryType: null,
       genres: [],
       moods: [],
+      contentWarnings: [],
     })
     const rows = [
       row({ title: 'mid', meta: meta(3.9) }),

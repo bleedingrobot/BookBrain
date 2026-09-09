@@ -37,6 +37,7 @@ interface Props {
   onFilterAuthor: (author: string) => void
   onFilterSeries: (series: string) => void
   onFilterGenre: (genre: string) => void
+  onFilterMood?: (mood: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
 }
 
@@ -175,6 +176,7 @@ export function BookRow({
   onFilterAuthor,
   onFilterSeries,
   onFilterGenre,
+  onFilterMood,
   onRequestBook,
 }: Props) {
   const seriesPeers = expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
@@ -328,6 +330,29 @@ export function BookRow({
                   </button>
                 ))}
               </div>
+            )}
+            {meta?.moods && meta.moods.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {meta.moods.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className="badge bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/50 dark:text-violet-300 dark:hover:bg-violet-950"
+                    onClick={() => onFilterMood?.(m)}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+            {meta?.contentWarnings && meta.contentWarnings.length > 0 && (
+              <details className="mt-1.5 text-neutral-400">
+                <summary className="cursor-pointer select-none marker:text-neutral-300 hover:text-neutral-600 dark:hover:text-neutral-300">
+                  Content warnings ({meta.contentWarnings.length})
+                </summary>
+                <p className="mt-1 text-neutral-500">{meta.contentWarnings.join(' · ')}</p>
+                <p className="mt-0.5 text-[11px] text-neutral-400">Crowd-tagged on Hardcover.</p>
+              </details>
             )}
             {gap && gap.missing.length > 0 && row.series && (
               <p className="mt-1.5 text-amber-700 dark:text-amber-500">
