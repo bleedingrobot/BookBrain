@@ -36,6 +36,7 @@ from app.services.metadata_writeback_service import (
 from app.services.library_index_service import (
     regenerate_embeddings,
     regenerate_library_index,
+    regenerate_lists,
     regenerate_new_releases,
     regenerate_news,
     regenerate_prompts,
@@ -232,6 +233,26 @@ async def refresh_prompts_file(
     if count is None:
         raise HTTPException(status_code=500, detail="prompts refresh failed / no token — see logs")
     return {"prompts": count}
+
+
+@router.post("/lists")
+async def refresh_lists_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """prompts/31 Part E2 — curated Hardcover lists James part-owns → the rest
+    of each list as wishlist candidates (bookbrain-lists.json). No token, no-op."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    count = await regenerate_lists(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="lists refresh failed / no token — see logs")
+    return {"candidates": count}
 
 
 @router.post("/reading")

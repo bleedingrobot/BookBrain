@@ -81,6 +81,10 @@ NEWS_VERSION = 1
 # prompts/31 Part F — Hardcover "Prompts" → the books James owns that answer them.
 PROMPTS_FILENAME = "bookbrain-prompts.json"
 PROMPTS_VERSION = 1
+
+# prompts/31 Part E2 — curated Hardcover lists → wishlist candidates.
+LISTS_FILENAME = "bookbrain-lists.json"
+LISTS_VERSION = 1
 _NEW_RELEASES_CAP = 60
 _WISHLIST_FILENAME = "bookbrain-wishlist.json"
 
@@ -706,6 +710,80 @@ async def regenerate_prompts(
         return len(payload["prompts"])
     except Exception:
         logger.exception("prompts sidecar refresh failed")
+        return None
+
+
+async def _owned_hardcover_ids(session: AsyncSession) -> set[int]:
+    hc_id_col = func.json_extract(Book.hardcover_json, "$.id")
+    rows = (
+        await session.execute(
+            select(hc_id_col)
+            .join(File, File.book_id == Book.id)
+            .where(File.status == FileStatus.organised, hc_id_col.is_not(None))
+            .distinct()
+        )
+    ).all()
+    return {r[0] for r in rows if isinstance(r[0], int)}
+
+
+async def build_lists_payload(
+    session: AsyncSession, result: dict, wishlist_keys: set[str]
+) -> dict:
+    """`bookbrain-lists.json` — curated Hardcover lists James part-owns, plus
+    the not-yet-owned books on them as wishlist candidates (minus anything
+    already owned by title/author or on the wishlist)."""
+    owned_titles = (
+        await session.execute(
+            select(Book.canonical_title, Author.name)
+            .join(File, File.book_id == Book.id)
+            .join(Author, Author.id == Book.author_id, isouter=True)
+            .where(File.status == FileStatus.organised)
+        )
+    ).all()
+    owned_keys = {_norm_key(t, a) for t, a in owned_titles}
+
+    candidates = [
+        c
+        for c in result.get("candidates") or []
+        if _norm_key(c.get("title"), c.get("author")) not in owned_keys
+        and _norm_key(c.get("title"), c.get("author")) not in wishlist_keys
+    ]
+    return {
+        "version": LISTS_VERSION,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "lists": result.get("lists") or [],
+        "candidates": candidates,
+    }
+
+
+async def regenerate_lists(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """prompts/31 Part E2. Best-effort, never raises. No-op without a token."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        from app.services import hardcover_lists_service
+
+        provider = DriveProvider(build_drive_service(creds))
+        wishlist_keys = await asyncio.to_thread(_read_wishlist_keys, provider, library_folder_id)
+        async with async_session_factory() as session:
+            owned_ids = await _owned_hardcover_ids(session)
+            result = await hardcover_lists_service.fetch_list_candidates(owned_ids)
+            if not result.get("candidates"):
+                return None
+            payload = await build_lists_payload(session, result, wishlist_keys)
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, LISTS_FILENAME, payload
+        )
+        logger.info(
+            "lists sidecar: %d lists, %d candidates",
+            len(payload["lists"]),
+            len(payload["candidates"]),
+        )
+        return len(payload["candidates"])
+    except Exception:
+        logger.exception("lists sidecar refresh failed")
         return None
 
 

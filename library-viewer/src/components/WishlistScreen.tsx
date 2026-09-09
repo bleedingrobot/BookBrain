@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { logActivity } from '../lib/activityLog'
 import type { BookRow } from '../lib/books'
 import { searchBooks, type BookHit } from '../lib/bookSearch'
+import type { ListCandidate } from '../lib/lists'
 import type { WantCandidate } from '../lib/reading'
 import {
   alreadyListed,
@@ -81,7 +82,7 @@ function StatusPicker({
   )
 }
 
-function candidateToHit(c: WantCandidate): BookHit {
+function candidateToHit(c: { title: string; author: string | null; isbn13: string | null }): BookHit {
   return { title: c.title, author: c.author, series: null, isbn13: c.isbn13, cover: null, year: null }
 }
 
@@ -91,6 +92,7 @@ export function WishlistScreen({
   rows,
   viewerName,
   wantCandidates,
+  listCandidates,
   onBack,
 }: {
   token: string
@@ -99,6 +101,8 @@ export function WishlistScreen({
   viewerName: string
   // Hardcover "want to read" books not in the library — wishlist candidates.
   wantCandidates: WantCandidate[]
+  // Books on curated Hardcover lists this library part-owns (prompts/31 E2).
+  listCandidates: ListCandidate[]
   onBack: () => void
 }) {
   const [list, setList] = useState<Wishlist>(EMPTY_WISHLIST)
@@ -107,6 +111,7 @@ export function WishlistScreen({
   const [showDeclined, setShowDeclined] = useState(false)
   const [showAcquired, setShowAcquired] = useState(false)
   const [showAllWant, setShowAllWant] = useState(false)
+  const [showAllList, setShowAllList] = useState(false)
 
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<BookHit[] | null>(null)
@@ -227,6 +232,11 @@ export function WishlistScreen({
   )
   const shownWant = showAllWant ? wantSuggestions : wantSuggestions.slice(0, 20)
 
+  const listSuggestions = listCandidates.filter(
+    (c) => !libraryMatch(c, rows) && !alreadyListed(candidateToHit(c), list.items),
+  )
+  const shownList = showAllList ? listSuggestions : listSuggestions.slice(0, 20)
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
       <button
@@ -336,6 +346,46 @@ export function WishlistScreen({
               onClick={() => setShowAllWant(true)}
             >
               Show all {wantSuggestions.length}
+            </button>
+          )}
+        </div>
+      )}
+
+      {listSuggestions.length > 0 && (
+        <div className="card mt-4 p-4">
+          <h2 className="text-sm font-medium">
+            From lists you&rsquo;d like{' '}
+            <span className="font-normal text-neutral-400">({listSuggestions.length})</span>
+          </h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Books from curated Hardcover lists this library already owns a good chunk of.
+          </p>
+          <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800">
+            {shownList.map((c, i) => (
+              <li
+                key={`${c.title}|${c.author ?? ''}|${i}`}
+                className="flex items-center gap-3 py-2"
+              >
+                <CoverThumb url={null} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{c.title}</div>
+                  <div className="truncate text-xs text-neutral-500">
+                    {c.author ?? 'Unknown author'}
+                    <span className="text-neutral-400"> &middot; {c.fromList}</span>
+                  </div>
+                </div>
+                <button className="btn btn-neutral btn-xs" onClick={() => add(candidateToHit(c))}>
+                  Request
+                </button>
+              </li>
+            ))}
+          </ul>
+          {listSuggestions.length > shownList.length && (
+            <button
+              className="mt-2 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              onClick={() => setShowAllList(true)}
+            >
+              Show all {listSuggestions.length}
             </button>
           )}
         </div>

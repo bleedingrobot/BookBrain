@@ -60,6 +60,7 @@ import {
 } from './lib/newReleases'
 import { EMPTY_NEWS, fetchNews, type News } from './lib/news'
 import { EMPTY_PROMPTS, fetchPrompts, type Prompts } from './lib/prompts'
+import { EMPTY_LISTS, fetchLists, type Lists } from './lib/lists'
 import {
   EMPTY_READING,
   fetchReading,
@@ -152,6 +153,7 @@ export default function App() {
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
   const [showPromptsScreen, setShowPromptsScreen] = useState(false)
+  const [lists, setLists] = useState<Lists>(EMPTY_LISTS)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
   // alongside the new-releases sidecar. `pendingReading` overlays changes
   // made here that haven't synced to Hardcover yet (Phase 3).
@@ -233,6 +235,7 @@ export default function App() {
       void loadPendingReading(token, folderId).then(setPendingReading)
       void fetchNews(token, folderId).then(setNews)
       void fetchPrompts(token, folderId).then(setPrompts)
+      void fetchLists(token, folderId).then(setLists)
     }
     if (ric) ric(run)
     else setTimeout(run, 1200)
@@ -896,6 +899,7 @@ export default function App() {
         rows={allRows}
         viewerName={viewerName}
         wantCandidates={reading.wantUnowned}
+        listCandidates={lists.candidates}
         onBack={() => setShowWishlist(false)}
       />
     )

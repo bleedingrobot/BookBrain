@@ -18,6 +18,7 @@ from app.services.library_index_service import (
     _plain_text,
     _read_pending_reading,
     build_index_payload,
+    build_lists_payload,
     build_new_releases_payload,
     build_prompts_payload,
     build_reading_payload,
@@ -269,6 +270,27 @@ async def test_match_hardcover_book_ids_and_prompts_payload(db_session) -> None:
     assert payload["version"] == 1
     assert [p["question"] for p in payload["prompts"]] == ["Two owned?"]
     assert payload["prompts"][0]["driveIds"] == ["drive-will", "drive-scion"]
+
+
+async def test_build_lists_payload_drops_owned_and_wishlisted_candidates(db_session) -> None:
+    await _seed(db_session)  # owns "The Will of the Many" / "Scion" by James Islington
+    from app.services.library_index_service import _norm_key
+
+    result = {
+        "lists": [{"name": "Best SFF", "slug": "sff", "owned": 2, "total": 20}],
+        "candidates": [
+            {"title": "The Will of the Many", "author": "James Islington", "isbn13": None,
+             "fromList": "Best SFF"},  # owned → dropped
+            {"title": "Wishlisted Book", "author": "W", "isbn13": None, "fromList": "Best SFF"},
+            {"title": "A Fresh One", "author": "F", "isbn13": "9990000000002", "fromList": "Best SFF"},
+        ],
+    }
+    wishlist_keys = {_norm_key("Wishlisted Book", "W")}
+    payload = await build_lists_payload(db_session, result, wishlist_keys)
+
+    assert payload["version"] == 1
+    assert payload["lists"] == result["lists"]
+    assert [c["title"] for c in payload["candidates"]] == ["A Fresh One"]
 
 
 async def test_build_recommendations_payload(db_session) -> None:

@@ -58,6 +58,7 @@ from app.services.drive_service import DriveService
 from app.services.library_index_service import (
     regenerate_embeddings,
     regenerate_library_index,
+    regenerate_lists,
     regenerate_new_releases,
     regenerate_news,
     regenerate_prompts,
@@ -228,6 +229,15 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: prompts refresh failed")
                 steps.append(f"prompts: FAILED — {exc}")
+            # prompts/31 Part E2 — curated lists → bookbrain-lists.json.
+            try:
+                ls = await regenerate_lists(creds, library_folder_id)
+                steps.append(
+                    f"lists: {ls} candidates" if ls is not None else "lists: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: lists refresh failed")
+                steps.append(f"lists: FAILED — {exc}")
         # prompts/32 — the SFF news feeds → bookbrain-news.json. No token
         # needed; best-effort per feed, never fails the run.
         try:

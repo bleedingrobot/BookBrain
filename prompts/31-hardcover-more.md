@@ -239,23 +239,29 @@ viewer 177 + build + lint green. **Live effect needs a full recs re-sync**
 (`POST /api/library/book-recs/refresh?stale_days=0`) — same as Part A's
 content warnings; the today backfill predates both fields.
 
-### E2 — list-based discovery
-- **Backend** a new `hardcover_lists_service` + `bookbrain-lists.json` sidecar:
-  for each **series or author the library knows**, find the top ~3 public
-  lists featuring their books (`lists(where: {list_books: {book: {id: {_in: ...}}}}, order_by: {followers_count: desc})`),
-  then pull each list's books. Cross-reference:
-  - books on those lists **you own** → *"you own 6 of the 20 books on 'Best
-    Grimdark'"* (a completion nudge)
-  - books **you don't** own → wishlist candidates, tagged with the list name.
-  - Cap aggressively (lists are big); dedupe by book.
-- **Viewer** — a **"From lists you'd like"** section on the Wishlist screen
-  (mirror the `prompts/30` "From your Hardcover want-to-read" card), and/or a
-  strip on the home screen. Each candidate → one-tap Request, `from <list name>`.
-- Nightly step (token-gated, never-fails), + `POST /api/library/lists`.
+### E2 — list-based discovery — SHIPPED 2026-09-10
+Live-verified: `lists(where: {list_books: {book_id: {_in: $ownedHcIds}},
+featured: {_eq: true}}, order_by: {followers_count: desc}, limit: 12)` then
+`lists(where: {id: {_in: $listIds}}) { list_books(limit: 60) { book {...} } }`.
+`featured: true` keeps it to curated editorial lists (NPR Top 100 SFF, Time's
+100 Best Fantasy…), not random user lists.
 
-**Done when:** E1 shows list counts on books; E2 sidecar builds and the
-Wishlist screen shows list-sourced candidates filtered against owned + already
-listed; backend tests for the list cross-reference; build + lint green.
+- Backend: `hardcover_lists_service.fetch_list_candidates(owned_hc_ids)` → 2
+  calls, best-effort. `library_index_service._owned_hardcover_ids` gathers the
+  owned Hardcover ids (`Book.hardcover_json.id`). `build_lists_payload` drops
+  candidates already owned by `_norm_key` or on the wishlist; sorts by how
+  much of each list you own. → `bookbrain-lists.json` (`LISTS_VERSION 1`):
+  `{lists: [{name, slug, owned, total}], candidates: [{title, author, isbn13,
+  fromList}]}`. Nightly step after prompts + `POST /api/library/lists`.
+- Viewer: `lib/lists.ts`. `<WishlistScreen>` gets a `listCandidates` prop
+  (App passes `lists.candidates`) → a **"From lists you'd like (N)"** card
+  above the wanted list (mirrors the `prompts/30` want-to-read card), each
+  row shows `author · <list name>`, one-tap Request, 20-then-show-all,
+  filtered against owned + already-listed.
+- Tests: `test_hardcover_lists_service.py` (owned→candidates, dedupe, empty,
+  no-owned-ids), `build_lists_payload` (owned/wishlist filter), viewer
+  `lists.test.ts`. **Needs the recs re-sync** (so `Book.hardcover_json.id` is
+  populated — that's the owned-id source) + `POST /api/library/lists`.
 
 ---
 
