@@ -142,7 +142,20 @@ _TOTAL_CAP = 50
 
 ---
 
-## Part 2 — viewer: the news section
+## Part 2 — viewer: the news section — SHIPPED 2026-09-10
+
+`lib/news.ts` (`NewsItem`/`News`, `fetchNews` modifiedTime-cached, `normaliseNews`
+drops non-http links, `timeAgo`). `components/NewsFeed.tsx` — a compact
+"From around the SFF world" section (source chip + headline link-out + 2-line
+`line-clamp` excerpt + relative time), latest 6, "More →". `components/NewsScreen.tsx`
+— full 50 + a source-filter chip row, shared `NewsRow`. `App.tsx` — lazy
+`fetchNews` alongside the others, `<NewsFeed>` under `<ReadNext>` gated on
+`settings.showNews !== false` + `news.items.length`, `<NewsScreen>` route,
+"SFF news" in the header menu. `settings.ts` `showNews` — **default ON**,
+persists only the opt-out (`bookbrain.showNews === 'false'`); `SettingsForm`
+checkbox. `news.test.ts`. Viewer 170 + build + lint green.
+
+### Original notes
 
 ### `library-viewer/src/lib/news.ts`
 Copy `newReleases.ts` almost verbatim:

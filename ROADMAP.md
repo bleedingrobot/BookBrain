@@ -388,12 +388,14 @@ mis-identification guards). The rest of that session's ideas, for later:
     "your library answers" screen · G a gated "trending" strip · H edition
     metadata gap-fill · I reading-progress two-way sync (resurrects the
     dropped `prompts/17` §E, Hardcover-backed — biggest, do last).
-  - **SFF news feed (`prompts/32`, speced 2026-09-10, not started)** — a
-    "From around the SFF world" section under the release marquees: backend
-    fetches ~9 curated RSS/Atom feeds (Reactor, Locus, File 770, Grimdark Mag,
-    Book Riot SF/F, FanFiAddict…) → `bookbrain-news.json` → viewer shows the
-    latest merged headlines + excerpt + link-out. Adds `feedparser`; same
-    static-site → backend-sidecar pattern as everything else.
+  - **SFF news feed (`prompts/32`) — SHIPPED 2026-09-10.** A "From around the
+    SFF world" section under the release marquees: `sff_news_service` fetches
+    9 curated RSS/Atom feeds (Reactor, Locus, File 770, Grimdark Mag, Fantasy
+    Book Critic, Fantasy Hive, FanFiAddict, Book Riot SF/F, Swords &
+    Spaceships) → `bookbrain-news.json` (nightly + `POST /api/library/news`) →
+    viewer `<NewsFeed>` compact list + `<NewsScreen>` with a source filter,
+    `showNews` setting (default on). Live: 50 items. Same static-site →
+    backend-sidecar pattern; added `feedparser`.
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."

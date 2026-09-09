@@ -14,6 +14,7 @@ export function SettingsForm({
   const [libraryFolderId, setLibraryFolderId] = useState(initial?.libraryFolderId ?? '')
   const [koboDevices, setKoboDevices] = useState<KoboDevice[]>(initial?.koboDevices ?? [])
   const [showGlobalReleases, setShowGlobalReleases] = useState(initial?.showGlobalReleases ?? false)
+  const [showNews, setShowNews] = useState(initial?.showNews ?? true)
 
   function updateDevice(index: number, patch: Partial<KoboDevice>) {
     setKoboDevices((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
@@ -48,6 +49,7 @@ export function SettingsForm({
               libraryFolderId: libraryFolderId.trim(),
               koboDevices: cleanDevices.length > 0 ? cleanDevices : undefined,
               showGlobalReleases,
+              showNews,
             })
           }
         }}
@@ -132,6 +134,22 @@ export function SettingsForm({
             Show a "Most anticipated" strip
             <span className="mt-0.5 block text-xs text-neutral-400">
               Hardcover's most-wanted upcoming books overall — not just your authors and series.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-brand-600"
+            checked={showNews}
+            onChange={(e) => setShowNews(e.target.checked)}
+          />
+          <span className="text-sm">
+            Show the SFF news section
+            <span className="mt-0.5 block text-xs text-neutral-400">
+              Latest headlines from Reactor, Locus, File 770, Book Riot and more, under the release
+              strips.
             </span>
           </span>
         </label>

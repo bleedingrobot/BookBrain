@@ -8,6 +8,7 @@ interface Props {
   onShowDevices: () => void
   onShowWishlist: () => void
   onShowActivity: () => void
+  onShowNews: () => void
   onShare: () => void
   onCopyLink: () => void
   onEditSettings: () => void
@@ -25,6 +26,7 @@ export function LibraryHeader({
   onShowDevices,
   onShowWishlist,
   onShowActivity,
+  onShowNews,
   onShare,
   onCopyLink,
   onEditSettings,
@@ -37,6 +39,7 @@ export function LibraryHeader({
 
   const items = [
     { label: 'Activity', fn: onShowActivity },
+    { label: 'SFF news', fn: onShowNews },
     { label: 'Wishlist & requests', fn: onShowWishlist },
     { label: 'Rebuild library', fn: onRebuild, disabled: busy },
     ...(offlineCount > 0

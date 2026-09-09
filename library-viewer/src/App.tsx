@@ -6,6 +6,8 @@ import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { Reader } from './components/Reader'
 import { NewReleasesScreen } from './components/NewReleasesScreen'
+import { NewsFeed } from './components/NewsFeed'
+import { NewsScreen } from './components/NewsScreen'
 import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
 import { ReleaseMarquee } from './components/ReleaseMarquee'
@@ -54,6 +56,7 @@ import {
   fetchNewReleases,
   type NewReleases,
 } from './lib/newReleases'
+import { EMPTY_NEWS, fetchNews, type News } from './lib/news'
 import {
   EMPTY_READING,
   fetchReading,
@@ -140,6 +143,9 @@ export default function App() {
   const [newReleases, setNewReleases] = useState<NewReleases>(EMPTY_NEW_RELEASES)
   const newReleasesLoadedRef = useRef(false)
   const [showNewReleases, setShowNewReleases] = useState(false)
+  // prompts/32 — the SFF news sidecar, fetched lazily with the others.
+  const [news, setNews] = useState<News>(EMPTY_NEWS)
+  const [showNewsScreen, setShowNewsScreen] = useState(false)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
   // alongside the new-releases sidecar. `pendingReading` overlays changes
   // made here that haven't synced to Hardcover yet (Phase 3).
@@ -219,6 +225,7 @@ export default function App() {
       void fetchNewReleases(token, folderId).then(setNewReleases)
       void fetchReading(token, folderId).then(setReading)
       void loadPendingReading(token, folderId).then(setPendingReading)
+      void fetchNews(token, folderId).then(setNews)
     }
     if (ric) ric(run)
     else setTimeout(run, 1200)
@@ -835,6 +842,10 @@ export default function App() {
     )
   }
 
+  if (showNewsScreen) {
+    return <NewsScreen news={news} onBack={() => setShowNewsScreen(false)} />
+  }
+
   if (showWishlist) {
     return (
       <WishlistScreen
@@ -889,6 +900,7 @@ export default function App() {
         onShowDevices={() => setShowDevices(true)}
         onShowWishlist={() => setShowWishlist(true)}
         onShowActivity={() => setShowActivity(true)}
+        onShowNews={() => setShowNewsScreen(true)}
         onShare={handleShare}
         onCopyLink={handleCopyLink}
         onEditSettings={() => setEditingSettings(true)}
@@ -1016,6 +1028,10 @@ export default function App() {
           onRead={(id) => setReadingBookId(id)}
           onOpen={jumpToRecent}
         />
+      )}
+
+      {!lib.loading && settings?.showNews !== false && news.items.length > 0 && (
+        <NewsFeed items={news.items} onSeeAll={() => setShowNewsScreen(true)} />
       )}
 
       {lib.sessionExpired && (

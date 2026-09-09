@@ -112,9 +112,10 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   (Reactor, Locus, File 770, Grimdark Mag, Book Riot SF/F…), writes
   `bookbrain-news.json`, the viewer shows the latest merged headlines +
   excerpt + link-out. Same static-site/CORS → backend-sidecar pattern as the
-  release strips. Adds `feedparser`. Part 1 backend + Part 2 viewer
-  (`<NewsFeed>` compact list + `<NewsScreen>`), `showNews` setting default-on.
-  **Not started.**
+  release strips. Adds `feedparser`. **Both parts shipped 2026-09-10** —
+  `sff_news_service` fetches 9 feeds → `bookbrain-news.json` (nightly + `POST
+  /api/library/news`); viewer `<NewsFeed>` compact section + `<NewsScreen>`
+  with a source filter, `showNews` setting (default on). Live: 50 items.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
