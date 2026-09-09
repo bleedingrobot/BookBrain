@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # browser use. Empty = the provider is not added to candidate_service and
     # nothing changes. See prompts/25-hardcover-integration.md.
     hardcover_api_token: str = ""
+    # prompts/30 — display name for whoever's Hardcover reading data the
+    # `bookbrain-reading.json` sidecar carries. Empty → the Hardcover username.
+    hardcover_reader_name: str = ""
 
     # prompts/15 Stage A — web-search grounding for the identify call. When on
     # (default), the AI identification path may call the Anthropic web_search

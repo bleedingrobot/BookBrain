@@ -16,6 +16,7 @@ from app.services.library_index_service import (
     _plain_text,
     build_index_payload,
     build_new_releases_payload,
+    build_reading_payload,
     build_recommendations_payload,
 )
 
@@ -260,3 +261,23 @@ async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_sessi
     # global: the author-feed dup is dropped, the fresh one kept
     assert [b["title"] for b in payload["global"]] == ["Some Hyped Book"]
     assert payload["global"][0]["source"] == "global"
+
+
+async def test_build_reading_payload_matches_and_counts_unmatched(db_session) -> None:
+    await _seed(db_session)  # drive-will (isbn13 9781234567890), drive-scion (title/author)
+    rows = [
+        {"title": "The Will of the Many", "author": "?", "isbn13": "9781234567890",
+         "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1},
+        {"title": "Scion", "author": "James Islington", "isbn13": None,
+         "status": "reading", "rating": None, "readDate": None, "readCount": 0},
+        {"title": "A Book Not In The Library", "author": "Someone", "isbn13": "9990000000000",
+         "status": "read", "rating": 5.0, "readDate": None, "readCount": 1},
+    ]
+    payload = await build_reading_payload(db_session, rows, "James")
+
+    assert payload["version"] == 1 and payload["reader"] == "James" and payload["count"] == 2
+    assert payload["books"]["drive-will"] == {
+        "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1
+    }
+    assert payload["books"]["drive-scion"] == {"status": "reading"}  # no rating/date/count keys
+    assert payload["unmatched"] == {"read": 1, "want": 0, "reading": 0}

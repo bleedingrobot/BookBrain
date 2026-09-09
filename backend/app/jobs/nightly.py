@@ -59,6 +59,7 @@ from app.services.library_index_service import (
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_new_releases,
+    regenerate_reading,
     regenerate_recommendations,
 )
 from app.services.scan_service import get_scan_service
@@ -206,6 +207,16 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: hardcover new releases refresh failed")
                 steps.append(f"hardcover new releases: FAILED — {exc}")
+            # prompts/30 — the owner's Hardcover reading status/ratings →
+            # bookbrain-reading.json. Read-only user data; never fails the run.
+            try:
+                rd = await regenerate_reading(creds, library_folder_id)
+                steps.append(
+                    f"reading: {rd} books" if rd is not None else "reading: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: reading refresh failed")
+                steps.append(f"reading: FAILED — {exc}")
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"

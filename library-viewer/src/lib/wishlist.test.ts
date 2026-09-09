@@ -28,6 +28,7 @@ function row(partial: Partial<BookRow>): BookRow {
     addedAt: null,
     isbn: partial.isbn ?? null,
     meta: partial.meta ?? null,
+    reading: partial.reading ?? null,
   }
 }
 

@@ -1,6 +1,7 @@
 import type { DriveFile } from './drive'
 import type { IndexMeta, LibraryIndex } from './libraryIndex'
 import { parseFilename } from './parseFilename'
+import type { Reading, ReadingEntry } from './reading'
 import type { SentMap } from './sentTracker'
 
 // One row = one Drive file, with metadata taken from the sidecar index when
@@ -17,6 +18,9 @@ export interface BookRow {
   addedAt: string | null
   isbn: string | null
   meta: IndexMeta | null
+  // prompts/30 — the owner's Hardcover reading status/rating, when the
+  // reading sidecar has an entry for this book.
+  reading: ReadingEntry | null
 }
 
 // Identifies one row's send-to-one-device button, for per-button in-flight/
@@ -38,7 +42,11 @@ export const SORT_LABELS: Record<SortKey, string> = {
   rating: 'Rating',
 }
 
-export function buildRows(files: DriveFile[], index: LibraryIndex): BookRow[] {
+export function buildRows(
+  files: DriveFile[],
+  index: LibraryIndex,
+  reading?: Reading,
+): BookRow[] {
   return files.map((file) => {
     const meta = index.entries[file.id]
     const parsed = parseFilename(file.name)
@@ -55,6 +63,7 @@ export function buildRows(files: DriveFile[], index: LibraryIndex): BookRow[] {
       addedAt: meta?.addedAt ?? null,
       isbn: meta?.isbn ?? null,
       meta: meta?.meta ?? null,
+      reading: reading?.books[file.id] ?? null,
     }
   })
 }
@@ -88,6 +97,9 @@ export type FilterKey =
   | 'noseries'
   | 'gaps'
   | 'comingsoon'
+  | 'read'
+  | 'unread'
+  | 'want'
   | `on:${string}`
   | `off:${string}`
   | 'unsent'
@@ -104,6 +116,9 @@ export function matchesFilter(
   if (filter === 'noseries') return !row.series
   if (filter === 'gaps') return row.series != null && incompleteSeries.has(row.series)
   if (filter === 'comingsoon') return row.series != null && comingSoonSeries.has(row.series)
+  if (filter === 'read') return row.reading?.status === 'read'
+  if (filter === 'unread') return row.reading?.status !== 'read'
+  if (filter === 'want') return row.reading?.status === 'want'
   if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
   if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
   if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]

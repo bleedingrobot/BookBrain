@@ -16,6 +16,8 @@ interface Props {
   token: string
   // prompts/29 — semantic-search similarity (0..1), shown as a "· NN% match".
   matchScore?: number
+  // prompts/30 — the reader name to attribute the reading badge to.
+  reader?: string
   gap: SeriesGap | undefined
   recs: RecBook[] | undefined
   selected: boolean
@@ -40,6 +42,29 @@ function RatingPill({ rating }: { rating: number }) {
   return (
     <span className="badge bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
       ★ {rating.toFixed(1)}
+    </span>
+  )
+}
+
+// prompts/30 — the owner's Hardcover reading status for this book.
+function ReadingBadge({ reading, reader }: { reading: Row['reading']; reader: string }) {
+  if (!reading?.status) return null
+  const label = { read: '✓ Read', reading: 'Reading', want: 'Want to read', dnf: 'DNF' }[
+    reading.status
+  ]
+  const tone =
+    reading.status === 'read'
+      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+      : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
+  const when = reading.readDate ? ` · ${reading.readDate.slice(0, 4)}` : ''
+  const title = `${reader || 'Reader'}${
+    reading.status === 'read' ? `${reading.readDate ? ` — read ${reading.readDate}` : ' — read'}` : ` — ${label}`
+  }${reading.rating ? ` · rated ${reading.rating}` : ''}`
+  return (
+    <span className={`badge ${tone}`} title={title}>
+      {label}
+      {reading.status === 'read' && when}
+      {reading.rating ? ` ★${reading.rating}` : ''}
     </span>
   )
 }
@@ -122,6 +147,7 @@ export function BookRow({
   allRows,
   token,
   matchScore,
+  reader,
   gap,
   recs,
   selected,
@@ -201,6 +227,7 @@ export function BookRow({
                 · {Math.round(matchScore * 100)}% match
               </span>
             )}
+            <ReadingBadge reading={row.reading} reader={reader ?? ''} />
             {meta?.rating != null && <RatingPill rating={meta.rating} />}
             {category && (
               <span className="badge bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">

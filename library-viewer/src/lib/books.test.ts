@@ -25,6 +25,7 @@ function row(over: Partial<BookRow> = {}): BookRow {
     addedAt: null,
     isbn: null,
     meta: null,
+    reading: null,
     ...over,
   }
 }
@@ -115,6 +116,17 @@ describe('matchesFilter', () => {
   it('unsent = on no device at all', () => {
     expect(m(row({ id: 'c' }), 'unsent')).toBe(true)
     expect(m(row({ id: 'a' }), 'unsent')).toBe(false)
+  })
+  it('read / unread / want key off the reading status', () => {
+    const done = row({ reading: { status: 'read' } })
+    const wanted = row({ reading: { status: 'want' } })
+    const none = row({ reading: null })
+    expect(m(done, 'read')).toBe(true)
+    expect(m(wanted, 'read')).toBe(false)
+    expect(m(done, 'unread')).toBe(false)
+    expect(m(none, 'unread')).toBe(true)
+    expect(m(wanted, 'want')).toBe(true)
+    expect(m(done, 'want')).toBe(false)
   })
   it('genre:<g> matches a book carrying that genre', () => {
     const meta = (genres: string[]): IndexMeta => ({

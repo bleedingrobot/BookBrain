@@ -1,0 +1,126 @@
+// bookbrain-reading.json — the library owner's Hardcover reading status
+// (Read / Reading / Want to read / DNF), rating and read date, matched to
+// library books by the backend (prompts/30). USER data, not catalogue: it's
+// one person's list (the `reader` name), shown attributed, never as
+// anonymous/aggregate data. Its own sidecar, fetched lazily.
+//
+// Same best-effort + modifiedTime-gated localStorage cache as
+// recommendations.ts.
+
+const FILENAME = 'bookbrain-reading.json'
+const CACHE_KEY = 'bookbrain.reading'
+
+export type ReadingStatus = 'read' | 'reading' | 'want' | 'dnf'
+
+export interface ReadingEntry {
+  status: ReadingStatus | null
+  rating?: number
+  readDate?: string
+  readCount?: number
+}
+
+export interface Reading {
+  reader: string
+  unmatched: { read: number; want: number; reading: number }
+  // keyed by Drive file id
+  books: Record<string, ReadingEntry>
+}
+
+export const EMPTY_READING: Reading = {
+  reader: '',
+  unmatched: { read: 0, want: 0, reading: 0 },
+  books: {},
+}
+
+const STATUSES: ReadingStatus[] = ['read', 'reading', 'want', 'dnf']
+
+interface RawFile {
+  version?: number
+  reader?: string
+  unmatched?: Partial<Reading['unmatched']>
+  books?: Record<string, Partial<ReadingEntry>>
+}
+
+interface Cached {
+  libraryFolderId: string
+  modifiedTime: string | null
+  reading: Reading
+}
+
+export function normaliseReading(raw: RawFile): Reading {
+  const books: Record<string, ReadingEntry> = {}
+  for (const [id, e] of Object.entries(raw.books ?? {})) {
+    if (!e || typeof e !== 'object') continue
+    const status =
+      typeof e.status === 'string' && (STATUSES as string[]).includes(e.status)
+        ? (e.status as ReadingStatus)
+        : null
+    books[id] = {
+      status,
+      ...(typeof e.rating === 'number' ? { rating: e.rating } : {}),
+      ...(typeof e.readDate === 'string' ? { readDate: e.readDate } : {}),
+      ...(typeof e.readCount === 'number' ? { readCount: e.readCount } : {}),
+    }
+  }
+  const u = raw.unmatched ?? {}
+  return {
+    reader: typeof raw.reader === 'string' ? raw.reader : '',
+    unmatched: {
+      read: typeof u.read === 'number' ? u.read : 0,
+      want: typeof u.want === 'number' ? u.want : 0,
+      reading: typeof u.reading === 'number' ? u.reading : 0,
+    },
+    books,
+  }
+}
+
+function readCache(): Cached | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    return raw ? (JSON.parse(raw) as Cached) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearReadingCache(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY)
+  } catch {
+    /* private mode */
+  }
+}
+
+export async function fetchReading(token: string, libraryFolderId: string): Promise<Reading> {
+  const cached = readCache()
+  const cacheValid = cached?.libraryFolderId === libraryFolderId
+  try {
+    const query = encodeURIComponent(
+      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
+    )
+    const listResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
+    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
+    if (files.length === 0) return cacheValid ? cached!.reading : EMPTY_READING
+
+    const { id, modifiedTime } = files[0]
+    if (cacheValid && cached!.modifiedTime === modifiedTime) return cached!.reading
+
+    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
+    const reading = normaliseReading((await fileResp.json()) as RawFile)
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ libraryFolderId, modifiedTime, reading }))
+    } catch {
+      /* over quota / private mode */
+    }
+    return reading
+  } catch {
+    return cacheValid ? cached!.reading : EMPTY_READING
+  }
+}

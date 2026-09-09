@@ -68,6 +68,12 @@ _WISHLIST_FILENAME = "bookbrain-wishlist.json"
 EMBEDDINGS_FILENAME = "bookbrain-embeddings.bin"
 EMBEDDINGS_VERSION = 1
 _OCTET_MIME = "application/octet-stream"
+
+# prompts/30 — the account owner's Hardcover reading status/rating per
+# library book. Its own sidecar (lazy fetch). USER data, not catalogue — see
+# hardcover_reading_service's licence note.
+READING_FILENAME = "bookbrain-reading.json"
+READING_VERSION = 1
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -534,6 +540,95 @@ async def regenerate_new_releases(
         return total
     except Exception:
         logger.exception("new releases refresh failed")
+        return None
+
+
+async def build_reading_payload(
+    session: AsyncSession, reading_rows: list[dict], reader: str
+) -> dict:
+    """`bookbrain-reading.json` — the Hardcover reading rows matched to
+    organised library files (ISBN-13 first, then normalised title+author).
+    `unmatched` is counts only, so the viewer can hint "you've read N books
+    that aren't in the library" without leaking the list."""
+    files = (
+        await session.execute(
+            select(File.drive_file_id, Book.id, Book.canonical_title, Author.name)
+            .join(Book, Book.id == File.book_id)
+            .outerjoin(Author, Author.id == Book.author_id)
+            .where(File.status == FileStatus.organised, File.book_id.is_not(None))
+        )
+    ).all()
+    book_ids = {bid for _, bid, _, _ in files}
+    isbn_to_drive: dict[str, str] = {}
+    if book_ids:
+        for bid, value in (
+            await session.execute(
+                select(Identifier.book_id, Identifier.value).where(
+                    Identifier.book_id.in_(book_ids),
+                    Identifier.type.in_([IdentifierType.isbn13, IdentifierType.isbn10]),
+                )
+            )
+        ).all():
+            drive = next((d for d, b, _, _ in files if b == bid), None)
+            if drive:
+                isbn_to_drive.setdefault(value, drive)
+    key_to_drive = {_norm_key(t, a): d for d, _, t, a in files}
+
+    books: dict[str, dict] = {}
+    unmatched = {"read": 0, "want": 0, "reading": 0}
+    for row in reading_rows:
+        drive = isbn_to_drive.get(row.get("isbn13") or "") or key_to_drive.get(
+            _norm_key(row.get("title"), row.get("author"))
+        )
+        if drive is None:
+            if row.get("status") in unmatched:
+                unmatched[row["status"]] += 1
+            continue
+        entry = {"status": row.get("status")}
+        if row.get("rating") is not None:
+            entry["rating"] = row["rating"]
+        if row.get("readDate"):
+            entry["readDate"] = row["readDate"]
+        if row.get("readCount"):
+            entry["readCount"] = row["readCount"]
+        books.setdefault(drive, entry)
+
+    return {
+        "version": READING_VERSION,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "reader": reader,
+        "count": len(books),
+        "unmatched": unmatched,
+        "books": books,
+    }
+
+
+async def regenerate_reading(
+    creds: Credentials | None, library_folder_id: str | None
+) -> int | None:
+    """Fetch the owner's Hardcover reading data and write
+    bookbrain-reading.json. Best-effort, never raises (same contract as
+    regenerate_recommendations). No-op without a Hardcover token."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        from app.core.config import get_settings
+        from app.services import hardcover_reading_service
+
+        rows, username = await hardcover_reading_service.fetch_reading()
+        if not rows:
+            return None
+        reader = (get_settings().hardcover_reader_name or "").strip() or username or "reader"
+        async with async_session_factory() as session:
+            payload = await build_reading_payload(session, rows, reader)
+        provider = DriveProvider(build_drive_service(creds))
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, READING_FILENAME, payload
+        )
+        logger.info("reading sidecar: %d matched, %s unmatched", payload["count"], payload["unmatched"])
+        return payload["count"]
+    except Exception:
+        logger.exception("reading sidecar refresh failed")
         return None
 
 

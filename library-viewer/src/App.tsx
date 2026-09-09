@@ -51,6 +51,7 @@ import {
   fetchNewReleases,
   type NewReleases,
 } from './lib/newReleases'
+import { EMPTY_READING, fetchReading, type Reading } from './lib/reading'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -126,6 +127,9 @@ export default function App() {
   const [newReleases, setNewReleases] = useState<NewReleases>(EMPTY_NEW_RELEASES)
   const newReleasesLoadedRef = useRef(false)
   const [showNewReleases, setShowNewReleases] = useState(false)
+  // prompts/30 — the owner's Hardcover reading status, fetched lazily
+  // alongside the new-releases sidecar.
+  const [reading, setReading] = useState<Reading>(EMPTY_READING)
   const [readingBookId, setReadingBookId] = useState<string | null>(null)
   // Bumped when the reader closes so the "Continue reading" strip re-reads
   // the (localStorage-backed) reading progress.
@@ -194,14 +198,17 @@ export default function App() {
     if (newReleasesLoadedRef.current || !token || !settings) return
     newReleasesLoadedRef.current = true
     const folderId = settings.libraryFolderId
-    const run = () => void fetchNewReleases(token, folderId).then(setNewReleases)
     const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => void })
       .requestIdleCallback
+    const run = () => {
+      void fetchNewReleases(token, folderId).then(setNewReleases)
+      void fetchReading(token, folderId).then(setReading)
+    }
     if (ric) ric(run)
     else setTimeout(run, 1200)
   }, [token, settings])
 
-  const allRows = useMemo(() => buildRows(files ?? [], index), [files, index])
+  const allRows = useMemo(() => buildRows(files ?? [], index, reading), [files, index, reading])
 
   async function requestBook(rec: RecBook) {
     if (!token || !settings || !viewerName) return 'already-listed' as const
@@ -753,6 +760,15 @@ export default function App() {
     ...(comingSoonSeries.size > 0
       ? [{ key: 'comingsoon' as FilterKey, label: 'Coming soon' }]
       : []),
+    ...(Object.keys(reading.books).length > 0
+      ? [
+          { key: 'read' as FilterKey, label: 'Read' },
+          { key: 'unread' as FilterKey, label: 'Unread' },
+          ...(Object.values(reading.books).some((e) => e.status === 'want')
+            ? [{ key: 'want' as FilterKey, label: 'Want to read' }]
+            : []),
+        ]
+      : []),
     ...genreFacets.map((g) => ({ key: `genre:${g}` as FilterKey, label: g })),
   ]
 
@@ -1005,6 +1021,12 @@ export default function App() {
             {shareStatus ?? lib.syncMessage}
           </p>
         )}
+        {(filter === 'read' || filter === 'want') && reading.unmatched.read > 0 && (
+          <p className="mt-1.5 truncate text-xs text-neutral-400">
+            {reading.reader} has read {reading.unmatched.read} book
+            {reading.unmatched.read === 1 ? '' : 's'} that aren&rsquo;t in the library.
+          </p>
+        )}
       </div>
 
       {lib.loading && (
@@ -1044,6 +1066,7 @@ export default function App() {
           sort={sort}
           ranked={semanticScores != null}
           semanticScores={semanticScores}
+          reader={reading.reader}
           token={token}
           seriesGaps={seriesGaps}
           recommendations={recommendations}

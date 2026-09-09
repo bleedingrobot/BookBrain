@@ -18,6 +18,7 @@ interface Props {
   // and each row shows a "· NN% match".
   ranked?: boolean
   semanticScores?: Map<string, number> | null
+  reader?: string
   token: string
   seriesGaps: Map<string, SeriesGap>
   recommendations: Recommendations
@@ -46,6 +47,7 @@ export function BookList({
   sort,
   ranked = false,
   semanticScores,
+  reader,
   token,
   seriesGaps,
   recommendations,
@@ -140,6 +142,7 @@ export function BookList({
                 allRows={allRows}
                 token={token}
                 matchScore={semanticScores?.get(row.id)}
+                reader={reader}
                 gap={row.series ? seriesGaps.get(row.series) : undefined}
                 recs={recommendations[row.file.id]}
                 selected={selected.has(row.id)}

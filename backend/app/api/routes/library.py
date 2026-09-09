@@ -37,6 +37,7 @@ from app.services.library_index_service import (
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_new_releases,
+    regenerate_reading,
     regenerate_recommendations,
 )
 from app.services.scan_service import ScanService, estimate_rebuild, get_scan_service
@@ -187,6 +188,27 @@ async def refresh_new_releases_file(
     count = await regenerate_new_releases(creds, library.folder_id)
     if count is None:
         raise HTTPException(status_code=500, detail="new-releases refresh failed — see logs")
+    return {"books": count}
+
+
+@router.post("/reading")
+async def refresh_reading_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """prompts/30 — fetch the owner's Hardcover reading data (Read / Want /
+    rating / dates), match it to the library, and write bookbrain-reading.json.
+    No-op without HARDCOVER_API_TOKEN. Read-only; the owner's own data."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    count = await regenerate_reading(creds, library.folder_id)
+    if count is None:
+        raise HTTPException(status_code=500, detail="reading refresh failed / no token — see logs")
     return {"books": count}
 
 
