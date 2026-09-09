@@ -358,13 +358,15 @@ mis-identification guards). The rest of that session's ideas, for later:
     shown as `%` only.
   - ~~Reading state per person — want-to-read / reading / finished~~ — **not
     planned** (was going to piggy-back on §E; James doesn't want the sync).
-  - **Reading status from Hardcover (`prompts/30`)** — James's Hardcover
-    account has 420 Read / 353 rated / 227 want-to-read. Pull it (read-only,
-    his own token/data/tool — the deliberate exception to the "catalogue data
-    only" rule) into a `bookbrain-reading.json` sidecar → Read/Unread/Want
-    filters + rating badges. **Phase 2 is the payoff**: "read next in a series
-    you own", an author-frequency signal for the release strips, want-to-read
-    ↔ wishlist. Feeds the two items below. **Speced, not started.**
+  - **Reading status from Hardcover (`prompts/30`)** — his Hardcover account's
+    Read / rated / want-to-read, pulled read-only (his own token/data/tool —
+    the deliberate exception to "catalogue data only") into
+    `bookbrain-reading.json` → Read/Unread/Want filters + rating badges.
+    **Phase 1 shipped 2026-09-09** — `hardcover_reading_service` + sidecar +
+    nightly + viewer badges/chips; 385 books matched live (231 read / 120
+    want / 29 reading). **Phase 2 (the payoff, not started)**: "read next in
+    a series you own", an author-frequency signal for the release strips,
+    want-to-read ↔ wishlist — feeds the two items below.
   - Next-up surfacing — flip `seriesGaps.ts` around: "you finished Mistborn #1,
     you own #2" on the home screen; "you own #3 but not #1–2" → offer to add to
     the wishlist. **Needs `prompts/30` (reading status) as the input.**

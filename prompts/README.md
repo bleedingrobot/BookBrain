@@ -70,11 +70,15 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   cosine 0.99. **Browser-verified 2026-09-09** ("female assassin" → good
   results). Feature done + live.
 - [`30-reading-status.md`](30-reading-status.md) — pull James's Hardcover
-  reading data (420 Read / 353 rated / 227 want-to-read, verified live) into
-  a `bookbrain-reading.json` sidecar → Read/Unread/Want filters + rating
-  badges in the viewer. Phase 2 unlocks "read next in a series you own" +
-  an author-frequency signal for the release strips. **Read-only** (licence:
-  James's own data / own token / own tool; no write-back). Not started.
+  reading data into a `bookbrain-reading.json` sidecar → Read/Unread/Want
+  filters + rating badges in the viewer. Phase 2 unlocks "read next in a
+  series you own" + an author-frequency signal for the release strips.
+  **Read-only** (licence: James's own data / own token / own tool; no
+  write-back). **Phase 1 shipped 2026-09-09** — `hardcover_reading_service`
+  (paged `me{user_books}`) + `build_reading_payload` (ISBN then title match) +
+  nightly + `POST /library/reading`; viewer `lib/reading.ts` + `ReadingBadge`
+  + Read/Unread/Want chips. **Live: 385 matched** (231 read / 120 want / 29
+  reading), 180 read books not in the library. Phase 2 not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
