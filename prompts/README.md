@@ -90,6 +90,20 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   `apply_pending` (ISBN/search resolve → `insert`/`update_user_book`,
   idempotent) flushes it on each `regenerate_reading`. Status only, never
   reviews.
+- [`31-hardcover-more.md`](31-hardcover-more.md) — ten more things to leverage
+  from Hardcover, nine parts, one commit each, value ÷ effort order: **A**
+  moods / pace / content-warning tags (extends `meta`, index v6) · **B**
+  rating-aware recs + want-to-read "quick wins" triage (viewer-only, uses the
+  synced ratings) · **C** reading-goal progress line + a reading-stats screen
+  (reading sidecar → v3) · **D** followed-authors signal for the release
+  strips · **E** community lists ("on N lists" + list-sourced wishlist
+  candidates) · **F** Hardcover Prompts → a "your library answers" screen ·
+  **G** a gated "trending on Hardcover" strip · **H** edition metadata
+  gap-fill (pages / pub year / audio hours) · **I** reading-progress two-way
+  sync (resurrects `prompts/17` §E, Hardcover-backed — the big one, do last).
+  A–H are catalogue data (shared-viewer safe) except B/C/D which use James's
+  own synced data; I is the licence-sensitive one. Every query needs live
+  verification first — field names in the doc are unverified. **Not started.**
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 

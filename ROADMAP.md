@@ -378,6 +378,14 @@ mis-identification guards). The rest of that session's ideas, for later:
     counts-only for licence) → a "From your Hardcover want-to-read" card on the
     Wishlist screen, one-tap Request (106 candidates live). Not
     browser-verified.
+  - **More from Hardcover (`prompts/31`, speced 2026-09-10, not started)** —
+    nine parts, one commit each: A moods/pace/content-warning tags · B
+    rating-aware recs + want-to-read triage · C reading-goal progress + a
+    stats screen · D followed-authors release signal · E community lists
+    ("on N lists" + list-sourced wishlist candidates) · F Hardcover Prompts →
+    "your library answers" screen · G a gated "trending" strip · H edition
+    metadata gap-fill · I reading-progress two-way sync (resurrects the
+    dropped `prompts/17` §E, Hardcover-backed — biggest, do last).
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."
