@@ -22,7 +22,7 @@ export interface ReleaseItem {
   description: string | null
   hardcoverSlug: string | null
   genres: string[]
-  source: 'series' | 'author' | 'global'
+  source: 'series' | 'author' | 'global' | 'trending'
 }
 
 // Same-book identity for dedup: ISBN-13 when present, else normalised title.

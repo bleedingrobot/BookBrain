@@ -381,6 +381,16 @@ export default function App() {
       .filter((i) => !known.has(releaseDedupeKey(i)))
       .sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
   }, [settings, newReleases, recentReleaseFeed, upcomingReleaseFeed])
+  // prompts/31 Part G — "Trending on Hardcover" (opt-in). Whole list, minus
+  // anything already in the feeds above; owned books keep their spot and get
+  // an "In library" badge on the card.
+  const trendingFeed = useMemo(() => {
+    if (!settings?.showTrending) return []
+    const known = new Set(
+      [...recentReleaseFeed, ...upcomingReleaseFeed, ...globalReleaseFeed].map(releaseDedupeKey),
+    )
+    return newReleases.trending.filter((i) => !known.has(releaseDedupeKey(i)))
+  }, [settings, newReleases, recentReleaseFeed, upcomingReleaseFeed, globalReleaseFeed])
   const genreFacets = useMemo(() => topGenres(allRows), [allRows])
   const moodFacets = useMemo(() => topMoods(allRows), [allRows])
 
@@ -960,6 +970,12 @@ export default function App() {
             onPick={setReleaseCardItem}
             onOpenFullscreen={() => setStripsFullscreen(true)}
           />
+          <ReleaseMarquee
+            label="Trending on Hardcover"
+            items={trendingFeed}
+            onPick={setReleaseCardItem}
+            onOpenFullscreen={() => setStripsFullscreen(true)}
+          />
           {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (
             <button
               type="button"
@@ -1007,6 +1023,15 @@ export default function App() {
               <ReleaseMarquee
                 label="Most anticipated"
                 items={globalReleaseFeed}
+                fullscreen
+                onPick={(item) => {
+                  setStripsFullscreen(false)
+                  setReleaseCardItem(item)
+                }}
+              />
+              <ReleaseMarquee
+                label="Trending on Hardcover"
+                items={trendingFeed}
                 fullscreen
                 onPick={(item) => {
                   setStripsFullscreen(false)

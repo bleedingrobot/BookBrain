@@ -38,7 +38,8 @@ INDEX_FILENAME = "bookbrain-index.json"
 # v5 adds per-entry `isbn13` inside the `series` map's book lists (so the
 # viewer can cover a not-yet-owned release — prompts/27 Part 1);
 # v6 adds per-book `contentWarnings` to `meta` and surfaces `moods` in the
-# viewer (prompts/31 Part A); v7 adds `listsCount` (prompts/31 Part E1).
+# viewer (prompts/31 Part A); v7 adds `listsCount` (E1) + `published` /
+# `audioHours` (Part H).
 INDEX_VERSION = 7
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
@@ -55,6 +56,8 @@ _META_KEYS = (
     "moods",
     "contentWarnings",
     "listsCount",
+    "published",
+    "audioHours",
 )
 
 # prompts/25 Phase 3 — kept out of the main index (which is ~1MB) so the
@@ -69,7 +72,7 @@ _JSON_MIME = "application/json"
 # books for every author in the library, minus what's already owned or
 # wishlisted. Its own sidecar (like recommendations) so it's a lazy fetch.
 NEW_RELEASES_FILENAME = "bookbrain-new-releases.json"
-NEW_RELEASES_VERSION = 1
+NEW_RELEASES_VERSION = 2  # v2 adds trending[] (prompts/31 Part G)
 
 # prompts/32 — the SFF news feed sidecar.
 NEWS_FILENAME = "bookbrain-news.json"
@@ -419,6 +422,7 @@ async def build_new_releases_payload(
     session: AsyncSession,
     wishlist_keys: set[str],
     global_raw: list[dict] | None = None,
+    trending_raw: list[dict] | None = None,
 ) -> dict:
     """`bookbrain-new-releases.json` — every organised author's Hardcover
     recent + near-future books (Author.hardcover_json, from
@@ -492,6 +496,28 @@ async def build_new_releases_payload(
             }
         )
 
+    # prompts/31 Part G — trending books, in Hardcover's order. Kept whole
+    # (owned ones get an "In library" badge viewer-side); just skip anything
+    # already in the author/global feeds.
+    trending: list[dict] = []
+    for book in trending_raw or []:
+        if not isinstance(book, dict) or not isinstance(book.get("title"), str):
+            continue
+        key = _norm_key(book["title"], book.get("author"))
+        if key in seen:
+            continue
+        seen.add(key)
+        trending.append(
+            {
+                "title": book["title"],
+                "author": book.get("author"),
+                "isbn13": book.get("isbn13"),
+                "releaseDate": None,
+                "genres": book.get("genres") or [],
+                "source": "trending",
+            }
+        )
+
     recent.sort(key=lambda b: b.get("releaseDate") or "", reverse=True)
     upcoming.sort(key=lambda b: b.get("releaseDate") or "")
     global_items.sort(key=lambda b: b.get("releaseDate") or "")
@@ -501,6 +527,7 @@ async def build_new_releases_payload(
         "recent": recent[:_NEW_RELEASES_CAP],
         "upcoming": upcoming[:_NEW_RELEASES_CAP],
         "global": global_items[:_NEW_RELEASES_CAP],
+        "trending": trending[:_NEW_RELEASES_CAP],
     }
 
 
@@ -543,18 +570,22 @@ async def regenerate_new_releases(
         provider = DriveProvider(build_drive_service(creds))
         wishlist_keys = await asyncio.to_thread(_read_wishlist_keys, provider, library_folder_id)
         global_raw = await hardcover_new_releases_service.fetch_global_anticipated()
+        trending_raw = await hardcover_new_releases_service.fetch_trending()
         async with async_session_factory() as session:
-            payload = await build_new_releases_payload(session, wishlist_keys, global_raw)
+            payload = await build_new_releases_payload(
+                session, wishlist_keys, global_raw, trending_raw
+            )
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, NEW_RELEASES_FILENAME, payload
         )
         total = len(payload["recent"]) + len(payload["upcoming"]) + len(payload["global"])
         logger.info(
-            "new releases refreshed: %d books (%d recent, %d upcoming, %d global)",
+            "new releases refreshed: %d books (%d recent, %d upcoming, %d global, %d trending)",
             total,
             len(payload["recent"]),
             len(payload["upcoming"]),
             len(payload["global"]),
+            len(payload["trending"]),
         )
         return total
     except Exception:

@@ -9,6 +9,7 @@ from app.data.models import Author, Book, File, FileStatus
 from app.providers.metadata.hardcover import ENDPOINT
 from app.services.hardcover_new_releases_service import (
     fetch_global_anticipated,
+    fetch_trending,
     real_release_date,
     refresh_new_releases,
     resolve_person_id,
@@ -75,6 +76,43 @@ def _book(title: str, release_date: str, isbn: str | None = "9990000000000", **e
         "editions": [{"isbn_13": isbn}] if isbn else [],
         "cached_tags": {"Genre": [{"tag": g} for g in extra.get("genres", [])]},
     }
+
+
+@respx.mock
+async def test_fetch_trending_resolves_ids_in_order() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        q = json.loads(request.content)["query"]
+        if "books_trending" in q:
+            return httpx.Response(200, json={"data": {"books_trending": {"ids": [3, 1, 2]}}})
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "books": [
+                        {"id": 1, "title": "One", "contributions": [{"author": {"name": "A"}}],
+                         "editions": [{"isbn_13": "111"}], "cached_tags": {}},
+                        {"id": 2, "title": "Two", "contributions": [], "editions": [],
+                         "cached_tags": {"Genre": [{"tag": "Horror"}]}},
+                        {"id": 3, "title": "Three", "contributions": [{"author": {"name": "C"}}],
+                         "editions": [], "cached_tags": {}},
+                    ]
+                }
+            },
+        )
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    out = await fetch_trending(limit=5)
+    assert [b["title"] for b in out] == ["Three", "One", "Two"]  # trending order
+    assert out[1] == {"title": "One", "isbn13": "111", "author": "A"}
+    assert out[2]["genres"] == ["Horror"]
+
+
+@respx.mock
+async def test_fetch_trending_empty_on_no_ids() -> None:
+    respx.post(ENDPOINT).mock(
+        return_value=httpx.Response(200, json={"data": {"books_trending": {"ids": []}}})
+    )
+    assert await fetch_trending() == []
 
 
 def test_real_release_date_rejects_placeholders_and_far_future() -> None:

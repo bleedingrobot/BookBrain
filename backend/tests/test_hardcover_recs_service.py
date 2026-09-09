@@ -99,6 +99,8 @@ async def test_stores_curated_meta(db_session) -> None:
             "book_category_id": 1,
             "literary_type_id": 1,
             "lists_count": 3223,
+            "release_year": 2006,
+            "default_audio_edition": {"audio_seconds": 88764},
             "cached_tags": {
                 "Genre": [{"tag": "Fantasy", "count": 9}, {"tag": "Epic Fantasy", "count": 4}],
                 "Mood": [{"tag": "dark", "count": 3}],
@@ -124,8 +126,23 @@ async def test_stores_curated_meta(db_session) -> None:
         "moods": ["dark"],
         "contentWarnings": ["Violence", "Slavery"],
         "listsCount": 3223,
+        "published": 2006,
+        "audioHours": 24.7,
         "description": "Kelsier recruits a crew.",
     }
+
+
+@respx.mock
+async def test_pages_fall_back_to_the_default_physical_edition(db_session) -> None:
+    await _seed_book(db_session, "No Book Pages", "9780765311780")
+    _route(
+        similar_ids=[10],
+        resolved=[_resolved(10, "x", "a", None)],
+        book_extra={"pages": None, "default_physical_edition": {"pages": 412}},
+    )
+    await refresh_book_recs(db_session)
+    meta = (await db_session.execute(_sel("No Book Pages"))).scalar_one().hardcover_json["meta"]
+    assert meta["pages"] == 412
 
 
 @respx.mock

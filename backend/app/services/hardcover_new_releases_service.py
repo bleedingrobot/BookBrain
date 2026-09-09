@@ -201,6 +201,79 @@ async def fetch_global_anticipated(
     return out
 
 
+_TRENDING = """
+query BookBrainTrending($limit: Int!) {
+  books_trending(limit: $limit) { ids }
+}
+"""
+_TRENDING_BOOKS = """
+query BookBrainTrendingBooks($ids: [Int!]!) {
+  books(where: {id: {_in: $ids}}) {
+    id
+    title
+    contributions(limit: 1) { author { name } }
+    editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
+      isbn_13
+    }
+    cached_tags
+  }
+}
+"""
+
+
+async def fetch_trending(
+    *, limit: int = 30, client: httpx.AsyncClient | None = None
+) -> list[dict]:
+    """prompts/31 Part G — what the Hardcover community is reading right now.
+    Two calls (ids, then resolve), best-effort → []. Not filtered to the
+    library; the viewer excludes owned/wishlisted and only shows the strip
+    behind the opt-in `showTrending` setting."""
+    settings = get_settings()
+    token = (settings.hardcover_api_token or "").strip()
+    if not token:
+        return []
+    owns_client = client is None
+    http = client or httpx.AsyncClient(timeout=12.0)
+    bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
+    try:
+        data = await hardcover_graphql(http, token, _TRENDING, {"limit": limit}, bucket)
+        ids = ((data or {}).get("books_trending") or {}).get("ids") or []
+        ids = [i for i in ids if isinstance(i, int)][:limit]
+        if not ids:
+            return []
+        data = await hardcover_graphql(http, token, _TRENDING_BOOKS, {"ids": ids}, bucket)
+    except HardcoverRateLimited:
+        return []
+    except Exception:  # noqa: BLE001
+        logger.exception("hardcover trending fetch failed")
+        return []
+    finally:
+        if owns_client:
+            await http.aclose()
+
+    by_id = {b["id"]: b for b in (data or {}).get("books") or [] if isinstance(b.get("id"), int)}
+    out: list[dict] = []
+    for bid in ids:  # keep Hardcover's trending order
+        row = by_id.get(bid)
+        if not row or not isinstance(row.get("title"), str) or not row["title"].strip():
+            continue
+        eds = row.get("editions") or []
+        isbn13 = eds[0].get("isbn_13") if eds and isinstance(eds[0], dict) else None
+        contribs = row.get("contributions") or []
+        author = contribs[0].get("author") if contribs and isinstance(contribs[0], dict) else None
+        name = author.get("name") if isinstance(author, dict) else None
+        entry = {"title": row["title"].strip()}
+        if isinstance(isbn13, str) and isbn13.strip():
+            entry["isbn13"] = isbn13.strip()
+        if isinstance(name, str) and name.strip():
+            entry["author"] = name.strip()
+        genres = _tag_names(row.get("cached_tags"), "Genre")
+        if genres:
+            entry["genres"] = genres
+        out.append(entry)
+    return out
+
+
 async def _author_info(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, name: str, since: date
 ) -> tuple[list[dict], tuple[int, str] | None]:

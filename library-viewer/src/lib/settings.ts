@@ -5,6 +5,7 @@ const FOLDER_ID_KEY = 'bookbrain.libraryFolderId'
 const KOBO_FOLDER_ID_KEY = 'bookbrain.koboFolderId' // legacy single-folder key, migrated on read
 const KOBO_DEVICES_KEY = 'bookbrain.koboDevices'
 const SHOW_GLOBAL_RELEASES_KEY = 'bookbrain.showGlobalReleases'
+const SHOW_TRENDING_KEY = 'bookbrain.showTrending'
 const SHOW_NEWS_KEY = 'bookbrain.showNews' // default ON — stores 'false' only when hidden
 
 export interface KoboDevice {
@@ -25,6 +26,9 @@ export interface ViewerSettings {
   // wanted upcoming books overall, not filtered to the library). Off by
   // default; browser-local, not Drive-synced.
   showGlobalReleases?: boolean
+  // prompts/31 Part G — the "Trending on Hardcover" strip. Off by default;
+  // browser-local, not Drive-synced.
+  showTrending?: boolean
   // prompts/32 — the "From around the SFF world" news section. On by default;
   // browser-local, not Drive-synced.
   showNews?: boolean
@@ -63,6 +67,7 @@ export function loadPartialSettings(): PartialSettings {
     libraryFolderId: localStorage.getItem(FOLDER_ID_KEY) ?? DEFAULT_LIBRARY_FOLDER_ID ?? undefined,
     koboDevices: loadKoboDevices(),
     showGlobalReleases: localStorage.getItem(SHOW_GLOBAL_RELEASES_KEY) === 'true',
+    showTrending: localStorage.getItem(SHOW_TRENDING_KEY) === 'true',
     showNews: localStorage.getItem(SHOW_NEWS_KEY) !== 'false',
   }
 }
@@ -86,6 +91,8 @@ export function saveSettings(settings: ViewerSettings): void {
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
   if (settings.showGlobalReleases) localStorage.setItem(SHOW_GLOBAL_RELEASES_KEY, 'true')
   else localStorage.removeItem(SHOW_GLOBAL_RELEASES_KEY)
+  if (settings.showTrending) localStorage.setItem(SHOW_TRENDING_KEY, 'true')
+  else localStorage.removeItem(SHOW_TRENDING_KEY)
   // default-on: only persist the opt-out
   if (settings.showNews === false) localStorage.setItem(SHOW_NEWS_KEY, 'false')
   else localStorage.removeItem(SHOW_NEWS_KEY)
@@ -97,6 +104,7 @@ export function clearSettings(): void {
   localStorage.removeItem(KOBO_FOLDER_ID_KEY)
   localStorage.removeItem(KOBO_DEVICES_KEY)
   localStorage.removeItem(SHOW_GLOBAL_RELEASES_KEY)
+  localStorage.removeItem(SHOW_TRENDING_KEY)
   localStorage.removeItem(SHOW_NEWS_KEY)
   localStorage.removeItem('bookbrain.readOnly') // orphan from the removed guest mode
 }

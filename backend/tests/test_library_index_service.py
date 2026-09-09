@@ -291,9 +291,13 @@ async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_sessi
         {"title": "Blade Breaker", "author": "James Islington", "releaseDate": "2024-01-01"},  # dup
         {"title": "Some Hyped Book", "author": "Other Person", "releaseDate": "2027-01-01"},
     ]
-    payload = await build_new_releases_payload(db_session, wishlist_keys, global_raw)
+    trending_raw = [
+        {"title": "Some Hyped Book", "author": "Other Person"},  # dup of global → dropped
+        {"title": "Trending Now", "author": "Zadie Z", "genres": ["Literary"]},
+    ]
+    payload = await build_new_releases_payload(db_session, wishlist_keys, global_raw, trending_raw)
 
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     assert [b["title"] for b in payload["recent"]] == ["Blade Breaker"]
     assert [b["title"] for b in payload["upcoming"]] == ["The Hierarchy 3"]
     assert payload["recent"][0]["source"] == "author"
@@ -301,6 +305,9 @@ async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_sessi
     # global: the author-feed dup is dropped, the fresh one kept
     assert [b["title"] for b in payload["global"]] == ["Some Hyped Book"]
     assert payload["global"][0]["source"] == "global"
+    # trending: the global dup is dropped, order preserved, source tagged
+    assert [b["title"] for b in payload["trending"]] == ["Trending Now"]
+    assert payload["trending"][0]["source"] == "trending"
 
 
 async def test_build_reading_payload_matches_and_counts_unmatched(db_session) -> None:

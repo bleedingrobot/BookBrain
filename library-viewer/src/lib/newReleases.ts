@@ -19,9 +19,17 @@ export interface NewReleases {
   // prompts/27 Part 3 — Hardcover's most-anticipated upcoming books overall,
   // not filtered to the library. Only shown when `showGlobalReleases` is on.
   global: ReleaseItem[]
+  // prompts/31 Part G — what the Hardcover community is reading now. Only
+  // shown when `showTrending` is on.
+  trending: ReleaseItem[]
 }
 
-export const EMPTY_NEW_RELEASES: NewReleases = { recent: [], upcoming: [], global: [] }
+export const EMPTY_NEW_RELEASES: NewReleases = {
+  recent: [],
+  upcoming: [],
+  global: [],
+  trending: [],
+}
 
 interface RawItem {
   title?: string
@@ -37,6 +45,7 @@ interface RawFile {
   recent?: RawItem[]
   upcoming?: RawItem[]
   global?: RawItem[]
+  trending?: RawItem[]
 }
 
 interface Cached {
@@ -45,7 +54,7 @@ interface Cached {
   releases: NewReleases
 }
 
-function toItem(raw: RawItem, source: 'author' | 'global'): ReleaseItem | null {
+function toItem(raw: RawItem, source: 'author' | 'global' | 'trending'): ReleaseItem | null {
   if (typeof raw.title !== 'string' || !raw.title) return null
   const author = raw.author ?? null
   return {
@@ -64,12 +73,13 @@ function toItem(raw: RawItem, source: 'author' | 'global'): ReleaseItem | null {
 }
 
 export function normaliseNewReleases(raw: RawFile): NewReleases {
-  const list = (arr: RawItem[] | undefined, source: 'author' | 'global') =>
+  const list = (arr: RawItem[] | undefined, source: 'author' | 'global' | 'trending') =>
     (arr ?? []).map((r) => toItem(r, source)).filter((i): i is ReleaseItem => i !== null)
   return {
     recent: list(raw.recent, 'author'),
     upcoming: list(raw.upcoming, 'author'),
     global: list(raw.global, 'global'),
+    trending: list(raw.trending, 'trending'),
   }
 }
 

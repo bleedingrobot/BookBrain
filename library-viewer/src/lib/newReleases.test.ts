@@ -70,6 +70,11 @@ describe('fetchNewReleases', () => {
 
   it('returns empty on error or a missing file', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ files: [] }))
-    expect(await fetchNewReleases('tok', 'lib-1')).toEqual({ recent: [], upcoming: [], global: [] })
+    expect(await fetchNewReleases('tok', 'lib-1')).toEqual({
+      recent: [],
+      upcoming: [],
+      global: [],
+      trending: [],
+    })
   })
 })

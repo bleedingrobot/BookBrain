@@ -60,6 +60,8 @@ describe('normalise', () => {
       moods: ['dark'],
       contentWarnings: ['Violence'],
       listsCount: 3223,
+      published: null,
+      audioHours: null,
     })
     expect(out.entries.bad.meta).toBeNull()
   })

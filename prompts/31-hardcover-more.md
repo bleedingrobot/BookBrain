@@ -286,7 +286,23 @@ build + lint green.
 
 ---
 
-## Part G — "what the community's reading now" strip
+## Part G — "trending on Hardcover" strip — SHIPPED 2026-09-10
+
+Live query: `books_trending(limit: N) { ids }` → resolve with
+`books(where: {id: {_in: $ids}})`. `hardcover_new_releases_service.fetch_trending()`
+(two calls, best-effort → [], keeps Hardcover's order). `regenerate_new_releases`
+calls it; `build_new_releases_payload(..., trending_raw=None)` → sidecar
+`trending[]` (kept whole — owned books just get flagged on the card like every
+other strip; deduped against recent/upcoming/global). **`NEW_RELEASES_VERSION`
+→ 2.** Viewer: `newReleases.ts` `NewReleases.trending` + `'trending'` source;
+`settings.showTrending` (default OFF, mirrors `showGlobalReleases`) +
+`SettingsForm` checkbox; `App.tsx` `trendingFeed` memo + a 4th `<ReleaseMarquee
+label="Trending on Hardcover">` (inline + fullscreen). Tests: `fetch_trending`
+(order + empty), `build_new_releases_payload` trending dedupe. Backend 681 +
+corpus green; viewer 177 + build + lint green. **Needs `POST
+/api/library/new-releases` to populate live.**
+
+### Original notes
 
 - **Backend** — `books_trending` (confirm the field; Hardcover has a trending
   query, possibly `books_trending(from: $date, limit: 30)` or a
@@ -303,7 +319,23 @@ show an "In library" badge; build + lint green.
 
 ---
 
-## Part H — edition metadata gap-fill
+## Part H — edition metadata gap-fill — SHIPPED 2026-09-10
+
+Live-verified fields on `book`: `release_year`,
+`default_physical_edition { pages release_date }`,
+`default_audio_edition { audio_seconds }` — all added to
+`hardcover_recs_service._BOOK_BY_ISBN` (no extra call). `_book_meta`:
+`meta.pages` falls back to the physical edition; `meta.published` =
+`release_year` (guarded 1400–2200); `meta.audioHours` =
+`round(audio_seconds/3600, 1)`. `_META_KEYS` += `published`, `audioHours`
+(rides the v7 bump). Viewer `IndexMeta` + `normaliseMeta` + the expanded-row
+stats line: "first published 2003 · 541 pages · ~24.7h audio · …". The
+"you own the 2011 edition, there's a 2020 revised" idea stays **out of
+scope** — BookBrain doesn't track which edition a file is. Backend 681 +
+corpus green; viewer 177 + build + lint green. **Needs the full recs re-sync
+(with Part A + E1) to populate live.**
+
+### Original notes
 
 `prompts/26` Part B pulls `pages` for the recs pass. Widen it:
 

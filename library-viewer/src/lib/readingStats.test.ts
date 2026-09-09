@@ -51,6 +51,8 @@ function metaPages(pages: number): BookRow['meta'] {
     moods: [],
     contentWarnings: [],
     listsCount: null,
+    published: null,
+    audioHours: null,
   }
 }
 

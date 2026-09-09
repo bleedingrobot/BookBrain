@@ -25,6 +25,9 @@ export interface IndexMeta {
   // How many Hardcover lists this book appears on (prompts/31 Part E1) — a
   // rough "how canonical / talked-about is this" signal.
   listsCount: number | null
+  // First-publication year and audiobook length (prompts/31 Part H).
+  published: number | null
+  audioHours: number | null
 }
 
 export interface IndexEntry {
@@ -96,6 +99,8 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     moods: strings(raw.moods),
     contentWarnings: strings(raw.contentWarnings),
     listsCount: typeof raw.listsCount === 'number' ? raw.listsCount : null,
+    published: typeof raw.published === 'number' ? raw.published : null,
+    audioHours: typeof raw.audioHours === 'number' ? raw.audioHours : null,
   }
   const empty =
     meta.rating == null &&
@@ -106,7 +111,9 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     meta.genres.length === 0 &&
     meta.moods.length === 0 &&
     meta.contentWarnings.length === 0 &&
-    meta.listsCount == null
+    meta.listsCount == null &&
+    meta.published == null &&
+    meta.audioHours == null
   return empty ? null : meta
 }
 

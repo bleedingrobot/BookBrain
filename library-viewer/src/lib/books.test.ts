@@ -59,6 +59,8 @@ describe('buildRows', () => {
             moods: [],
             contentWarnings: [],
             listsCount: null,
+            published: null,
+            audioHours: null,
           },
         },
       },
@@ -142,6 +144,8 @@ describe('matchesFilter', () => {
       moods: [],
       contentWarnings: [],
       listsCount: null,
+      published: null,
+      audioHours: null,
     })
     expect(m(row({ meta: meta(['Fantasy', 'Adventure']) }), 'genre:Fantasy')).toBe(true)
     expect(m(row({ meta: meta(['Fantasy']) }), 'genre:Horror')).toBe(false)
@@ -159,6 +163,8 @@ describe('matchesFilter', () => {
       moods,
       contentWarnings: [],
       listsCount: null,
+      published: null,
+      audioHours: null,
     })
     expect(m(row({ meta: meta(['dark', 'tense']) }), 'mood:dark')).toBe(true)
     expect(m(row({ meta: meta(['dark']) }), 'mood:hopeful')).toBe(false)
@@ -177,6 +183,8 @@ describe('quickWinScore', () => {
     moods: [],
     contentWarnings: [],
     listsCount: null,
+    published: null,
+    audioHours: null,
     ...over,
   })
 
@@ -210,6 +218,8 @@ describe('topGenres', () => {
     moods: [],
     contentWarnings: [],
     listsCount: null,
+    published: null,
+    audioHours: null,
   })
   it('returns genres most-common first, capped', () => {
     const rows = [
@@ -250,6 +260,8 @@ describe('SORTS', () => {
       moods: [],
       contentWarnings: [],
       listsCount: null,
+      published: null,
+      audioHours: null,
     })
     const rows = [
       row({ title: 'mid', meta: meta(3.9) }),

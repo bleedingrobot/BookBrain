@@ -77,6 +77,9 @@ query BookBrainSimilarByIsbn($isbn: String!) {
       cached_tags
       lists_count
       description
+      release_year
+      default_physical_edition { pages release_date }
+      default_audio_edition { audio_seconds }
     }
   }
 }
@@ -123,7 +126,10 @@ def _book_meta(book: dict) -> dict:
     ratings_count = book.get("ratings_count")
     if isinstance(ratings_count, int) and ratings_count > 0:
         meta["ratingsCount"] = ratings_count
+    phys = book.get("default_physical_edition") or {}
     pages = book.get("pages")
+    if not (isinstance(pages, int) and pages > 0):
+        pages = phys.get("pages")  # prompts/31 Part H — fall back to the edition
     if isinstance(pages, int) and pages > 0:
         meta["pages"] = pages
     category = _BOOK_CATEGORY.get(book.get("book_category_id"))
@@ -144,6 +150,13 @@ def _book_meta(book: dict) -> dict:
     lists_count = book.get("lists_count")
     if isinstance(lists_count, int) and lists_count > 0:
         meta["listsCount"] = lists_count
+    # prompts/31 Part H — first-publication year + audiobook length.
+    year = book.get("release_year")
+    if isinstance(year, int) and 1400 < year < 2200:
+        meta["published"] = year
+    audio = (book.get("default_audio_edition") or {}).get("audio_seconds")
+    if isinstance(audio, int | float) and audio > 0:
+        meta["audioHours"] = round(audio / 3600, 1)
     description = book.get("description")
     if isinstance(description, str) and description.strip():
         meta["description"] = " ".join(description.split())[:_DESCRIPTION_CAP]

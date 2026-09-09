@@ -319,10 +319,16 @@ export function BookRow({
                 Added {new Date(row.addedAt).toLocaleDateString()}
               </p>
             )}
-            {(meta?.pages != null || meta?.literaryType || meta?.listsCount != null) && (
+            {(meta?.pages != null ||
+              meta?.literaryType ||
+              meta?.listsCount != null ||
+              meta?.published != null ||
+              meta?.audioHours != null) && (
               <p className="mt-1.5 text-neutral-400">
                 {[
+                  meta.published != null ? `first published ${meta.published}` : null,
                   meta.pages != null ? `${meta.pages} pages` : null,
+                  meta.audioHours != null ? `~${meta.audioHours}h audio` : null,
                   meta.literaryType,
                   meta.ratingsCount != null
                     ? `${meta.ratingsCount.toLocaleString()} ratings`

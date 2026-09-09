@@ -383,13 +383,14 @@ mis-identification guards). The rest of that session's ideas, for later:
     (index v6, mood chips, content-warning disclosure; pace dropped — not in
     the API) · **B rating-aware recs + want-to-read quick-wins — SHIPPED**
     (author-affinity re-rank, `quickWinScore` sort) · **C reading-goal
-    progress + stats screen — SHIPPED** (`me{goals}` → reading sidecar v3
-    `goal{}`, a home-screen goal bar, a `<ReadingStatsScreen>` derived from
-    the sidecar) · D followed-authors release signal · E community lists
-    ("on N lists" + list-sourced wishlist candidates) · F Hardcover Prompts →
-    "your library answers" screen · G a gated "trending" strip · H edition
-    metadata gap-fill · I reading-progress two-way sync (resurrects the
-    dropped `prompts/17` §E, Hardcover-backed — biggest, do last).
+    progress + stats screen — SHIPPED** · **E1 "on N lists" + Most-listed
+    sort — SHIPPED** · **G opt-in "Trending on Hardcover" strip — SHIPPED** ·
+    **H edition pages/pub-year/audio-hours gap-fill — SHIPPED** · **D dropped**
+    (Hardcover exposes no followed-authors to a PAT). Index → v7,
+    new-releases sidecar → v2. **Left: E2** (list-based discovery card),
+    **F** (Hardcover Prompts → "your library answers" screen), **I**
+    (reading-progress two-way sync — resurrects the dropped `prompts/17` §E,
+    Hardcover-backed — biggest, do last).
   - **SFF news feed (`prompts/32`) — SHIPPED 2026-09-10.** A "From around the
     SFF world" section under the release marquees: `sff_news_service` fetches
     9 curated RSS/Atom feeds (Reactor, Locus, File 770, Grimdark Mag, Fantasy
