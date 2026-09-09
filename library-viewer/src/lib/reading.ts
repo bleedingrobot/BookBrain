@@ -22,9 +22,18 @@ export interface ReadingEntry {
   pending?: boolean
 }
 
+// A want-to-read book (from Hardcover) that isn't in the library — a wishlist
+// candidate. Only want-to-read is listed this way; read/reading stay as counts.
+export interface WantCandidate {
+  title: string
+  author: string | null
+  isbn13: string | null
+}
+
 export interface Reading {
   reader: string
   unmatched: { read: number; want: number; reading: number }
+  wantUnowned: WantCandidate[]
   // keyed by Drive file id
   books: Record<string, ReadingEntry>
 }
@@ -32,6 +41,7 @@ export interface Reading {
 export const EMPTY_READING: Reading = {
   reader: '',
   unmatched: { read: 0, want: 0, reading: 0 },
+  wantUnowned: [],
   books: {},
 }
 
@@ -41,6 +51,7 @@ interface RawFile {
   version?: number
   reader?: string
   unmatched?: Partial<Reading['unmatched']>
+  wantUnowned?: Partial<WantCandidate>[]
   books?: Record<string, Partial<ReadingEntry>>
 }
 
@@ -66,6 +77,16 @@ export function normaliseReading(raw: RawFile): Reading {
     }
   }
   const u = raw.unmatched ?? {}
+  const wantUnowned: WantCandidate[] = []
+  for (const w of raw.wantUnowned ?? []) {
+    if (w && typeof w.title === 'string' && w.title.trim()) {
+      wantUnowned.push({
+        title: w.title,
+        author: typeof w.author === 'string' ? w.author : null,
+        isbn13: typeof w.isbn13 === 'string' ? w.isbn13 : null,
+      })
+    }
+  }
   return {
     reader: typeof raw.reader === 'string' ? raw.reader : '',
     unmatched: {
@@ -73,6 +94,7 @@ export function normaliseReading(raw: RawFile): Reading {
       want: typeof u.want === 'number' ? u.want : 0,
       reading: typeof u.reading === 'number' ? u.reading : 0,
     },
+    wantUnowned,
     books,
   }
 }

@@ -821,6 +821,7 @@ export default function App() {
         libraryFolderId={settings.libraryFolderId}
         rows={allRows}
         viewerName={viewerName}
+        wantCandidates={reading.wantUnowned}
         onBack={() => setShowWishlist(false)}
       />
     )

@@ -73,7 +73,7 @@ _OCTET_MIME = "application/octet-stream"
 # library book. Its own sidecar (lazy fetch). USER data, not catalogue — see
 # hardcover_reading_service's licence note.
 READING_FILENAME = "bookbrain-reading.json"
-READING_VERSION = 1
+READING_VERSION = 2  # v2 adds wantUnowned[] (want↔wishlist)
 # prompts/30 Phase 3 — the viewer queues "mark read" here; a sync applies it
 # to Hardcover then drops the applied entries.
 READING_PENDING_FILENAME = "bookbrain-reading-pending.json"
@@ -551,8 +551,10 @@ async def build_reading_payload(
 ) -> dict:
     """`bookbrain-reading.json` — the Hardcover reading rows matched to
     organised library files (ISBN-13 first, then normalised title+author).
-    `unmatched` is counts only, so the viewer can hint "you've read N books
-    that aren't in the library" without leaking the list."""
+    `unmatched` is counts only for read/reading (don't leak what he's read
+    that isn't owned), but `wantUnowned` carries the *want-to-read* rows that
+    aren't in the library — those are wishlist candidates, which is the whole
+    point of listing them (prompts/30 want↔wishlist)."""
     files = (
         await session.execute(
             select(File.drive_file_id, Book.id, Book.canonical_title, Author.name)
@@ -579,6 +581,7 @@ async def build_reading_payload(
 
     books: dict[str, dict] = {}
     unmatched = {"read": 0, "want": 0, "reading": 0}
+    want_unowned: list[dict] = []
     for row in reading_rows:
         drive = isbn_to_drive.get(row.get("isbn13") or "") or key_to_drive.get(
             _norm_key(row.get("title"), row.get("author"))
@@ -586,6 +589,18 @@ async def build_reading_payload(
         if drive is None:
             if row.get("status") in unmatched:
                 unmatched[row["status"]] += 1
+            if (
+                row.get("status") == "want"
+                and isinstance(row.get("title"), str)
+                and len(want_unowned) < 300
+            ):
+                want_unowned.append(
+                    {
+                        "title": row["title"],
+                        "author": row.get("author"),
+                        "isbn13": row.get("isbn13"),
+                    }
+                )
             continue
         entry = {"status": row.get("status")}
         if row.get("rating") is not None:
@@ -602,6 +617,7 @@ async def build_reading_payload(
         "reader": reader,
         "count": len(books),
         "unmatched": unmatched,
+        "wantUnowned": want_unowned,
         "books": books,
     }
 

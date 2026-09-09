@@ -81,8 +81,10 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   reading), 180 read books not in the library. **Phase 2 shipped 2026-09-09**
   — `nextInSeries` + `<ReadNext>` strip (~56 candidates, most-recently-active
   first), `readingProfile` weights the release strips by how much you read
-  the author, `★ Favourites` filter (rating ≥ 4). Not done: want-to-read ↔
-  wishlist. **Phase 3 (write-back) shipped 2026-09-09** — James asked for it
+  the author, `★ Favourites` filter (rating ≥ 4). **Want-to-read ↔ wishlist
+  shipped 2026-09-09** — `wantUnowned[]` in the v2 reading sidecar → a "From
+  your Hardcover want-to-read" card on the Wishlist screen (106 candidates
+  live, one-tap Request). **Phase 3 (write-back) shipped 2026-09-09** — James asked for it
   ("both ways"). Viewer queues status changes (expanded-row buttons + auto
   "read" on finishing an epub) to `bookbrain-reading-pending.json`; backend
   `apply_pending` (ISBN/search resolve → `insert`/`update_user_book`,

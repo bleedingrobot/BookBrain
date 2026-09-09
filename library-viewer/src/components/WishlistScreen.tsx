@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { logActivity } from '../lib/activityLog'
 import type { BookRow } from '../lib/books'
 import { searchBooks, type BookHit } from '../lib/bookSearch'
+import type { WantCandidate } from '../lib/reading'
 import {
   alreadyListed,
   EMPTY_WISHLIST,
@@ -80,17 +81,24 @@ function StatusPicker({
   )
 }
 
+function candidateToHit(c: WantCandidate): BookHit {
+  return { title: c.title, author: c.author, series: null, isbn13: c.isbn13, cover: null, year: null }
+}
+
 export function WishlistScreen({
   token,
   libraryFolderId,
   rows,
   viewerName,
+  wantCandidates,
   onBack,
 }: {
   token: string
   libraryFolderId: string
   rows: BookRow[]
   viewerName: string
+  // Hardcover "want to read" books not in the library — wishlist candidates.
+  wantCandidates: WantCandidate[]
   onBack: () => void
 }) {
   const [list, setList] = useState<Wishlist>(EMPTY_WISHLIST)
@@ -98,6 +106,7 @@ export function WishlistScreen({
   const [error, setError] = useState<string | null>(null)
   const [showDeclined, setShowDeclined] = useState(false)
   const [showAcquired, setShowAcquired] = useState(false)
+  const [showAllWant, setShowAllWant] = useState(false)
 
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<BookHit[] | null>(null)
@@ -212,6 +221,12 @@ export function WishlistScreen({
       (i.status === 'acquired' && showAcquired),
   )
 
+  // Hardcover want-to-read books we don't own and haven't listed yet.
+  const wantSuggestions = wantCandidates.filter(
+    (c) => !libraryMatch(c, rows) && !alreadyListed(candidateToHit(c), list.items),
+  )
+  const shownWant = showAllWant ? wantSuggestions : wantSuggestions.slice(0, 20)
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
       <button
@@ -285,6 +300,46 @@ export function WishlistScreen({
           </ul>
         )}
       </div>
+
+      {wantSuggestions.length > 0 && (
+        <div className="card mt-4 p-4">
+          <h2 className="text-sm font-medium">
+            From your Hardcover want-to-read{' '}
+            <span className="font-normal text-neutral-400">({wantSuggestions.length})</span>
+          </h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Books you&rsquo;ve flagged &ldquo;want to read&rdquo; on Hardcover that aren&rsquo;t in
+            the library yet.
+          </p>
+          <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800">
+            {shownWant.map((c, i) => (
+              <li key={`${c.title}|${c.author ?? ''}|${i}`} className="flex items-center gap-3 py-2">
+                <CoverThumb url={null} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{c.title}</div>
+                  <div className="truncate text-xs text-neutral-500">
+                    {c.author ?? 'Unknown author'}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-neutral btn-xs"
+                  onClick={() => add(candidateToHit(c))}
+                >
+                  Request
+                </button>
+              </li>
+            ))}
+          </ul>
+          {wantSuggestions.length > shownWant.length && (
+            <button
+              className="mt-2 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              onClick={() => setShowAllWant(true)}
+            >
+              Show all {wantSuggestions.length}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">

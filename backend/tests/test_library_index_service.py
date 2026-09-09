@@ -309,11 +309,19 @@ async def test_build_reading_payload_matches_and_counts_unmatched(db_session) ->
         {"title": "A Book Not In The Library", "author": "Someone", "isbn13": "9990000000000",
          "status": "read", "rating": 5.0, "readDate": None, "readCount": 1},
     ]
+    rows.append(
+        {"title": "Some Wanted Book", "author": "A Writer", "isbn13": "9990000000123",
+         "status": "want", "rating": None, "readDate": None, "readCount": 0}
+    )
     payload = await build_reading_payload(db_session, rows, "James")
 
-    assert payload["version"] == 1 and payload["reader"] == "James" and payload["count"] == 2
+    assert payload["version"] == 2 and payload["reader"] == "James" and payload["count"] == 2
     assert payload["books"]["drive-will"] == {
         "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1
     }
     assert payload["books"]["drive-scion"] == {"status": "reading"}  # no rating/date/count keys
-    assert payload["unmatched"] == {"read": 1, "want": 0, "reading": 0}
+    assert payload["unmatched"] == {"read": 1, "want": 1, "reading": 0}
+    # want-to-read not in the library → a wishlist candidate (read/reading stay counts-only)
+    assert payload["wantUnowned"] == [
+        {"title": "Some Wanted Book", "author": "A Writer", "isbn13": "9990000000123"}
+    ]

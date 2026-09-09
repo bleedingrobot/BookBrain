@@ -129,6 +129,15 @@ eyeball the Read chip + badges in the deployed viewer.
 
 ## Phase 2 — the payoffs (each independent, do after Phase 1 lands)
 
+**All shipped 2026-09-09.** Next-up-in-series (`<ReadNext>`), author weighting
+(`readingProfile`), favourites filter — commit `8cddae7`. **Want-to-read ↔
+wishlist** — shipped 2026-09-09 (commit after Phase 3): `build_reading_payload`
+now emits `wantUnowned[]` (want-to-read rows not in the library — read/reading
+stay counts-only, licence); `reading.json` bumped to **v2**; the Wishlist
+screen shows a "From your Hardcover want-to-read" card (one-tap Request →
+existing `hitToItem` flow, hidden once listed/owned). 106 candidates live.
+
+
 - **Next-up in a series** — combine `reading` + `seriesGaps.ts`: a home-screen
   "Read next" strip — series where you've read a contiguous run from #1 and
   **own** the next one you haven't read. And flag "you've read #1 and #3 but
@@ -138,10 +147,10 @@ eyeball the Read chip + badges in the deployed viewer.
   ranked by count of `read` books. Feed it into the `prompts/27` release
   strips (a new release from an author you've read 8 books of ranks above one
   you've read 1) and a "more from authors you've read" discovery row.
-- **Want-to-read ↔ wishlist** — Hardcover "want to read" books **you own**
-  become an "Unread — you wanted this" filter (a great nudge); ones you
-  **don't** own are wishlist candidates (offer to add, or just show them in
-  the wishlist screen tagged `from Hardcover`).
+- ~~**Want-to-read ↔ wishlist**~~ — **DONE 2026-09-09.** Owned want-to-read
+  books already surface via the existing `want` filter; unowned ones are
+  wishlist candidates on the Wishlist screen (`wantUnowned[]` in the v2
+  sidecar → "From your Hardcover want-to-read" card → Request).
 - **Your favourites** — a filter/sort for your 4–5★ books; could seed the
   "readers also liked" pool weighting.
 

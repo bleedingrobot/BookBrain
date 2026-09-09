@@ -372,9 +372,12 @@ mis-identification guards). The rest of that session's ideas, for later:
     (expanded-row "Reading status" buttons + auto-"read" on finishing an epub)
     to `bookbrain-reading-pending.json`; backend `apply_pending` resolves the
     book and `insert`/`update_user_book`s it (idempotent), flushed on every
-    `regenerate_reading`. Status only — ratings/reviews stay read-only. **Not
-    done**: want-to-read ↔ wishlist (needs the backend to expose the unmatched
-    list). Not browser-verified.
+    `regenerate_reading`. Status only — ratings/reviews stay read-only.
+    **Want-to-read ↔ wishlist shipped 2026-09-09** — `wantUnowned[]` in the v2
+    reading sidecar (want-to-read rows not in the library; read/reading stay
+    counts-only for licence) → a "From your Hardcover want-to-read" card on the
+    Wishlist screen, one-tap Request (106 candidates live). Not
+    browser-verified.
   - Ratings + a one-line note per book, per reader. (`prompts/30` brings your
     Hardcover ratings; per-reader notes would still be a viewer sidecar.)
   - **Natural-language search** — "that sci-fi one about a generation ship."

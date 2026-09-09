@@ -7,6 +7,11 @@ describe('normaliseReading', () => {
       version: 1,
       reader: 'James',
       unmatched: { read: 12, want: 3 }, // reading missing → 0
+      wantUnowned: [
+        { title: 'Wanted One', author: 'A', isbn13: '9990000000001' },
+        { title: '   ', author: 'B', isbn13: null }, // blank title → dropped
+        null as unknown as { title: string },
+      ],
       books: {
         a: { status: 'read', rating: 4.5, readDate: '2026-01-02', readCount: 2 },
         b: { status: 'want' },
@@ -20,11 +25,19 @@ describe('normaliseReading', () => {
     expect(out.books.b).toEqual({ status: 'want' })
     expect(out.books.c).toEqual({ status: null }) // bad status → null, bad rating dropped
     expect(out.books.d).toBeUndefined()
+    expect(out.wantUnowned).toEqual([
+      { title: 'Wanted One', author: 'A', isbn13: '9990000000001' },
+    ])
   })
 
   it('defaults an empty file', () => {
     const out = normaliseReading({})
-    expect(out).toEqual({ reader: '', unmatched: { read: 0, want: 0, reading: 0 }, books: {} })
+    expect(out).toEqual({
+      reader: '',
+      unmatched: { read: 0, want: 0, reading: 0 },
+      wantUnowned: [],
+      books: {},
+    })
   })
 })
 
