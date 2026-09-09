@@ -278,13 +278,20 @@ async def get_cover_status(
 async def start_description_backfill(
     background_tasks: BackgroundTasks,
     ai: bool = False,
+    refresh_epub: bool = False,
     service: DescriptionService = Depends(get_description_service),
 ) -> DescriptionJobStatus:
     """Fill in `books.description` for organised books that have no blurb
     from the EPUB or a metadata provider. `ai=true` also writes a short
-    model-generated blurb for whatever's still blank."""
+    model-generated blurb for whatever's still blank. `refresh_epub=true`
+    (prompts/29) also revisits books that only have the EPUB's embedded
+    `<dc:description>`, promoting a provider blurb over it when it's clearly
+    better — no AI is spent on those. Free; wants a working backend Google
+    Books key."""
     job = service.create_job()
-    background_tasks.add_task(service.run, job.job_id, use_ai=ai)
+    background_tasks.add_task(
+        service.run, job.job_id, use_ai=ai, include_epub_only=refresh_epub
+    )
     return job
 
 

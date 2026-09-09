@@ -59,24 +59,40 @@ async def _open_library_description(client: httpx.AsyncClient, isbn: str) -> str
         return None
 
 
-async def _books_needing_descriptions(session: AsyncSession) -> list[tuple[int, str, str | None]]:
-    epub_desc_books = (
-        select(File.book_id)
-        .join(MetadataSource, MetadataSource.file_id == File.id)
-        .where(MetadataSource.field_name == "description", File.book_id.is_not(None))
+async def _books_needing_descriptions(
+    session: AsyncSession, *, include_epub_only: bool = False
+) -> list[tuple[int, str, str | None, str | None]]:
+    """`(book_id, title, author, epub_blurb)` for organised books with no
+    `Book.description`. By default a book whose EPUB carried a
+    `<dc:description>` is left alone (the index falls back to it). With
+    `include_epub_only=True` those are included too, and `epub_blurb` is the
+    raw embedded text — the caller only overwrites when a provider blurb is
+    clearly better (prompts/29 follow-up: enrich the EPUB-fallback books once
+    a real backend Google Books key exists)."""
+    epub_by_book = dict(
+        (r[0], r[1])
+        for r in (
+            await session.execute(
+                select(File.book_id, MetadataSource.value)
+                .join(MetadataSource, MetadataSource.file_id == File.id)
+                .where(MetadataSource.field_name == "description", File.book_id.is_not(None))
+            )
+        ).all()
     )
     rows = await session.execute(
         select(Book.id, Book.canonical_title, Author.name)
         .join(File, File.book_id == Book.id)
         .outerjoin(Author, Book.author_id == Author.id)
-        .where(
-            File.status == FileStatus.organised,
-            Book.description.is_(None),
-            Book.id.not_in(epub_desc_books),
-        )
+        .where(File.status == FileStatus.organised, Book.description.is_(None))
         .distinct()
     )
-    return [(r[0], r[1], r[2]) for r in rows.all()]
+    out: list[tuple[int, str, str | None, str | None]] = []
+    for bid, title, author in rows.all():
+        epub = epub_by_book.get(bid)
+        if epub is not None and not include_epub_only:
+            continue
+        out.append((bid, title, author, epub))
+    return out
 
 
 async def _hc_descriptions_for(session: AsyncSession, book_ids: list[int]) -> dict[int, str]:
@@ -142,11 +158,12 @@ async def estimate_description_backfill() -> DescriptionBackfillEstimate:
 async def backfill_descriptions(
     *,
     use_ai: bool = False,
+    include_epub_only: bool = False,
     limit: int | None = None,
     ai_cap: int | None = None,
     on_progress: Callable[[dict[str, int], int], None] | None = None,
 ) -> dict[str, int]:
-    counts = {"from_provider": 0, "from_ai": 0, "not_found": 0, "remaining": 0}
+    counts = {"from_provider": 0, "from_ai": 0, "not_found": 0, "kept_epub": 0, "remaining": 0}
     candidates = default_candidate_service()
     ai = AnthropicIdentificationClient() if use_ai else None
     # Free provider lookups stay uncapped; only model-written blurbs are
@@ -157,7 +174,9 @@ async def backfill_descriptions(
 
     try:
         async with async_session_factory() as session:
-            needing = await _books_needing_descriptions(session)
+            needing = await _books_needing_descriptions(
+                session, include_epub_only=include_epub_only
+            )
             isbns = await _isbns_for(session, [b[0] for b in needing])
             hc_descriptions = await _hc_descriptions_for(session, [b[0] for b in needing])
     except Exception:
@@ -171,7 +190,7 @@ async def backfill_descriptions(
     http = httpx.AsyncClient(timeout=_OL_TIMEOUT, follow_redirects=True)
     ol_dead = {"count": 0}  # stop hammering Open Library if it won't connect
 
-    async def one(book_id: int, title: str, author: str | None) -> None:
+    async def one(book_id: int, title: str, author: str | None, epub_blurb: str | None) -> None:
         async with sem:
             desc: str | None = None
             source = "not_found"
@@ -197,7 +216,17 @@ async def backfill_descriptions(
                         ol_dead["count"] = 0
                     except httpx.ConnectError:
                         ol_dead["count"] += 1
-                if desc:
+                # A book that already has an EPUB blurb (the index falls back
+                # to it) keeps it unless a provider one is clearly better — at
+                # least 200 clean chars and no shorter than the EPUB text.
+                # Never downgrade, never spend an AI call on it.
+                if epub_blurb is not None:
+                    clean_epub = _clean(epub_blurb) or ""
+                    if desc and len(desc) >= 200 and len(desc) >= len(clean_epub):
+                        source = "from_provider"
+                    else:
+                        desc, source = None, "kept_epub"
+                elif desc:
                     source = "from_provider"
                 # 3. opt-in, costs API credits: a model-written blurb, rationed
                 elif ai is not None:
@@ -228,7 +257,7 @@ async def backfill_descriptions(
                 on_progress(counts, total)
 
     try:
-        await asyncio.gather(*(one(bid, t, a) for bid, t, a in todo))
+        await asyncio.gather(*(one(bid, t, a, epub) for bid, t, a, epub in todo))
     finally:
         await http.aclose()
     # Books whose model blurb we skipped because the per-run cap ran out are
@@ -251,31 +280,29 @@ class DescriptionService:
     def get_status(self, job_id: str) -> DescriptionJobStatus | None:
         return self._jobs.get(job_id)
 
-    async def run(self, job_id: str, *, use_ai: bool) -> None:
-        def progress(counts: dict[str, int], total: int) -> None:
-            done = counts["from_provider"] + counts["from_ai"] + counts["not_found"]
+    async def run(self, job_id: str, *, use_ai: bool, include_epub_only: bool = False) -> None:
+        def status(counts: dict[str, int], state: DescriptionJobState, remaining: int) -> None:
             self._jobs[job_id] = DescriptionJobStatus(
                 job_id=job_id,
-                status=DescriptionJobState.running,
+                status=state,
                 from_provider=counts["from_provider"],
                 from_ai=counts["from_ai"],
                 not_found=counts["not_found"],
-                remaining=total - done,
+                kept_epub=counts.get("kept_epub", 0),
+                remaining=remaining,
             )
+
+        def progress(counts: dict[str, int], total: int) -> None:
+            done = sum(counts[k] for k in ("from_provider", "from_ai", "not_found", "kept_epub"))
+            status(counts, DescriptionJobState.running, total - done)
 
         counts = await backfill_descriptions(
             use_ai=use_ai,
+            include_epub_only=include_epub_only,
             ai_cap=get_settings().ai_description_cap if use_ai else None,
             on_progress=progress,
         )
-        self._jobs[job_id] = DescriptionJobStatus(
-            job_id=job_id,
-            status=DescriptionJobState.done,
-            from_provider=counts["from_provider"],
-            from_ai=counts["from_ai"],
-            not_found=counts["not_found"],
-            remaining=counts["remaining"],
-        )
+        status(counts, DescriptionJobState.done, counts["remaining"])
 
 
 _description_service = DescriptionService()

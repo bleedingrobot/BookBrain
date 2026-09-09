@@ -15,6 +15,9 @@ class DescriptionJobStatus(BaseModel):
     from_provider: int = 0
     from_ai: int = 0
     not_found: int = 0
+    # prompts/29 follow-up: EPUB-fallback books whose embedded blurb was
+    # already at least as good as anything a provider returned.
+    kept_epub: int = 0
     remaining: int = 0
 
 

@@ -51,6 +51,15 @@ async def _seed(db_session) -> None:
 async def test_books_needing_descriptions_only_returns_the_genuine_blanks(db_session) -> None:
     await _seed(db_session)
     rows = await _books_needing_descriptions(db_session)
-    titles = {title for _, title, _ in rows}
-    assert titles == {"Needs one"}
+    assert {title for _, title, _, _ in rows} == {"Needs one"}
     assert rows[0][2] == "A"  # author name comes through
+    assert rows[0][3] is None  # no epub blurb
+
+
+async def test_include_epub_only_also_returns_epub_fallback_books(db_session) -> None:
+    await _seed(db_session)
+    rows = await _books_needing_descriptions(db_session, include_epub_only=True)
+    by_title = {title: (author, epub) for _, title, author, epub in rows}
+    assert set(by_title) == {"Needs one", "Has an epub blurb"}
+    assert by_title["Needs one"][1] is None
+    assert by_title["Has an epub blurb"][1] == "from the epub"
