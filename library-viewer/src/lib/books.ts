@@ -100,6 +100,7 @@ export type FilterKey =
   | 'read'
   | 'unread'
   | 'want'
+  | 'favourites'
   | `on:${string}`
   | `off:${string}`
   | 'unsent'
@@ -119,6 +120,7 @@ export function matchesFilter(
   if (filter === 'read') return row.reading?.status === 'read'
   if (filter === 'unread') return row.reading?.status !== 'read'
   if (filter === 'want') return row.reading?.status === 'want'
+  if (filter === 'favourites') return (row.reading?.rating ?? 0) >= 4
   if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
   if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
   if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]

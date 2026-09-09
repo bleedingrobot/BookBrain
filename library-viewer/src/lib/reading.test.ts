@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normaliseReading } from './reading'
+import { normaliseReading, readingProfile } from './reading'
 
 describe('normaliseReading', () => {
   it('keeps valid entries, coerces bad status to null, drops junk keys', () => {
@@ -25,5 +25,27 @@ describe('normaliseReading', () => {
   it('defaults an empty file', () => {
     const out = normaliseReading({})
     expect(out).toEqual({ reader: '', unmatched: { read: 0, want: 0, reading: 0 }, books: {} })
+  })
+})
+
+describe('readingProfile', () => {
+  it('counts read books per author, ignoring non-read statuses', () => {
+    const reading = normaliseReading({
+      books: {
+        a: { status: 'read' },
+        b: { status: 'read' },
+        c: { status: 'want' },
+        d: { status: 'read' },
+      },
+    })
+    const rows = new Map([
+      ['a', { author: 'Sanderson' }],
+      ['b', { author: 'Sanderson' }],
+      ['c', { author: 'Sanderson' }],
+      ['d', { author: 'Le Guin' }],
+    ])
+    const profile = readingProfile(reading, rows)
+    expect(profile.get('Sanderson')).toBe(2)
+    expect(profile.get('Le Guin')).toBe(1)
   })
 })

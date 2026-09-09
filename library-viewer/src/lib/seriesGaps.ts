@@ -169,6 +169,54 @@ export function computeSeriesGaps(
   return out
 }
 
+// prompts/30 Phase 2 — "Read next": series where you've read a contiguous run
+// from #1 and own the next entry unread. Needs BookRow.reading populated.
+export interface NextRead {
+  seriesName: string
+  row: BookRow
+  position: number
+  readThrough: number
+  // The read date of the furthest book you've read in this series — the
+  // list is ordered most-recently-active first so what you were last
+  // reading sits at the front.
+  lastReadAt: string
+}
+
+export function nextInSeries(rows: BookRow[]): NextRead[] {
+  const bySeries = new Map<string, Map<number, BookRow>>()
+  for (const r of rows) {
+    if (!r.series || r.seriesNumber == null) continue
+    const n = Number(r.seriesNumber)
+    if (!Number.isInteger(n) || n < 1) continue
+    const m = bySeries.get(r.series) ?? new Map<number, BookRow>()
+    m.set(n, r)
+    bySeries.set(r.series, m)
+  }
+  const out: NextRead[] = []
+  for (const [name, byNum] of bySeries) {
+    const read = new Set(
+      [...byNum].filter(([, r]) => r.reading?.status === 'read').map(([n]) => n),
+    )
+    if (read.size === 0) continue // haven't started this series
+    let through = 0
+    while (read.has(through + 1)) through++
+    if (through === 0) continue // read some but not #1 — too messy to nudge
+    const nextRow = byNum.get(through + 1)
+    if (nextRow && nextRow.reading?.status !== 'read') {
+      out.push({
+        seriesName: name,
+        row: nextRow,
+        position: through + 1,
+        readThrough: through,
+        lastReadAt: byNum.get(through)?.reading?.readDate ?? '',
+      })
+    }
+  }
+  return out.sort(
+    (a, b) => b.lastReadAt.localeCompare(a.lastReadAt) || a.seriesName.localeCompare(b.seriesName),
+  )
+}
+
 export function incompleteSeriesNames(gaps: Map<string, SeriesGap>): Set<string> {
   const names = new Set<string>()
   for (const [name, gap] of gaps) {

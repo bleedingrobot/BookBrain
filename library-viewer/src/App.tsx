@@ -39,6 +39,7 @@ import {
   comingSoonSeriesNames,
   computeSeriesGaps,
   incompleteSeriesNames,
+  nextInSeries,
 } from './lib/seriesGaps'
 import {
   dedupeReleaseItems,
@@ -51,7 +52,8 @@ import {
   fetchNewReleases,
   type NewReleases,
 } from './lib/newReleases'
-import { EMPTY_READING, fetchReading, type Reading } from './lib/reading'
+import { EMPTY_READING, fetchReading, readingProfile, type Reading } from './lib/reading'
+import { ReadNext } from './components/ReadNext'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
   clearSettings,
@@ -266,28 +268,34 @@ export default function App() {
   )
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const comingSoonSeries = useMemo(() => comingSoonSeriesNames(seriesGaps), [seriesGaps])
+  // prompts/30 Phase 2 — "Read next" strip + author-read-count weighting for
+  // the release strips.
+  const readNext = useMemo(() => nextInSeries(allRows), [allRows])
+  const authorReadCounts = useMemo(
+    () => readingProfile(reading, new Map(allRows.map((r) => [r.id, { author: r.author }]))),
+    [reading, allRows],
+  )
   // prompts/27 Part 1 — "New / Coming soon in your series" strips, flattened
   // straight out of the per-series Hardcover catalogues already in the index.
   const seriesReleases = useMemo(() => collectSeriesReleases(seriesGaps), [seriesGaps])
   // The feed powering the two release strips + <NewReleasesScreen>: series
-  // entries (viewer-derived) merged with the author sidecar, deduped, sorted
-  // by date (recent newest-first, upcoming soonest-first).
-  const recentReleaseFeed = useMemo(
-    () =>
-      dedupeReleaseItems(
-        seriesReleases.recent.map(seriesEntryToItem),
-        newReleases.recent,
-      ).sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '')),
-    [seriesReleases, newReleases],
-  )
-  const upcomingReleaseFeed = useMemo(
-    () =>
-      dedupeReleaseItems(
-        seriesReleases.upcoming.map(seriesEntryToItem),
-        newReleases.upcoming,
-      ).sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? '')),
-    [seriesReleases, newReleases],
-  )
+  // entries (viewer-derived) merged with the author sidecar, then sorted by
+  // how-much-you-read-the-author (bucketed 0/1/2/3+, so a stale release from a
+  // favourite author floats up without fully reordering the list) then date.
+  const recentReleaseFeed = useMemo(() => {
+    const tier = (i: ReleaseItem) => Math.min(authorReadCounts.get(i.author ?? '') ?? 0, 3)
+    return dedupeReleaseItems(
+      seriesReleases.recent.map(seriesEntryToItem),
+      newReleases.recent,
+    ).sort((a, b) => tier(b) - tier(a) || (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+  }, [seriesReleases, newReleases, authorReadCounts])
+  const upcomingReleaseFeed = useMemo(() => {
+    const tier = (i: ReleaseItem) => Math.min(authorReadCounts.get(i.author ?? '') ?? 0, 3)
+    return dedupeReleaseItems(
+      seriesReleases.upcoming.map(seriesEntryToItem),
+      newReleases.upcoming,
+    ).sort((a, b) => tier(b) - tier(a) || (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
+  }, [seriesReleases, newReleases, authorReadCounts])
   // Part 3 — "Most anticipated" (opt-in): Hardcover's overall top upcoming
   // books, minus anything already in the library-filtered feeds above.
   const globalReleaseFeed = useMemo(() => {
@@ -767,6 +775,9 @@ export default function App() {
           ...(Object.values(reading.books).some((e) => e.status === 'want')
             ? [{ key: 'want' as FilterKey, label: 'Want to read' }]
             : []),
+          ...(Object.values(reading.books).some((e) => (e.rating ?? 0) >= 4)
+            ? [{ key: 'favourites' as FilterKey, label: '★ Favourites' }]
+            : []),
         ]
       : []),
     ...genreFacets.map((g) => ({ key: `genre:${g}` as FilterKey, label: g })),
@@ -907,6 +918,15 @@ export default function App() {
           token={token}
           tick={progressTick}
           onRead={(id) => setReadingBookId(id)}
+        />
+      )}
+
+      {!lib.loading && token && (
+        <ReadNext
+          items={readNext}
+          token={token}
+          onRead={(id) => setReadingBookId(id)}
+          onOpen={jumpToRecent}
         />
       )}
 

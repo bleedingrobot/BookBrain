@@ -74,6 +74,22 @@ export function normaliseReading(raw: RawFile): Reading {
   }
 }
 
+// prompts/30 Phase 2 — how many books you've *read* per author, from the
+// reading sidecar joined to the library rows. Ranks the release strips so a
+// new book from an author you read a lot outranks one you've read once.
+export function readingProfile(
+  reading: Reading,
+  rowsById: Map<string, { author: string | null }>,
+): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const [id, entry] of Object.entries(reading.books)) {
+    if (entry.status !== 'read') continue
+    const author = rowsById.get(id)?.author
+    if (author) counts.set(author, (counts.get(author) ?? 0) + 1)
+  }
+  return counts
+}
+
 function readCache(): Cached | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)

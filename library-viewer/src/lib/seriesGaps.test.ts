@@ -6,7 +6,9 @@ import {
   comingSoonSeriesNames,
   computeSeriesGaps,
   incompleteSeriesNames,
+  nextInSeries,
 } from './seriesGaps'
+import type { ReadingStatus } from './reading'
 
 function catalog(
   slug: string,
@@ -259,6 +261,50 @@ describe('collectSeriesReleases (Part 1)', () => {
   it('ignores guess-path series (no Hardcover catalogue)', () => {
     const gaps = computeSeriesGaps([book('G', '1'), book('G', '3')])
     expect(collectSeriesReleases(gaps)).toEqual({ recent: [], upcoming: [] })
+  })
+})
+
+describe('nextInSeries (Phase 2)', () => {
+  const b = (series: string, n: string, status?: ReadingStatus, readDate?: string) => ({
+    ...book(series, n),
+    reading: status ? { status, ...(readDate ? { readDate } : {}) } : null,
+  })
+
+  it('surfaces the owned unread book right after your last read one', () => {
+    const out = nextInSeries([
+      b('Mistborn', '1', 'read'),
+      b('Mistborn', '2'), // owned, unread
+      b('Mistborn', '3'),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ seriesName: 'Mistborn', position: 2, readThrough: 1 })
+  })
+
+  it('orders most-recently-active series first', () => {
+    const out = nextInSeries([
+      b('Old', '1', 'read', '2020-01-01'),
+      b('Old', '2'),
+      b('New', '1', 'read', '2026-06-01'),
+      b('New', '2'),
+    ])
+    expect(out.map((x) => x.seriesName)).toEqual(['New', 'Old'])
+  })
+
+  it('skips a series you have not started', () => {
+    expect(nextInSeries([b('X', '1'), b('X', '2')])).toEqual([])
+  })
+
+  it('skips when the next book is already read', () => {
+    expect(nextInSeries([b('X', '1', 'read'), b('X', '2', 'read')])).toEqual([])
+  })
+
+  it('skips when you own no unread next book (caught up / gap)', () => {
+    // read #1, own only #3 — the immediate next (#2) isn't owned
+    expect(nextInSeries([b('X', '1', 'read'), b('X', '3')])).toEqual([])
+  })
+
+  it('needs #1 read (a mid-series run without #1 is too messy to nudge)', () => {
+    expect(nextInSeries([b('X', '2', 'read'), b('X', '3')])).toEqual([])
   })
 })
 
