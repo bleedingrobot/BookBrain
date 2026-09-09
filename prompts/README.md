@@ -56,8 +56,11 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   ("meaning") search in the library-viewer: backend pre-embeds every book
   (all-MiniLM-L6-v2, ONNX, no torch) → `bookbrain-embeddings.bin` sidecar;
   viewer loads the same model once (vendored, ~23 MB, SW-cached) and embeds
-  only the query, ranks by cosine. **Phase 0 + 1 done 2026-09-09** — Phase 0:
-  free description backfill (882 blurbs, effective coverage 91%). Phase 1:
+  only the query, ranks by cosine. **All phases done + browser-verified
+  2026-09-09.** Phase 0:
+  free description backfill (882 blurbs, effective coverage 91% — later
+  pushed to 96% via a working backend Google Books key + `refresh_epub`).
+  Phase 1:
   `embedding_service` (all-MiniLM-L6-v2 ONNX, no torch) + `books.embedding`
   migration + `bookbrain-embeddings.bin` sidecar (int8) + nightly step +
   `POST /library/embeddings[/refresh]` + parity script. **Phase 2 done
@@ -66,6 +69,12 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   Keyword|Meaning toggle in `App.tsx`, "· NN% match" per row. Parity
   cosine 0.99. **Browser-verified 2026-09-09** ("female assassin" → good
   results). Feature done + live.
+- [`30-reading-status.md`](30-reading-status.md) — pull James's Hardcover
+  reading data (420 Read / 353 rated / 227 want-to-read, verified live) into
+  a `bookbrain-reading.json` sidecar → Read/Unread/Want filters + rating
+  badges in the viewer. Phase 2 unlocks "read next in a series you own" +
+  an author-frequency signal for the release strips. **Read-only** (licence:
+  James's own data / own token / own tool; no write-back). Not started.
 
 ## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
 
