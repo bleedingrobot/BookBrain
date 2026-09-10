@@ -337,3 +337,31 @@ async def test_list_requests_drops_a_sourced_book_now_in_the_library(db_session,
     assert [v.request_id for v in views] == ["wtr:y"]  # the in-library one is gone
     remaining = (await db_session.execute(select(AcquisitionCandidate))).scalars().all()
     assert {r.request_id for r in remaining} == {"wtr:y"}  # and its row was deleted
+
+
+async def test_list_requests_shows_unsearched_wishlist_items(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            source="wishlist",
+            request_title="Searched One",
+            request_author="A",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Bsk x.epub",
+            candidate_title="Searched One",
+        )
+    )
+    await db_session.commit()
+
+    items = [
+        {"id": "r1", "title": "Searched One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Not Yet Searched", "author": "B", "status": "wanted", "requestedBy": "Jo"},
+        {"id": "r3", "title": "Declined One", "author": "C", "status": "declined"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    views = {v.request_id: v for v in await svc.list_requests(object(), "lib")}
+    assert set(views) == {"r1", "r2"}  # r3 declined → hidden
+    assert views["r1"].status == "pending"
+    assert views["r2"].status == "unsearched"
+    assert views["r2"].requested_by == "Jo"

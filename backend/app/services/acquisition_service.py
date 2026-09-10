@@ -529,6 +529,7 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
         rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
 
     views: list[RequestView] = []
+    seen_ids = {r.request_id for r in rows}
     for row in rows:
         source = row.source or "wishlist"
         if source == "wishlist":
@@ -579,7 +580,29 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
             )
         )
 
-    order = {"pending": 0, "no_match": 1, "failed": 1, "approved": 2, "skipped": 3}
+    # Every wishlist request that hasn't been searched yet still belongs in
+    # the list (so the admin matches the viewer's Wishlist) — as "unsearched".
+    # The big want-to-read / list backlog only appears once searched.
+    for item in wl.items:
+        rid = item.get("id")
+        if not rid or rid in seen_ids or not isinstance(item.get("title"), str):
+            continue
+        if item.get("status") not in ("wanted", "sourced"):
+            continue
+        views.append(
+            RequestView(
+                request_id=rid,
+                source="wishlist",
+                title=item["title"],
+                author=item.get("author"),
+                requested_by=item.get("requestedBy"),
+                cover=item.get("cover"),
+                status="unsearched",
+                candidate=None,
+            )
+        )
+
+    order = {"pending": 0, "unsearched": 1, "no_match": 2, "failed": 2, "approved": 3, "skipped": 4}
     src_order = {"wishlist": 0, "want_to_read": 1, "list": 2}
     views.sort(key=lambda v: (order.get(v.status, 9), src_order.get(v.source, 9), -(v.score or 0)))
     return views

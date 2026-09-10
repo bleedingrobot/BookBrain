@@ -63,6 +63,10 @@ function RequestRow({ req }: { req: OpenRequest }) {
           <p className="mt-1 text-xs text-emerald-600">✓ Sourced — added to the Book Dump</p>
         )}
 
+        {req.status === 'unsearched' && (
+          <p className="mt-1 text-xs text-neutral-400">Not searched yet — hit “Search 25 more”.</p>
+        )}
+
         {req.status === 'no_match' && (
           <div className="mt-1 flex items-center gap-3 text-xs text-neutral-500">
             <span>No EPUB found yet — try again after the next search.</span>
@@ -165,6 +169,7 @@ function OpenRequests() {
 
   const rows = requests.data ?? []
   const pending = rows.filter((r) => r.status === 'pending').length
+  const unsearched = rows.filter((r) => r.status === 'unsearched').length
   const searching = !!jobId || refresh.isPending
   const BATCH = 25
 
@@ -174,7 +179,13 @@ function OpenRequests() {
         <h2 className="text-sm font-medium">
           Books to get{' '}
           <span className="text-neutral-400">
-            {pending > 0 ? `· ${pending} ready to get` : rows.length > 0 ? `· ${rows.length}` : ''}
+            {[
+              pending > 0 ? `${pending} ready` : null,
+              unsearched > 0 ? `${unsearched} wishlist not searched` : null,
+            ]
+              .filter(Boolean)
+              .map((s) => `· ${s}`)
+              .join(' ') || (rows.length > 0 ? `· ${rows.length}` : '')}
           </span>
         </h2>
         <button
