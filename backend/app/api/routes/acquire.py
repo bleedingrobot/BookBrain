@@ -170,14 +170,22 @@ async def list_requests(
 @router.post("/requests/refresh", response_model=RequestRefreshJob)
 async def refresh_requests(
     background_tasks: BackgroundTasks,
+    limit: int = 25,
     db: AsyncSession = Depends(get_db),
     provider: DriveProvider = Depends(require_drive_provider),
 ) -> RequestRefreshJob:
+    """Search OpenBooks for up to `limit` un-searched targets (wishlist +
+    Hardcover want-to-read + list candidates), ~11s apiece. Click again / let
+    the nightly run to work through the rest."""
     _require_enabled()
     _, library_folder_id = await _require_folders(db)
     job = acquisition_service.new_refresh_job()
     background_tasks.add_task(
-        acquisition_service.run_refresh_job, job.job_id, provider, library_folder_id
+        acquisition_service.run_refresh_job,
+        job.job_id,
+        provider,
+        library_folder_id,
+        limit=max(1, min(limit, 100)),
     )
     return RequestRefreshJob(**vars(job))
 

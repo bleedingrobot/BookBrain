@@ -78,14 +78,42 @@ async def test_refresh_creates_pending_and_no_match_rows(db_session, monkeypatch
     monkeypatch.setattr(svc.openbooks_service, "search", fake_search)
 
     result = await svc.refresh_candidates(object(), "libfolder")
-    assert result == {"requests": 2, "searched": 2, "withCandidates": 1}
+    assert result == {"targets": 2, "outstanding": 0, "searched": 2, "withCandidates": 1}
 
     rows = {r.request_id: r for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()}
     assert rows["r1"].status == AcquisitionStatus.pending
+    assert rows["r1"].source == "wishlist"
     assert rows["r1"].candidate_format == "epub"
     assert len(rows["r1"].alternatives_json) == 1  # the retail one; mobi filtered out
     assert rows["r2"].status == AcquisitionStatus.no_match
     assert "r3" not in rows  # not "wanted"
+
+
+async def test_refresh_pulls_from_all_three_sources_and_respects_limit(db_session, monkeypatch):
+    targets = [
+        {"request_id": "r1", "source": "wishlist", "title": "Book One", "author": "A", "isbn13": None},
+        {"request_id": "wtr:x", "source": "want_to_read", "title": "Book Two", "author": "B", "isbn13": None},
+        {"request_id": "list:y", "source": "list", "title": "Book Three", "author": "C", "isbn13": None},
+    ]
+
+    async def fake_gather(p, f):
+        return targets
+
+    monkeypatch.setattr(svc, "_gather_targets", fake_gather)
+
+    async def fake_search(query):
+        return SearchOutcome(results=[_book(query.rsplit(" ", 1)[0], "Whoever")])
+
+    monkeypatch.setattr(svc.openbooks_service, "search", fake_search)
+
+    result = await svc.refresh_candidates(object(), "f", limit=2)
+    assert result == {"targets": 3, "outstanding": 1, "searched": 2, "withCandidates": 2}
+
+    rows = {r.request_id: r.source for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()}
+    assert rows == {"r1": "wishlist", "wtr:x": "want_to_read"}  # 3rd left for next run
+
+    result = await svc.refresh_candidates(object(), "f", limit=2)
+    assert result["searched"] == 1 and result["outstanding"] == 0  # just the leftover
 
 
 async def test_refresh_skips_already_approved_unchanged_request(db_session, monkeypatch):
@@ -260,3 +288,52 @@ async def test_list_suggestions_tolerates_missing_sidecars(monkeypatch):
     monkeypatch.setattr(lib, "_read_json_file", lambda *a: {})
     out = await svc.list_suggestions(object(), "lib")
     assert out == {"want_to_read": [], "from_lists": []}
+
+
+async def test_list_requests_drops_a_sourced_book_now_in_the_library(db_session, monkeypatch):
+    from app.data.models import Author, Book, File, FileStatus
+
+    author = Author(name="Joe Abercrombie")
+    db_session.add(author)
+    await db_session.flush()
+    book = Book(canonical_title="The Blade Itself", author_id=author.id)
+    db_session.add(book)
+    await db_session.flush()
+    db_session.add(
+        File(
+            drive_file_id="d1",
+            filename="x.epub",
+            sha256="s",
+            size_bytes=1,
+            status=FileStatus.organised,
+            book_id=book.id,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:x",
+            source="want_to_read",
+            request_title="The Blade Itself",
+            request_author="Joe Abercrombie",
+            status=AcquisitionStatus.approved,
+            candidate_full="!Bsk x.epub",
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:y",
+            source="want_to_read",
+            request_title="Still Missing",
+            request_author="Someone",
+            status=AcquisitionStatus.approved,
+            candidate_full="!Bsk y.epub",
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist([]))
+    views = await svc.list_requests(object(), "lib")
+
+    assert [v.request_id for v in views] == ["wtr:y"]  # the in-library one is gone
+    remaining = (await db_session.execute(select(AcquisitionCandidate))).scalars().all()
+    assert {r.request_id for r in remaining} == {"wtr:y"}  # and its row was deleted

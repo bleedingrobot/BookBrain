@@ -28,7 +28,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.db import async_session_factory
-from app.data.models import AcquisitionCandidate, AcquisitionStatus
+from app.data.models import (
+    AcquisitionCandidate,
+    AcquisitionStatus,
+    Author,
+    Book,
+    File,
+    FileStatus,
+)
 from app.providers.drive.provider import DriveProvider
 from app.services import acquire_service, openbooks_service
 from app.services.openbooks_service import BookResult, OpenBooksError, OpenBooksRateLimited
@@ -175,6 +182,7 @@ class RefreshJob:
     searched: int = 0
     total: int = 0
     with_candidates: int = 0
+    outstanding: int = 0
     detail: str | None = None
 
 
@@ -198,6 +206,76 @@ def _request_query(item: dict) -> str:
     return " ".join(" ".join(parts).split())
 
 
+def _book_key(title: str | None, author: str | None, isbn13: str | None) -> str:
+    if isbn13 and isbn13.strip():
+        return f"isbn:{isbn13.strip()}"
+    return f"{normalize_title(title)}|{normalize_person_name(author)}"
+
+
+async def _gather_targets(provider: DriveProvider, library_folder_id: str) -> list[dict]:
+    """Every book BookBrain should try to get, from all three sources:
+    unfilled wishlist requests, the owner's un-owned Hardcover want-to-read,
+    and curated-list candidates. Deduped by book (ISBN, else title+author);
+    the wishlist wins a tie."""
+    from app.services.library_index_service import (
+        LISTS_FILENAME,
+        READING_FILENAME,
+        _read_json_file,
+    )
+
+    wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
+    reading = await asyncio.to_thread(_read_json_file, provider, library_folder_id, READING_FILENAME)
+    lists = await asyncio.to_thread(_read_json_file, provider, library_folder_id, LISTS_FILENAME)
+
+    async with async_session_factory() as session:
+        owned = {
+            _owned_key(t, a)
+            for t, a in (
+                await session.execute(
+                    select(Book.canonical_title, Author.name)
+                    .join(File, File.book_id == Book.id)
+                    .join(Author, Author.id == Book.author_id, isouter=True)
+                    .where(File.status == FileStatus.organised)
+                )
+            ).all()
+        }
+
+    targets: list[dict] = []
+    seen: set[str] = set()
+
+    def _add(request_id: str, source: str, title: str, author, isbn13) -> None:
+        title = (title or "").strip()
+        if not title:
+            return
+        author = author.strip() if isinstance(author, str) and author.strip() else None
+        isbn13 = isbn13.strip() if isinstance(isbn13, str) and isbn13.strip() else None
+        if _owned_key(title, author) in owned:  # already in the library
+            return
+        key = _book_key(title, author, isbn13)
+        if key in seen:
+            return
+        seen.add(key)
+        targets.append(
+            {"request_id": request_id, "source": source, "title": title, "author": author, "isbn13": isbn13}
+        )
+
+    for item in wl.items:
+        if item.get("status") == "wanted" and item.get("id"):
+            _add(item["id"], "wishlist", item.get("title"), item.get("author"), item.get("isbn13"))
+
+    for i in reading.get("wantUnowned") or []:
+        if isinstance(i, dict):
+            key = _book_key(i.get("title"), i.get("author"), i.get("isbn13"))
+            _add(f"wtr:{key}", "want_to_read", i.get("title"), i.get("author"), i.get("isbn13"))
+
+    for i in lists.get("candidates") or []:
+        if isinstance(i, dict):
+            key = _book_key(i.get("title"), i.get("author"), i.get("isbn13"))
+            _add(f"list:{key}", "list", i.get("title"), i.get("author"), i.get("isbn13"))
+
+    return targets
+
+
 async def _search_one(item: dict) -> list[BookResult]:
     query = _request_query(item)
     try:
@@ -213,13 +291,14 @@ async def _upsert(
 ) -> bool:
     row = (
         await session.execute(
-            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == item["id"])
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == item["request_id"])
         )
     ).scalar_one_or_none()
     if row is None:
-        row = AcquisitionCandidate(request_id=item["id"], request_title=item["title"])
+        row = AcquisitionCandidate(request_id=item["request_id"], request_title=item["title"])
         session.add(row)
 
+    row.source = item.get("source") or "wishlist"
     row.request_title = item["title"]
     row.request_author = item.get("author")
     row.resolved_at = None
@@ -252,12 +331,18 @@ async def _upsert(
 
 
 async def refresh_candidates(
-    provider: DriveProvider, library_folder_id: str, *, job: RefreshJob | None = None
+    provider: DriveProvider,
+    library_folder_id: str,
+    *,
+    job: RefreshJob | None = None,
+    limit: int | None = None,
 ) -> dict:
-    """Search OpenBooks for every still-``wanted`` wishlist item that isn't
-    already approved or skipped, and (re)populate its candidate row."""
-    wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
-    wanted = [i for i in wl.items if i.get("status") == "wanted" and i.get("id")]
+    """Search OpenBooks for the books BookBrain should try to get (wishlist
+    requests + Hardcover want-to-read + list candidates) that haven't been
+    searched yet or whose title/author changed, and (re)populate their
+    candidate rows. `limit` caps how many are searched this run — the rest
+    wait for the next click / the nightly."""
+    targets = await _gather_targets(provider, library_folder_id)
 
     async with async_session_factory() as session:
         existing = {
@@ -266,8 +351,8 @@ async def refresh_candidates(
         }
 
     todo: list[dict] = []
-    for item in wanted:
-        row = existing.get(item["id"])
+    for item in targets:
+        row = existing.get(item["request_id"])
         unchanged = (
             row is not None
             and row.request_title == item["title"]
@@ -281,7 +366,9 @@ async def refresh_candidates(
             continue
         todo.append(item)
 
-    todo = todo[:_MAX_REQUESTS_PER_RUN]
+    cap = max(1, min(limit or _MAX_REQUESTS_PER_RUN, 100))
+    outstanding = len(todo)
+    todo = todo[:cap]
     if job is not None:
         job.total = len(todo)
 
@@ -307,19 +394,30 @@ async def refresh_candidates(
             job.searched = searched
             job.with_candidates = with_candidates
 
-    result = {"requests": len(wanted), "searched": searched, "withCandidates": with_candidates}
+    left = max(0, outstanding - searched)
+    result = {
+        "targets": len(targets),
+        "outstanding": left,
+        "searched": searched,
+        "withCandidates": with_candidates,
+    }
     if job is not None:
         job.status = "done"
-        job.detail = job.detail or f"searched {searched} of {len(wanted)}, {with_candidates} with a match"
+        job.outstanding = left
+        job.detail = (
+            job.detail or f"searched {searched}, {with_candidates} with a match, {left} left"
+        )
     return result
 
 
-async def run_refresh_job(job_id: str, provider: DriveProvider, library_folder_id: str) -> None:
+async def run_refresh_job(
+    job_id: str, provider: DriveProvider, library_folder_id: str, *, limit: int | None = None
+) -> None:
     job = _jobs.get(job_id)
     if job is None:  # pragma: no cover - defensive
         return
     try:
-        await refresh_candidates(provider, library_folder_id, job=job)
+        await refresh_candidates(provider, library_folder_id, job=job, limit=limit)
     except Exception as exc:  # noqa: BLE001
         logger.exception("acquire: refresh job failed")
         job.status = "failed"
@@ -334,6 +432,7 @@ async def run_refresh_job(job_id: str, provider: DriveProvider, library_folder_i
 @dataclass
 class RequestView:
     request_id: str
+    source: str  # wishlist | want_to_read | list
     title: str
     author: str | None
     requested_by: str | None
@@ -381,22 +480,75 @@ async def list_suggestions(provider: DriveProvider, library_folder_id: str) -> d
     }
 
 
+def _owned_key(title: str | None, author: str | None) -> str:
+    return f"{normalize_title(title)}|{normalize_person_name(author)}"
+
+
+async def _prune_now_in_library(session: AsyncSession) -> int:
+    """Delete `approved` candidate rows whose book is now an organised file —
+    it's done, no need to keep it in the "Books to get" list. (Wishlist rows
+    self-clean once the viewer reconciles the item to `acquired`; this covers
+    the want-to-read / list rows that have no wishlist item.)"""
+    owned = {
+        _owned_key(t, a)
+        for t, a in (
+            await session.execute(
+                select(Book.canonical_title, Author.name)
+                .join(File, File.book_id == Book.id)
+                .join(Author, Author.id == Book.author_id, isouter=True)
+                .where(File.status == FileStatus.organised)
+            )
+        ).all()
+    }
+    if not owned:
+        return 0
+    approved = (
+        await session.execute(
+            select(AcquisitionCandidate).where(
+                AcquisitionCandidate.status == AcquisitionStatus.approved
+            )
+        )
+    ).scalars()
+    pruned = 0
+    for row in approved:
+        if _owned_key(row.request_title, row.request_author) in owned:
+            await session.delete(row)
+            pruned += 1
+    if pruned:
+        await session.commit()
+        logger.info("acquire: cleared %d sourced book(s) now in the library", pruned)
+    return pruned
+
+
 async def list_requests(provider: DriveProvider, library_folder_id: str) -> list[RequestView]:
     wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
     by_id = {i["id"]: i for i in wl.items if i.get("id")}
 
     async with async_session_factory() as session:
+        await _prune_now_in_library(session)
         rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
 
     views: list[RequestView] = []
     for row in rows:
-        item = by_id.get(row.request_id)
-        if item is None:
-            continue  # request deleted from the wishlist
-        # An item the household already moved on (sourced/acquired/declined by
-        # hand) shouldn't clutter the queue unless we're the ones who did it.
-        if item.get("status") not in ("wanted", "sourced"):
-            continue
+        source = row.source or "wishlist"
+        if source == "wishlist":
+            item = by_id.get(row.request_id)
+            if item is None:
+                continue  # request deleted from the wishlist
+            # An item the household already moved on (sourced/acquired/declined
+            # by hand) shouldn't clutter the queue unless we did it.
+            if item.get("status") not in ("wanted", "sourced"):
+                continue
+            title = item.get("title") or row.request_title
+            author = item.get("author")
+            requested_by = item.get("requestedBy")
+            cover = item.get("cover")
+        else:
+            title = row.request_title
+            author = row.request_author
+            requested_by = None
+            cover = None
+
         candidate = (
             {
                 "full": row.candidate_full,
@@ -413,10 +565,11 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
         views.append(
             RequestView(
                 request_id=row.request_id,
-                title=item.get("title") or row.request_title,
-                author=item.get("author"),
-                requested_by=item.get("requestedBy"),
-                cover=item.get("cover"),
+                source=source,
+                title=title,
+                author=author,
+                requested_by=requested_by,
+                cover=cover,
                 status=row.status.value,
                 candidate=candidate,
                 alternatives=row.alternatives_json or [],
@@ -427,7 +580,8 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
         )
 
     order = {"pending": 0, "no_match": 1, "failed": 1, "approved": 2, "skipped": 3}
-    views.sort(key=lambda v: (order.get(v.status, 9), -(v.score or 0)))
+    src_order = {"wishlist": 0, "want_to_read": 1, "list": 2}
+    views.sort(key=lambda v: (order.get(v.status, 9), src_order.get(v.source, 9), -(v.score or 0)))
     return views
 
 

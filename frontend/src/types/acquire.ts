@@ -42,6 +42,7 @@ export interface RequestCandidate {
 
 export interface OpenRequest {
   request_id: string
+  source: 'wishlist' | 'want_to_read' | 'list'
   title: string
   author: string | null
   requested_by: string | null
@@ -72,5 +73,6 @@ export interface RequestRefreshJob {
   searched: number
   total: number
   with_candidates: number
+  outstanding: number
   detail: string | null
 }

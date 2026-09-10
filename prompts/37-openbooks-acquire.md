@@ -12,37 +12,38 @@ pipeline runs unchanged — nothing here identifies or renames anything.
 
 One book at a time, operator in the loop — no unattended downloading.
 
-### Fill open viewer requests (added 2026-09-10)
+### "Books to get" — the batch queue (added + reworked 2026-09-10)
 
-The viewer's `bookbrain-wishlist.json` is the household request list (anyone
-can add a book, status `wanted`). The Find a Book page has an **"Open requests
-from the library"** panel:
+The Find a Book page has a **"Books to get"** panel over `acquisition_candidates`.
+Three sources, merged and deduped by book (ISBN, else title+author) in
+`_gather_targets`, minus anything already an organised file:
 
-- **Search open requests** searches OpenBooks for every still-`wanted` item
-  (paced for the 10s search cooldown), keeps the plausible **EPUB** matches in
-  the `acquisition_candidates` table, best first.
-- James hits **Get this** (or picks an alternative) per request → downloads it
-  into the inbox via `acquire_service` and flips the wishlist item to
-  `sourced` (best-effort RMW of the sidecar) so the household sees it's
-  handled. The viewer's own reconcile moves it to `acquired` once the
-  organised book lands in the library.
-- The **nightly run** does the same search step (when `OPENBOOKS_ENABLED`),
-  starting/stopping the OpenBooks server itself — so the candidates are
-  waiting each morning. It never downloads.
+1. `bookbrain-wishlist.json` items still `wanted` (`source="wishlist"`)
+2. `bookbrain-reading.json` `wantUnowned` — un-owned Hardcover want-to-read
+   (`source="want_to_read"`, `request_id="wtr:<key>"`)
+3. `bookbrain-lists.json` `candidates` — curated-list picks
+   (`source="list"`, `request_id="list:<key>"`)
+
+- **Search 25 more** (`POST /api/acquire/requests/refresh?limit=25`) searches
+  OpenBooks for the next N un-searched targets (~11s apiece, capped 1..100),
+  keeps the best **EPUB** matches + up to 6 alternatives. Repeat, or let the
+  nightly (`limit=50`) grind through. The job reports `outstanding` (how many
+  left) so the UI can say "N still to search".
+- **Get** per row → downloads into the inbox via `acquire_service`; a wishlist
+  row also flips its item to `sourced` (best-effort sidecar RMW). Alternatives
+  + skip as before.
+- `list_requests` calls **`_prune_now_in_library`** first: an `approved` row
+  whose title+author now matches an organised book is deleted (self-cleans the
+  want-to-read / list rows; wishlist rows also drop once the viewer reconciles
+  the item to `acquired`).
+
+`GET /api/acquire/suggestions` still exists (reads the two sidecars raw,
+read-only) but the frontend `<Suggestions>` browse was removed — the batch
+queue covers it. `AcquisitionCandidate.source` column (migration
+`30ba28826073`).
 
 The library-viewer can't do any of this itself (static site, no backend,
-localhost-only OpenBooks) — the request list is the only thing it contributes.
-Still admin-only for the actual searching/downloading.
-
-### "Ideas to look for" (added 2026-09-10)
-
-`GET /api/acquire/suggestions` reads `bookbrain-reading.json` (`wantUnowned`)
-and `bookbrain-lists.json` (`candidates`) straight from Drive, read-only. The
-Find a Book page shows an "Ideas to look for" card with two collapsible
-sections — **From your Hardcover want-to-read** and **From lists you'd like** —
-each item with a **Find** button that runs the plain OpenBooks search for that
-title+author. No queue/approve tracking (those aren't wishlist requests); it's
-a shortcut into the existing search.
+localhost-only OpenBooks). Admin-only.
 
 ## Running it
 

@@ -54,6 +54,7 @@ class RequestCandidate(BaseModel):
 
 class OpenRequest(BaseModel):
     request_id: str
+    source: str = "wishlist"
     title: str
     author: str | None = None
     requested_by: str | None = None
@@ -72,6 +73,7 @@ class RequestRefreshJob(BaseModel):
     searched: int = 0
     total: int = 0
     with_candidates: int = 0
+    outstanding: int = 0
     detail: str | None = None
 
 

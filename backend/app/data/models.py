@@ -466,18 +466,23 @@ class AcquisitionStatus(str, enum.Enum):
 
 
 class AcquisitionCandidate(Base):
-    """prompts/37 — an OpenBooks search result matched to an unfilled request
-    on the viewer's `bookbrain-wishlist.json` (status "wanted"). Populated by
-    `acquisition_service.refresh_candidates` (the admin "Search open requests"
-    button and a nightly step); James approves one per request from the Find a
-    Book page, which downloads it and marks the wishlist item "sourced".
+    """prompts/37 — an OpenBooks search result matched to a book BookBrain
+    should try to get: an unfilled `bookbrain-wishlist.json` request (status
+    "wanted"), the owner's Hardcover want-to-read that isn't owned, or a
+    curated-list candidate. Populated by `acquisition_service.refresh_candidates`
+    (the "Search…" button + a nightly step); James approves one per row from the
+    Find a Book page, which downloads it into the inbox (and, for a wishlist
+    row, marks the item "sourced").
 
-    Keyed on the wishlist item id. EPUB candidates only, by design."""
+    Keyed on `request_id`: the wishlist item id, or "wtr:<key>" / "list:<key>"
+    for the sidecar sources. EPUB candidates only, by design."""
 
     __tablename__ = "acquisition_candidates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     request_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    # "wishlist" | "want_to_read" | "list"
+    source: Mapped[str] = mapped_column(String, nullable=False, server_default="wishlist")
     request_title: Mapped[str] = mapped_column(String, nullable=False)
     request_author: Mapped[str | None] = mapped_column(String)
     status: Mapped[AcquisitionStatus] = mapped_column(

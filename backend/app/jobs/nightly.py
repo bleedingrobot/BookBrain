@@ -136,10 +136,13 @@ async def _acquire_candidates_phase(creds: Credentials, library_folder_id: str) 
             await asyncio.to_thread(openbooks_process_service.start)
             started_here = True
         provider = DriveProvider(build_drive_service(creds))
-        result = await acquisition_service.refresh_candidates(provider, library_folder_id)
+        # ~50 searches/night at ~11s each ≈ 9 min; converges over a few nights.
+        result = await acquisition_service.refresh_candidates(
+            provider, library_folder_id, limit=50
+        )
         return (
-            f"acquire: searched {result['searched']}/{result['requests']}, "
-            f"{result['withCandidates']} with a candidate"
+            f"acquire: searched {result['searched']} of {result['targets']} "
+            f"({result['outstanding']} left), {result['withCandidates']} with a candidate"
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("nightly: acquire candidates refresh failed")

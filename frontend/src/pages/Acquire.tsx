@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../services/api'
-import type { AcquireBook, AcquireSuggestion, OpenRequest, RequestCandidate } from '../types/acquire'
+import type { AcquireBook, OpenRequest, RequestCandidate } from '../types/acquire'
 
 type RowState = { status: 'idle' | 'working' | 'done' | 'error'; message?: string }
 
@@ -50,7 +50,13 @@ function RequestRow({ req }: { req: OpenRequest }) {
         <div className="text-sm font-medium">{req.title}</div>
         <div className="text-xs text-neutral-500">
           {req.author || 'Unknown author'}
-          {req.requested_by ? ` · asked by ${req.requested_by}` : ''}
+          {req.source === 'wishlist'
+            ? req.requested_by
+              ? ` · asked by ${req.requested_by}`
+              : ' · on the wishlist'
+            : req.source === 'want_to_read'
+              ? ' · your Hardcover want-to-read'
+              : ' · on a curated list'}
         </div>
 
         {req.status === 'approved' && (
@@ -123,95 +129,6 @@ function RequestRow({ req }: { req: OpenRequest }) {
   )
 }
 
-function SuggestionList({
-  title,
-  hint,
-  items,
-  onFind,
-}: {
-  title: string
-  hint: string
-  items: AcquireSuggestion[]
-  onFind: (query: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [showAll, setShowAll] = useState(false)
-  if (items.length === 0) return null
-  const shown = showAll ? items : items.slice(0, 40)
-  return (
-    <div className="mt-2">
-      <button
-        className="flex w-full items-center gap-2 text-left text-sm font-medium"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-        {title} <span className="text-neutral-400">· {items.length}</span>
-      </button>
-      {open && (
-        <>
-          <p className="mt-0.5 pl-4 text-xs text-neutral-500">{hint}</p>
-          <ul className="mt-1 divide-y divide-neutral-100 pl-4 dark:divide-neutral-800">
-            {shown.map((s, i) => (
-              <li key={`${s.title}-${i}`} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                <span className="min-w-0">
-                  {s.title}
-                  <span className="text-neutral-500">
-                    {s.author ? ` — ${s.author}` : ''}
-                    {s.from_list ? ` · ${s.from_list}` : ''}
-                  </span>
-                </span>
-                <button
-                  className="shrink-0 rounded border border-neutral-300 px-2 py-0.5 text-xs dark:border-neutral-700"
-                  onClick={() => onFind([s.title, s.author].filter(Boolean).join(' '))}
-                >
-                  Find
-                </button>
-              </li>
-            ))}
-          </ul>
-          {items.length > 40 && !showAll && (
-            <button
-              className="mt-1 pl-4 text-xs text-neutral-400 underline"
-              onClick={() => setShowAll(true)}
-            >
-              Show all {items.length}
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-function Suggestions({ onFind }: { onFind: (query: string) => void }) {
-  const q = useQuery({ queryKey: ['acquire-suggestions'], queryFn: api.acquireSuggestions })
-  const want = q.data?.want_to_read ?? []
-  const lists = q.data?.from_lists ?? []
-  if (want.length === 0 && lists.length === 0) return null
-
-  return (
-    <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
-      <h2 className="text-sm font-medium">Ideas to look for</h2>
-      <p className="mt-1 text-xs text-neutral-500">
-        Not on the Wishlist, but likely wanted — pulled from your Hardcover data. “Find” runs the
-        search below.
-      </p>
-      <SuggestionList
-        title="From your Hardcover want-to-read"
-        hint="Books you marked “want to read” on Hardcover that aren’t in the library."
-        items={want}
-        onFind={onFind}
-      />
-      <SuggestionList
-        title="From lists you’d like"
-        hint="Books on curated Hardcover lists you already part-own."
-        items={lists}
-        onFind={onFind}
-      />
-    </div>
-  )
-}
-
 function OpenRequests() {
   const queryClient = useQueryClient()
   const [jobId, setJobId] = useState<string | null>(null)
@@ -232,20 +149,30 @@ function OpenRequests() {
     }
   }, [jobId, job.data, queryClient])
 
+  const [lastOutstanding, setLastOutstanding] = useState<number | null>(null)
+
   const refresh = useMutation({
-    mutationFn: api.refreshOpenRequests,
-    onSuccess: (j) => setJobId(j.job_id),
+    mutationFn: (limit: number) => api.refreshOpenRequests(limit),
+    onSuccess: (j) => {
+      setJobId(j.job_id)
+      setLastOutstanding(null)
+    },
   })
+
+  useEffect(() => {
+    if (job.data && job.data.status !== 'running') setLastOutstanding(job.data.outstanding)
+  }, [job.data])
 
   const rows = requests.data ?? []
   const pending = rows.filter((r) => r.status === 'pending').length
   const searching = !!jobId || refresh.isPending
+  const BATCH = 25
 
   return (
     <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">
-          Open requests from the library{' '}
+          Books to get{' '}
           <span className="text-neutral-400">
             {pending > 0 ? `· ${pending} ready to get` : rows.length > 0 ? `· ${rows.length}` : ''}
           </span>
@@ -253,24 +180,32 @@ function OpenRequests() {
         <button
           className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
           disabled={searching}
-          onClick={() => refresh.mutate()}
+          onClick={() => refresh.mutate(BATCH)}
         >
-          {searching ? 'Searching…' : 'Search open requests'}
+          {searching ? 'Searching…' : `Search ${BATCH} more`}
         </button>
       </div>
 
       <p className="mt-1 text-xs text-neutral-500">
-        Everything on the household{' '}
+        Your{' '}
         <Link to="/wishlist" className="underline">
           Wishlist
         </Link>{' '}
-        still marked “wanted”. Searching checks OpenBooks for an EPUB of each (≈10s apiece). Getting
-        one drops it in the Book Dump and marks the request “sourced”.
+        requests + your Hardcover want-to-read + curated-list picks that aren’t in the library. Each
+        “Search {BATCH} more” checks OpenBooks for an EPUB of the next {BATCH} (~10s apiece); repeat,
+        or let the nightly run finish the list. “Get” drops it in the Book Dump.
       </p>
 
       {searching && job.data && (
         <p className="mt-2 text-xs text-neutral-500">
           {job.data.searched}/{job.data.total || '…'} searched · {job.data.with_candidates} found
+        </p>
+      )}
+      {!searching && lastOutstanding !== null && (
+        <p className="mt-2 text-xs text-neutral-500">
+          {lastOutstanding > 0
+            ? `${lastOutstanding} still to search — hit “Search ${BATCH} more”.`
+            : 'All caught up — nothing left to search.'}
         </p>
       )}
       {refresh.error instanceof ApiError && (
@@ -281,8 +216,7 @@ function OpenRequests() {
         <p className="mt-3 text-xs text-neutral-400">Loading…</p>
       ) : rows.length === 0 ? (
         <p className="mt-3 text-xs text-neutral-400">
-          No open requests. When someone marks a book “wanted” on the Wishlist, hit “Search open
-          requests”.
+          Nothing searched yet — hit “Search {BATCH} more”.
         </p>
       ) : (
         <ul className="mt-1 divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -461,16 +395,8 @@ export function Acquire() {
 
       <ServerControl />
       <OpenRequests />
-      <Suggestions
-        onFind={(q) => {
-          runSearch(q)
-          document.getElementById('acquire-search')?.scrollIntoView({ behavior: 'smooth' })
-        }}
-      />
 
-      <h2 id="acquire-search" className="mt-6 text-sm font-medium">
-        Search for anything
-      </h2>
+      <h2 className="mt-6 text-sm font-medium">Search for anything</h2>
       <div className="mt-2 flex gap-2">
         <input
           className="flex-1 rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"

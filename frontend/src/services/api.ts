@@ -332,8 +332,8 @@ export const api = {
 
   acquireSuggestions: () => request<AcquireSuggestions>('/acquire/suggestions'),
   listOpenRequests: () => request<OpenRequest[]>('/acquire/requests'),
-  refreshOpenRequests: () =>
-    request<RequestRefreshJob>('/acquire/requests/refresh', { method: 'POST' }),
+  refreshOpenRequests: (limit = 25) =>
+    request<RequestRefreshJob>(`/acquire/requests/refresh?limit=${limit}`, { method: 'POST' }),
   openRequestsRefreshStatus: (jobId: string) =>
     request<RequestRefreshJob>(`/acquire/requests/refresh/${jobId}`),
   approveOpenRequest: (requestId: string, full?: string) =>
