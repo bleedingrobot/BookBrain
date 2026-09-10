@@ -70,6 +70,13 @@ import {
 import { EMPTY_PROMPTS, fetchPrompts, type Prompts } from './lib/prompts'
 import { EMPTY_LISTS, fetchLists, type Lists } from './lib/lists'
 import {
+  activeSnoozes,
+  cachedReadNextSnoozes,
+  readNextSnoozesSynced,
+  snoozeReadNext,
+  type SnoozeMap,
+} from './lib/readNextSnooze'
+import {
   EMPTY_READING,
   fetchReading,
   authorAffinity,
@@ -158,6 +165,7 @@ export default function App() {
   // prompts/32 — the SFF news sidecar, fetched lazily with the others.
   const [news, setNews] = useState<News>(EMPTY_NEWS)
   const [dismissedNews, setDismissedNews] = useState<Set<string>>(cachedDismissedNews)
+  const [readNextSnoozes, setReadNextSnoozes] = useState<SnoozeMap>(cachedReadNextSnoozes)
   const [showNewsScreen, setShowNewsScreen] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
@@ -251,6 +259,7 @@ export default function App() {
       )
       void fetchPrompts(token, folderId).then(setPrompts)
       void fetchLists(token, folderId).then(setLists)
+      void readNextSnoozesSynced(token, folderId).then(setReadNextSnoozes)
     }
     if (ric) ric(run)
     else setTimeout(run, 1200)
@@ -333,6 +342,16 @@ export default function App() {
     }
   }
 
+  // X a "Read next" card away for ~a month (comes back if still unread).
+  function snoozeReadNextCard(fileId: string) {
+    setReadNextSnoozes((m) => ({ ...m, [fileId]: Date.now() }))
+    if (token && settings) {
+      void snoozeReadNext(token, settings.libraryFolderId, fileId, readNextSnoozes).then(
+        setReadNextSnoozes,
+      )
+    }
+  }
+
   async function requestBook(rec: RecBook) {
     if (!token || !settings || !viewerName) return 'already-listed' as const
     const result = await addToWishlist(
@@ -390,8 +409,11 @@ export default function App() {
   const incompleteSeries = useMemo(() => incompleteSeriesNames(seriesGaps), [seriesGaps])
   const comingSoonSeries = useMemo(() => comingSoonSeriesNames(seriesGaps), [seriesGaps])
   // prompts/30 Phase 2 — "Read next" strip + author-read-count weighting for
-  // the release strips.
-  const readNext = useMemo(() => nextInSeries(allRows), [allRows])
+  // the release strips. Snoozed cards (X'd away for ~a month) are filtered out.
+  const readNext = useMemo(() => {
+    const hidden = activeSnoozes(readNextSnoozes)
+    return nextInSeries(allRows).filter((r) => !hidden.has(r.row.id))
+  }, [allRows, readNextSnoozes])
   const authorReadCounts = useMemo(
     () => readingProfile(reading, new Map(allRows.map((r) => [r.id, { author: r.author }]))),
     [reading, allRows],
@@ -1151,6 +1173,7 @@ export default function App() {
           token={token}
           onRead={(id) => setReadingBookId(id)}
           onOpen={jumpToRecent}
+          onSnooze={snoozeReadNextCard}
         />
       )}
 

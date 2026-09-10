@@ -130,7 +130,13 @@ eyeball the Read chip + badges in the deployed viewer.
 ## Phase 2 — the payoffs (each independent, do after Phase 1 lands)
 
 **All shipped 2026-09-09.** Next-up-in-series (`<ReadNext>`), author weighting
-(`readingProfile`), favourites filter — commit `8cddae7`. **Want-to-read ↔
+(`readingProfile`), favourites filter — commit `8cddae7`. **`<ReadNext>` card
+"✕" snooze added 2026-09-10** (James asked): `lib/readNextSnooze.ts` +
+`bookbrain-readnext-snoozed.json` sidecar (`{version:1, snoozed:{driveFileId:
+epochMs}}`, synced like the news-dismiss file, localStorage cache, serialised
+writes). A snooze lasts **30 days** then the card returns (the strip only ever
+lists unread books, so "still unread" is automatic). App filters `readNext` by
+`activeSnoozes(...)`. **Want-to-read ↔
 wishlist** — shipped 2026-09-09 (commit after Phase 3): `build_reading_payload`
 now emits `wantUnowned[]` (want-to-read rows not in the library — read/reading
 stay counts-only, licence); `reading.json` bumped to **v2**; the Wishlist
