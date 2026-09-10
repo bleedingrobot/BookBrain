@@ -10,8 +10,29 @@ pick a result → the backend downloads it and uploads it straight into the
 Drive inbox ("Book Dump"). From there the existing scan → identify → organize
 pipeline runs unchanged — nothing here identifies or renames anything.
 
-Deliberately **not** a nightly auto-fill loop and **not** wired to either
-wishlist. One book at a time, operator in the loop.
+One book at a time, operator in the loop — no unattended downloading.
+
+### Fill open viewer requests (added 2026-09-10)
+
+The viewer's `bookbrain-wishlist.json` is the household request list (anyone
+can add a book, status `wanted`). The Find a Book page has an **"Open requests
+from the library"** panel:
+
+- **Search open requests** searches OpenBooks for every still-`wanted` item
+  (paced for the 10s search cooldown), keeps the plausible **EPUB** matches in
+  the `acquisition_candidates` table, best first.
+- James hits **Get this** (or picks an alternative) per request → downloads it
+  into the inbox via `acquire_service` and flips the wishlist item to
+  `sourced` (best-effort RMW of the sidecar) so the household sees it's
+  handled. The viewer's own reconcile moves it to `acquired` once the
+  organised book lands in the library.
+- The **nightly run** does the same search step (when `OPENBOOKS_ENABLED`),
+  starting/stopping the OpenBooks server itself — so the candidates are
+  waiting each morning. It never downloads.
+
+The library-viewer can't do any of this itself (static site, no backend,
+localhost-only OpenBooks) — the request list is the only thing it contributes.
+Still admin-only for the actual searching/downloading.
 
 ## Running it
 
@@ -43,6 +64,17 @@ returns a clean "can't reach OpenBooks" error.
   `netstat` + `taskkill`), `status()` → `{installed, running, managed, pid}`,
   `shutdown()` (lifespan) only ever touches a child we started. Endpoints
   `GET/POST /api/acquire/server{,/start,/stop}`.
+- `app/services/acquisition_service.py` — the open-requests flow.
+  `refresh_candidates` (read `bookbrain-wishlist.json` → search each `wanted`
+  item, EPUB-only, `score_candidate` handles OpenBooks swapping author/title,
+  dedupe, upsert `AcquisitionCandidate` with top-6 alternatives, skip rows
+  already `approved`/`skipped`/`pending`), `approve_request` (→
+  `acquire_service` + `_mark_wishlist_sourced`), `skip_request` /
+  `reset_request`, `list_requests`. `AcquisitionCandidate` model +
+  `ee2155ba2aa5` migration, keyed on the wishlist item id. Routes
+  `GET /api/acquire/requests`, `POST /api/acquire/requests/refresh` (job +
+  `…/refresh/{job_id}` poll), `POST /api/acquire/requests/{id}/{approve,skip,reset}`.
+  Nightly `_acquire_candidates_phase` runs the search step.
 - `app/services/openbooks_service.py` — one cached, lock-serialised
   `websockets` client. Protocol (from `server/messages.go`): request
   `{"type": N, "payload": {...}}` — CONNECT=1, SEARCH=2, DOWNLOAD=3; the
