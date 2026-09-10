@@ -11,8 +11,11 @@ human present, in one pass:
 3. regenerate cover thumbnails for anything newly organised
 4. regenerate the `bookbrain-index.json` sidecar the library-viewer reads
 
-It never touches the review queue or the duplicates list — anything the
-pipeline isn't sure about still waits for James in the morning.
+It never touches the review queue directly — anything below the (configurable)
+auto-organize confidence bar still waits for James in the morning. It does
+auto-trash the duplicates a scan detects, per the AUTO_TRASH_DUPLICATES
+setting (default: byte-identical re-uploads only), since `run_scan` does that
+itself now.
 
 Two callers share one job function:
 

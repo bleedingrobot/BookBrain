@@ -12,7 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.settings_keys import ORGANIZE_DRY_RUN, ORGANIZE_HOLD_HOURS
+from app.core.config import get_settings
+from app.core.settings_keys import (
+    AUTO_TRASH_DUPLICATES,
+    CONFIDENCE_AUTO_FLAGGED,
+    ORGANIZE_DRY_RUN,
+    ORGANIZE_HOLD_HOURS,
+)
 from app.data.db import async_session_factory
 from app.data.models import (
     AIDecision,
@@ -60,6 +66,28 @@ async def get_organize_hold_hours(settings_repo: SettingsRepository) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, min(value, _MAX_HOLD_HOURS))
+
+
+async def get_confidence_auto_flagged(settings_repo: SettingsRepository) -> int:
+    """The confidence at/above which a scanned file auto-organizes. A stored
+    override wins; otherwise the code default. Clamped [0, 100]."""
+    raw = await settings_repo.get(CONFIDENCE_AUTO_FLAGGED)
+    if raw is not None:
+        try:
+            return max(0, min(int(raw), 100))
+        except (TypeError, ValueError):
+            pass
+    return get_settings().confidence_auto_flagged
+
+
+AUTO_TRASH_MODES = ("off", "exact", "all")
+
+
+async def get_auto_trash_duplicates(settings_repo: SettingsRepository) -> str:
+    """"off" | "exact" | "all" — what a scan trashes once it's detected the
+    duplicates. Missing / unrecognised → "exact"."""
+    raw = await settings_repo.get(AUTO_TRASH_DUPLICATES)
+    return raw if raw in AUTO_TRASH_MODES else "exact"
 
 # Comma is included alongside the OS-reserved characters because it's also
 # the delimiter build_target_path joins title/author/series/part with below

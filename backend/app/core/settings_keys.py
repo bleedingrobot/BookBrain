@@ -21,6 +21,19 @@ ORGANIZE_DRY_RUN = "organize_dry_run"
 # yet and flows on the next organize/nightly pass once its time is up.
 ORGANIZE_HOLD_HOURS = "organize_hold_hours"
 
+# The confidence at/above which a scanned file auto-organizes with no review.
+# Missing → the code default (config.confidence_auto_flagged). Lower it to push
+# more of the review queue straight into the library — safe here because the
+# genuine failures (parse errors, no candidates) never get a book_id and so
+# never auto-organize regardless. Clamped [0, 100].
+CONFIDENCE_AUTO_FLAGGED = "confidence_auto_flagged"
+
+# After each scan, trash the duplicates it just detected. "off" | "exact"
+# (byte-identical re-uploads only — always safe, Drive-Trash recoverable) |
+# "all" (also different-edition copies of the same identified book, keeping the
+# best-quality one). Missing → "exact".
+AUTO_TRASH_DUPLICATES = "auto_trash_duplicates"
+
 # Nightly unattended pipeline run (scan -> auto-organize -> covers -> index).
 # Off until James turns it on in Settings. Hour is 0-23 in the machine's
 # local time.

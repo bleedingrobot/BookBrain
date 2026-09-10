@@ -12,7 +12,11 @@ export interface OrganizeJobStatus {
   failures: OrganizeFailure[]
 }
 
+export type AutoTrashMode = 'off' | 'exact' | 'all'
+
 export interface OrganizeSettings {
   dry_run: boolean
   hold_hours: number
+  auto_organize_min_confidence: number
+  auto_trash_duplicates: AutoTrashMode
 }

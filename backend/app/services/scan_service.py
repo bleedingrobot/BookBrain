@@ -44,11 +44,20 @@ from app.services.book_repository import (
 from app.services.candidate_service import CandidateService, default_candidate_service
 from app.services.drive_service import DriveService
 from app.services.batch_prior_service import apply_batch_priors
-from app.services.duplicate_service import detect_same_book_duplicates
+from app.services.duplicate_service import (
+    clear_duplicates,
+    clear_same_book_duplicates,
+    detect_same_book_duplicates,
+)
 from app.services.identification_service import IdentificationResult, IdentificationService
 from app.services.library_index_service import regenerate_library_index
 from app.services.metadata_sanity import clamp_series_number
-from app.services.organize_service import get_organize_dry_run, get_organize_service
+from app.services.organize_service import (
+    get_auto_trash_duplicates,
+    get_confidence_auto_flagged,
+    get_organize_dry_run,
+    get_organize_service,
+)
 from app.services.quality_service import score_quality
 from app.services.sticky_resolution import find_rule_match, resolve_corrected_book_id
 
@@ -71,6 +80,17 @@ _SCAN_CONCURRENCY = 6
 # never switches coroutines mid-update — the usual asyncio "no real threads"
 # guarantee that already lets `counts`/`failures` be shared the same way.
 PhaseTimings = dict[str, dict[str, float]]
+
+
+async def _settings_with_overrides() -> Settings:
+    """`get_settings()` with the DB-editable pipeline knobs folded in — right
+    now just `confidence_auto_flagged` (the auto-organize bar). A shallow copy,
+    so the process-wide cached Settings is left untouched; `_process_file`'s
+    existing `settings.confidence_auto_flagged` read then picks it up with no
+    signature changes."""
+    async with async_session_factory() as session:
+        threshold = await get_confidence_auto_flagged(SettingsRepository(session))
+    return get_settings().model_copy(update={"confidence_auto_flagged": threshold})
 
 
 @contextmanager
@@ -170,7 +190,7 @@ class ScanService:
         return any(job.status == ScanJobState.running for job in self._jobs.values())
 
     async def run_scan(self, job_id: str, creds: Credentials, folder_id: str) -> None:
-        settings = get_settings()
+        settings = await _settings_with_overrides()
         provider = DriveProvider(build_drive_service(creds))
         counts = {
             "new": 0,
@@ -213,12 +233,14 @@ class ScanService:
             same_book_duplicates = await detect_same_book_duplicates(session)
             await session.commit()
 
+        trashed_dupes = await self._auto_trash_duplicates(creds)
         organized = await self._auto_organize(creds)
 
         detail = (
             f"{counts['new']} new, {counts['flagged']} flagged for review, "
             f"{counts['duplicate']} duplicate, "
             f"{same_book_duplicates} same-book duplicate, "
+            f"{trashed_dupes} duplicate(s) trashed, "
             f"{counts['skipped_existing']} already known, "
             f"{counts['skipped_too_large']} skipped (too large), "
             f"{counts['removed_non_ebook']} non-ebook files removed, "
@@ -355,6 +377,30 @@ class ScanService:
                 )
 
         await asyncio.gather(*(process_one(raw) for raw in raw_files))
+
+    async def _auto_trash_duplicates(self, creds: Credentials) -> int:
+        """After a scan's duplicate detection, trash what the AUTO_TRASH_DUPLICATES
+        setting allows: "exact" (byte-identical re-uploads — always safe) or
+        "all" (also different-edition copies of the same identified book).
+        Never runs for a rebuild. Best-effort — a Drive failure is logged, not
+        raised."""
+        async with async_session_factory() as session:
+            mode = await get_auto_trash_duplicates(SettingsRepository(session))
+        if mode == "off":
+            return 0
+        try:
+            provider = DriveProvider(build_drive_service(creds))
+            cleared = 0
+            async with async_session_factory() as session:
+                cleared += (await clear_duplicates(session, provider)).cleared
+                if mode == "all":
+                    cleared += (await clear_same_book_duplicates(session, provider)).cleared
+            if cleared:
+                logger.info("scan: auto-trashed %d duplicate(s) (mode=%s)", cleared, mode)
+            return cleared
+        except Exception:  # noqa: BLE001
+            logger.exception("scan: auto-trash duplicates failed")
+            return 0
 
     async def _auto_organize(self, creds: Credentials) -> int:
         async with async_session_factory() as session:

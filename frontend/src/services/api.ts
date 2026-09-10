@@ -120,10 +120,10 @@ export const api = {
     }),
 
   getOrganizeSettings: () => request<OrganizeSettings>('/settings/organize'),
-  updateOrganizeSettings: (dryRun: boolean, holdHours: number) =>
+  updateOrganizeSettings: (next: OrganizeSettings) =>
     request<OrganizeSettings>('/settings/organize', {
       method: 'PUT',
-      body: JSON.stringify({ dry_run: dryRun, hold_hours: holdHours }),
+      body: JSON.stringify(next),
     }),
   startOrganize: () => request<OrganizeJobStatus>('/organize', { method: 'POST' }),
   getOrganizeStatus: (jobId: string) => request<OrganizeJobStatus>(`/organize/${jobId}`),

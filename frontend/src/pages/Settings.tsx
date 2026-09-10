@@ -4,6 +4,7 @@ import { api, ApiError } from '../services/api'
 import { DRIVE_FILE_SCOPE, type FolderMode } from '../types/auth'
 import { FolderPicker } from '../components/FolderPicker'
 import { DiscoveryPanel } from '../components/DiscoveryPanel'
+import type { OrganizeSettings } from '../types/organize'
 
 export function Settings() {
   const queryClient = useQueryClient()
@@ -100,8 +101,8 @@ export function Settings() {
   })
 
   const updateOrganize = useMutation({
-    mutationFn: ({ dryRun, holdHours }: { dryRun: boolean; holdHours: number }) =>
-      api.updateOrganizeSettings(dryRun, holdHours),
+    mutationFn: (patch: Partial<OrganizeSettings>) =>
+      api.updateOrganizeSettings({ ...organizeSettings.data!, ...patch }),
     onSuccess: (data) => {
       queryClient.setQueryData(['organize-settings'], data)
       setConfirmingLiveMoves(false)
@@ -279,12 +280,7 @@ export function Settings() {
                       <button
                         className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
                         disabled={updateOrganize.isPending}
-                        onClick={() =>
-                          updateOrganize.mutate({
-                            dryRun: false,
-                            holdHours: organizeSettings.data!.hold_hours,
-                          })
-                        }
+                        onClick={() => updateOrganize.mutate({ dry_run: false })}
                       >
                         Yes, enable live moves
                       </button>
@@ -306,12 +302,7 @@ export function Settings() {
                 <div>
                   <button
                     className="mt-3 rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
-                    onClick={() =>
-                      updateOrganize.mutate({
-                        dryRun: true,
-                        holdHours: organizeSettings.data!.hold_hours,
-                      })
-                    }
+                    onClick={() => updateOrganize.mutate({ dry_run: true })}
                   >
                     Switch back to dry run
                   </button>
@@ -326,10 +317,7 @@ export function Settings() {
                   checked={organizeSettings.data.hold_hours > 0}
                   disabled={updateOrganize.isPending}
                   onChange={(e) =>
-                    updateOrganize.mutate({
-                      dryRun: organizeSettings.data!.dry_run,
-                      holdHours: e.target.checked ? 24 : 0,
-                    })
+                    updateOrganize.mutate({ hold_hours: e.target.checked ? 24 : 0 })
                   }
                 />
                 Hold new books before auto-organizing
@@ -348,10 +336,7 @@ export function Settings() {
                     value={organizeSettings.data.hold_hours}
                     disabled={updateOrganize.isPending}
                     onChange={(e) =>
-                      updateOrganize.mutate({
-                        dryRun: organizeSettings.data!.dry_run,
-                        holdHours: Number(e.target.value),
-                      })
+                      updateOrganize.mutate({ hold_hours: Number(e.target.value) })
                     }
                   >
                     {[6, 12, 24, 48, 72].map((h) => (
@@ -362,6 +347,58 @@ export function Settings() {
                   </select>
                 </label>
               )}
+            </div>
+
+            <div className="mt-5 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-neutral-500">Auto-organize when confidence is at least</span>
+                <select
+                  className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                  value={organizeSettings.data.auto_organize_min_confidence}
+                  disabled={updateOrganize.isPending}
+                  onChange={(e) =>
+                    updateOrganize.mutate({
+                      auto_organize_min_confidence: Number(e.target.value),
+                    })
+                  }
+                >
+                  {[30, 40, 50, 60, 70, 85, 95].map((c) => (
+                    <option key={c} value={c}>
+                      {c}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-1 text-xs text-neutral-500">
+                Lower = more books skip the review queue and go straight into the library.
+                Books below this still wait for review; genuine failures (unparseable, no
+                match) are never auto-organized. Default 85%.
+              </p>
+            </div>
+
+            <div className="mt-5 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-neutral-500">After each scan, trash duplicates</span>
+                <select
+                  className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                  value={organizeSettings.data.auto_trash_duplicates}
+                  disabled={updateOrganize.isPending}
+                  onChange={(e) =>
+                    updateOrganize.mutate({
+                      auto_trash_duplicates: e.target.value as OrganizeSettings['auto_trash_duplicates'],
+                    })
+                  }
+                >
+                  <option value="off">never (leave them for me)</option>
+                  <option value="exact">byte-identical re-uploads</option>
+                  <option value="all">also different-edition copies of the same book</option>
+                </select>
+              </label>
+              <p className="mt-1 text-xs text-neutral-500">
+                Trashed files go to Drive's own Trash (recoverable for 30 days). “also
+                different-edition copies” keeps the best-quality one and relies on the
+                identification being right.
+              </p>
             </div>
           </div>
         )}

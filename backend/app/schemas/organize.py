@@ -28,3 +28,10 @@ class OrganizeSettings(BaseModel):
     # many hours so a human can catch a rare miss in the "Recently
     # auto-organized" tray first. Clamped server-side to [0, 720].
     hold_hours: int = 0
+    # The confidence at/above which a scanned file auto-organizes with no
+    # review. Lower = more of the review queue flows straight to the library.
+    # Clamped server-side to [0, 100].
+    auto_organize_min_confidence: int = 85
+    # What a scan trashes once it's detected duplicates: "off" | "exact"
+    # (byte-identical re-uploads) | "all" (+ same-book different editions).
+    auto_trash_duplicates: str = "exact"

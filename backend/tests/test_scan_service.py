@@ -17,11 +17,13 @@ from app.data.models import (
     BookCandidate,
     File,
     FileStatus,
+    FileStatusReason,
     LibraryRule,
     MetadataSource,
     Review,
     ReviewStatus,
     RuleType,
+    Setting,
 )
 from app.providers.metadata.types import MetadataCandidate
 from app.schemas.drive import FolderConfig
@@ -1053,3 +1055,82 @@ async def test_run_scan_skips_auto_organize_without_a_library_folder(monkeypatch
     status = service.get_status(job.job_id)
     assert status.status.value == "done"
     assert "0 auto-organized" in status.detail
+
+
+# --- auto-trash duplicates after a scan (prompts/37 follow-up) ------------
+
+
+def _dup_file(fid, name, book_id, *, sha, reason=None):
+    return File(
+        drive_file_id=fid, drive_parent_id="inbox", filename=name, sha256=sha,
+        size_bytes=10, status=FileStatus.duplicate, status_reason=reason,
+        quality_score=1, book_id=book_id,
+    )
+
+
+async def _seed_dupes(db_session):
+    author = Author(name="A")
+    book = Book(canonical_title="B", author=author)
+    primary = File(
+        drive_file_id="p", drive_parent_id="inbox", filename="p.epub", sha256="aaa",
+        size_bytes=10, status=FileStatus.inbox, quality_score=9, book_id=None,
+    )
+    db_session.add_all([author, book, primary])
+    await db_session.flush()
+    primary.book_id = book.id
+    db_session.add_all([
+        _dup_file("d-exact", "exact.epub", book.id, sha="aaa"),  # byte-identical
+        _dup_file("d-samebook", "other-edition.epub", book.id, sha="bbb",
+                  reason=FileStatusReason.same_book),
+    ])
+    await db_session.commit()
+    return book.id
+
+
+def _patch_provider(monkeypatch):
+    import app.services.scan_service as scan_module
+    trashed: list[str] = []
+
+    class _P:
+        def trash_file(self, fid):
+            trashed.append(fid)
+            return {"id": fid, "trashed": True}
+
+    monkeypatch.setattr(scan_module, "DriveProvider", lambda _s: _P())
+    monkeypatch.setattr(scan_module, "build_drive_service", lambda _c: object())
+    return trashed
+
+
+async def test_auto_trash_duplicates_exact_only_by_default(db_session, monkeypatch):
+    await _seed_dupes(db_session)
+    trashed = _patch_provider(monkeypatch)
+
+    n = await ScanService()._auto_trash_duplicates(creds=object())
+    assert n == 1
+    assert trashed == ["d-exact"]  # same_book left for a human
+    left = {f.drive_file_id for f in (await db_session.execute(select(File))).scalars()}
+    assert left == {"p", "d-samebook"}
+
+
+async def test_auto_trash_duplicates_all_mode(db_session, monkeypatch):
+    await _seed_dupes(db_session)
+    db_session.add(Setting(key="auto_trash_duplicates", value="all"))
+    await db_session.commit()
+    trashed = _patch_provider(monkeypatch)
+
+    n = await ScanService()._auto_trash_duplicates(creds=object())
+    assert n == 2
+    assert set(trashed) == {"d-exact", "d-samebook"}
+    left = {f.drive_file_id for f in (await db_session.execute(select(File))).scalars()}
+    assert left == {"p"}
+
+
+async def test_auto_trash_duplicates_off(db_session, monkeypatch):
+    await _seed_dupes(db_session)
+    db_session.add(Setting(key="auto_trash_duplicates", value="off"))
+    await db_session.commit()
+    trashed = _patch_provider(monkeypatch)
+
+    n = await ScanService()._auto_trash_duplicates(creds=object())
+    assert n == 0
+    assert trashed == []

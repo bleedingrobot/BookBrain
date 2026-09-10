@@ -5,7 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
-from app.core.settings_keys import ORGANIZE_HOLD_HOURS
+from app.core.settings_keys import (
+    AUTO_TRASH_DUPLICATES,
+    CONFIDENCE_AUTO_FLAGGED,
+    ORGANIZE_HOLD_HOURS,
+)
 from app.data.db import Base
 from app.data.models import (
     Author,
@@ -23,6 +27,8 @@ from app.services.organize_service import (
     FolderPathCache,
     OrganizeService,
     build_target_path,
+    get_auto_trash_duplicates,
+    get_confidence_auto_flagged,
     get_organize_hold_hours,
     get_organize_service,
 )
@@ -408,6 +414,36 @@ def _patch_session_factory(monkeypatch, db_session) -> None:
             return False
 
     monkeypatch.setattr(organize_module, "async_session_factory", lambda: _CM())
+
+
+async def test_get_confidence_auto_flagged_override_and_fallback(db_session) -> None:
+    from app.core.config import get_settings
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db_session)
+    assert await get_confidence_auto_flagged(repo) == get_settings().confidence_auto_flagged
+    db_session.add(Setting(key=CONFIDENCE_AUTO_FLAGGED, value="40"))
+    await db_session.commit()
+    assert await get_confidence_auto_flagged(repo) == 40
+    (await db_session.get(Setting, CONFIDENCE_AUTO_FLAGGED)).value = "999"
+    await db_session.commit()
+    assert await get_confidence_auto_flagged(repo) == 100  # clamped
+    (await db_session.get(Setting, CONFIDENCE_AUTO_FLAGGED)).value = "junk"
+    await db_session.commit()
+    assert await get_confidence_auto_flagged(repo) == get_settings().confidence_auto_flagged
+
+
+async def test_get_auto_trash_duplicates_modes(db_session) -> None:
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db_session)
+    assert await get_auto_trash_duplicates(repo) == "exact"  # missing -> exact
+    db_session.add(Setting(key=AUTO_TRASH_DUPLICATES, value="all"))
+    await db_session.commit()
+    assert await get_auto_trash_duplicates(repo) == "all"
+    (await db_session.get(Setting, AUTO_TRASH_DUPLICATES)).value = "nonsense"
+    await db_session.commit()
+    assert await get_auto_trash_duplicates(repo) == "exact"
 
 
 async def test_get_organize_hold_hours_defaults_and_clamps(db_session) -> None:

@@ -971,7 +971,8 @@ async def reset_request(request_id: str) -> None:
 # still working through the list over a day or two.
 
 _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
-_AUTOSCAN_INBOX_THRESHOLD = 20  # kick a scan once auto-get has piled up this many
+_AUTOSCAN_INBOX_THRESHOLD = 8  # kick a scan once this many downloads have piled up
+# (auto-get also scans whenever it's otherwise idle and the inbox isn't empty)
 _AUTOGET_SEARCH_REUSE = timedelta(minutes=60)  # reuse a candidate row's search if fresher
 _SEARCH_BUDGET_PER_HOUR = 8  # hard ceiling on fresh OpenBooks searches
 # Backoff before auto-get re-attempts a book. It cools down between tries,
@@ -1067,15 +1068,22 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     # until the nightly. Kick a scan once it hits the threshold (the next
     # tick's has_running_job() guard then pauses auto-get until it's done).
     inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
-    if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
+
+    def _kick_scan(reason: str) -> dict:
         scan_svc = get_scan_service()
         job = scan_svc.create_job()
         asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
-        logger.info("acquire: inbox at %d files — auto-scan started", len(inbox_files))
+        logger.info("acquire: %s — auto-scan started (%d files)", reason, len(inbox_files))
         return {"scan_started": len(inbox_files)}
+
+    if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
+        return _kick_scan(f"inbox at {len(inbox_files)} files")
 
     targets = await _gather_targets(provider, library.folder_id)
     if not targets:
+        # Nothing to acquire — if downloads are sitting unscanned, clear them.
+        if inbox_files:
+            return _kick_scan("no acquisition work, inbox has files")
         return {"skipped": "no targets"}
 
     now = datetime.now(UTC)
@@ -1102,6 +1110,10 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
             item, existing = t, row
             break
     if item is None:
+        # Everything acquired or cooling down — use the idle tick to clear any
+        # downloads still sitting in the inbox.
+        if inbox_files:
+            return _kick_scan("acquisitions idle, inbox has files")
         return {"skipped": "all caught up or cooling down", "targets": len(targets)}
 
     rid, title = item["request_id"], item["title"]
