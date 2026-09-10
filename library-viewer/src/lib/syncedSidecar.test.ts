@@ -95,6 +95,20 @@ describe('makeSidecar', () => {
     expect((store.file!.content as { items: string[] }).items.sort()).toEqual(['a', 'b'])
   })
 
+  it('a failed initial read keeps prior state and applies the change on top', async () => {
+    const s = makeSidecar(spec)
+    await s.write('t', 'lib', () => ['a', 'b']) // now on Drive + cache
+    store.writes = 0
+    // Drive read blows up (transient 403 / offline) on the next write's read.
+    driveMock.readJsonFile.mockRejectedValueOnce(new Error('rate limit'))
+    const out = await s.write('t', 'lib', (cur) => [...cur, 'c'])
+    expect(new Set(out)).toEqual(new Set(['a', 'b', 'c'])) // not collapsed to ['c'] or []
+    expect(store.writes).toBe(0) // no blind overwrite of Drive
+    // the change survives locally for the next sync to carry up
+    const s2 = makeSidecar(spec)
+    expect(new Set(s2.cachedNow())).toEqual(new Set(['a', 'b', 'c']))
+  })
+
   it('sync seeds the sidecar from a localStorage-only install', async () => {
     localStorage.setItem(
       'bookbrain.x',

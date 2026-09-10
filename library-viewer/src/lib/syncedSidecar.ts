@@ -136,8 +136,25 @@ export function makeSidecar<T>(spec: SidecarSpec<T>) {
 
   async function doWrite(token: string, folderId: string, update: (current: T) => T): Promise<T> {
     let result: T = spec.empty
+
+    // The initial read gets its own guard: a transport failure here must NOT
+    // be read as "the sidecar is empty" — that collapses the whole set (every
+    // dismissed article reappears, every queued change is lost). Instead apply
+    // the change on top of the last-known-good cache and keep it local; the
+    // next successful sync/write reconciles it to Drive. We don't write blind
+    // (no ETag on Drive v3, so we could clobber a sibling).
+    let found: { id: string; modifiedTime: string; content: unknown } | null
     try {
-      const found = await readJsonFile<unknown>(token, folderId, spec.filename)
+      found = await readJsonFile<unknown>(token, folderId, spec.filename)
+    } catch {
+      const cached = readCache()
+      const base = cached && cached.folderId === folderId ? cached.value : spec.empty
+      result = update(base)
+      writeCache(folderId, cached?.modifiedTime ?? null, result)
+      return result
+    }
+
+    try {
       const current = found ? spec.parse(found.content) : spec.empty
       result = update(current)
       let id = await writeJsonFile(token, folderId, spec.filename, spec.serialise(result), found?.id ?? null)
