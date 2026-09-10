@@ -62,6 +62,23 @@ def test_score_prefers_a_reliable_server_with_a_real_size():
     assert ranked[0][1].server == "Bsk"
 
 
+def test_score_drops_a_stub_sized_file():
+    stub = _book("Academ's Fury", "Jim Butcher", server="Oatmeal", size="12.71KB")
+    real = _book("Academ's Fury", "Jim Butcher", server="Bsk", size="680.08KB")
+    assert score_candidate("Academ's Fury", "Jim Butcher", stub) < 0.72  # filtered out of _rank
+    assert score_candidate("Academ's Fury", "Jim Butcher", real) >= 0.9
+    ranked = svc._rank("Academ's Fury", "Jim Butcher", [stub, real])
+    assert [r[1].size for r in ranked] == ["680.08KB"]  # the stub is gone
+
+
+def test_size_bytes_parses_openbooks_formats():
+    assert svc._size_bytes("1.26MB") == int(1.26 * 1024**2)
+    assert svc._size_bytes("970.98KB") == int(970.98 * 1024)
+    assert svc._size_bytes("1.26") == int(1.26 * 1024**2)  # bare = MB (Firebook)
+    assert svc._size_bytes("N/A") is None
+    assert svc._size_bytes(None) is None
+
+
 # --- refresh ------------------------------------------------------------
 
 
@@ -378,3 +395,41 @@ async def test_list_requests_shows_unsearched_wishlist_items(db_session, monkeyp
     assert views["r1"].status == "pending"
     assert views["r2"].status == "unsearched"
     assert views["r2"].requested_by == "Jo"
+
+
+async def test_list_requests_reranks_a_stub_pick_to_a_real_alternative(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:af",
+            source="want_to_read",
+            request_title="Academ's Fury",
+            request_author="Jim Butcher",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Oatmeal Jim Butcher - Academ's Fury.epub",
+            candidate_title="Academ's Fury",
+            candidate_author="Jim Butcher",
+            candidate_format="epub",
+            candidate_size="12.71KB",  # stub — was picked before the size check
+            candidate_server="Oatmeal",
+            score=0.98,
+            alternatives_json=[
+                {
+                    "full": "!Bsk Jim Butcher - Academ's Fury.epub",
+                    "title": "Academ's Fury",
+                    "author": "Jim Butcher",
+                    "format": "epub",
+                    "size": "680.08KB",
+                    "server": "Bsk",
+                    "score": 0.98,
+                }
+            ],
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist([]))
+    views = await svc.list_requests(object(), "lib")
+
+    row = next(v for v in views if v.request_id == "wtr:af")
+    assert row.candidate["size"] == "680.08KB"  # promoted the real copy
+    assert row.candidate["server"] == "Bsk"

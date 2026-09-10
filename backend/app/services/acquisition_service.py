@@ -88,25 +88,44 @@ def score_candidate(req_title: str, req_author: str | None, cand: BookResult) ->
     if re.search(r"retail|\(v\d", cand.full, re.IGNORECASE):
         score = min(1.0, score + 0.02)
 
-    # Reliability: prefer the servers that reliably complete a DCC transfer,
-    # and a result with a real reported size, over the flaky ones that send
-    # truncated files (which have crashed the OpenBooks process). A "N/A"
-    # size or an unknown server drops the pick well below a good one so
-    # "Get this" never auto-selects it — it stays available as an alternative.
+    # Reliability: prefer servers that reliably complete a DCC transfer, and a
+    # sensibly-sized file, over the flaky ones that send truncated files (which
+    # have crashed the OpenBooks process). These drop a pick well below a good
+    # one so "Get this" never auto-selects it — it stays a manual alternative.
     server = (cand.server or "").lower()
     if server in _RELIABLE_SERVERS:
         score += 0.06
-    if not _has_real_size(cand.size):
-        score -= 0.15
+
+    sz = _size_bytes(cand.size)
+    if sz is None:
+        score -= 0.15  # unknown size ("N/A") — mildly suspect
+    elif sz < 40_000:
+        score -= 0.5  # a 12 KB "epub" is a stub / reading guide / broken rip
+    elif sz > 60_000_000:
+        score -= 0.1  # implausibly large for an epub — usually mislabeled
+
     return round(max(0.0, min(1.0, score)), 4)
 
 
 # Book servers on #ebook that reliably finish a DCC transfer (observed).
 _RELIABLE_SERVERS = {"bsk", "oatmeal", "ook", "dv8", "horla", "pondering-ebooks2"}
 
+_SIZE_RE = re.compile(r"([\d.]+)\s*(kb|mb|gb|b)?\b", re.IGNORECASE)
+_SIZE_UNIT = {"b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3, "": 1024**2}  # bare number = MB
 
-def _has_real_size(size: str | None) -> bool:
-    return bool(size) and size.strip().upper() not in {"N/A", "", "0", "?"}
+
+def _size_bytes(size: str | None) -> int | None:
+    """OpenBooks reports sizes like "1.26MB" / "970.98KB" / "N/A" / a bare
+    "1.26" (Firebook — MB). Returns bytes, or None when it can't be read."""
+    if not size:
+        return None
+    m = _SIZE_RE.match(size.strip())
+    if not m:
+        return None
+    try:
+        return int(float(m.group(1)) * _SIZE_UNIT[(m.group(2) or "").lower()])
+    except (ValueError, KeyError):
+        return None
 
 
 def _rank(req_title: str, req_author: str | None, results: list[BookResult]) -> list[tuple[float, BookResult]]:
@@ -539,12 +558,84 @@ async def _prune_now_in_library(session: AsyncSession) -> int:
     return pruned
 
 
+def _row_candidates(row: AcquisitionCandidate) -> list[BookResult]:
+    out: list[BookResult] = []
+    if row.candidate_full:
+        out.append(
+            BookResult(
+                server=row.candidate_server or "",
+                author=row.candidate_author or "",
+                title=row.candidate_title or "",
+                format=row.candidate_format or "epub",
+                size=row.candidate_size or "",
+                full=row.candidate_full,
+            )
+        )
+    for a in row.alternatives_json or []:
+        if isinstance(a, dict) and a.get("full"):
+            out.append(
+                BookResult(
+                    server=a.get("server") or "",
+                    author=a.get("author") or "",
+                    title=a.get("title") or "",
+                    format=a.get("format") or "epub",
+                    size=a.get("size") or "",
+                    full=a["full"],
+                )
+            )
+    return out
+
+
+async def _rerank_existing(session: AsyncSession) -> int:
+    """Re-score the stored candidate + alternatives for every un-resolved row
+    with the current `score_candidate` and promote a better pick if the
+    ranking changed — so a scoring tweak (e.g. dropping stub-sized files)
+    applies to the queue without a fresh OpenBooks search."""
+    rows = (
+        await session.execute(
+            select(AcquisitionCandidate).where(
+                AcquisitionCandidate.status.in_(
+                    [AcquisitionStatus.pending, AcquisitionStatus.failed]
+                )
+            )
+        )
+    ).scalars()
+    changed = 0
+    for row in rows:
+        cands = _row_candidates(row)
+        if not cands:
+            continue
+        ranked = _rank(row.request_title, row.request_author, cands)
+        if not ranked:
+            continue
+        best_score, best = ranked[0]
+        if best.full == row.candidate_full:
+            continue
+        row.candidate_full = best.full
+        row.candidate_title = best.title
+        row.candidate_author = best.author
+        row.candidate_format = best.format
+        row.candidate_size = best.size
+        row.candidate_server = best.server
+        row.score = best_score
+        row.alternatives_json = [_cand_dict(s, b) for s, b in ranked[1 : 1 + _MAX_ALTERNATIVES]]
+        if row.status == AcquisitionStatus.failed:
+            row.status = AcquisitionStatus.pending
+            row.message = None
+        changed += 1
+    if changed:
+        await session.commit()
+        logger.info("acquire: re-ranked %d row(s) to a better candidate", changed)
+    return changed
+
+
 async def list_requests(provider: DriveProvider, library_folder_id: str) -> list[RequestView]:
     wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
     by_id = {i["id"]: i for i in wl.items if i.get("id")}
 
     async with async_session_factory() as session:
         await _prune_now_in_library(session)
+        await _rerank_existing(session)
         rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
 
     views: list[RequestView] = []
