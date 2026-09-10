@@ -821,13 +821,22 @@ async def reset_request(request_id: str) -> None:
 _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
 _AUTOGET_RETRY_AFTER = timedelta(minutes=15)  # don't re-hit a just-failed row
 _AUTOGET_SEARCH_BATCH = 5  # when the queue's dry, search this many to refill it
+_AUTOSCAN_INBOX_THRESHOLD = 20  # kick a scan once auto-get has piled up this many
+
+
+async def _run_autoscan(scan_svc, job_id: str, creds, inbox_folder_id: str) -> None:
+    try:
+        await scan_svc.run_scan(job_id, creds, inbox_folder_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("acquire: auto-scan failed")
 
 
 async def autoget_tick(trigger: str = "scheduler") -> dict:
     """One iteration of the auto-get loop (the scheduler calls this every
-    ~60s). Downloads the single highest-confidence `pending` candidate; if
-    the queue is dry, searches a few more targets to refill it. Only runs
-    when everything's idle. Never raises."""
+    ~60s). While everything's idle: kicks a scan if the inbox has piled up
+    (>= 20), else downloads the single highest-confidence `pending`
+    candidate, else searches a few more targets to refill the queue. Never
+    raises."""
     from app.core.config import get_settings
     from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
     from app.data.repositories.settings_repository import SettingsRepository
@@ -863,6 +872,19 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     if creds is None or inbox is None or library is None:
         return {"skipped": "not configured"}
 
+    provider = DriveProvider(build_drive_service(creds))
+
+    # Keep the inbox from piling up — auto-get fills it and nothing scans it
+    # until the nightly. Kick a scan once it hits the threshold (the next
+    # tick's has_running_job() guard then pauses auto-get until it's done).
+    inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
+    if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
+        scan_svc = get_scan_service()
+        job = scan_svc.create_job()
+        asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
+        logger.info("acquire: inbox at %d files — auto-scan started", len(inbox_files))
+        return {"scan_started": len(inbox_files)}
+
     cutoff = datetime.now(UTC) - _AUTOGET_RETRY_AFTER
     async with async_session_factory() as session:
         row = (
@@ -881,8 +903,6 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
                 .limit(1)
             )
         ).scalar_one_or_none()
-    provider = DriveProvider(build_drive_service(creds))
-
     if row is None:
         # Nothing ready to download — search a few more targets to refill the
         # queue; the next ticks download whatever this turns up.

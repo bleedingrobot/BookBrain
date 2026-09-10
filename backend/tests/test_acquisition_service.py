@@ -460,11 +460,20 @@ def _autoget_idle(monkeypatch):
 
     import app.services.scan_service as scan_svc
 
-    class _Scan:
+    class _ScanSvc:
+        scans: list = []
+
         def has_running_job(self):
             return False
 
-    monkeypatch.setattr(scan_svc, "get_scan_service", lambda: _Scan())
+        def create_job(self):
+            return type("_J", (), {"job_id": "scan-1"})()
+
+        async def run_scan(self, job_id, creds, folder):
+            _ScanSvc.scans.append(job_id)
+
+    _ScanSvc.scans = []
+    monkeypatch.setattr(scan_svc, "get_scan_service", lambda: _ScanSvc())
 
     import app.services.openbooks_process_service as ps
 
@@ -491,7 +500,17 @@ def _autoget_idle(monkeypatch):
     import app.providers.drive.client as dc
 
     monkeypatch.setattr(dc, "build_drive_service", lambda creds: None)
-    monkeypatch.setattr(svc, "DriveProvider", lambda svc_obj: object())
+
+    class _Provider:
+        inbox_count = 0  # tests bump this to trip the auto-scan
+
+        def list_files_in_folder(self, _folder):
+            return [{"id": f"f{i}", "name": f"b{i}.epub"} for i in range(_Provider.inbox_count)]
+
+    _Provider.inbox_count = 0
+    monkeypatch.setattr(svc, "DriveProvider", lambda svc_obj: _Provider())
+
+    return {"Provider": _Provider, "ScanSvc": _ScanSvc}
 
 
 async def test_autoget_downloads_the_highest_confidence_pending_row(db_session, monkeypatch, _autoget_idle):
@@ -576,3 +595,20 @@ async def test_autoget_nothing_at_all(db_session, monkeypatch, _autoget_idle):
     monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
     out = await svc.autoget_tick()
     assert out == {"skipped": "nothing to get"}
+
+
+async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
+    import asyncio
+
+    _autoget_idle["Provider"].inbox_count = 20  # at the threshold
+
+    async def no_approve(*a):
+        raise AssertionError("should scan, not download, when the inbox is full")
+
+    monkeypatch.setattr(svc, "approve_request", no_approve)
+
+    out = await svc.autoget_tick()
+    await asyncio.sleep(0.02)  # let the fire-and-forget scan task run
+
+    assert out == {"scan_started": 20}
+    assert _autoget_idle["ScanSvc"].scans == ["scan-1"]

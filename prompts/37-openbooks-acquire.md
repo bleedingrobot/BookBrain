@@ -39,7 +39,10 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   + no refresh job). A failed row's `resolved_at` is stamped so it isn't
   re-hit for 15 min. **When the queue has nothing ready** it instead searches
   `_AUTOGET_SEARCH_BATCH = 5` more targets to refill it — the loop then
-  alternates search-batch / download / download… on its own. `PUT
+  alternates search-batch / download / download… on its own. **When the inbox
+  hits `_AUTOSCAN_INBOX_THRESHOLD = 20`** it fire-and-forgets a scan so
+  auto-got books don't pile up unscanned until the nightly (the next tick's
+  `has_running_job()` guard pauses auto-get until it's done). `PUT
   /api/acquire/autoget` toggles it and re-syncs the APScheduler
   `IntervalTrigger` job.
 - `list_requests` calls **`_prune_now_in_library`** first: an `approved` row
