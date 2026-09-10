@@ -362,9 +362,9 @@ export function Settings() {
                     })
                   }
                 >
-                  {[30, 40, 50, 60, 70, 85, 95].map((c) => (
+                  {[1, 10, 20, 30, 40, 50, 60, 70, 85, 95].map((c) => (
                     <option key={c} value={c}>
-                      {c}%
+                      {c === 1 ? 'anything identified (1%)' : `${c}%`}
                     </option>
                   ))}
                 </select>
@@ -372,7 +372,9 @@ export function Settings() {
               <p className="mt-1 text-xs text-neutral-500">
                 Lower = more books skip the review queue and go straight into the library.
                 Books below this still wait for review; genuine failures (unparseable, no
-                match) are never auto-organized. Default 85%.
+                match) are never auto-organized. Default 85%. At “anything identified”, a
+                book lands wherever its filename parses to — usually right for clean
+                downloads, occasionally odd for tie-in novels.
               </p>
             </div>
 
