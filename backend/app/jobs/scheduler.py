@@ -39,7 +39,11 @@ _BACKUP_JOB_ID = "backup-run"
 _AUTOGET_JOB_ID = "openbooks-autoget"
 DEFAULT_NIGHTLY_HOUR = 2
 DEFAULT_BACKUP_HOUR = 3
-AUTOGET_INTERVAL_SECONDS = 60
+# Slow and steady — the #ebook bots rate-limit a nick on search and download,
+# so one careful acquisition every few minutes (auto-get itself caps searches
+# per hour on top of this). Jittered so ticks aren't metronomic.
+AUTOGET_INTERVAL_SECONDS = 360
+AUTOGET_INTERVAL_JITTER = 90
 
 
 async def _run_scheduled_nightly() -> None:
@@ -143,12 +147,12 @@ async def sync_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
             scheduler.remove_job(_AUTOGET_JOB_ID)
             logger.info("openbooks auto-get: disabled")
         return
-    trigger = IntervalTrigger(seconds=AUTOGET_INTERVAL_SECONDS)
+    trigger = IntervalTrigger(seconds=AUTOGET_INTERVAL_SECONDS, jitter=AUTOGET_INTERVAL_JITTER)
     if existing is None:
         scheduler.add_job(
             _run_scheduled_autoget, trigger=trigger, id=_AUTOGET_JOB_ID,
-            name="OpenBooks auto-get", max_instances=1, coalesce=True, misfire_grace_time=30,
+            name="OpenBooks auto-get", max_instances=1, coalesce=True, misfire_grace_time=120,
         )
-        logger.info("openbooks auto-get: enabled, one candidate per %ds when idle", AUTOGET_INTERVAL_SECONDS)
+        logger.info("openbooks auto-get: enabled, ~one acquisition per %ds when idle", AUTOGET_INTERVAL_SECONDS)
     else:
         scheduler.reschedule_job(_AUTOGET_JOB_ID, trigger=trigger)

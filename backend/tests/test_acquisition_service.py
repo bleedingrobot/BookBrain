@@ -651,16 +651,19 @@ async def test_autoget_respects_the_backoff_window(db_session, monkeypatch, _aut
     assert out["skipped"] == "all caught up or cooling down"
 
 
-async def test_autoget_retries_once_the_backoff_elapses(db_session, monkeypatch, _autoget_idle):
+async def test_autoget_re_searches_a_stale_row_once_the_backoff_elapses(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
     row = AcquisitionCandidate(
         request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
-        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk old.epub",
-        candidate_server="Bsk",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Bsk",
     )
     db_session.add(row)
     await db_session.commit()
-    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=45)
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.resolved_at = old - _dt.timedelta(minutes=45)
+    row.updated_at = old - _dt.timedelta(minutes=90)   # search stale → re-search, not reuse
     await db_session.commit()
 
     async def fake_search_one(item):
@@ -680,6 +683,49 @@ async def test_autoget_retries_once_the_backoff_elapses(db_session, monkeypatch,
     out = await svc.autoget_tick()
     assert out["got"] == "Departure"
     assert got["full"] == "!Oatmeal A G Riddle - Departure (retail).epub"
+
+
+async def test_autoget_reuses_a_recent_search_instead_of_re_searching(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Oatmeal A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Oatmeal", candidate_size="700KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=40)
+    await db_session.commit()  # updated_at ~ now → search is fresh
+
+    async def no_search(item):
+        raise AssertionError("search is fresh — should reuse the stored command")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["full"] = full
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert out["got"] == "Departure"
+    assert got["full"] == "!Oatmeal A G Riddle - Departure.epub"
+
+
+async def test_autoget_search_budget_caps_fresh_searches(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    monkeypatch.setattr(svc, "_recent_search_times", [svc.time.monotonic()] * svc._SEARCH_BUDGET_PER_HOUR)
+
+    async def no_search(item):
+        raise AssertionError("budget spent — must not search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"].startswith("search budget spent")
 
 
 async def test_autoget_long_backoff_for_a_stubborn_book(db_session, monkeypatch, _autoget_idle):
@@ -733,7 +779,9 @@ async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_ses
     )
     db_session.add(row)
     await db_session.commit()
-    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=1)
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.resolved_at = old - _dt.timedelta(hours=1)
+    row.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
     await db_session.commit()
 
     async def empty_search(item):
@@ -749,41 +797,15 @@ async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_ses
     assert row.candidate_full == "!Bsk A G Riddle - Departure.epub"
 
 
-async def test_autoget_tries_an_alternative_when_the_top_pick_fails_validation(db_session, monkeypatch, _autoget_idle):
+async def test_autoget_one_download_attempt_per_tick(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
 
     async def fake_search_one(item):
         return [
-            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk stub.epub"),
-            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal real.epub"),
-        ]
-
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
-
-    calls = []
-
-    async def fake_approve(request_id, full, provider, inbox, library):
-        calls.append(full)
-        if full == "!Bsk stub.epub":
-            raise svc.OpenBooksError("the downloaded .epub is corrupt or not actually an EPUB")
-        return {"filename": "real.epub"}
-
-    monkeypatch.setattr(svc, "approve_request", fake_approve)
-
-    out = await svc.autoget_tick()
-    assert calls == ["!Bsk stub.epub", "!Oatmeal real.epub"]
-    assert out["got"] == "Departure"
-    assert out["tries"] == 2
-
-
-async def test_autoget_stops_after_two_transient_download_errors(db_session, monkeypatch, _autoget_idle):
-    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
-
-    async def fake_search_one(item):
-        return [
-            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk a.epub"),
-            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal b.epub"),
-            _book("Departure", "A G Riddle", server="Ook", size="700KB", full="!Ook c.epub"),
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                  full="!Bsk A G Riddle - Departure.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
+                  full="!Oatmeal A G Riddle - Departure.epub"),
         ]
 
     monkeypatch.setattr(svc, "_search_one", fake_search_one)
@@ -797,32 +819,52 @@ async def test_autoget_stops_after_two_transient_download_errors(db_session, mon
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert len(calls) == 2                     # tried a 2nd server, gave up before a 3rd
-    assert len(set(calls)) == 2                # two different servers
+    assert len(calls) == 1                     # exactly one attempt this tick
     assert out["failed"] == "Departure"
 
 
-async def test_autoget_rotates_to_a_second_server_after_a_timeout(db_session, monkeypatch, _autoget_idle):
+async def test_autoget_rotates_the_pick_after_a_failed_download(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
 
+    searches = []
+
     async def fake_search_one(item):
+        searches.append(1)
         return [
-            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk a.epub"),
-            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal b.epub"),
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                  full="!Bsk A G Riddle - Departure.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
+                  full="!Oatmeal A G Riddle - Departure.epub"),
         ]
 
     monkeypatch.setattr(svc, "_search_one", fake_search_one)
 
+    calls = []
+
     async def fake_approve(request_id, full, provider, inbox, library):
-        if full == "!Bsk a.epub":
+        calls.append(full)
+        if len(calls) == 1:
             raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
         return {"filename": "d.epub"}
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
-    out = await svc.autoget_tick()
-    assert out["got"] == "Departure"
-    assert out["server"] == "Oatmeal"
+    # tick 1: searches, tries the top pick, fails, rotates it out of the row
+    out1 = await svc.autoget_tick()
+    assert out1["failed"] == "Departure"
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.candidate_full != calls[0]                  # the failed pick was rotated out
+    assert row.candidate_full.startswith("!")
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=40)
+    await db_session.commit()
+
+    # tick 2: reuses the (still fresh) search, tries the rotated pick, succeeds
+    out2 = await svc.autoget_tick()
+    assert len(searches) == 1                  # no second search
+    assert len(calls) == 2 and calls[1] != calls[0]   # different server the 2nd time
+    assert out2["got"] == "Departure"
 
 
 async def test_rank_demotes_a_server_that_keeps_timing_out(db_session):
@@ -872,7 +914,9 @@ async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypa
     )
     db_session.add(stale)
     await db_session.commit()
-    stale.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=1)
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    stale.resolved_at = old - _dt.timedelta(hours=1)
+    stale.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
     await db_session.commit()
 
     async def fake_search_one(item):

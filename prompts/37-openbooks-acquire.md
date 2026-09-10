@@ -35,29 +35,29 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   row also flips its item to `sourced` (best-effort sidecar RMW). Alternatives
   + skip as before.
 - **Auto-get** (toggle on the panel, `settings` key `openbooks_autoget_enabled`,
-  off by default): `scheduler._run_scheduled_autoget` → `acquisition_service.autoget_tick`
-  every 60s, only when idle (OpenBooks up + `openbooks_service.is_busy()` false
-  + no scan + no refresh job). **Search-fresh-then-get** (reworked 2026-09-11 —
-  James: "not pre-searching anything… so it's always fresh and current"): each
-  tick picks the next `_gather_targets` book that's **due** (no row yet, or its
-  backoff elapsed), **searches OpenBooks for it right then** and downloads the
-  best EPUB **≥ 0.9** immediately — the `!server file` command is always
-  seconds old. It tries up to `_AUTOGET_INTICK_TRIES = 3` candidates in a tick,
-  **one per distinct server** so a retry always lands elsewhere — but stops
-  after `_AUTOGET_INTICK_TIMEOUT_TRIES = 2` of them are 75s no-delivers.
-  Backoff:
-  `_AUTOGET_RETRY_AFTER = 30 min`, then `_AUTOGET_STUBBORN_BACKOFF = 6 h` once
-  a book's been failing `> _AUTOGET_STUBBORN_AFTER = 2 h` (measured by row
-  `created_at` — no schema change), `_AUTOGET_NOMATCH_BACKOFF = 7 days` for a
-  searched-but-nothing-found book. A momentary empty re-search **keeps** the
-  previous match (`_upsert(preserve_existing=True)`) rather than wiping it to
-  `no_match`. `acquisition_candidates` is now an **attempt log**, not a
-  pre-searched queue. **When the inbox hits `_AUTOSCAN_INBOX_THRESHOLD = 20`**
-  it fire-and-forgets a scan (the next tick's `has_running_job()` guard pauses
-  auto-get until it's done). Dropped in the rework: the `_AUTOGET_SEARCH_BATCH`
-  refill and the `_AUTOGET_RESEARCH_AFTER` staleness re-search (both moot —
-  every tick searches fresh). `PUT /api/acquire/autoget` toggles it and
-  re-syncs the APScheduler `IntervalTrigger` job.
+  off by default): `scheduler._run_scheduled_autoget` → `acquisition_service.autoget_tick`.
+  **Slow-and-steady, reworked twice on 2026-09-11.** First to search-fresh
+  (James: "not pre-searching anything… always fresh and current"), then dialled
+  right down (James: "allow it right down… so we never hit any limits") after
+  60s ticks did ~120 searches in 2 h and got our nick throttled on *search*
+  too. Now: scheduler ticks every `AUTOGET_INTERVAL_SECONDS = 360` (±90s
+  jitter), and each tick, when idle, does **at most one** thing —
+  - pick the next `_gather_targets` book that's **due** (no row, or backoff
+    elapsed);
+  - if its stored search is younger than `_AUTOGET_SEARCH_REUSE = 60 min`,
+    **reuse it** — re-rank the stored candidates (demerits applied) and
+    download the best server not yet tried; a failed download calls
+    `_rotate_failed_pick` to promote the next alternative onto the row so the
+    next reuse-tick tries a different server, no new search;
+  - else **search fresh**, but only within `_SEARCH_BUDGET_PER_HOUR = 8`
+    (in-memory rolling `_recent_search_times`); over budget → skip.
+  Backoff: `_AUTOGET_RETRY_AFTER = 25 min`, then `_AUTOGET_STUBBORN_BACKOFF =
+  6 h` once a book's been failing `> _AUTOGET_STUBBORN_AFTER = 3 h` (by row
+  `created_at`), `_AUTOGET_NOMATCH_BACKOFF = 7 days`. An empty re-search
+  **keeps** the previous match (`_upsert(preserve_existing=True)`).
+  `acquisition_candidates` is an **attempt log** now, not a queue. Inbox ≥
+  `_AUTOSCAN_INBOX_THRESHOLD = 20` → fire-and-forget scan. Dropped along the
+  way: `_AUTOGET_SEARCH_BATCH`, `_AUTOGET_RESEARCH_AFTER`, `_AUTOGET_INTICK_*`.
 - **Server rotation** (2026-09-11): for a clean retail match every #ebook
   server scores identically, so a plain sort always took whichever OpenBooks
   listed first — ~90% went to `Bsk`, which then rate-limited our (fixed) nick
@@ -70,6 +70,8 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   (stable per book) instead of input order. Threaded through
   `refresh_candidates`, `_rerank_existing`, `autoget_tick`. The demerit decays
   as timeouts age out of the window — a server that recovers comes back.
+  **The bots rate-limit a fixed nick; recover by restarting `openbooks.exe`
+  (fresh random `bb_<n>` name) or waiting a few hours.**
 - `list_requests` calls **`_dedupe_candidates`** (one book on wishlist +
   want-to-read + a list → one row, keeping the wishlist id) then
   **`_prune_now_in_library`**: an `approved` row whose title+author now matches
