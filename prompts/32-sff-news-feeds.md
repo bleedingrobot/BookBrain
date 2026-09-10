@@ -155,14 +155,21 @@ drops non-http links, `timeAgo`). `components/NewsFeed.tsx` — a compact
 persists only the opt-out (`bookbrain.showNews === 'false'`); `SettingsForm`
 checkbox. `news.test.ts`. Viewer 170 + build + lint green.
 
-**Dismiss ("X away") — added 2026-09-10** (James asked). `news.ts`
-`loadDismissedNews` / `dismissNewsItem` / `pruneDismissedNews` — a
-`bookbrain.newsDismissed` localStorage Set of links, per device, permanent.
-`NewsRow` gets an optional `onDismiss` → a hover-reveal ✕; `NewsFeed` /
-`NewsScreen` filter it out (the compact feed then shows the next of the 50).
-`App` holds `dismissedNews` state, prunes it against the live feed on each
-`fetchNews` (a link that's aged out of every feed can't return, so it's
-dropped from the set to keep it bounded). Viewer 184 green.
+**Dismiss ("X away") — added 2026-09-10** (James asked), then **made
+cross-device** (James asked again). `bookbrain-news-dismissed.json` Drive
+sidecar (`{version:1, links:[]}`) is the source of truth;
+`bookbrain.newsDismissed` localStorage is a cache for instant/offline render.
+`news.ts`: `cachedDismissedNews()` (sync, for the `useState` init),
+`dismissedNewsSynced(token, folder)` (reads the sidecar, **merges the cache
+in** so an older local-only install seeds it rather than losing dismissals),
+`dismissNewsItem(token, folder, link, current)` (read→merge-with-server→write,
+**serialised** via a module promise-chain so rapid X-ing doesn't clobber —
+no Drive locking), `pruneDismissedNews(token, folder, current, liveLinks)`
+(writes only when something dropped). `NewsRow` `onDismiss` → a faint ✕
+(opacity-40, full on hover — touch has no hover); `NewsFeed` / `NewsScreen`
+filter dismissed out. `App`: `dismissedNews` inits from the cache, refreshes
+via `dismissedNewsSynced` in the lazy effect alongside `fetchNews`, then
+prunes. Viewer 186 green.
 
 ### Original notes
 

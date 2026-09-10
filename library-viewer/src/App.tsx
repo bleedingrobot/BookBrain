@@ -59,10 +59,11 @@ import {
   type NewReleases,
 } from './lib/newReleases'
 import {
+  cachedDismissedNews,
+  dismissedNewsSynced,
   dismissNewsItem,
   EMPTY_NEWS,
   fetchNews,
-  loadDismissedNews,
   pruneDismissedNews,
   type News,
 } from './lib/news'
@@ -156,7 +157,7 @@ export default function App() {
   const [showNewReleases, setShowNewReleases] = useState(false)
   // prompts/32 — the SFF news sidecar, fetched lazily with the others.
   const [news, setNews] = useState<News>(EMPTY_NEWS)
-  const [dismissedNews, setDismissedNews] = useState<Set<string>>(loadDismissedNews)
+  const [dismissedNews, setDismissedNews] = useState<Set<string>>(cachedDismissedNews)
   const [showNewsScreen, setShowNewsScreen] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
@@ -241,10 +242,13 @@ export default function App() {
       void fetchNewReleases(token, folderId).then(setNewReleases)
       void fetchReading(token, folderId).then(setReading)
       void loadPendingReading(token, folderId).then(setPendingReading)
-      void fetchNews(token, folderId).then((n) => {
-        setNews(n)
-        setDismissedNews((d) => pruneDismissedNews(d, n.items.map((i) => i.link)))
-      })
+      void Promise.all([fetchNews(token, folderId), dismissedNewsSynced(token, folderId)]).then(
+        ([n, dismissed]) => {
+          setNews(n)
+          const links = n.items.map((i) => i.link)
+          void pruneDismissedNews(token, folderId, dismissed, links).then(setDismissedNews)
+        },
+      )
       void fetchPrompts(token, folderId).then(setPrompts)
       void fetchLists(token, folderId).then(setLists)
     }
@@ -316,10 +320,17 @@ export default function App() {
     })
   }
 
-  // prompts/32 — X an SFF-news article. Hidden for good on this device; the
-  // slot fills from the rest of the 50-item pool.
+  // prompts/32 — X an SFF-news article. Hidden for good and synced to the
+  // Drive sidecar; the slot fills from the rest of the 50-item pool. The lib
+  // serialises the sidecar writes + merges through the cache, so a slightly
+  // stale `dismissedNews` here is fine.
   function dismissNews(link: string) {
-    setDismissedNews((d) => dismissNewsItem(link, d))
+    setDismissedNews((d) => new Set(d).add(link))
+    if (token && settings) {
+      void dismissNewsItem(token, settings.libraryFolderId, link, dismissedNews).then(
+        setDismissedNews,
+      )
+    }
   }
 
   async function requestBook(rec: RecBook) {

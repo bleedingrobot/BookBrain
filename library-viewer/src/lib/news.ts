@@ -7,10 +7,14 @@
 // item links out to the original — we only ever store headline + a short
 // excerpt + attribution.
 
+import { readJsonFile, writeJsonFile } from './drive'
+
 const FILENAME = 'bookbrain-news.json'
 const CACHE_KEY = 'bookbrain.news'
-// Article links this viewer has dismissed — hidden for good, per device.
-const DISMISS_KEY = 'bookbrain.newsDismissed'
+// Dismissed article links live in a Drive sidecar so they sync across devices;
+// localStorage is just a cache for instant first render / offline.
+const DISMISSED_FILENAME = 'bookbrain-news-dismissed.json'
+const DISMISS_CACHE_KEY = 'bookbrain.newsDismissed'
 
 export interface NewsItem {
   title: string
@@ -83,11 +87,16 @@ export function clearNewsCache(): void {
   }
 }
 
-// --- dismissed articles ----------------------------------------------------
+// --- dismissed articles (synced via a Drive sidecar) ----------------------
 
-export function loadDismissedNews(): Set<string> {
+interface DismissedFile {
+  version?: number
+  links?: unknown
+}
+
+function readDismissCache(): Set<string> {
   try {
-    const raw = localStorage.getItem(DISMISS_KEY)
+    const raw = localStorage.getItem(DISMISS_CACHE_KEY)
     const arr = raw ? (JSON.parse(raw) as unknown) : []
     return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [])
   } catch {
@@ -95,28 +104,122 @@ export function loadDismissedNews(): Set<string> {
   }
 }
 
-function saveDismissedNews(links: Set<string>): void {
+function writeDismissCache(links: Set<string>): void {
   try {
-    localStorage.setItem(DISMISS_KEY, JSON.stringify([...links]))
+    localStorage.setItem(DISMISS_CACHE_KEY, JSON.stringify([...links]))
   } catch {
     /* private mode / over quota */
   }
 }
 
-// Add a link to the dismissed set and persist. Returns the new set.
-export function dismissNewsItem(link: string, current: Set<string>): Set<string> {
-  const next = new Set(current).add(link)
-  saveDismissedNews(next)
-  return next
+function parseDismissed(content: DismissedFile | null | undefined): Set<string> {
+  const arr = content?.links
+  return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [])
 }
 
-// Drop dismissed links that no longer appear in any feed — once an article has
-// aged out everywhere it can't come back, so the list needn't grow forever.
-export function pruneDismissedNews(current: Set<string>, liveLinks: string[]): Set<string> {
+// Instant, synchronous — the cached set, for the first render before Drive
+// answers. `dismissedNewsSynced` then refreshes it from the sidecar.
+export function cachedDismissedNews(): Set<string> {
+  return readDismissCache()
+}
+
+// The current dismissed set from the Drive sidecar. Merges in whatever the
+// cache holds (so an older localStorage-only install seeds the sidecar rather
+// than losing its dismissals), refreshes the cache, and returns the union.
+// Any failure falls back to the cache untouched.
+export async function dismissedNewsSynced(
+  token: string,
+  libraryFolderId: string,
+): Promise<Set<string>> {
+  const cached = readDismissCache()
+  try {
+    const found = await readJsonFile<DismissedFile>(token, libraryFolderId, DISMISSED_FILENAME)
+    const links = parseDismissed(found?.content)
+    for (const l of cached) links.add(l)
+    writeDismissCache(links)
+    // Seed / top up the sidecar when the cache had links it didn't.
+    if (links.size !== parseDismissed(found?.content).size) {
+      try {
+        await writeJsonFile(
+          token,
+          libraryFolderId,
+          DISMISSED_FILENAME,
+          { version: 1, links: [...links] },
+          found?.id ?? null,
+        )
+      } catch {
+        /* best-effort seed */
+      }
+    }
+    return links
+  } catch {
+    return cached
+  }
+}
+
+// Serialise sidecar writes so rapid X-ing doesn't clobber (no Drive locking).
+let dismissWriteChain: Promise<unknown> = Promise.resolve()
+
+// Add `link` to the sidecar (read → merge with the server's copy + `current` →
+// write), so a dismissal from another device isn't clobbered. Best-effort:
+// updates the cache + returns the new set even if the Drive write fails.
+export function dismissNewsItem(
+  token: string,
+  libraryFolderId: string,
+  link: string,
+  current: Set<string>,
+): Promise<Set<string>> {
+  const optimistic = new Set(current).add(link)
+  writeDismissCache(optimistic)
+  const run = dismissWriteChain.then(async () => {
+    try {
+      const found = await readJsonFile<DismissedFile>(token, libraryFolderId, DISMISSED_FILENAME)
+      const merged = parseDismissed(found?.content)
+      for (const l of optimistic) merged.add(l)
+      for (const l of readDismissCache()) merged.add(l) // any siblings queued meanwhile
+      await writeJsonFile(
+        token,
+        libraryFolderId,
+        DISMISSED_FILENAME,
+        { version: 1, links: [...merged] },
+        found?.id ?? null,
+      )
+      writeDismissCache(merged)
+      return merged
+    } catch {
+      return optimistic
+    }
+  })
+  dismissWriteChain = run.catch(() => undefined)
+  return run
+}
+
+// Drop dismissed links no longer in any feed — once an article has aged out
+// everywhere it can't come back, so the list needn't grow forever. Writes the
+// sidecar only when something actually changed.
+export async function pruneDismissedNews(
+  token: string,
+  libraryFolderId: string,
+  current: Set<string>,
+  liveLinks: string[],
+): Promise<Set<string>> {
   if (current.size === 0) return current
   const live = new Set(liveLinks)
   const next = new Set([...current].filter((l) => live.has(l)))
-  if (next.size !== current.size) saveDismissedNews(next)
+  if (next.size === current.size) return current
+  writeDismissCache(next)
+  try {
+    const found = await readJsonFile<DismissedFile>(token, libraryFolderId, DISMISSED_FILENAME)
+    await writeJsonFile(
+      token,
+      libraryFolderId,
+      DISMISSED_FILENAME,
+      { version: 1, links: [...next] },
+      found?.id ?? null,
+    )
+  } catch {
+    /* the cache still narrowed; retried next prune */
+  }
   return next
 }
 
