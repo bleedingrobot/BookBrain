@@ -20,6 +20,10 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "cryptography>=43.0",
     "httpx>=0.27",
+    # prompts/37 — WebSocket client for a locally-run OpenBooks server (the
+    # experimental "Find a book" flow). Also pulled transitively by
+    # uvicorn[standard]; pinned here because we import it directly.
+    "websockets>=13",
     # prompts/32 — parse the SFF news RSS/Atom feeds server-side (the static
     # viewer can't: CORS). Pure-Python, no C deps.
     "feedparser>=6.0",

@@ -126,6 +126,16 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   `sff_news_service` fetches 9 feeds → `bookbrain-news.json` (nightly + `POST
   /api/library/news`); viewer `<NewsFeed>` compact section + `<NewsScreen>`
   with a source filter, `showNews` setting (default on). Live: 50 items.
+- [`37-openbooks-acquire.md`](37-openbooks-acquire.md) — experimental "Find a
+  Book" admin page backed by a locally-run OpenBooks server (IRC). Search →
+  pick → backend downloads → uploads into the Drive inbox → normal pipeline.
+  **Shipped 2026-09-10** — `openbooks_service` (single lock-serialised WS
+  client), `acquire_service` (validate + upload + clean up), `GET/POST
+  /api/acquire/{status,search,download}`, `frontend` "Find a Book" page,
+  `backend/tools/run-openbooks.ps1`. Off unless `OPENBOOKS_ENABLED=true`.
+  Admin-only, never in the family viewer. Live-verified: search + download +
+  valid EPUB on disk; the inbox upload path is unit-tested (needs Drive creds
+  to run live).
 
 ## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
 

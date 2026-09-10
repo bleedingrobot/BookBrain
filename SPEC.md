@@ -242,3 +242,19 @@ Standard Google Cloud OAuth 2.0 flow. Scope decided *before* consent per §2 abo
 7. Review queue UI (Approve/Edit/Reject), correction stickiness (§1) and `library_rules` generation from reviews.
 8. Threshold-gated automation enabled (≥95 auto, 85–94 auto+flagged), duplicates/quality scoring.
 9. Activity log, undo (via `operations.status`), settings polish.
+
+## 12. OpenBooks "Find a book" (prompts/37, experimental, admin-only)
+
+An optional acquisition helper. OpenBooks (github.com/evan-buss/openbooks) runs
+as a separate local process in server mode (`backend/tools/run-openbooks.ps1`);
+BookBrain connects to its WebSocket API as the single allowed client and
+exposes `GET/POST /api/acquire/{status,search,download}`. The admin "Find a
+Book" page searches, the operator picks a result, the backend downloads it and
+uploads it into the Drive inbox — from there the normal scan → identify →
+organize pipeline runs unchanged. `openbooks_service` holds one long-lived,
+lock-serialised connection; `acquire_service` validates the file (real EPUB,
+ingestable format) before upload and deletes the local copy on success.
+
+Off unless `OPENBOOKS_ENABLED=true`. Admin surface only — never surfaced in the
+family library-viewer. OpenBooks talks to a piracy channel; this is a manual,
+per-book tool, deliberately not a nightly auto-fill loop.

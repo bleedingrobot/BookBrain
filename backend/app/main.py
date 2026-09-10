@@ -33,6 +33,12 @@ async def lifespan(app: FastAPI):
             scheduler.shutdown(wait=False)
         except Exception:  # already stopped / never started
             pass
+        try:
+            from app.services import openbooks_service
+
+            await openbooks_service.aclose()
+        except Exception:  # never connected / already closed
+            pass
 
 
 app = FastAPI(title="EPUB Librarian API", lifespan=lifespan)

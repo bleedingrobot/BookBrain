@@ -89,6 +89,19 @@ class Settings(BaseSettings):
     # offer copying into the Drive inbox
     torrents_watch_folder: str = r"D:\Torrents"
 
+    # OpenBooks (https://github.com/evan-buss/openbooks) — an experimental
+    # "Find a book" flow in the admin app. OpenBooks runs separately in
+    # server mode (backend/tools/run-openbooks.ps1) and BookBrain talks to
+    # its WebSocket API as the single allowed client: search -> pick a
+    # result -> download -> upload into the Drive inbox, where the normal
+    # scan/identify/organize pipeline takes over. Off unless
+    # OPENBOOKS_ENABLED=true. `openbooks_download_dir` must match the `--dir`
+    # OpenBooks was started with (files land in its `books/` subfolder).
+    # See prompts/37-openbooks-acquire.md.
+    openbooks_enabled: bool = False
+    openbooks_ws_url: str = "ws://localhost:5228/ws"
+    openbooks_download_dir: str = r"C:\Users\Giant\Documents\epub-librarian\backend\tools\openbooks-dl"
+
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older
     # ones are trashed (recoverable) after each new upload.

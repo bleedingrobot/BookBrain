@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    acquire,
     auth,
     drive,
     duplicates,
@@ -34,3 +35,4 @@ api_router.include_router(library_audit.router)
 api_router.include_router(local_scan.router)
 api_router.include_router(jobs.router)
 api_router.include_router(wishlist.router)
+api_router.include_router(acquire.router)

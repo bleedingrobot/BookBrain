@@ -26,6 +26,11 @@ import type {
   ReidentRebuildJobStatus,
   ReidentReport,
 } from '../types/reidentAudit'
+import type {
+  AcquireDownloadResponse,
+  AcquireSearchResponse,
+  AcquireStatus,
+} from '../types/acquire'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
@@ -275,6 +280,18 @@ export const api = {
     request<CopyResult>('/local-scan/copy', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
   dismissLocalFiles: (fileIds: number[]) =>
     request<DismissResult>('/local-scan/dismiss', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
+
+  acquireStatus: () => request<AcquireStatus>('/acquire/status'),
+  acquireSearch: (query: string) =>
+    request<AcquireSearchResponse>('/acquire/search', {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    }),
+  acquireDownload: (full: string, filename: string) =>
+    request<AcquireDownloadResponse>('/acquire/download', {
+      method: 'POST',
+      body: JSON.stringify({ full, filename }),
+    }),
 }
 
 export { ApiError }
