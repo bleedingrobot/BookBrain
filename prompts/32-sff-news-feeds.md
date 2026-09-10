@@ -155,6 +155,15 @@ drops non-http links, `timeAgo`). `components/NewsFeed.tsx` — a compact
 persists only the opt-out (`bookbrain.showNews === 'false'`); `SettingsForm`
 checkbox. `news.test.ts`. Viewer 170 + build + lint green.
 
+**Dismiss ("X away") — added 2026-09-10** (James asked). `news.ts`
+`loadDismissedNews` / `dismissNewsItem` / `pruneDismissedNews` — a
+`bookbrain.newsDismissed` localStorage Set of links, per device, permanent.
+`NewsRow` gets an optional `onDismiss` → a hover-reveal ✕; `NewsFeed` /
+`NewsScreen` filter it out (the compact feed then shows the next of the 50).
+`App` holds `dismissedNews` state, prunes it against the live feed on each
+`fetchNews` (a link that's aged out of every feed can't return, so it's
+dropped from the set to keep it bounded). Viewer 184 green.
+
 ### Original notes
 
 ### `library-viewer/src/lib/news.ts`

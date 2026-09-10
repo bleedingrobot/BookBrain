@@ -9,6 +9,8 @@
 
 const FILENAME = 'bookbrain-news.json'
 const CACHE_KEY = 'bookbrain.news'
+// Article links this viewer has dismissed — hidden for good, per device.
+const DISMISS_KEY = 'bookbrain.newsDismissed'
 
 export interface NewsItem {
   title: string
@@ -79,6 +81,43 @@ export function clearNewsCache(): void {
   } catch {
     /* private mode */
   }
+}
+
+// --- dismissed articles ----------------------------------------------------
+
+export function loadDismissedNews(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY)
+    const arr = raw ? (JSON.parse(raw) as unknown) : []
+    return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDismissedNews(links: Set<string>): void {
+  try {
+    localStorage.setItem(DISMISS_KEY, JSON.stringify([...links]))
+  } catch {
+    /* private mode / over quota */
+  }
+}
+
+// Add a link to the dismissed set and persist. Returns the new set.
+export function dismissNewsItem(link: string, current: Set<string>): Set<string> {
+  const next = new Set(current).add(link)
+  saveDismissedNews(next)
+  return next
+}
+
+// Drop dismissed links that no longer appear in any feed — once an article has
+// aged out everywhere it can't come back, so the list needn't grow forever.
+export function pruneDismissedNews(current: Set<string>, liveLinks: string[]): Set<string> {
+  if (current.size === 0) return current
+  const live = new Set(liveLinks)
+  const next = new Set([...current].filter((l) => live.has(l)))
+  if (next.size !== current.size) saveDismissedNews(next)
+  return next
 }
 
 export async function fetchNews(token: string, libraryFolderId: string): Promise<News> {

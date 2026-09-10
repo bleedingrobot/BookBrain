@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { normaliseNews, timeAgo } from './news'
+import {
+  dismissNewsItem,
+  loadDismissedNews,
+  normaliseNews,
+  pruneDismissedNews,
+  timeAgo,
+} from './news'
 
 describe('normaliseNews', () => {
   it('keeps valid items and drops the junk', () => {
@@ -33,6 +39,23 @@ describe('normaliseNews', () => {
 
   it('tolerates a missing items array', () => {
     expect(normaliseNews({}).items).toEqual([])
+  })
+})
+
+describe('dismissed articles', () => {
+  it('persists a dismissal and reloads it', () => {
+    let d = loadDismissedNews()
+    expect(d.size).toBe(0)
+    d = dismissNewsItem('https://x.example/a', d)
+    d = dismissNewsItem('https://x.example/b', d)
+    expect(loadDismissedNews()).toEqual(new Set(['https://x.example/a', 'https://x.example/b']))
+  })
+
+  it('prunes links no longer in any feed', () => {
+    let d = dismissNewsItem('https://x.example/gone', dismissNewsItem('https://x.example/here', new Set()))
+    d = pruneDismissedNews(d, ['https://x.example/here', 'https://x.example/other'])
+    expect(d).toEqual(new Set(['https://x.example/here']))
+    expect(loadDismissedNews()).toEqual(new Set(['https://x.example/here']))
   })
 })
 

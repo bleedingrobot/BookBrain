@@ -58,7 +58,14 @@ import {
   fetchNewReleases,
   type NewReleases,
 } from './lib/newReleases'
-import { EMPTY_NEWS, fetchNews, type News } from './lib/news'
+import {
+  dismissNewsItem,
+  EMPTY_NEWS,
+  fetchNews,
+  loadDismissedNews,
+  pruneDismissedNews,
+  type News,
+} from './lib/news'
 import { EMPTY_PROMPTS, fetchPrompts, type Prompts } from './lib/prompts'
 import { EMPTY_LISTS, fetchLists, type Lists } from './lib/lists'
 import {
@@ -149,6 +156,7 @@ export default function App() {
   const [showNewReleases, setShowNewReleases] = useState(false)
   // prompts/32 — the SFF news sidecar, fetched lazily with the others.
   const [news, setNews] = useState<News>(EMPTY_NEWS)
+  const [dismissedNews, setDismissedNews] = useState<Set<string>>(loadDismissedNews)
   const [showNewsScreen, setShowNewsScreen] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
@@ -233,7 +241,10 @@ export default function App() {
       void fetchNewReleases(token, folderId).then(setNewReleases)
       void fetchReading(token, folderId).then(setReading)
       void loadPendingReading(token, folderId).then(setPendingReading)
-      void fetchNews(token, folderId).then(setNews)
+      void fetchNews(token, folderId).then((n) => {
+        setNews(n)
+        setDismissedNews((d) => pruneDismissedNews(d, n.items.map((i) => i.link)))
+      })
       void fetchPrompts(token, folderId).then(setPrompts)
       void fetchLists(token, folderId).then(setLists)
     }
@@ -303,6 +314,12 @@ export default function App() {
       at: new Date().toISOString(),
       by: viewerName ?? '',
     })
+  }
+
+  // prompts/32 — X an SFF-news article. Hidden for good on this device; the
+  // slot fills from the rest of the 50-item pool.
+  function dismissNews(link: string) {
+    setDismissedNews((d) => dismissNewsItem(link, d))
   }
 
   async function requestBook(rec: RecBook) {
@@ -879,7 +896,14 @@ export default function App() {
   }
 
   if (showNewsScreen) {
-    return <NewsScreen news={news} onBack={() => setShowNewsScreen(false)} />
+    return (
+      <NewsScreen
+        news={news}
+        dismissed={dismissedNews}
+        onDismiss={dismissNews}
+        onBack={() => setShowNewsScreen(false)}
+      />
+    )
   }
 
   if (showStats) {
@@ -1120,7 +1144,12 @@ export default function App() {
       )}
 
       {!lib.loading && settings?.showNews !== false && news.items.length > 0 && (
-        <NewsFeed items={news.items} onSeeAll={() => setShowNewsScreen(true)} />
+        <NewsFeed
+          items={news.items}
+          dismissed={dismissedNews}
+          onDismiss={dismissNews}
+          onSeeAll={() => setShowNewsScreen(true)}
+        />
       )}
 
       {lib.sessionExpired && (

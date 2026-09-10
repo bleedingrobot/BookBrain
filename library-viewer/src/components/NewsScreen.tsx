@@ -2,14 +2,25 @@ import { useMemo, useState } from 'react'
 import type { News } from '../lib/news'
 import { NewsRow } from './NewsFeed'
 
-export function NewsScreen({ news, onBack }: { news: News; onBack: () => void }) {
+export function NewsScreen({
+  news,
+  dismissed,
+  onDismiss,
+  onBack,
+}: {
+  news: News
+  dismissed: Set<string>
+  onDismiss: (link: string) => void
+  onBack: () => void
+}) {
   const [source, setSource] = useState('all')
 
-  const sources = useMemo(
-    () => Array.from(new Set(news.items.map((i) => i.source))).sort(),
-    [news.items],
+  const live = useMemo(
+    () => news.items.filter((i) => !dismissed.has(i.link)),
+    [news.items, dismissed],
   )
-  const visible = source === 'all' ? news.items : news.items.filter((i) => i.source === source)
+  const sources = useMemo(() => Array.from(new Set(live.map((i) => i.source))).sort(), [live])
+  const visible = source === 'all' ? live : live.filter((i) => i.source === source)
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
@@ -46,7 +57,7 @@ export function NewsScreen({ news, onBack }: { news: News; onBack: () => void })
 
       <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800/60">
         {visible.map((item) => (
-          <NewsRow key={item.link} item={item} />
+          <NewsRow key={item.link} item={item} onDismiss={() => onDismiss(item.link)} />
         ))}
         {visible.length === 0 && (
           <li className="py-6 text-sm text-neutral-400">Nothing here yet.</li>
