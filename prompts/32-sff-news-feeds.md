@@ -16,22 +16,30 @@ homepage.
 **Not covers gliding past** (it's text, not books) — a compact vertical list /
 card stack, styled to sit with the marquees. Newest first, all feeds merged.
 
-### The feeds (v1 set)
+### The feeds
+
+**v2 set — 2026-09-10** (James: "some of these rss feeds ... are not really
+about books"). Dropped **Reactor** + **File 770** (film / TV / comics / fandom
+news) and **Swords & Spaceships** (a Book Riot newsletter archive, redundant).
+Added review blogs off `feedspot.com/fantasy_book_rss_feeds`, each checked live.
 
 | Source | Feed |
 |---|---|
-| Reactor (formerly Tor.com) | `https://reactormag.com/feed/` |
 | Locus Online | `https://locusmag.com/feed/` |
-| File 770 | `https://file770.com/feed/` |
 | Grimdark Magazine | `https://www.grimdarkmagazine.com/feed/` |
-| Fantasy Book Critic | `https://www.fantasybookcritic.com/feeds/posts/default` (Blogger **Atom**) |
+| Fantasy Book Critic | `https://fantasybookcritic.blogspot.com/feeds/posts/default` (Blogger **Atom**) |
 | The Fantasy Hive | `https://fantasy-hive.co.uk/feed/` |
 | FanFiAddict | `https://fanfiaddict.com/feed/` |
-| Book Riot — SFF | `https://bookriot.com/category/science-fiction-fantasy/feed/` |
-| Book Riot — Swords & Spaceships | `https://pmp.bookriot.com/category/swords-spaceships/feed/` |
+| Book Riot — SFF | `https://bookriot.com/category/genre/science-fiction-fantasy/feed/` |
+| Before We Go Blog | `https://beforewegoblog.com/feed/` |
+| Fantasy Book Cafe | `https://fantasybookcafe.com/feed` |
+| The Fantasy Inn | `https://thefantasyinn.com/feed` |
+| Fantasy-Faction | `https://fantasy-faction.com/feed` |
+| Pat's Fantasy Hotlist | `https://feeds.feedburner.com/PatsFantasyHotlist` |
 
-Mixed RSS 2.0 + Atom, mixed date formats, some full-content (Reactor runs free
-short fiction — long), some WordPress, one Blogger. Parse defensively.
+Checked but skipped: **Fantasy Literature** (403s bots). Mixed RSS 2.0 + Atom,
+mixed date formats, some WordPress, one Blogger, one FeedBurner. Parse
+defensively.
 
 ## Architecture — same as every other sidecar
 
@@ -81,17 +89,8 @@ it; use feedparser.)
 ### `app/services/sff_news_service.py`
 
 ```python
-_FEEDS: list[tuple[str, str]] = [
-    ("Reactor", "https://reactormag.com/feed/"),
-    ("Locus Online", "https://locusmag.com/feed/"),
-    ("File 770", "https://file770.com/feed/"),
-    ("Grimdark Magazine", "https://www.grimdarkmagazine.com/feed/"),
-    ("Fantasy Book Critic", "https://www.fantasybookcritic.com/feeds/posts/default"),
-    ("The Fantasy Hive", "https://fantasy-hive.co.uk/feed/"),
-    ("FanFiAddict", "https://fanfiaddict.com/feed/"),
-    ("Book Riot SF/F", "https://bookriot.com/category/science-fiction-fantasy/feed/"),
-    ("Swords & Spaceships", "https://pmp.bookriot.com/category/swords-spaceships/feed/"),
-]
+# v2 list — see "The feeds" above. The live module is the source of truth.
+_FEEDS: list[tuple[str, str]] = [ ... ]
 _PER_FEED = 6          # newest N entries per source
 _SUMMARY_CAP = 280     # chars, after HTML strip
 _TOTAL_CAP = 50
@@ -228,10 +227,10 @@ Skip unless asked.
 - **User-Agent** — set a real one on the feed GETs; some WordPress/Cloudflare
   hosts 403 `python-httpx/x.y`.
 - **feedparser is sync** — always `asyncio.to_thread(feedparser.parse, ...)`.
-- **Full-content feeds** (Reactor) — the summary strip + hard truncate is what
-  keeps this fair-use and the sidecar small. Don't raise `_SUMMARY_CAP`.
+- **Full-content feeds** — the summary strip + hard truncate is what keeps
+  this fair-use and the sidecar small. Don't raise `_SUMMARY_CAP`.
 - **Sidecar size** — 50 items × ~400 bytes ≈ 20KB, fine.
-- **Dedupe by link**, not title (Book Riot's two feeds overlap).
+- **Dedupe by link**, not title (feeds occasionally cross-post).
 - One commit for Part 1, one for Part 2. Update `prompts/README.md`,
   `ROADMAP.md`, and a new `project-bookbrain-sff-news` memory. Deploy is
   automatic on push (viewer); the sidecar needs `POST /api/library/news` +

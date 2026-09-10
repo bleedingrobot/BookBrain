@@ -29,18 +29,24 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# (display name, feed URL). RSS 2.0 unless noted.
+# (display name, feed URL). RSS 2.0 unless noted. Curated for *books* —
+# reviews, cover reveals, release round-ups, genre trade news. Reactor /
+# File 770 / Swords & Spaceships were dropped 2026-09-10 (too much film / TV /
+# fandom / newsletter-archive noise); the review blogs below came off
+# feedspot.com/fantasy_book_rss_feeds and were each checked live.
 _FEEDS: list[tuple[str, str]] = [
-    ("Reactor", "https://reactormag.com/feed/"),
     ("Locus Online", "https://locusmag.com/feed/"),
-    ("File 770", "https://file770.com/feed/"),
     ("Grimdark Magazine", "https://www.grimdarkmagazine.com/feed/"),
     # Blogger Atom feed (the www.fantasybookcritic.com domain no longer resolves)
     ("Fantasy Book Critic", "https://fantasybookcritic.blogspot.com/feeds/posts/default"),
     ("The Fantasy Hive", "https://fantasy-hive.co.uk/feed/"),
     ("FanFiAddict", "https://fanfiaddict.com/feed/"),
-    ("Book Riot SF/F", "https://bookriot.com/category/science-fiction-fantasy/feed/"),
-    ("Swords & Spaceships", "https://pmp.bookriot.com/category/swords-spaceships/feed/"),
+    ("Book Riot SF/F", "https://bookriot.com/category/genre/science-fiction-fantasy/feed/"),
+    ("Before We Go Blog", "https://beforewegoblog.com/feed/"),
+    ("Fantasy Book Cafe", "https://fantasybookcafe.com/feed"),
+    ("The Fantasy Inn", "https://thefantasyinn.com/feed"),
+    ("Fantasy-Faction", "https://fantasy-faction.com/feed"),
+    ("Pat's Fantasy Hotlist", "https://feeds.feedburner.com/PatsFantasyHotlist"),
 ]
 
 _PER_FEED = 6  # newest entries kept per source
