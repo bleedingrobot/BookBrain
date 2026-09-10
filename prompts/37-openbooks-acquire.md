@@ -132,12 +132,23 @@ returns a clean "can't reach OpenBooks" error.
 
 ## Gotchas / notes
 
+- **OpenBooks v4.5.0 crashes on `panic: send on closed channel`**
+  (`server/irc_events.go:71`) when a DCC transfer completes *after* the WS
+  client disconnected — which is exactly what a flaky source server + the
+  download timeout + a backend restart produce. After it, IRC re-joins fail
+  ("Unable to connect to IRC server") until every `openbooks.exe` is killed
+  and it's started fresh. Mitigations: `score_candidate` down-ranks servers
+  that send truncated files (unknown server / `N/A` size) so "Get this" never
+  auto-picks the crash trigger; `_DOWNLOAD_TIMEOUT` is 150s not 300s.
+- **The `@search` bot on `#ebook` goes down.** OpenBooks' own advice is to use
+  `searchook` instead — `OPENBOOKS_SEARCHBOT` (config, passed as `--searchbot`,
+  takes effect on the next Start). Default `search`.
 - OpenBooks keeps a **fixed IRC nick** (its `--name`, set once at launch) and
   reconnects to IRC on every WS-client (re)connect. Rapid reconnect churn with
   one nick can get throttled by IRC Highway (searches then silently time out).
   The service holds **one** long-lived connection, so in normal use this
-  doesn't bite — but if searches start hanging, restart `run-openbooks.ps1`
-  (fresh random nick).
+  doesn't bite — but if searches start hanging, restart the server (Stop/Start
+  on the page, or `run-openbooks.ps1`) for a fresh random nick.
 - OpenBooks' search-result parser sometimes swaps author/title. Doesn't
   matter — the identify pipeline re-derives everything from the EPUB.
 - `#ebook` is a book-piracy channel. This is a manual, per-book operator tool

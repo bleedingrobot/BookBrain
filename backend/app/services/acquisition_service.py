@@ -87,7 +87,26 @@ def score_candidate(req_title: str, req_author: str | None, cand: BookResult) ->
     # small nudge toward a "retail"/versioned rip over a bare scan
     if re.search(r"retail|\(v\d", cand.full, re.IGNORECASE):
         score = min(1.0, score + 0.02)
-    return round(score, 4)
+
+    # Reliability: prefer the servers that reliably complete a DCC transfer,
+    # and a result with a real reported size, over the flaky ones that send
+    # truncated files (which have crashed the OpenBooks process). A "N/A"
+    # size or an unknown server drops the pick well below a good one so
+    # "Get this" never auto-selects it — it stays available as an alternative.
+    server = (cand.server or "").lower()
+    if server in _RELIABLE_SERVERS:
+        score += 0.06
+    if not _has_real_size(cand.size):
+        score -= 0.15
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+# Book servers on #ebook that reliably finish a DCC transfer (observed).
+_RELIABLE_SERVERS = {"bsk", "oatmeal", "ook", "dv8", "horla", "pondering-ebooks2"}
+
+
+def _has_real_size(size: str | None) -> bool:
+    return bool(size) and size.strip().upper() not in {"N/A", "", "0", "?"}
 
 
 def _rank(req_title: str, req_author: str | None, results: list[BookResult]) -> list[tuple[float, BookResult]]:

@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     openbooks_enabled: bool = False
     openbooks_ws_url: str = "ws://localhost:5228/ws"
     openbooks_download_dir: str = r"C:\Users\Giant\Documents\epub-librarian\backend\tools\openbooks-dl"
+    # IRC bot that answers searches on #ebook. "search" is the default; flip to
+    # "searchook" when "search" is down (OpenBooks' own advice). Takes effect
+    # on the next Start of the OpenBooks server.
+    openbooks_searchbot: str = "search"
     # Path to the openbooks executable. Empty = look for
     # backend/tools/openbooks.exe next to this checkout. The admin "Find a
     # Book" page has a Start/Stop button that launches it with this.

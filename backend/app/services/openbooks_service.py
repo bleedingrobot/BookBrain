@@ -52,7 +52,11 @@ _MAX_BOOK_BYTES = 460
 
 _CONNECT_TIMEOUT = 30.0
 _SEARCH_TIMEOUT = 90.0
-_DOWNLOAD_TIMEOUT = 300.0
+# A healthy DCC transfer of an epub is seconds. A longer wait just means the
+# source server is dead or trickling a truncated file — and a truncated
+# transfer arriving after we've moved on has crashed the OpenBooks process
+# (its `send on closed channel` bug), so don't sit on a bad one.
+_DOWNLOAD_TIMEOUT = 150.0
 
 
 class OpenBooksError(RuntimeError):

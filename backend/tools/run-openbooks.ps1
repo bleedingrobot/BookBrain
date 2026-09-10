@@ -26,4 +26,5 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
     --persist `
     --dir $dir `
     --no-browser-downloads `
+    --searchbot search `
     --name ("bb_" + (Get-Random -Maximum 99999))

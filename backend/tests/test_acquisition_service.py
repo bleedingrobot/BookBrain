@@ -49,6 +49,19 @@ def test_score_rejects_a_different_book():
     assert score_candidate("The Dispossessed", "Ursula K Le Guin", b) == 0.0
 
 
+def test_score_prefers_a_reliable_server_with_a_real_size():
+    good = _book("The Dispossessed", "Ursula K Le Guin", server="Bsk", size="1.2MB")
+    flaky = _book("The Dispossessed", "Ursula K Le Guin", server="Dumbledore", size="N/A")
+    sg = score_candidate("The Dispossessed", "Ursula K Le Guin", good)
+    sf = score_candidate("The Dispossessed", "Ursula K Le Guin", flaky)
+    assert sg > sf
+    # a strong title+author match on a flaky server still stays a usable alternative
+    assert sf >= 0.72
+
+    ranked = svc._rank("The Dispossessed", "Ursula K Le Guin", [flaky, good])
+    assert ranked[0][1].server == "Bsk"
+
+
 # --- refresh ------------------------------------------------------------
 
 

@@ -94,6 +94,8 @@ def start() -> dict:
         "--dir",
         str(dl_dir),
         "--no-browser-downloads",
+        "--searchbot",
+        (settings.openbooks_searchbot or "search").strip(),
         "--name",
         f"bb_{random.randint(1000, 99999)}",
     ]
