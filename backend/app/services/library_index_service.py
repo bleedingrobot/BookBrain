@@ -104,6 +104,14 @@ READING_VERSION = 4  # v2 wantUnowned[]; v3 goal{}; v4 per-book progress (Part I
 # prompts/30 Phase 3 — the viewer queues "mark read" here; a sync applies it
 # to Hardcover then drops the applied entries.
 READING_PENDING_FILENAME = "bookbrain-reading-pending.json"
+# F2 — a change that keeps failing to resolve (book not on Hardcover, or the
+# F1 similarity gate rejects every hit) is dropped after this many syncs
+# instead of costing 2 Hardcover calls forever.
+_MAX_WRITEBACK_ATTEMPTS = 5
+# F4 — after this many consecutive partial pulls that would shrink the sidecar,
+# write the partial one anyway (marked) rather than freeze read/unread state.
+_PARTIAL_STREAK_KEY = "reading_partial_streak"
+_PARTIAL_STREAK_FORCE = 3
 _DESCRIPTION_CAP = 1500
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -438,6 +446,11 @@ async def regenerate_embeddings(
 
 def _norm_key(title: str | None, author: str | None) -> str:
     return f"{normalize_title(title)}|{normalize_person_name(author)}"
+
+
+# A leading "<Series/collection name>: " Hardcover often prepends to a volume
+# title. Bounded so it can't swallow a real title with a mid-sentence colon.
+_READING_PREFIX_RE = re.compile(r"^[^:]{1,60}:\s+")
 
 
 async def match_hardcover_book_ids(
@@ -833,10 +846,12 @@ async def build_reading_payload(
             if drive:
                 isbn_to_drive.setdefault(value, drive)
     key_to_drive = {_norm_key(t, a): d for d, _, t, a in files}
+    owned_norm_titles = {normalize_title(t) for _, _, t, _ in files if t}
 
     books: dict[str, dict] = {}
     unmatched = {"read": 0, "want": 0, "reading": 0}
     want_unowned: list[dict] = []
+    near_miss_logged = 0
     for row in reading_rows:
         drive = isbn_to_drive.get(row.get("isbn13") or "") or key_to_drive.get(
             _norm_key(row.get("title"), row.get("author"))
@@ -844,6 +859,28 @@ async def build_reading_payload(
         if drive is None:
             if row.get("status") in unmatched:
                 unmatched[row["status"]] += 1
+            # F7 — a *read* Hardcover row that looks owned but didn't match
+            # leaves no trace, so "why is <book> showing unread" is a dead end.
+            # Log the near miss (bounded; the log alone is the fix).
+            if row.get("status") == "read" and near_miss_logged < 20:
+                raw = (row.get("title") or "").strip()
+                for cand in (normalize_title(raw), normalize_title(_READING_PREFIX_RE.sub("", raw, count=1))):
+                    if not cand or len(cand) < 4:
+                        continue
+                    hit = next(
+                        (t for t in owned_norm_titles if t and (cand in t or t in cand)),
+                        None,
+                    )
+                    if hit is not None:
+                        logger.info(
+                            "reading: read book %r by %r looks owned but didn't match "
+                            "(closest owned title: %r)",
+                            row.get("title"),
+                            row.get("author"),
+                            hit,
+                        )
+                        near_miss_logged += 1
+                        break
             if (
                 row.get("status") == "want"
                 and isinstance(row.get("title"), str)
@@ -909,6 +946,32 @@ def _read_pending_reading(provider: DriveProvider, library_folder_id: str) -> li
         return []
 
 
+def _prune_pending_changes(
+    pending: list[dict], applied: list[str], failed: list[str]
+) -> tuple[list[dict], list[dict]]:
+    """F2 — decide what stays in `bookbrain-reading-pending.json` after a
+    write-back pass. Applied changes are dropped; a change that *failed* this
+    run carries an incremented `attempts` and is given up on after
+    `_MAX_WRITEBACK_ATTEMPTS`; one that wasn't attempted (rate-limited
+    mid-queue) is kept untouched. Returns `(left, given_up)`."""
+    done, fail = set(applied), set(failed)
+    left: list[dict] = []
+    given_up: list[dict] = []
+    for c in pending:
+        fid = c.get("driveFileId")
+        if fid in done:
+            continue
+        if fid not in fail:
+            left.append(c)
+            continue
+        attempts = int(c.get("attempts") or 0) + 1
+        if attempts >= _MAX_WRITEBACK_ATTEMPTS:
+            given_up.append(c)
+            continue
+        left.append({**c, "attempts": attempts})
+    return left, given_up
+
+
 async def regenerate_reading(
     creds: Credentials | None, library_folder_id: str | None
 ) -> int | None:
@@ -920,6 +983,7 @@ async def regenerate_reading(
         return None
     try:
         from app.core.config import get_settings
+        from app.data.repositories.settings_repository import SettingsRepository
         from app.services import hardcover_reading_service
 
         provider = DriveProvider(build_drive_service(creds))
@@ -928,8 +992,15 @@ async def regenerate_reading(
         pending = await asyncio.to_thread(_read_pending_reading, provider, library_folder_id)
         if pending:
             result = await hardcover_reading_service.apply_pending(pending)
-            done = set(result["applied"])
-            left = [c for c in pending if c["driveFileId"] not in done]
+            left, given_up = _prune_pending_changes(
+                pending, result["applied"], result.get("failed") or []
+            )
+            for c in given_up:
+                logger.warning(
+                    "reading write-back: giving up on %r after %d attempts",
+                    c.get("title"),
+                    int(c.get("attempts") or 0) + 1,
+                )
             await asyncio.to_thread(
                 _write_json_file,
                 provider,
@@ -937,7 +1008,12 @@ async def regenerate_reading(
                 READING_PENDING_FILENAME,
                 {"version": 1, "changes": left},
             )
-            logger.info("reading write-back: %d applied, %d left queued", len(done), len(left))
+            logger.info(
+                "reading write-back: %d applied, %d left queued%s",
+                len(result["applied"]),
+                len(left),
+                f", {len(given_up)} given up" if given_up else "",
+            )
 
         rows, username, complete = await hardcover_reading_service.fetch_reading()
         if not rows:
@@ -949,7 +1025,10 @@ async def regenerate_reading(
 
         # A PARTIAL pull (a page failed) that has fewer rows than the sidecar we
         # already have would make read books look unread — worse than stale.
-        # Only overwrite on a complete pull, or when the new one isn't smaller.
+        # Only overwrite on a complete pull, or when the new one isn't smaller
+        # — UNLESS it's been partial-and-smaller several nights running (F4),
+        # in which case a slightly-incomplete file that moves beats a frozen one.
+        forced_partial = False
         if not complete:
             existing = await asyncio.to_thread(
                 _read_json_file, provider, library_folder_id, READING_FILENAME
@@ -957,21 +1036,40 @@ async def regenerate_reading(
             prev_rows = existing.get("count", 0) + sum((existing.get("unmatched") or {}).values())
             new_rows = payload["count"] + sum(payload["unmatched"].values())
             if existing and new_rows < prev_rows:
+                async with async_session_factory() as session:
+                    repo = SettingsRepository(session)
+                    streak = int(await repo.get(_PARTIAL_STREAK_KEY) or "0") + 1
+                    await repo.set(_PARTIAL_STREAK_KEY, str(streak))
+                if streak < _PARTIAL_STREAK_FORCE:
+                    logger.warning(
+                        "reading sidecar: partial pull (%d < %d rows), streak %d — keeping the existing file",
+                        new_rows,
+                        prev_rows,
+                        streak,
+                    )
+                    return None
                 logger.warning(
-                    "reading sidecar: partial pull (%d < %d rows) — keeping the existing file",
-                    new_rows,
-                    prev_rows,
+                    "reading sidecar: %d consecutive partial-and-smaller pulls — writing the partial "
+                    "payload anyway (partial=true)",
+                    streak,
                 )
-                return None
+                payload["partial"] = True
+                forced_partial = True
 
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, READING_FILENAME, payload
         )
+        # Any successful write clears the partial streak.
+        if not forced_partial:
+            async with async_session_factory() as session:
+                repo = SettingsRepository(session)
+                if await repo.get(_PARTIAL_STREAK_KEY) not in (None, "0"):
+                    await repo.set(_PARTIAL_STREAK_KEY, "0")
         logger.info(
             "reading sidecar: %d matched, %s unmatched%s",
             payload["count"],
             payload["unmatched"],
-            "" if complete else " (partial — but not smaller)",
+            "" if complete else " (partial — but not smaller)" if not forced_partial else " (partial — forced)",
         )
         return payload["count"]
     except Exception:

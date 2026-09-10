@@ -45,8 +45,14 @@ describe('normaliseReading', () => {
       unmatched: { read: 0, want: 0, reading: 0 },
       wantUnowned: [],
       goal: null,
+      partial: false,
       books: {},
     })
+  })
+
+  it('parses the partial flag', () => {
+    expect(normaliseReading({ partial: true }).partial).toBe(true)
+    expect(normaliseReading({ partial: 'yes' } as never).partial).toBe(false)
   })
 })
 

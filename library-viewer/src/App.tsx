@@ -85,7 +85,7 @@ import {
   type ReadingStatus,
 } from './lib/reading'
 import { loadPendingReading, queueReadingChange } from './lib/readingQueue'
-import { FINISHED_FRACTION, getProgress } from './lib/readingProgress'
+import { getProgress } from './lib/readingProgress'
 import { ReadNext } from './components/ReadNext'
 import { clearSentTracker, getSentMap, markSent, unmarkSent } from './lib/sentTracker'
 import {
@@ -878,14 +878,12 @@ export default function App() {
           book={readingBook}
           onAuthError={lib.flagAuthError}
           onClose={() => {
+            // Finishing a book in the reader deliberately does NOT mark it
+            // read on Hardcover — that's a manual action only (the ✓ button
+            // on an expanded row). We only nudge the reading *position*
+            // forward (advance-only; the backend guards against regressions).
             const p = getProgress(readingBook.id)
-            if (p && p.percent >= FINISHED_FRACTION && readingBook.reading?.status !== 'read') {
-              // Finished the book in the reader → mark it read on Hardcover too.
-              void markReadingStatus(readingBook, 'read')
-            } else if (p) {
-              // Otherwise push the position forward (Part I, advance-only).
-              pushReadingProgress(readingBook, p.percent)
-            }
+            if (p) pushReadingProgress(readingBook, p.percent)
             setReadingBookId(null)
             setProgressTick((t) => t + 1)
           }}
@@ -1295,6 +1293,11 @@ export default function App() {
         {(lib.syncMessage || shareStatus) && !lib.syncing && !lib.loading && (
           <p className="mt-1.5 truncate text-xs text-neutral-400">
             {shareStatus ?? lib.syncMessage}
+          </p>
+        )}
+        {(filter === 'read' || filter === 'unread' || filter === 'want') && mergedReading.partial && (
+          <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
+            Hardcover sync was incomplete — some books may show as unread.
           </p>
         )}
         {(filter === 'read' || filter === 'want') && reading.unmatched.read > 0 && (

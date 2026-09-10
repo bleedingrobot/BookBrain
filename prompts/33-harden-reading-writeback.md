@@ -1,5 +1,20 @@
 # Task 33 — harden the Hardcover reading write-back (REVIEW-2026-09-10 F1/F2/F4/F7)
 
+**SHIPPED 2026-09-10.** F1: `_resolve_book_id` runs `_confident_match`
+(`_title_matches` + `_doc_author_keys` in `hardcover_reading_service`) over the
+top 3 search hits before accepting one; no confident match → `None` + INFO
+log. **Also — James asked that finishing a book in the reader NOT mark it read
+at all**, so the viewer `App.tsx` `onClose` auto-`markReadingStatus('read')`
+was removed (only the position push remains; the deliberate ✓ button on an
+expanded row still writes). F2: `_prune_pending_changes` +
+`_MAX_WRITEBACK_ATTEMPTS = 5`. F4: `reading_partial_streak` setting +
+`_PARTIAL_STREAK_FORCE = 3` → `payload["partial"] = True` + `Reading.partial`
+in `reading.ts` + an amber note under the Read/Unread chips. F7: bounded INFO
+log in `build_reading_payload` for an unmatched *read* row whose title (raw or
+leading-prefix-stripped) is a substring of an owned title. 732 backend + 191
+viewer tests green; corpus green.
+
+
 Read `prompts/README.md`, `prompts/30-reading-status.md` (the licence framing),
 `prompts/31-hardcover-more.md` Part I, and the `project-bookbrain-reading-status`
 memory. Backend-only + a couple of viewer-test touches. Nothing here calls

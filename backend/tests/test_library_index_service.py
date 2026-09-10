@@ -28,10 +28,11 @@ from app.services.library_index_service import (
 
 
 class _FakeProvider:
-    """Minimal stand-in: one folder, files addressed by name."""
+    """Minimal stand-in: one folder, files addressed by name. Supports the
+    write path (`_write_bytes_file` → update/upload) too."""
 
     def __init__(self, files: dict[str, bytes]):
-        self._by_name = files
+        self._by_name = dict(files)
         self._ids = {name: f"id-{name}" for name in files}
 
     def list_files_in_folder(self, _folder_id: str):
@@ -40,6 +41,19 @@ class _FakeProvider:
     def download_file(self, file_id: str) -> bytes:
         name = next(n for n, i in self._ids.items() if i == file_id)
         return self._by_name[name]
+
+    def update_file_content(self, file_id: str, *, new_name: str, data: bytes, mime_type: str = "") -> dict:
+        name = next(n for n, i in self._ids.items() if i == file_id)
+        self._by_name[name] = data
+        return {"id": file_id}
+
+    def upload_new_file(self, *, name: str, data: bytes, parent_id: str, mime_type: str = "") -> dict:
+        self._by_name[name] = data
+        self._ids[name] = f"id-{name}"
+        return {"id": self._ids[name]}
+
+    def json(self, name: str) -> dict:
+        return json.loads(self._by_name[name].decode())
 
 
 def test_read_pending_reading_filters_to_valid_changes() -> None:
@@ -395,3 +409,128 @@ async def test_build_reading_payload_matches_and_counts_unmatched(db_session) ->
 
     # no goal → the key is omitted entirely
     assert "goal" not in await build_reading_payload(db_session, rows, "James")
+
+
+# --- F2: unresolvable write-back changes stop retrying forever ----------
+
+
+def test_prune_pending_changes_gives_up_after_five_attempts() -> None:
+    from app.services.library_index_service import _prune_pending_changes
+
+    change = {"driveFileId": "d1", "title": "Stuck Book"}
+    for run in range(1, 5):
+        left, given_up = _prune_pending_changes([change], applied=[], failed=["d1"])
+        assert given_up == []
+        assert left[0]["attempts"] == run
+        change = left[0]
+    left, given_up = _prune_pending_changes([change], applied=[], failed=["d1"])
+    assert left == []
+    assert [c["driveFileId"] for c in given_up] == ["d1"]
+
+
+def test_prune_pending_changes_keeps_unattempted_and_drops_applied() -> None:
+    from app.services.library_index_service import _prune_pending_changes
+
+    pending = [
+        {"driveFileId": "done", "title": "A"},
+        {"driveFileId": "fail", "title": "B", "attempts": 2},
+        {"driveFileId": "notrun", "title": "C"},  # rate-limited mid-queue
+    ]
+    left, given_up = _prune_pending_changes(pending, applied=["done"], failed=["fail"])
+    assert given_up == []
+    assert {c["driveFileId"] for c in left} == {"fail", "notrun"}
+    assert next(c for c in left if c["driveFileId"] == "fail")["attempts"] == 3
+    assert "attempts" not in next(c for c in left if c["driveFileId"] == "notrun")
+
+
+# --- F4: 3+ consecutive partial-and-smaller pulls surface, not freeze --
+
+
+async def test_regenerate_reading_forces_a_partial_write_after_three_streaks(
+    db_session, monkeypatch
+) -> None:
+    import app.services.library_index_service as svc
+    from app.services import hardcover_reading_service
+
+    await _seed(db_session)
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(svc, "async_session_factory", lambda: _CM())
+    monkeypatch.setattr(svc, "build_drive_service", lambda _creds: None)
+
+    # A healthy existing sidecar claiming 5 matched rows.
+    existing = json.dumps(
+        {"version": 4, "count": 5, "unmatched": {"read": 0, "want": 0, "reading": 0}}
+    ).encode()
+    provider = _FakeProvider({"bookbrain-reading.json": existing})
+    monkeypatch.setattr(svc, "DriveProvider", lambda _svc: provider)
+
+    async def fake_fetch():  # every pull is partial and smaller (1 row)
+        return (
+            [{"title": "Scion", "author": "James Islington", "isbn13": None, "status": "reading"}],
+            "James",
+            False,
+        )
+
+    async def no_goal():
+        return None
+
+    monkeypatch.setattr(hardcover_reading_service, "fetch_reading", fake_fetch)
+    monkeypatch.setattr(hardcover_reading_service, "fetch_goal", no_goal)
+
+    # Runs 1 and 2: kept frozen (returns None, file unchanged).
+    assert await svc.regenerate_reading(object(), "folder") is None
+    assert await svc.regenerate_reading(object(), "folder") is None
+    assert provider.json("bookbrain-reading.json")["count"] == 5
+
+    # Run 3: writes the partial payload, flagged.
+    assert await svc.regenerate_reading(object(), "folder") == 1
+    written = provider.json("bookbrain-reading.json")
+    assert written["partial"] is True
+    assert written["count"] == 1
+
+    # A later complete pull clears the streak and drops the flag.
+    async def full_fetch():
+        return (
+            [
+                {"title": "The Will of the Many", "author": "?", "isbn13": "9781234567890", "status": "read"},
+                {"title": "Scion", "author": "James Islington", "isbn13": None, "status": "reading"},
+            ],
+            "James",
+            True,
+        )
+
+    monkeypatch.setattr(hardcover_reading_service, "fetch_reading", full_fetch)
+    assert await svc.regenerate_reading(object(), "folder") == 2
+    assert "partial" not in provider.json("bookbrain-reading.json")
+
+
+# --- F7: an unmatched read row that looks owned is logged --------------
+
+
+async def test_build_reading_payload_logs_a_read_near_miss(db_session, caplog) -> None:
+    import logging
+
+    await _seed(db_session)  # owns "The Will of the Many", "Scion"
+    rows = [
+        {
+            "title": "The Hierarchy: The Will of the Many",  # leading series prefix, no ISBN
+            "author": "James Islington",
+            "isbn13": None,
+            "status": "read",
+        }
+    ]
+    with caplog.at_level(logging.INFO, logger="app.services.library_index_service"):
+        payload = await build_reading_payload(db_session, rows, "James")
+
+    assert payload["unmatched"]["read"] == 1
+    assert any(
+        "looks owned but didn't match" in r.message and "The Will of the Many" in r.message
+        for r in caplog.records
+    )

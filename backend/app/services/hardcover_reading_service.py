@@ -24,6 +24,7 @@ sidecar. One paged query per night.
 """
 
 import logging
+import re
 
 import httpx
 
@@ -33,6 +34,7 @@ from app.providers.metadata.hardcover import (
     _TokenBucket,
     hardcover_graphql,
 )
+from app.services.text_match import normalize_person_name, normalize_title, title_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +177,63 @@ mutation BookBrainInsertRead($ubId: Int!, $obj: DatesReadInput!) {
 """
 
 
+# A leading "<Series/collection name>: " that Hardcover often prepends to a
+# volume title ("The Dresden Files: Storm Front"). Bounded so it can't eat a
+# real title with a mid-sentence colon.
+_LEADING_PREFIX_RE = re.compile(r"^[^:]{1,60}:\s+")
+
+
+def _title_matches(want: str, got: str) -> bool:
+    """True when `got` (a Hardcover search-hit title) is the same book as
+    `want` (the owned book's title): equal after `normalize_title` (which
+    already folds a trailing ": subtitle"), or equal once a leading
+    "Series Name: " is stripped from `got`, or a very close character match."""
+    nw = normalize_title(want)
+    if not nw:
+        return False
+    if nw == normalize_title(got):
+        return True
+    stripped = _LEADING_PREFIX_RE.sub("", got.strip(), count=1)
+    if stripped != got.strip() and normalize_title(stripped) == nw:
+        return True
+    return title_similarity(want, got) >= 0.9
+
+
+def _doc_author_keys(doc: dict) -> set[str]:
+    keys: set[str] = set()
+    for name in doc.get("author_names") or []:
+        if isinstance(name, str) and name.strip():
+            keys.add(normalize_person_name(name))
+    for contrib in doc.get("contributions") or []:
+        author = contrib.get("author") if isinstance(contrib, dict) else None
+        name = author.get("name") if isinstance(author, dict) else None
+        if isinstance(name, str) and name.strip():
+            keys.add(normalize_person_name(name))
+    return {k for k in keys if k}
+
+
+def _confident_match(change: dict, doc: dict) -> bool:
+    """Guard against `_resolve_book_id`'s fuzzy search fallback pointing a
+    "mark read"/progress write at the wrong book on the owner's real
+    Hardcover account (REVIEW-2026-09-10 F1). Uses only what the search
+    document already carries — no extra fetch."""
+    want_title = (change.get("title") or "").strip()
+    doc_title = doc.get("title")
+    if not want_title or not isinstance(doc_title, str) or not doc_title.strip():
+        return False
+
+    want_author = (change.get("author") or "").strip()
+    if not want_author:
+        # No author to corroborate — demand an exact normalised-title match,
+        # with no leading-prefix slack.
+        nw = normalize_title(want_title)
+        return bool(nw) and nw == normalize_title(doc_title)
+
+    if not _title_matches(want_title, doc_title):
+        return False
+    return normalize_person_name(want_author) in _doc_author_keys(doc)
+
+
 async def _resolve_book_id(
     http: httpx.AsyncClient, token: str, bucket: _TokenBucket, change: dict
 ) -> int | None:
@@ -193,13 +252,24 @@ async def _resolve_book_id(
     q = f"{title} {author}".strip()
     data = await hardcover_graphql(http, token, _BOOK_SEARCH, {"q": q}, bucket)
     hits = (((data or {}).get("search") or {}).get("results") or {}).get("hits") or []
-    for hit in hits[:1]:
+    first_doc_title: str | None = None
+    for hit in hits[:3]:
         doc = hit.get("document") if isinstance(hit, dict) else None
-        if isinstance(doc, dict):
-            try:
-                return int(doc["id"])
-            except (KeyError, TypeError, ValueError):
-                pass
+        if not isinstance(doc, dict):
+            continue
+        first_doc_title = first_doc_title or (doc.get("title") if isinstance(doc.get("title"), str) else None)
+        if not _confident_match(change, doc):
+            continue
+        try:
+            return int(doc["id"])
+        except (KeyError, TypeError, ValueError):
+            return None
+    logger.info(
+        "reading write-back: no confident Hardcover match for %r by %r (top hit was %r)",
+        title,
+        author or None,
+        first_doc_title,
+    )
     return None
 
 

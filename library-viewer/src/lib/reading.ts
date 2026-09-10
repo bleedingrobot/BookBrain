@@ -47,6 +47,10 @@ export interface Reading {
   unmatched: { read: number; want: number; reading: number }
   wantUnowned: WantCandidate[]
   goal: ReadingGoal | null
+  // True when the backend wrote a known-incomplete Hardcover pull (several
+  // partial syncs running) rather than freeze the file — some books may show
+  // as unread.
+  partial: boolean
   // keyed by Drive file id
   books: Record<string, ReadingEntry>
 }
@@ -56,6 +60,7 @@ export const EMPTY_READING: Reading = {
   unmatched: { read: 0, want: 0, reading: 0 },
   wantUnowned: [],
   goal: null,
+  partial: false,
   books: {},
 }
 
@@ -67,6 +72,7 @@ interface RawFile {
   unmatched?: Partial<Reading['unmatched']>
   wantUnowned?: Partial<WantCandidate>[]
   goal?: Partial<ReadingGoal>
+  partial?: boolean
   books?: Record<string, Partial<ReadingEntry>>
 }
 
@@ -136,6 +142,7 @@ export function normaliseReading(raw: RawFile): Reading {
     },
     wantUnowned,
     goal: normaliseGoal(raw.goal),
+    partial: raw.partial === true,
     books,
   }
 }

@@ -375,3 +375,78 @@ async def test_fetch_goal_returns_none_when_no_book_goal() -> None:
         return_value=httpx.Response(200, json={"data": {"me": [{"goals": []}]}})
     )
     assert await fetch_goal() is None
+
+
+# --- F1: _resolve_book_id must not mark the wrong book read -------------
+
+
+def _search_route(*, hit_title, hit_authors, hit_id=777, existing_status_id=None, mutations=None):
+    """ISBN lookup misses → the fuzzy Book search returns one hit → the
+    usual existing-user_book query + mutation."""
+    mutations = mutations if mutations is not None else []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        q = body["query"]
+        if "editions(" in q:
+            return httpx.Response(200, json={"data": {"editions": []}})
+        if "search(" in q:
+            doc = {"id": str(hit_id), "title": hit_title, "author_names": list(hit_authors)}
+            return httpx.Response(
+                200, json={"data": {"search": {"results": {"hits": [{"document": doc}]}}}}
+            )
+        if "user_books(where:" in q:
+            ubs = [{"id": 42, "status_id": existing_status_id}] if existing_status_id is not None else []
+            return httpx.Response(200, json={"data": {"me": [{"user_books": ubs}]}})
+        if "update_user_book" in q:
+            mutations.append(("update", body["variables"]))
+            return httpx.Response(200, json={"data": {"update_user_book": {"id": 42}}})
+        if "insert_user_book" in q:
+            mutations.append(("insert", body["variables"]))
+            return httpx.Response(200, json={"data": {"insert_user_book": {"id": 99}}})
+        return httpx.Response(200, json={"data": {}})
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    return mutations
+
+
+@respx.mock
+async def test_search_fallback_rejects_a_different_book() -> None:
+    muts = _search_route(hit_title="Grave Peril", hit_authors=["Jim Butcher"])
+    result = await apply_pending(
+        [_change(isbn=None, title="Death Masks")]  # author "An Author" in _change
+    )
+    assert result == {"applied": [], "failed": ["d1"]}
+    assert muts == []  # nothing written to Hardcover
+
+
+@respx.mock
+async def test_search_fallback_accepts_a_leading_series_prefix() -> None:
+    change = {**_change(isbn=None, title="Storm Front"), "author": "Jim Butcher"}
+    muts = _search_route(
+        hit_title="The Dresden Files: Storm Front", hit_authors=["Jim Butcher"], existing_status_id=2
+    )
+    result = await apply_pending([change])
+    assert result == {"applied": ["d1"], "failed": []}
+    assert muts and muts[0][0] == "update"
+
+
+@respx.mock
+async def test_search_fallback_accepts_trailing_subtitle_with_author() -> None:
+    change = {**_change(isbn=None, title="Death Masks"), "author": "Jim Butcher"}
+    muts = _search_route(
+        hit_title="Death Masks: A Dresden Files Collection",
+        hit_authors=["Jim Butcher"],
+        existing_status_id=2,
+    )
+    result = await apply_pending([change])
+    assert result == {"applied": ["d1"], "failed": []}
+
+
+@respx.mock
+async def test_search_fallback_rejects_title_match_with_wrong_author() -> None:
+    change = {**_change(isbn=None, title="Storm Front"), "author": "Jim Butcher"}
+    muts = _search_route(hit_title="Storm Front", hit_authors=["John Sandford"])
+    result = await apply_pending([change])
+    assert result == {"applied": [], "failed": ["d1"]}
+    assert muts == []
