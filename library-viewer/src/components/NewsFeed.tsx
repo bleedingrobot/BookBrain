@@ -5,12 +5,23 @@ import { timeAgo, type NewsItem } from '../lib/news'
 // `onDismiss` adds an X that hides the article for good on this device.
 export function NewsRow({ item, onDismiss }: { item: NewsItem; onDismiss?: () => void }) {
   return (
-    <li className="group relative py-2.5 pr-6">
-      <div className="flex items-baseline gap-2">
+    <li className="py-2.5">
+      <div className="flex items-center gap-2">
         <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
           {item.source}
         </span>
         <span className="shrink-0 text-[11px] text-neutral-400">{timeAgo(item.published)}</span>
+        {onDismiss && (
+          <button
+            type="button"
+            aria-label="Dismiss this article"
+            title="Dismiss — won't come back"
+            onClick={onDismiss}
+            className="ml-auto shrink-0 rounded-full border border-neutral-200 px-2 py-0.5 text-[11px] font-medium text-neutral-400 transition-colors hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          >
+            ✕ Hide
+          </button>
+        )}
       </div>
       <a
         href={item.link}
@@ -24,19 +35,6 @@ export function NewsRow({ item, onDismiss }: { item: NewsItem; onDismiss?: () =>
         <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-neutral-500">
           {item.summary}
         </p>
-      )}
-      {onDismiss && (
-        <button
-          type="button"
-          aria-label="Dismiss this article"
-          title="Dismiss — won't come back"
-          onClick={onDismiss}
-          className="absolute top-2.5 right-0 rounded p-0.5 text-neutral-300 opacity-40 transition-opacity group-hover:opacity-100 hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
-        >
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.75">
-            <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-          </svg>
-        </button>
       )}
     </li>
   )
