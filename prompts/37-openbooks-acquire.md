@@ -27,8 +27,10 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
 - **Search 25 more** (`POST /api/acquire/requests/refresh?limit=25`) searches
   OpenBooks for the next N un-searched targets (~11s apiece, capped 1..100),
   keeps the best **EPUB** matches + up to 6 alternatives. Repeat, or let the
-  nightly (`limit=50`) grind through. The job reports `outstanding` (how many
-  left) so the UI can say "N still to search".
+  nightly (`limit=50`) grind through — **the nightly acquire step only runs
+  when auto-get is off**, since auto-get does its own refill searches. The
+  job reports `outstanding` (how many left) so the UI can say "N still to
+  search".
 - **Get** per row → downloads into the inbox via `acquire_service`; a wishlist
   row also flips its item to `sourced` (best-effort sidecar RMW). Alternatives
   + skip as before.
