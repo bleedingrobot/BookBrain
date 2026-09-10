@@ -131,9 +131,19 @@ class _OpenBooksClient:
         assert self._ws is not None
         await self._ws.send(json.dumps({"type": msg_type, "payload": payload}))
 
-    async def _recv(self, timeout: float) -> dict:
+    async def _recv_until(self, deadline: float) -> dict | None:
+        """One message, or None once `deadline` has passed (or a poll timed
+        out). A `ConnectionClosed` still propagates — `_with_reconnect` wants
+        it. Guards against a non-positive `wait_for` timeout, which raises a
+        bare `TimeoutError` that would otherwise escape as a 500."""
         assert self._ws is not None
-        raw = await asyncio.wait_for(self._ws.recv(), timeout=timeout)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            raw = await asyncio.wait_for(self._ws.recv(), timeout=remaining)
+        except (TimeoutError, asyncio.TimeoutError):
+            return None
         return json.loads(raw)
 
     async def _ensure_connected(self) -> None:
@@ -158,12 +168,14 @@ class _OpenBooksClient:
         # CONNECT -> the server joins IRC and replies with a CONNECT status.
         await self._send(_CONNECT, {})
         deadline = time.monotonic() + _CONNECT_TIMEOUT
-        while time.monotonic() < deadline:
+        while True:
             try:
-                msg = await self._recv(timeout=deadline - time.monotonic())
-            except (asyncio.TimeoutError, ConnectionClosed) as exc:
+                msg = await self._recv_until(deadline)
+            except ConnectionClosed as exc:
                 await self._drop()
                 raise OpenBooksUnavailable("OpenBooks did not confirm an IRC connection") from exc
+            if msg is None:
+                break
             if msg.get("type") == _CONNECT:
                 self.nick = msg.get("name")
                 logger.info("openbooks: connected to IRC as %s", self.nick)
@@ -196,8 +208,14 @@ class _OpenBooksClient:
     async def _search(self, query: str) -> SearchOutcome:
         await self._send(_SEARCH, {"query": query})
         deadline = time.monotonic() + _SEARCH_TIMEOUT
-        while time.monotonic() < deadline:
-            msg = await self._recv(timeout=deadline - time.monotonic())
+        while True:
+            msg = await self._recv_until(deadline)
+            if msg is None:
+                raise OpenBooksError(
+                    f"OpenBooks returned no results for {query!r} within "
+                    f"{_SEARCH_TIMEOUT:.0f}s (the IRC search bot may be busy or "
+                    "ignoring the query — try more/fuller words)"
+                )
             mtype = msg.get("type")
             if mtype == _RATELIMIT:
                 raise OpenBooksRateLimited(_parse_wait_seconds(msg.get("detail", "")))
@@ -209,7 +227,6 @@ class _OpenBooksClient:
                 return SearchOutcome(message=msg.get("title") or "No results found")
             # otherwise a NOTIFY status ("Search accepted into the queue.",
             # "Found N results for your query.") — keep waiting.
-        raise OpenBooksError("timed out waiting for OpenBooks search results")
 
     async def download(self, full: str) -> Path:
         full = full.strip()
@@ -223,15 +240,19 @@ class _OpenBooksClient:
     async def _download(self, full: str) -> Path:
         await self._send(_DOWNLOAD, {"book": full})
         deadline = time.monotonic() + _DOWNLOAD_TIMEOUT
-        while time.monotonic() < deadline:
-            msg = await self._recv(timeout=deadline - time.monotonic())
+        while True:
+            msg = await self._recv_until(deadline)
+            if msg is None:
+                raise OpenBooksError(
+                    f"OpenBooks didn't deliver the file within {_DOWNLOAD_TIMEOUT:.0f}s "
+                    "(the source server may be offline — try another result)"
+                )
             mtype = msg.get("type")
             if mtype == _DOWNLOAD:
                 return self._resolve_download_path(msg)
             if mtype == _STATUS and msg.get("appearance") == _DANGER:
                 raise OpenBooksError(msg.get("title") or "OpenBooks download failed")
             # NOTIFY "Download request received." — keep waiting for the file.
-        raise OpenBooksError("timed out waiting for the OpenBooks download")
 
     @staticmethod
     def _resolve_download_path(msg: dict) -> Path:

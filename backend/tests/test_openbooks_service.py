@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -230,3 +231,24 @@ async def test_reconnects_after_drop(point_at):
         await server.wait_closed()
     assert calls["n"] == 2
     assert outcome.results == []
+
+
+@pytest.mark.asyncio
+async def test_search_timeout_is_a_clean_openbooks_error(point_at, monkeypatch):
+    # Server accepts the search but never sends results.
+    async def handler(ws):
+        await _expect(ws, 1)
+        await ws.send(json.dumps(CONNECT_OK))
+        await _expect(ws, 2)
+        await ws.send(json.dumps({"type": 0, "appearance": 0, "title": "Search accepted."}))
+        await asyncio.sleep(5)  # hang
+
+    monkeypatch.setattr(openbooks_service, "_SEARCH_TIMEOUT", 0.3)
+    server, url = await _serve(handler)
+    point_at(url)
+    try:
+        with pytest.raises(OpenBooksError, match="no results"):
+            await openbooks_service.search("brian")
+    finally:
+        server.close()
+        await server.wait_closed()

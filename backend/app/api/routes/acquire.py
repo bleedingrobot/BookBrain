@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +35,22 @@ from app.services.openbooks_service import (
     OpenBooksUnavailable,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/acquire", tags=["acquire"])
+
+
+def _openbooks_http_error(exc: Exception) -> HTTPException:
+    """Map an OpenBooks failure to an HTTP status. A catch-all so a stray
+    exception in the WS client is a clean 502, never a 500."""
+    if isinstance(exc, OpenBooksRateLimited):
+        return HTTPException(status_code=429, detail=str(exc))
+    if isinstance(exc, OpenBooksUnavailable):
+        return HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, OpenBooksError):
+        return HTTPException(status_code=502, detail=str(exc))
+    logger.exception("acquire: unexpected error talking to OpenBooks")
+    return HTTPException(status_code=502, detail="OpenBooks request failed unexpectedly — see server logs")
 
 
 async def _require_folders(db: AsyncSession) -> tuple[str, str]:
@@ -93,12 +109,8 @@ async def search(body: AcquireSearchRequest) -> AcquireSearchResponse:
     _require_enabled()
     try:
         outcome = await openbooks_service.search(body.query)
-    except OpenBooksRateLimited as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
-    except OpenBooksUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except OpenBooksError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _openbooks_http_error(exc) from exc
     return AcquireSearchResponse(
         results=[AcquireBook(**vars(b)) for b in outcome.results],
         parse_errors=outcome.parse_errors,
@@ -120,12 +132,8 @@ async def download(
         result = await acquire_service.acquire_to_inbox(
             body.full, body.filename, provider, inbox.folder_id
         )
-    except OpenBooksRateLimited as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
-    except OpenBooksUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except OpenBooksError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _openbooks_http_error(exc) from exc
     return AcquireDownloadResponse(**result)
 
 
@@ -195,12 +203,8 @@ async def approve_request(
         result = await acquisition_service.approve_request(
             request_id, body.full, provider, inbox_folder_id, library_folder_id
         )
-    except OpenBooksRateLimited as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
-    except OpenBooksUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except OpenBooksError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _openbooks_http_error(exc) from exc
     return AcquireDownloadResponse(**result)
 
 
