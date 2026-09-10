@@ -699,6 +699,9 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
 
     views: list[RequestView] = []
     seen_ids = {r.request_id for r in rows}
+    # Books that already have a candidate row (possibly under a want-to-read /
+    # list id) — don't also list them as an "unsearched" wishlist item.
+    seen_keys = {_owned_key(r.request_title, r.request_author) for r in rows}
     for row in rows:
         source = row.source or "wishlist"
         if source == "wishlist":
@@ -758,6 +761,8 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
             continue
         if item.get("status") not in ("wanted", "sourced"):
             continue
+        if _owned_key(item["title"], item.get("author")) in seen_keys:
+            continue  # already shown via its candidate row
         views.append(
             RequestView(
                 request_id=rid,
