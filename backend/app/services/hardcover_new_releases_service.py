@@ -106,7 +106,7 @@ query BookBrainGlobalAnticipated($today: date!) {
     title
     release_date
     book_category_id
-    contributions(limit: 1) { author { name } }
+    contributions(where: {_or: [{contribution: {_eq: "Author"}}, {contribution: {_is_null: true}}]}, limit: 1) { author { name } }
     editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
       isbn_13
     }
@@ -211,7 +211,7 @@ query BookBrainTrendingBooks($ids: [Int!]!) {
   books(where: {id: {_in: $ids}}) {
     id
     title
-    contributions(limit: 1) { author { name } }
+    contributions(where: {_or: [{contribution: {_eq: "Author"}}, {contribution: {_is_null: true}}]}, limit: 1) { author { name } }
     editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
       isbn_13
     }

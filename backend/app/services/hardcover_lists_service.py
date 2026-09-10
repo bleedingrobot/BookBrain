@@ -51,7 +51,7 @@ query BookBrainListBooks($ids: [Int!]!, $per: Int!) {
       book {
         id
         title
-        contributions(limit: 1) { author { name } }
+        contributions(where: {_or: [{contribution: {_eq: "Author"}}, {contribution: {_is_null: true}}]}, limit: 1) { author { name } }
         editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
           isbn_13
         }

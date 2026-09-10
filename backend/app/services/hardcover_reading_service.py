@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 _STATUS = {1: "want", 2: "reading", 3: "read", 5: "dnf"}
 _STATUS_ID = {v: k for k, v in _STATUS.items()}
 _PAGE = 100
+# A page returning None is a transient failure, not end-of-data — retry before
+# giving up (a truncated pull makes read books look unread). Tests set to 0.
+_PAGE_RETRIES = 3
+_PAGE_RETRY_BACKOFF = 1.5
 
 _READING = """
 query BookBrainReading($limit: Int!, $offset: Int!) {
@@ -56,7 +60,7 @@ query BookBrainReading($limit: Int!, $offset: Int!) {
       book {
         title
         pages
-        contributions(limit: 1) { author { name } }
+        contributions(where: {_or: [{contribution: {_eq: "Author"}}, {contribution: {_is_null: true}}]}, limit: 1) { author { name } }
         editions(where: {isbn_13: {_is_null: false}}, limit: 1,
                  order_by: {users_count: desc}) { isbn_13 }
       }
@@ -330,27 +334,43 @@ async def apply_pending(changes: list[dict], *, client: httpx.AsyncClient | None
     return {"applied": applied, "failed": failed}
 
 
-async def fetch_reading(*, client: httpx.AsyncClient | None = None) -> tuple[list[dict], str | None]:
-    """Returns (rows, reader_username). Best-effort: any failure (no token,
-    network, rate limit) returns whatever pages came back before it, or
-    ([], None)."""
+async def fetch_reading(
+    *, client: httpx.AsyncClient | None = None
+) -> tuple[list[dict], str | None, bool]:
+    """Returns (rows, reader_username, complete). `complete` is False if a page
+    failed (transient error, rate limit) — the caller must NOT overwrite a good
+    sidecar with a partial one, or read books look unread (a partial pull is
+    worse than a stale one). A page returning `None` is a *transient failure*,
+    not end-of-data: it's retried before we give up."""
+    import asyncio
+
     settings = get_settings()
     token = (settings.hardcover_api_token or "").strip()
     if not token:
-        return [], None
+        return [], None, False
 
     owns_client = client is None
     http = client or httpx.AsyncClient(timeout=15.0)
     bucket = _TokenBucket(rate_per_sec=0.9, burst=8)
     out: list[dict] = []
     username: str | None = None
+    complete = False
     try:
         for offset in range(0, 20_000, _PAGE):
-            data = await hardcover_graphql(
-                http, token, _READING, {"limit": _PAGE, "offset": offset}, bucket
-            )
-            me = (data or {}).get("me") or []
+            data = None
+            for attempt in range(_PAGE_RETRIES + 1):  # a blip must not truncate the pull
+                data = await hardcover_graphql(
+                    http, token, _READING, {"limit": _PAGE, "offset": offset}, bucket
+                )
+                if data is not None or attempt == _PAGE_RETRIES:
+                    break
+                await asyncio.sleep(_PAGE_RETRY_BACKOFF * (attempt + 1))
+            if data is None:
+                logger.warning("hardcover reading: page at offset %d kept failing — partial", offset)
+                break  # complete stays False
+            me = data.get("me") or []
             if not me or not isinstance(me[0], dict):
+                complete = True  # genuinely no more data
                 break
             username = username or me[0].get("username")
             rows = me[0].get("user_books") or []
@@ -359,17 +379,23 @@ async def fetch_reading(*, client: httpx.AsyncClient | None = None) -> tuple[lis
                 if mapped is not None:
                     out.append(mapped)
             if len(rows) < _PAGE:
+                complete = True
                 break
     except HardcoverRateLimited:
-        logger.warning("hardcover reading: daily limit hit mid-fetch, using %d rows", len(out))
+        logger.warning("hardcover reading: daily limit hit mid-fetch, using %d rows (partial)", len(out))
     except Exception:  # noqa: BLE001 — best-effort, never fail the caller
         logger.exception("hardcover reading fetch failed")
     finally:
         if owns_client:
             await http.aclose()
 
-    logger.info("hardcover reading: %d rows (reader %s)", len(out), username)
-    return out, username
+    logger.info(
+        "hardcover reading: %d rows (reader %s, %s)",
+        len(out),
+        username,
+        "complete" if complete else "PARTIAL",
+    )
+    return out, username, complete
 
 
 async def fetch_goal(*, client: httpx.AsyncClient | None = None) -> dict | None:

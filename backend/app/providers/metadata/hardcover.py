@@ -33,6 +33,15 @@ logger = logging.getLogger(__name__)
 ENDPOINT = "https://api.hardcover.app/v1/graphql"
 _USER_AGENT = "BookBrain (+https://github.com/bleedingrobot/BookBrain)"
 
+# A book's `contributions` lists narrators / illustrators / cover artists
+# alongside the writer, in no guaranteed order — a bare `contributions(limit: 1)`
+# was grabbing e.g. the audiobook narrator (James Marsters for "Death Masks"),
+# which then failed to match the library. Every query that reads an author
+# now filters with this `where` (role "Author", or null on author-only books):
+#   contributions(where: {_or: [{contribution: {_eq: "Author"}},
+#                               {contribution: {_is_null: true}}]}, limit: 1)
+# Keep them in sync if this changes.
+
 
 class HardcoverRateLimited(Exception):
     """The **daily** quota is exhausted (resets ~midnight UTC). A bulk refresh
@@ -67,7 +76,7 @@ query BookBrainEditionByIsbn($isbn: String!) {
       subtitle
       description
       release_year
-      contributions { author { name } }
+      contributions(where: {_or: [{contribution: {_eq: "Author"}}, {contribution: {_is_null: true}}]}) { author { name } }
       book_series(order_by: {featured: desc}, limit: 1) {
         position
         series { name }

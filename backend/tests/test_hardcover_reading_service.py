@@ -11,8 +11,10 @@ from app.services.hardcover_reading_service import apply_pending, fetch_goal, fe
 @pytest.fixture(autouse=True)
 def _token(monkeypatch):
     from app.core.config import get_settings
+    from app.services import hardcover_reading_service as svc
 
     monkeypatch.setattr(get_settings(), "hardcover_api_token", "tok")
+    monkeypatch.setattr(svc, "_PAGE_RETRY_BACKOFF", 0)  # no real sleeps in tests
 
 
 def _ub(
@@ -69,7 +71,7 @@ async def test_maps_statuses_and_paginates() -> None:
     ]
     _route([page1, page2])
 
-    rows, user = await fetch_reading()
+    rows, user, _ = await fetch_reading()
 
     assert user == "bleedrobot"
     by_status = {}
@@ -85,11 +87,11 @@ async def test_maps_statuses_and_paginates() -> None:
 @respx.mock
 async def test_maps_reader_progress_as_a_fraction() -> None:
     _route([[_ub(2, title="Mid", pages=400, progress_pages=100)]])
-    rows, _ = await fetch_reading()
+    rows, _, _ = await fetch_reading()
     assert rows[0]["progress"] == 0.25
     # no pages → no fraction
     _route([[_ub(2, title="NoPages", pages=None, progress_pages=100)]])
-    rows, _ = await fetch_reading()
+    rows, _, _ = await fetch_reading()
     assert rows[0]["progress"] is None
 
 
@@ -99,14 +101,14 @@ async def test_no_token_no_request() -> None:
 
     get_settings().hardcover_api_token = ""
     try:
-        rows, user = await fetch_reading()
+        rows, user, _ = await fetch_reading()
         assert rows == [] and user is None
     finally:
         get_settings().hardcover_api_token = "tok"
 
 
 @respx.mock
-async def test_a_failure_keeps_what_came_back() -> None:
+async def test_a_failure_keeps_what_came_back_and_flags_partial() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         if body["variables"]["offset"] == 0:
@@ -114,8 +116,34 @@ async def test_a_failure_keeps_what_came_back() -> None:
         return httpx.Response(500, json={})
 
     respx.post(ENDPOINT).mock(side_effect=handler)
-    rows, user = await fetch_reading()
+    rows, user, complete = await fetch_reading()
     assert len(rows) == 100  # page 1 survived the page-2 failure
+    assert complete is False  # …but the caller must know it's incomplete
+
+
+@respx.mock
+async def test_a_transient_page_blip_is_retried_not_treated_as_the_end() -> None:
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        offset = json.loads(request.content)["variables"]["offset"]
+        if offset == 0:
+            return httpx.Response(
+                200, json={"data": {"me": [{"username": "u", "user_books": [_ub(3)] * 100}]}}
+            )
+        if offset == 100:
+            calls["n"] += 1
+            if calls["n"] == 1:  # first attempt blips, retry succeeds
+                return httpx.Response(503, json={})
+            return httpx.Response(
+                200, json={"data": {"me": [{"user_books": [_ub(3, title="p2")] * 10}]}}
+            )
+        return httpx.Response(200, json={"data": {"me": [{"user_books": []}]}})
+
+    respx.post(ENDPOINT).mock(side_effect=handler)
+    rows, _, complete = await fetch_reading()
+    assert len(rows) == 110  # page 2 was retried, not dropped
+    assert complete is True
 
 
 # --- prompts/30 Phase 3: write-back --------------------------------------------

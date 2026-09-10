@@ -331,6 +331,20 @@ def _write_json_file(
     )
 
 
+def _read_json_file(provider: DriveProvider, library_folder_id: str, name: str) -> dict:
+    """The current contents of a sidecar, or `{}` if it's missing / unreadable."""
+    try:
+        found = next(
+            (f for f in provider.list_files_in_folder(library_folder_id) if f["name"] == name), None
+        )
+        if found is None:
+            return {}
+        return json.loads(provider.download_file(found["id"]).decode("utf-8"))
+    except Exception:
+        logger.exception("could not read sidecar %s", name)
+        return {}
+
+
 async def regenerate_recommendations(
     creds: Credentials | None, library_folder_id: str | None
 ) -> int | None:
@@ -925,17 +939,40 @@ async def regenerate_reading(
             )
             logger.info("reading write-back: %d applied, %d left queued", len(done), len(left))
 
-        rows, username = await hardcover_reading_service.fetch_reading()
+        rows, username, complete = await hardcover_reading_service.fetch_reading()
         if not rows:
             return None
         goal = await hardcover_reading_service.fetch_goal()
         reader = (get_settings().hardcover_reader_name or "").strip() or username or "reader"
         async with async_session_factory() as session:
             payload = await build_reading_payload(session, rows, reader, goal)
+
+        # A PARTIAL pull (a page failed) that has fewer rows than the sidecar we
+        # already have would make read books look unread — worse than stale.
+        # Only overwrite on a complete pull, or when the new one isn't smaller.
+        if not complete:
+            existing = await asyncio.to_thread(
+                _read_json_file, provider, library_folder_id, READING_FILENAME
+            )
+            prev_rows = existing.get("count", 0) + sum((existing.get("unmatched") or {}).values())
+            new_rows = payload["count"] + sum(payload["unmatched"].values())
+            if existing and new_rows < prev_rows:
+                logger.warning(
+                    "reading sidecar: partial pull (%d < %d rows) — keeping the existing file",
+                    new_rows,
+                    prev_rows,
+                )
+                return None
+
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, READING_FILENAME, payload
         )
-        logger.info("reading sidecar: %d matched, %s unmatched", payload["count"], payload["unmatched"])
+        logger.info(
+            "reading sidecar: %d matched, %s unmatched%s",
+            payload["count"],
+            payload["unmatched"],
+            "" if complete else " (partial — but not smaller)",
+        )
         return payload["count"]
     except Exception:
         logger.exception("reading sidecar refresh failed")
