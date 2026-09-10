@@ -31,7 +31,7 @@ export function NewsRow({ item, onDismiss }: { item: NewsItem; onDismiss?: () =>
           aria-label="Dismiss this article"
           title="Dismiss — won't come back"
           onClick={onDismiss}
-          className="absolute top-2.5 right-0 rounded p-0.5 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+          className="absolute top-2.5 right-0 rounded p-0.5 text-neutral-300 opacity-40 transition-opacity group-hover:opacity-100 hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
         >
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.75">
             <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
