@@ -820,12 +820,14 @@ async def reset_request(request_id: str) -> None:
 
 _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
 _AUTOGET_RETRY_AFTER = timedelta(minutes=15)  # don't re-hit a just-failed row
+_AUTOGET_SEARCH_BATCH = 5  # when the queue's dry, search this many to refill it
 
 
 async def autoget_tick(trigger: str = "scheduler") -> dict:
     """One iteration of the auto-get loop (the scheduler calls this every
-    ~60s). Downloads the single highest-confidence `pending` candidate — but
-    only when everything's idle. Never raises."""
+    ~60s). Downloads the single highest-confidence `pending` candidate; if
+    the queue is dry, searches a few more targets to refill it. Only runs
+    when everything's idle. Never raises."""
     from app.core.config import get_settings
     from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
     from app.data.repositories.settings_repository import SettingsRepository
@@ -879,11 +881,25 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
                 .limit(1)
             )
         ).scalar_one_or_none()
+    provider = DriveProvider(build_drive_service(creds))
+
     if row is None:
-        return {"skipped": "nothing to get"}
+        # Nothing ready to download — search a few more targets to refill the
+        # queue; the next ticks download whatever this turns up.
+        try:
+            r = await refresh_candidates(provider, library.folder_id, limit=_AUTOGET_SEARCH_BATCH)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("acquire: auto-get refill search failed: %s", exc)
+            return {"skipped": "refill search failed", "error": str(exc)}
+        if r["searched"] == 0:
+            return {"skipped": "nothing to get"}
+        logger.info(
+            "acquire: auto-get searched %d (%d with a candidate, %d left)",
+            r["searched"], r["withCandidates"], r["outstanding"],
+        )
+        return {"searched": r["searched"], "found": r["withCandidates"], "outstanding": r["outstanding"]}
 
     request_id, title = row.request_id, row.request_title
-    provider = DriveProvider(build_drive_service(creds))
     try:
         result = await approve_request(
             request_id, None, provider, inbox.folder_id, library.folder_id

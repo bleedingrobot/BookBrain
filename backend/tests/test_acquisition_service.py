@@ -542,13 +542,37 @@ async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
     assert called is False
 
 
-async def test_autoget_nothing_to_get(db_session, monkeypatch, _autoget_idle):
+async def test_autoget_refills_the_queue_when_nothing_is_ready(db_session, monkeypatch, _autoget_idle):
     db_session.add(
         AcquisitionCandidate(
             request_id="weak", request_title="weak", status=AcquisitionStatus.pending,
-            candidate_full="!Bsk weak.epub", score=0.8,  # below the auto bar
+            candidate_full="!Bsk weak.epub", score=0.8,  # below the auto-get bar
         )
     )
     await db_session.commit()
+
+    seen = {}
+
+    async def fake_refresh(provider, folder, *, limit=None, job=None):
+        seen["limit"] = limit
+        return {"targets": 20, "outstanding": 15, "searched": limit, "withCandidates": 3}
+
+    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
+
+    async def no_approve(*a):
+        raise AssertionError("should not download when nothing scores >= 0.9")
+
+    monkeypatch.setattr(svc, "approve_request", no_approve)
+
+    out = await svc.autoget_tick()
+    assert seen["limit"] == 5
+    assert out == {"searched": 5, "found": 3, "outstanding": 15}
+
+
+async def test_autoget_nothing_at_all(db_session, monkeypatch, _autoget_idle):
+    async def fake_refresh(provider, folder, *, limit=None, job=None):
+        return {"targets": 0, "outstanding": 0, "searched": 0, "withCandidates": 0}
+
+    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
     out = await svc.autoget_tick()
     assert out == {"skipped": "nothing to get"}

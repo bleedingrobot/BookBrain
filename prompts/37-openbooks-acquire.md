@@ -37,8 +37,11 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   every 60s downloads the single highest-`score` `pending` row **≥ 0.9**, but
   only when idle (OpenBooks up + `openbooks_service.is_busy()` false + no scan
   + no refresh job). A failed row's `resolved_at` is stamped so it isn't
-  re-hit for 15 min. `PUT /api/acquire/autoget` toggles it and re-syncs the
-  APScheduler `IntervalTrigger` job.
+  re-hit for 15 min. **When the queue has nothing ready** it instead searches
+  `_AUTOGET_SEARCH_BATCH = 5` more targets to refill it — the loop then
+  alternates search-batch / download / download… on its own. `PUT
+  /api/acquire/autoget` toggles it and re-syncs the APScheduler
+  `IntervalTrigger` job.
 - `list_requests` calls **`_prune_now_in_library`** first: an `approved` row
   whose title+author now matches an organised book is deleted (self-cleans the
   want-to-read / list rows; wishlist rows also drop once the viewer reconciles

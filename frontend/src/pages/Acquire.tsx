@@ -236,7 +236,8 @@ function OpenRequests() {
           disabled={setAutoGet.isPending || autoGet.isLoading}
           onChange={(e) => setAutoGet.mutate(e.target.checked)}
         />
-        Auto-get — download one confident book a minute while nothing else is running
+        Auto-get — download one confident book a minute while idle (and search 5 more when the
+        queue runs dry)
         {autoGet.data?.enabled && <span className="text-emerald-600">· on</span>}
       </label>
 
