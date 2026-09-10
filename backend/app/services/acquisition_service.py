@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -388,6 +389,7 @@ async def refresh_candidates(
     targets = await _gather_targets(provider, library_folder_id)
 
     async with async_session_factory() as session:
+        await _dedupe_candidates(session)
         existing = {
             r.request_id: r
             for r in (await session.execute(select(AcquisitionCandidate))).scalars()
@@ -563,6 +565,57 @@ async def _prune_now_in_library(session: AsyncSession) -> int:
     return pruned
 
 
+# Which row in a duplicate group we fold onto the keeper: best status first,
+# then best score, then the freshest search (highest id).
+_DEDUPE_STATUS_RANK = {
+    AcquisitionStatus.approved: 0,
+    AcquisitionStatus.skipped: 1,
+    AcquisitionStatus.pending: 2,
+    AcquisitionStatus.failed: 3,
+    AcquisitionStatus.no_match: 4,
+}
+_DEDUPE_CARRY_FIELDS = (
+    "status", "candidate_full", "candidate_title", "candidate_author",
+    "candidate_format", "candidate_size", "candidate_server", "score",
+    "alternatives_json", "message", "resolved_at",
+)
+
+
+async def _dedupe_candidates(session: AsyncSession) -> int:
+    """One book can be on the wishlist AND the Hardcover want-to-read AND a
+    curated list — three `request_id`s, three candidate rows, so auto-get
+    wastes a retry on each copy and the panel counts are inflated. Collapse
+    each book (normalised title+author) to one row: keep a wishlist row if the
+    group has one (its id drives the wishlist `sourced` flip), else the
+    oldest, and fold the best status + candidate from the group onto it."""
+    rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
+    groups: dict[str, list[AcquisitionCandidate]] = defaultdict(list)
+    for row in rows:
+        groups[_owned_key(row.request_title, row.request_author)].append(row)
+
+    removed = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda r: (0 if (r.source or "wishlist") == "wishlist" else 1, r.id))
+        keeper = group[0]
+        best = min(
+            group,
+            key=lambda r: (_DEDUPE_STATUS_RANK.get(r.status, 9), -(r.score or 0.0), -r.id),
+        )
+        if best is not keeper:
+            for name in _DEDUPE_CARRY_FIELDS:
+                setattr(keeper, name, getattr(best, name))
+        for row in group:
+            if row is not keeper:
+                await session.delete(row)
+                removed += 1
+    if removed:
+        await session.commit()
+        logger.info("acquire: merged %d duplicate candidate row(s) by book", removed)
+    return removed
+
+
 def _row_candidates(row: AcquisitionCandidate) -> list[BookResult]:
     out: list[BookResult] = []
     if row.candidate_full:
@@ -639,6 +692,7 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
     by_id = {i["id"]: i for i in wl.items if i.get("id")}
 
     async with async_session_factory() as session:
+        await _dedupe_candidates(session)
         await _prune_now_in_library(session)
         await _rerank_existing(session)
         rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
@@ -894,6 +948,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
 
     cutoff = datetime.now(UTC) - _AUTOGET_RETRY_AFTER
     async with async_session_factory() as session:
+        await _dedupe_candidates(session)
         # `pending` rows first, then `failed` ones to retry (a fresh
         # re-search below gets them a new command / working server).
         status_rank = case(

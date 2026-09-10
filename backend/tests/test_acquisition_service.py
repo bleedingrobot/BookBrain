@@ -435,6 +435,49 @@ async def test_list_requests_reranks_a_stub_pick_to_a_real_alternative(db_sessio
     assert row.candidate["server"] == "Bsk"
 
 
+async def test_dedupe_collapses_a_book_on_two_sources_onto_the_wishlist_row(db_session):
+    # Same book from the wishlist (no_match) and want-to-read (pending w/ a
+    # candidate). One row survives — the wishlist one — carrying the pending
+    # candidate.
+    db_session.add_all([
+        AcquisitionCandidate(
+            request_id="wish-1", source="wishlist",
+            request_title="The Collapsing Empire", request_author="John Scalzi",
+            status=AcquisitionStatus.no_match,
+        ),
+        AcquisitionCandidate(
+            request_id="wtr:the collapsing empire|john scalzi", source="want_to_read",
+            request_title="The Collapsing Empire", request_author="John Scalzi",
+            status=AcquisitionStatus.pending, score=0.97,
+            candidate_full="!Bsk John Scalzi - The Collapsing Empire.epub",
+            candidate_title="The Collapsing Empire", candidate_server="Bsk",
+            candidate_size="1.1MB",
+        ),
+    ])
+    await db_session.commit()
+
+    removed = await svc._dedupe_candidates(db_session)
+    assert removed == 1
+
+    rows = list((await db_session.execute(select(AcquisitionCandidate))).scalars())
+    assert len(rows) == 1
+    assert rows[0].request_id == "wish-1"                     # wishlist id kept
+    assert rows[0].status == AcquisitionStatus.pending        # best status folded on
+    assert rows[0].candidate_server == "Bsk"
+
+
+async def test_dedupe_leaves_distinct_books_alone(db_session):
+    db_session.add_all([
+        AcquisitionCandidate(request_id="a", request_title="Departure", request_author="A G Riddle",
+                             status=AcquisitionStatus.failed),
+        AcquisitionCandidate(request_id="b", request_title="Sepulchre", request_author="Kate Mosse",
+                             status=AcquisitionStatus.failed),
+    ])
+    await db_session.commit()
+    assert await svc._dedupe_candidates(db_session) == 0
+    assert len(list((await db_session.execute(select(AcquisitionCandidate))).scalars())) == 2
+
+
 # --- auto-get ---------------------------------------------------------
 
 
