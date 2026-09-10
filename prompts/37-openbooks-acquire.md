@@ -42,9 +42,10 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   tick picks the next `_gather_targets` book that's **due** (no row yet, or its
   backoff elapsed), **searches OpenBooks for it right then** and downloads the
   best EPUB **≥ 0.9** immediately — the `!server file` command is always
-  seconds old. On a *validation* failure (stub / corrupt) it tries the next
-  candidate, up to `_AUTOGET_INTICK_TRIES = 3`; on a *transient* failure (75s
-  no-deliver, dead server) it stops and lets the backoff carry it. Backoff:
+  seconds old. It tries up to `_AUTOGET_INTICK_TRIES = 3` candidates in a tick,
+  **one per distinct server** so a retry always lands elsewhere — but stops
+  after `_AUTOGET_INTICK_TIMEOUT_TRIES = 2` of them are 75s no-delivers.
+  Backoff:
   `_AUTOGET_RETRY_AFTER = 30 min`, then `_AUTOGET_STUBBORN_BACKOFF = 6 h` once
   a book's been failing `> _AUTOGET_STUBBORN_AFTER = 2 h` (measured by row
   `created_at` — no schema change), `_AUTOGET_NOMATCH_BACKOFF = 7 days` for a
@@ -57,6 +58,18 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   refill and the `_AUTOGET_RESEARCH_AFTER` staleness re-search (both moot —
   every tick searches fresh). `PUT /api/acquire/autoget` toggles it and
   re-syncs the APScheduler `IntervalTrigger` job.
+- **Server rotation** (2026-09-11): for a clean retail match every #ebook
+  server scores identically, so a plain sort always took whichever OpenBooks
+  listed first — ~90% went to `Bsk`, which then rate-limited our (fixed) nick
+  into 75s timeouts. `_server_demerits(session)` counts each server's download
+  timeouts (`message LIKE '…didn't deliver the file within…'`) in the last
+  `_SERVER_DEMERIT_WINDOW = 2 h` and docks its score in `_rank` by
+  `_SERVER_DEMERIT_STEP = 0.06`/timeout up to `_SERVER_DEMERIT_CAP = 0.25`, so
+  ranking rotates to Oatmeal / Ook / Pondering-Ebooks2 / TrainFiles. `_rank`
+  also breaks exact-score ties with a deterministic per-`full` `crc32` jitter
+  (stable per book) instead of input order. Threaded through
+  `refresh_candidates`, `_rerank_existing`, `autoget_tick`. The demerit decays
+  as timeouts age out of the window — a server that recovers comes back.
 - `list_requests` calls **`_dedupe_candidates`** (one book on wishlist +
   want-to-read + a list → one row, keeping the wishlist id) then
   **`_prune_now_in_library`**: an `approved` row whose title+author now matches

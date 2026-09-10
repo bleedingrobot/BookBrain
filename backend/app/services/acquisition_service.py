@@ -25,11 +25,12 @@ import json
 import logging
 import re
 import uuid
+import zlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.db import async_session_factory
@@ -62,12 +63,17 @@ _SEARCH_SPACING_SECONDS = 11.0  # OpenBooks enforces >=10s between searches serv
 # --------------------------------------------------------------------------
 
 
-def score_candidate(req_title: str, req_author: str | None, cand: BookResult) -> float:
+def score_candidate(
+    req_title: str, req_author: str | None, cand: BookResult, *, demerit: float = 0.0
+) -> float:
     """0..1-ish confidence that `cand` is `req_title`/`req_author`.
 
     OpenBooks' result parser routinely swaps the author and title fields and
     sometimes only the raw `full` (`!server Author - Title.epub`) is right, so
-    every field is treated as a haystack and both orientations are tried."""
+    every field is treated as a haystack and both orientations are tried.
+
+    `demerit` (0..~0.25) knocks down a server that's been timing out on us
+    lately (see `_server_demerits`) so ranking rotates off it."""
     rt = normalize_title(req_title)
     if not rt:
         return 0.0
@@ -109,6 +115,8 @@ def score_candidate(req_title: str, req_author: str | None, cand: BookResult) ->
     elif sz > 60_000_000:
         score -= 0.1  # implausibly large for an epub — usually mislabeled
 
+    score -= demerit  # a server that keeps timing out on us
+
     return round(max(0.0, min(1.0, score)), 4)
 
 
@@ -133,7 +141,14 @@ def _size_bytes(size: str | None) -> int | None:
         return None
 
 
-def _rank(req_title: str, req_author: str | None, results: list[BookResult]) -> list[tuple[float, BookResult]]:
+def _rank(
+    req_title: str,
+    req_author: str | None,
+    results: list[BookResult],
+    *,
+    demerits: dict[str, float] | None = None,
+) -> list[tuple[float, BookResult]]:
+    demerits = demerits or {}
     seen: set[str] = set()
     ranked: list[tuple[float, BookResult]] = []
     for cand in results:
@@ -142,11 +157,56 @@ def _rank(req_title: str, req_author: str | None, results: list[BookResult]) -> 
         if cand.full in seen:
             continue
         seen.add(cand.full)
-        s = score_candidate(req_title, req_author, cand)
+        s = score_candidate(
+            req_title, req_author, cand,
+            demerit=demerits.get((cand.server or "").lower(), 0.0),
+        )
         if s >= _MIN_SCORE:
             ranked.append((s, cand))
-    ranked.sort(key=lambda x: x[0], reverse=True)
+    # A deterministic per-candidate tiebreak: for a clean retail match every
+    # server scores identically, and a plain sort then always picks whichever
+    # one OpenBooks listed first — which sent ~90% of our downloads to a single
+    # server and got our nick rate-limited. This spreads ties across servers
+    # (stable per `full`, so a given book's pick doesn't flap).
+    ranked.sort(
+        key=lambda sb: (sb[0], zlib.crc32(sb[1].full.encode()) % 1000 / 1_000_000.0),
+        reverse=True,
+    )
     return ranked
+
+
+# A #ebook book bot rate-limits DCC requests from one nick; OpenBooks uses a
+# fixed nick, so after enough requests to a server it just stops answering us
+# (75s timeout). Count recent timeouts per server and dock that server's score
+# so ranking rotates to the ones that are still delivering. The window is
+# short so a server recovers on its own once we stop hammering it.
+_SERVER_DEMERIT_WINDOW = timedelta(hours=2)
+_SERVER_DEMERIT_STEP = 0.06  # per recent timeout
+_SERVER_DEMERIT_CAP = 0.25
+_DOWNLOAD_TIMEOUT_MARKER = "didn't deliver the file within"
+
+
+async def _server_demerits(session: AsyncSession) -> dict[str, float]:
+    """{server_lower: penalty} from download timeouts in the last couple of
+    hours — feed to `_rank(..., demerits=)`."""
+    since = datetime.now(UTC).replace(tzinfo=None) - _SERVER_DEMERIT_WINDOW
+    rows = (
+        await session.execute(
+            select(AcquisitionCandidate.candidate_server, func.count())
+            .where(
+                AcquisitionCandidate.status == AcquisitionStatus.failed,
+                AcquisitionCandidate.candidate_server.is_not(None),
+                AcquisitionCandidate.message.like(f"%{_DOWNLOAD_TIMEOUT_MARKER}%"),
+                AcquisitionCandidate.updated_at >= since,
+            )
+            .group_by(AcquisitionCandidate.candidate_server)
+        )
+    ).all()
+    return {
+        srv.lower(): min(_SERVER_DEMERIT_CAP, n * _SERVER_DEMERIT_STEP)
+        for srv, n in rows
+        if srv
+    }
 
 
 def _cand_dict(score: float, b: BookResult) -> dict:
@@ -411,6 +471,7 @@ async def refresh_candidates(
 
     async with async_session_factory() as session:
         await _dedupe_candidates(session)
+        demerits = await _server_demerits(session)
         existing = {
             r.request_id: r
             for r in (await session.execute(select(AcquisitionCandidate))).scalars()
@@ -450,7 +511,7 @@ async def refresh_candidates(
                 job.detail = f"search failed: {exc}"
             break
         searched += 1
-        ranked = _rank(item["title"], item.get("author"), results)
+        ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
         async with async_session_factory() as session:
             hit = await _upsert(session, item, ranked)
             await session.commit()
@@ -670,6 +731,7 @@ async def _rerank_existing(session: AsyncSession) -> int:
     with the current `score_candidate` and promote a better pick if the
     ranking changed — so a scoring tweak (e.g. dropping stub-sized files)
     applies to the queue without a fresh OpenBooks search."""
+    demerits = await _server_demerits(session)
     rows = (
         await session.execute(
             select(AcquisitionCandidate).where(
@@ -684,7 +746,7 @@ async def _rerank_existing(session: AsyncSession) -> int:
         cands = _row_candidates(row)
         if not cands:
             continue
-        ranked = _rank(row.request_title, row.request_author, cands)
+        ranked = _rank(row.request_title, row.request_author, cands, demerits=demerits)
         if not ranked:
             continue
         best_score, best = ranked[0]
@@ -900,7 +962,8 @@ async def reset_request(request_id: str) -> None:
 
 _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
 _AUTOSCAN_INBOX_THRESHOLD = 20  # kick a scan once auto-get has piled up this many
-_AUTOGET_INTICK_TRIES = 3  # candidates to try in one tick (only on a validation fail)
+_AUTOGET_INTICK_TRIES = 3  # servers to try in one tick before giving up for now
+_AUTOGET_INTICK_TIMEOUT_TRIES = 2  # ... but stop after this many 75s timeouts
 # Backoff before auto-get re-attempts a book. A fresh search + download every
 # tick means nothing sits around going stale — but a book the sources won't
 # deliver shouldn't be hammered, so it cools down between tries, longer once
@@ -1011,6 +1074,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     now = datetime.now(UTC)
     async with async_session_factory() as session:
         await _dedupe_candidates(session)
+        demerits = await _server_demerits(session)
         rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
     by_id = {r.request_id: r for r in rows}
     by_key: dict[str, AcquisitionCandidate] = {}
@@ -1053,7 +1117,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
         logger.warning("acquire: auto-get search failed for %r: %s", title, exc)
         return {"skipped": "search failed", "error": str(exc)}
 
-    ranked = _rank(title, item.get("author"), results)
+    ranked = _rank(title, item.get("author"), results, demerits=demerits)
     async with async_session_factory() as session:
         await _upsert(session, item, ranked, preserve_existing=True)
         await session.commit()
@@ -1069,7 +1133,14 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
             return {"no_match": title}
         return {"skipped": "re-search found nothing; kept the prior match", "title": title}
 
-    attempts = [(s, c) for s, c in ranked if s >= _AUTOGET_MIN_SCORE][:_AUTOGET_INTICK_TRIES]
+    # One attempt per distinct server (best-scoring for that server), so an
+    # in-tick retry always lands on a *different* server — the whole point.
+    by_server: dict[str, tuple[float, BookResult]] = {}
+    for s, c in ranked:
+        if s < _AUTOGET_MIN_SCORE:
+            continue
+        by_server.setdefault((c.server or "").lower(), (s, c))
+    attempts = sorted(by_server.values(), key=lambda x: -x[0])[:_AUTOGET_INTICK_TRIES]
     if not attempts:
         # There's an EPUB but nothing confident enough — leave it in the panel
         # for James, and back it off so we don't re-search it every tick.
@@ -1084,16 +1155,21 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
         return {"skipped": "no confident match", "title": title, "score": best}
 
     last_exc: Exception | None = None
+    timeouts = 0
     for i, (_score, cand) in enumerate(attempts, start=1):
         try:
             result = await approve_request(rid, cand.full, provider, inbox.folder_id, library.folder_id)
-            logger.info("acquire: auto-got %r (%s)", title, result.get("filename"))
-            return {"got": title, "filename": result.get("filename"), "tries": i}
+            logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), cand.server)
+            return {"got": title, "filename": result.get("filename"), "tries": i, "server": cand.server}
         except OpenBooksError as exc:
             last_exc = exc
             if _is_transient_download_error(exc):
-                break  # dead / slow source — try again after the backoff
-            logger.info("acquire: auto-get — %r candidate %d didn't validate (%s), next", title, i, exc)
+                timeouts += 1
+                logger.info("acquire: auto-get — %r timed out on %s (%d)", title, cand.server, timeouts)
+                if timeouts >= _AUTOGET_INTICK_TIMEOUT_TRIES:
+                    break  # two dead servers is enough — let the backoff carry it
+            else:
+                logger.info("acquire: auto-get — %r didn't validate on %s (%s)", title, cand.server, exc)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             break

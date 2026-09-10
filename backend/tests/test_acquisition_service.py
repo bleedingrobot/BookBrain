@@ -776,7 +776,33 @@ async def test_autoget_tries_an_alternative_when_the_top_pick_fails_validation(d
     assert out["tries"] == 2
 
 
-async def test_autoget_stops_after_a_transient_download_error(db_session, monkeypatch, _autoget_idle):
+async def test_autoget_stops_after_two_transient_download_errors(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    async def fake_search_one(item):
+        return [
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk a.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal b.epub"),
+            _book("Departure", "A G Riddle", server="Ook", size="700KB", full="!Ook c.epub"),
+        ]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    calls = []
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        calls.append(full)
+        raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert len(calls) == 2                     # tried a 2nd server, gave up before a 3rd
+    assert len(set(calls)) == 2                # two different servers
+    assert out["failed"] == "Departure"
+
+
+async def test_autoget_rotates_to_a_second_server_after_a_timeout(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
 
     async def fake_search_one(item):
@@ -787,17 +813,37 @@ async def test_autoget_stops_after_a_transient_download_error(db_session, monkey
 
     monkeypatch.setattr(svc, "_search_one", fake_search_one)
 
-    calls = []
-
     async def fake_approve(request_id, full, provider, inbox, library):
-        calls.append(full)
-        raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s (the source server ...)")
+        if full == "!Bsk a.epub":
+            raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+        return {"filename": "d.epub"}
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert calls == ["!Bsk a.epub"]
-    assert out["failed"] == "Departure"
+    assert out["got"] == "Departure"
+    assert out["server"] == "Oatmeal"
+
+
+async def test_rank_demotes_a_server_that_keeps_timing_out(db_session):
+    bsk = _book("The Core", "Peter V Brett", server="Bsk", size="2MB", full="!Bsk core.epub")
+    oat = _book("The Core", "Peter V Brett", server="Oatmeal", size="2MB", full="!Oatmeal core.epub")
+    ranked = svc._rank("The Core", "Peter V Brett", [bsk, oat], demerits={"bsk": 0.25})
+    assert ranked[0][1].server == "Oatmeal"
+
+
+async def test_server_demerits_counts_recent_download_timeouts(db_session):
+    db_session.add_all([
+        AcquisitionCandidate(request_id="a", request_title="A", status=AcquisitionStatus.failed,
+                             candidate_server="Bsk", message="OpenBooks didn't deliver the file within 75s"),
+        AcquisitionCandidate(request_id="b", request_title="B", status=AcquisitionStatus.failed,
+                             candidate_server="Bsk", message="OpenBooks didn't deliver the file within 75s"),
+        AcquisitionCandidate(request_id="c", request_title="C", status=AcquisitionStatus.failed,
+                             candidate_server="Oatmeal", message="the downloaded .epub is corrupt"),
+    ])
+    await db_session.commit()
+    d = await svc._server_demerits(db_session)
+    assert d == {"bsk": 2 * svc._SERVER_DEMERIT_STEP}
 
 
 async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
