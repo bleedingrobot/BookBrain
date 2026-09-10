@@ -80,6 +80,34 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   It also suppresses the synthetic `unsearched` row for a wishlist book that
   already has a candidate row under another id.
 
+### Hands-off pipeline (2026-09-11)
+
+James: "quality's so good it can just scan, delete duplicates and auto-organise
+whatever's there."
+
+- **Auto-trash duplicates** — `ScanService._auto_trash_duplicates` runs after
+  every scan's detection pass. `AUTO_TRASH_DUPLICATES` setting: `off` |
+  `exact` (byte-identical re-uploads — `clear_duplicates`, default) | `all`
+  (also `clear_same_book_duplicates`, different editions of one identified
+  book, keeps the best `quality_score`). Drive-Trash, recoverable 30 days.
+- **Tunable auto-organize bar** — `confidence_auto_flagged` is now a DB
+  setting (`CONFIDENCE_AUTO_FLAGGED`), overlaid on the config default by
+  `scan_service._settings_with_overrides` via `Settings.model_copy` so the
+  existing `settings.confidence_auto_flagged` read at the routing gate picks
+  it up with no signature changes. Lower it to push more of the review queue
+  straight into the library — genuine failures (no `book_id`) never
+  auto-organize regardless.
+- **Releasing the queue** — `_auto_organize` first calls
+  `_reroute_now_eligible_review(bar)`: `review` rows parked *only* for
+  `low_confidence` whose latest `AIDecision.computed_confidence >= bar` flip
+  back to `inbox` so the same pass organizes them. Other reasons untouched.
+- **Eager scan** — auto-get `_AUTOSCAN_INBOX_THRESHOLD` 20 → 8, and it kicks
+  a scan on any idle tick where the inbox isn't empty.
+- `GET/PUT /api/settings/organize` carries `auto_organize_min_confidence` +
+  `auto_trash_duplicates` alongside dry-run / hold-hours; Settings page has
+  both controls. `tools/run-backend-verbose.py` runs uvicorn with root
+  logging so `apscheduler` / `app.*` INFO lines are visible.
+
 `GET /api/acquire/suggestions` still exists (reads the two sidecars raw,
 read-only) but the frontend `<Suggestions>` browse was removed — the batch
 queue covers it. `AcquisitionCandidate.source` column (migration
