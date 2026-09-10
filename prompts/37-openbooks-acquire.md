@@ -15,22 +15,20 @@ wishlist. One book at a time, operator in the loop.
 
 ## Running it
 
-OpenBooks runs as a **separate local process**:
-
-```
-backend/tools/run-openbooks.ps1
-```
-
 - `openbooks.exe` is gitignored — download once from
   https://github.com/evan-buss/openbooks/releases (the `openbooks.exe` asset)
   into `backend/tools/`.
-- The script runs `openbooks server --port 5228 --persist --no-browser-downloads
-  --dir backend/tools/openbooks-dl` (also gitignored).
+- `backend/.env`: `OPENBOOKS_ENABLED=true` (default false), plus
+  `OPENBOOKS_WS_URL` / `OPENBOOKS_DOWNLOAD_DIR` / `OPENBOOKS_BINARY` if you
+  want to override the defaults.
+- The **Find a Book page has a Start/Stop button** — it spawns
+  `openbooks.exe server --port 5228 --persist --no-browser-downloads --dir
+  <OPENBOOKS_DOWNLOAD_DIR>` (the same command as
+  `backend/tools/run-openbooks.ps1`, which is still there if you'd rather run
+  it by hand). A clean backend shutdown stops a server it started.
 - **Don't open the OpenBooks web UI** (`http://localhost:5228`) while BookBrain
   is using it — the server allows exactly one WebSocket client and BookBrain
   holds it.
-- `backend/.env`: `OPENBOOKS_ENABLED=true`, `OPENBOOKS_WS_URL`,
-  `OPENBOOKS_DOWNLOAD_DIR` (must match the script's `--dir`).
 
 When OpenBooks isn't running the "Find a Book" page still loads and search
 returns a clean "can't reach OpenBooks" error.
@@ -39,6 +37,12 @@ returns a clean "can't reach OpenBooks" error.
 
 ### Backend
 
+- `app/services/openbooks_process_service.py` — Start/Stop the OpenBooks
+  server as a child process. `start()` spawns it and waits for the port,
+  `stop()` terminates the child (or kills an orphan holding the port via
+  `netstat` + `taskkill`), `status()` → `{installed, running, managed, pid}`,
+  `shutdown()` (lifespan) only ever touches a child we started. Endpoints
+  `GET/POST /api/acquire/server{,/start,/stop}`.
 - `app/services/openbooks_service.py` — one cached, lock-serialised
   `websockets` client. Protocol (from `server/messages.go`): request
   `{"type": N, "payload": {...}}` — CONNECT=1, SEARCH=2, DOWNLOAD=3; the
@@ -63,10 +67,11 @@ returns a clean "can't reach OpenBooks" error.
 
 ### Frontend
 
-- `src/pages/Acquire.tsx` — route `/acquire`, nav "Find a Book". Search box,
-  "EPUB only" toggle + free-text filter, results table sorted by preferred
-  format, per-row "Get" button with inline progress/result. Disabled-state
-  card when `status.enabled` is false.
+- `src/pages/Acquire.tsx` — route `/acquire`, nav "Find a Book". A
+  `<ServerControl>` strip (●/○ status + Start/Stop, polled), then the search
+  box, "EPUB only" toggle + free-text filter, results table sorted by
+  preferred format, per-row "Get" button with inline progress/result.
+  Disabled-state card when `status.enabled` is false.
 - `src/types/acquire.ts`, `api.ts` (`acquireStatus` / `acquireSearch` /
   `acquireDownload`).
 

@@ -132,10 +132,11 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   **Shipped 2026-09-10** — `openbooks_service` (single lock-serialised WS
   client), `acquire_service` (validate + upload + clean up), `GET/POST
   /api/acquire/{status,search,download}`, `frontend` "Find a Book" page,
-  `backend/tools/run-openbooks.ps1`. Off unless `OPENBOOKS_ENABLED=true`.
-  Admin-only, never in the family viewer. Live-verified: search + download +
-  valid EPUB on disk; the inbox upload path is unit-tested (needs Drive creds
-  to run live).
+  `backend/tools/run-openbooks.ps1` + a Start/Stop button on the page that
+  launches it (`openbooks_process_service`). Off unless
+  `OPENBOOKS_ENABLED=true`. Admin-only, never in the family viewer.
+  Browser-verified (screenshot): server strip + search + results table. Inbox
+  upload path is unit-tested (needs Drive creds to run live).
 
 ## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
 
