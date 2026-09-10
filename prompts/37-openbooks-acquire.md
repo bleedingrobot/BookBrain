@@ -42,7 +42,10 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   alternates search-batch / download / download… on its own. **When the inbox
   hits `_AUTOSCAN_INBOX_THRESHOLD = 20`** it fire-and-forgets a scan so
   auto-got books don't pile up unscanned until the nightly (the next tick's
-  `has_running_job()` guard pauses auto-get until it's done). `PUT
+  `has_running_job()` guard pauses auto-get until it's done). **A candidate
+  older than `_AUTOGET_RESEARCH_AFTER = 90 min` is re-searched first** — a
+  `!server file` string found at 2am often won't transfer at 8am (bot cycled
+  offline, file renamed, our nick on the server's DCC cooldown). `PUT
   /api/acquire/autoget` toggles it and re-syncs the APScheduler
   `IntervalTrigger` job.
 - `list_requests` calls **`_prune_now_in_library`** first: an `approved` row

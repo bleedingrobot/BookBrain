@@ -612,3 +612,46 @@ async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypa
 
     assert out == {"scan_started": 20}
     assert _autoget_idle["ScanSvc"].scans == ["scan-1"]
+
+
+async def test_autoget_researches_a_stale_command_before_downloading(db_session, monkeypatch, _autoget_idle):
+    import datetime as _dt
+
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=3)
+    row = AcquisitionCandidate(
+        request_id="wtr:x", source="want_to_read",
+        request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.pending, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub",
+        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.updated_at = old
+    await db_session.commit()
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        # approve_request reads the row's (now refreshed) candidate itself
+        r = (await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == request_id)
+        )).scalar_one()
+        got["server"] = r.candidate_server
+        return {"filename": "x.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert searched == ["Departure"]          # re-searched first
+    assert got["server"] == "Oatmeal"          # download used the fresh, better pick
+    assert out["got"] == "Departure"

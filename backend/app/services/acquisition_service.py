@@ -822,6 +822,11 @@ _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent sourc
 _AUTOGET_RETRY_AFTER = timedelta(minutes=15)  # don't re-hit a just-failed row
 _AUTOGET_SEARCH_BATCH = 5  # when the queue's dry, search this many to refill it
 _AUTOSCAN_INBOX_THRESHOLD = 20  # kick a scan once auto-get has piled up this many
+# A `!server file` command found hours ago can go stale — the bot cycles
+# offline, the file's renamed, our nick lands on its download cooldown. Before
+# auto-get downloads one older than this, re-run its search for a fresh
+# command + the currently-best server.
+_AUTOGET_RESEARCH_AFTER = timedelta(minutes=90)
 
 
 async def _run_autoscan(scan_svc, job_id: str, creds, inbox_folder_id: str) -> None:
@@ -835,8 +840,8 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     """One iteration of the auto-get loop (the scheduler calls this every
     ~60s). While everything's idle: kicks a scan if the inbox has piled up
     (>= 20), else downloads the single highest-confidence `pending`
-    candidate, else searches a few more targets to refill the queue. Never
-    raises."""
+    candidate (re-searching it first if the command is > 90 min old), else
+    searches a few more targets to refill the queue. Never raises."""
     from app.core.config import get_settings
     from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
     from app.data.repositories.settings_repository import SettingsRepository
@@ -920,6 +925,36 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
         return {"searched": r["searched"], "found": r["withCandidates"], "outstanding": r["outstanding"]}
 
     request_id, title = row.request_id, row.request_title
+
+    # Freshen a stale command before downloading it.
+    updated = row.updated_at
+    if updated is not None and updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    if updated is not None and datetime.now(UTC) - updated > _AUTOGET_RESEARCH_AFTER:
+        item = {
+            "request_id": request_id,
+            "source": row.source or "wishlist",
+            "title": row.request_title,
+            "author": row.request_author,
+        }
+        try:
+            ranked = _rank(item["title"], item.get("author"), await _search_one(item))
+            async with async_session_factory() as session:
+                await _upsert(session, item, ranked)
+                await session.commit()
+                row = (
+                    await session.execute(
+                        select(AcquisitionCandidate).where(
+                            AcquisitionCandidate.request_id == request_id
+                        )
+                    )
+                ).scalar_one_or_none()
+        except OpenBooksError as exc:
+            logger.warning("acquire: auto-get re-search failed for %r: %s", title, exc)
+            return {"skipped": "re-search failed", "error": str(exc)}
+        if row is None or row.status != AcquisitionStatus.pending or not row.candidate_full:
+            return {"skipped": "re-search found no candidate", "title": title}
+
     try:
         result = await approve_request(
             request_id, None, provider, inbox.folder_id, library.folder_id
