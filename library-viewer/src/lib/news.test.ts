@@ -8,13 +8,32 @@ import {
   timeAgo,
 } from './news'
 
+const store = vi.hoisted(() => ({ file: null as { content: unknown; modifiedTime: string } | null, writes: 0 }))
 const driveMock = vi.hoisted(() => ({ readJsonFile: vi.fn(), writeJsonFile: vi.fn() }))
 vi.mock('./drive', () => driveMock)
 
-beforeEach(() => {
+function installDefaults() {
   driveMock.readJsonFile.mockReset()
   driveMock.writeJsonFile.mockReset()
-  driveMock.writeJsonFile.mockResolvedValue('dismissed-file')
+  driveMock.readJsonFile.mockImplementation(async () =>
+    store.file ? { id: 'dismissed-file', modifiedTime: store.file.modifiedTime, content: store.file.content } : null,
+  )
+  driveMock.writeJsonFile.mockImplementation(async (_t, _f, _n, content: unknown) => {
+    store.writes += 1
+    store.file = { content, modifiedTime: `t${store.writes}` }
+    return 'dismissed-file'
+  })
+}
+
+function seedDismissed(links: string[]) {
+  store.file = { content: { version: 1, links }, modifiedTime: 't0' }
+}
+
+beforeEach(() => {
+  store.file = null
+  store.writes = 0
+  installDefaults()
+  localStorage.clear()
 })
 
 describe('normaliseNews', () => {
@@ -54,47 +73,41 @@ describe('normaliseNews', () => {
 
 describe('dismissed articles (Drive-synced)', () => {
   it('reads the sidecar, caches it, and falls back to the cache on failure', async () => {
-    driveMock.readJsonFile.mockResolvedValue({
-      id: 'dismissed-file',
-      modifiedTime: 't',
-      content: { version: 1, links: ['https://x.example/a', 5, 'https://x.example/b'] },
-    })
+    seedDismissed(['https://x.example/a', 5 as unknown as string, 'https://x.example/b'])
     const d = await dismissedNewsSynced('tok', 'lib')
     expect(d).toEqual(new Set(['https://x.example/a', 'https://x.example/b']))
-    expect(cachedDismissedNews()).toEqual(d) // cached
+    expect(cachedDismissedNews()).toEqual(d)
 
     driveMock.readJsonFile.mockRejectedValue(new Error('offline'))
     expect(await dismissedNewsSynced('tok', 'lib')).toEqual(d) // from cache
   })
 
-  it('merges a dismissal with the sidecar and writes it back', async () => {
-    driveMock.readJsonFile.mockResolvedValue({
-      id: 'dismissed-file',
-      modifiedTime: 't',
-      content: { version: 1, links: ['https://from-other-device'] },
-    })
+  it('merges a dismissal with the sidecar and the caller set, and writes it back', async () => {
+    seedDismissed(['https://from-other-device'])
     const d = await dismissNewsItem('tok', 'lib', 'https://new', new Set(['https://local']))
     expect(d).toEqual(new Set(['https://from-other-device', 'https://local', 'https://new']))
-    const body = driveMock.writeJsonFile.mock.calls.at(-1)![3] as { links: string[] }
+    const body = store.file!.content as { links: string[] }
     expect(new Set(body.links)).toEqual(d)
   })
 
   it('prunes links no longer in any feed and writes the smaller set', async () => {
-    driveMock.readJsonFile.mockResolvedValue({ id: 'dismissed-file', modifiedTime: 't', content: {} })
+    seedDismissed(['https://x.example/here', 'https://x.example/gone'])
     const current = new Set(['https://x.example/here', 'https://x.example/gone'])
     const next = await pruneDismissedNews('tok', 'lib', current, [
       'https://x.example/here',
       'https://x.example/other',
     ])
     expect(next).toEqual(new Set(['https://x.example/here']))
-    expect(driveMock.writeJsonFile).toHaveBeenCalled()
+    expect((store.file!.content as { links: string[] }).links).toEqual(['https://x.example/here'])
   })
 
   it('prune is a no-op (no write) when nothing dropped', async () => {
+    seedDismissed(['https://x.example/here'])
+    store.writes = 0
     const current = new Set(['https://x.example/here'])
     const next = await pruneDismissedNews('tok', 'lib', current, ['https://x.example/here'])
     expect(next).toBe(current)
-    expect(driveMock.writeJsonFile).not.toHaveBeenCalled()
+    expect(store.writes).toBe(0)
   })
 })
 

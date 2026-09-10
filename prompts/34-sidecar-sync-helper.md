@@ -1,5 +1,32 @@
 # Task 34 — one `syncedSidecar` helper + Drive `If-Match` concurrency (REVIEW-2026-09-10 F6/F3)
 
+**PARTIALLY SHIPPED 2026-09-10.**
+
+- `lib/syncedSidecar.ts` — `makeSidecar<T>(spec)` → `{ cachedNow, fetch, sync,
+  write }`. `write` is serialised per filename (a module `chains` map) and has
+  a **concurrency guard**: after the PATCH it re-reads and, if `merge` shows
+  the server now holds something the write dropped, reconciles with one more
+  write. **Drive API v3 has no ETag/If-Match on files**, so this is a
+  join-based reconcile, not true CAS — `merge` must be a commutative
+  idempotent union. It catches a sibling write landing *after* ours (the
+  common direction) + same-tab races (the chain); the residual is two devices
+  each completing a full read→write inside the other's ~1s window. Documented
+  in the file header.
+- Migrated (RMW, the F3 risk): **`readingQueue.ts`** (F3's named victim — a
+  lost "mark read"), **`readNextSnooze.ts`**, **`news.ts` dismiss trio**. Each
+  lost its bespoke `writeChain` / cache read-write / `*Synced` seed logic.
+  `syncedSidecar.test.ts` + the three modules' tests rewritten around a
+  stateful drive mock (incl. a "sibling clobber is recovered" case).
+- **Not migrated** (deliberately — append-style, a lost line is tolerable per
+  this doc's own note; no active bug): `wishlist.ts`, `activityLog.ts`,
+  `koboDeviceSync.ts`. **Read-only, mechanical, deferred**: `newReleases.ts`,
+  `reading.ts`, `prompts.ts`, `lists.ts`, `recommendations.ts`,
+  `news.ts:fetchNews`, `libraryIndex.ts`. `readJsonFile`/`writeJsonFile` are
+  unchanged (no `etag`).
+
+197 viewer tests + build + lint green.
+
+
 Read `prompts/README.md`. `library-viewer`-only; ships on push to `main`.
 Mostly structural — the one real behaviour change is F3 (optimistic
 concurrency). No backend change.
