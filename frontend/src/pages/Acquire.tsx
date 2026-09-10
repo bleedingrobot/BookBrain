@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../services/api'
-import type { AcquireBook, OpenRequest, RequestCandidate } from '../types/acquire'
+import type { AcquireBook, AcquireSuggestion, OpenRequest, RequestCandidate } from '../types/acquire'
 
 type RowState = { status: 'idle' | 'working' | 'done' | 'error'; message?: string }
 
@@ -120,6 +120,95 @@ function RequestRow({ req }: { req: OpenRequest }) {
         )}
       </div>
     </li>
+  )
+}
+
+function SuggestionList({
+  title,
+  hint,
+  items,
+  onFind,
+}: {
+  title: string
+  hint: string
+  items: AcquireSuggestion[]
+  onFind: (query: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  if (items.length === 0) return null
+  const shown = showAll ? items : items.slice(0, 40)
+  return (
+    <div className="mt-2">
+      <button
+        className="flex w-full items-center gap-2 text-left text-sm font-medium"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+        {title} <span className="text-neutral-400">· {items.length}</span>
+      </button>
+      {open && (
+        <>
+          <p className="mt-0.5 pl-4 text-xs text-neutral-500">{hint}</p>
+          <ul className="mt-1 divide-y divide-neutral-100 pl-4 dark:divide-neutral-800">
+            {shown.map((s, i) => (
+              <li key={`${s.title}-${i}`} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <span className="min-w-0">
+                  {s.title}
+                  <span className="text-neutral-500">
+                    {s.author ? ` — ${s.author}` : ''}
+                    {s.from_list ? ` · ${s.from_list}` : ''}
+                  </span>
+                </span>
+                <button
+                  className="shrink-0 rounded border border-neutral-300 px-2 py-0.5 text-xs dark:border-neutral-700"
+                  onClick={() => onFind([s.title, s.author].filter(Boolean).join(' '))}
+                >
+                  Find
+                </button>
+              </li>
+            ))}
+          </ul>
+          {items.length > 40 && !showAll && (
+            <button
+              className="mt-1 pl-4 text-xs text-neutral-400 underline"
+              onClick={() => setShowAll(true)}
+            >
+              Show all {items.length}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function Suggestions({ onFind }: { onFind: (query: string) => void }) {
+  const q = useQuery({ queryKey: ['acquire-suggestions'], queryFn: api.acquireSuggestions })
+  const want = q.data?.want_to_read ?? []
+  const lists = q.data?.from_lists ?? []
+  if (want.length === 0 && lists.length === 0) return null
+
+  return (
+    <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <h2 className="text-sm font-medium">Ideas to look for</h2>
+      <p className="mt-1 text-xs text-neutral-500">
+        Not on the Wishlist, but likely wanted — pulled from your Hardcover data. “Find” runs the
+        search below.
+      </p>
+      <SuggestionList
+        title="From your Hardcover want-to-read"
+        hint="Books you marked “want to read” on Hardcover that aren’t in the library."
+        items={want}
+        onFind={onFind}
+      />
+      <SuggestionList
+        title="From lists you’d like"
+        hint="Books on curated Hardcover lists you already part-own."
+        items={lists}
+        onFind={onFind}
+      />
+    </div>
   )
 }
 
@@ -327,9 +416,10 @@ export function Acquire() {
     })
   }, [filtered])
 
-  function runSearch() {
-    const q = query.trim()
+  function runSearch(explicit?: string) {
+    const q = (explicit ?? query).trim()
     if (!q) return
+    if (explicit !== undefined) setQuery(explicit)
     setSubmitted(q)
     setLimit(60)
     setFilter('')
@@ -371,8 +461,16 @@ export function Acquire() {
 
       <ServerControl />
       <OpenRequests />
+      <Suggestions
+        onFind={(q) => {
+          runSearch(q)
+          document.getElementById('acquire-search')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+      />
 
-      <h2 className="mt-6 text-sm font-medium">Search for anything</h2>
+      <h2 id="acquire-search" className="mt-6 text-sm font-medium">
+        Search for anything
+      </h2>
       <div className="mt-2 flex gap-2">
         <input
           className="flex-1 rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
@@ -384,7 +482,7 @@ export function Acquire() {
         <button
           className="shrink-0 rounded bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
           disabled={!query.trim() || search.isPending}
-          onClick={runSearch}
+          onClick={() => runSearch()}
         >
           {search.isPending ? 'Searching…' : 'Search'}
         </button>

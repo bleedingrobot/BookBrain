@@ -346,6 +346,41 @@ class RequestView:
     resolved_at: str | None = None
 
 
+async def list_suggestions(provider: DriveProvider, library_folder_id: str) -> dict:
+    """Books to look for that aren't on the wishlist: the owner's Hardcover
+    want-to-read that isn't owned (`bookbrain-reading.json` → `wantUnowned`)
+    and the curated-list candidates (`bookbrain-lists.json` → `candidates`).
+    Read-only, from the sidecars the viewer already writes."""
+    from app.services.library_index_service import (
+        LISTS_FILENAME,
+        READING_FILENAME,
+        _read_json_file,
+    )
+
+    reading = await asyncio.to_thread(_read_json_file, provider, library_folder_id, READING_FILENAME)
+    lists = await asyncio.to_thread(_read_json_file, provider, library_folder_id, LISTS_FILENAME)
+
+    def _clean(items: object, *, with_list: bool) -> list[dict]:
+        out: list[dict] = []
+        for i in items or []:  # type: ignore[union-attr]
+            if not isinstance(i, dict) or not isinstance(i.get("title"), str) or not i["title"].strip():
+                continue
+            entry = {
+                "title": i["title"].strip(),
+                "author": i.get("author") if isinstance(i.get("author"), str) else None,
+                "isbn13": i.get("isbn13") if isinstance(i.get("isbn13"), str) else None,
+            }
+            if with_list:
+                entry["from_list"] = i.get("fromList") if isinstance(i.get("fromList"), str) else None
+            out.append(entry)
+        return out
+
+    return {
+        "want_to_read": _clean(reading.get("wantUnowned"), with_list=False),
+        "from_lists": _clean(lists.get("candidates"), with_list=True),
+    }
+
+
 async def list_requests(provider: DriveProvider, library_folder_id: str) -> list[RequestView]:
     wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
     by_id = {i["id"]: i for i in wl.items if i.get("id")}

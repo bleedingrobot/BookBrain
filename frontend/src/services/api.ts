@@ -31,6 +31,7 @@ import type {
   AcquireDownloadResponse,
   AcquireSearchResponse,
   AcquireStatus,
+  AcquireSuggestions,
   OpenBooksServerStatus,
   OpenRequest,
   RequestRefreshJob,
@@ -329,6 +330,7 @@ export const api = {
       body: JSON.stringify({ full, filename }),
     }),
 
+  acquireSuggestions: () => request<AcquireSuggestions>('/acquire/suggestions'),
   listOpenRequests: () => request<OpenRequest[]>('/acquire/requests'),
   refreshOpenRequests: () =>
     request<RequestRefreshJob>('/acquire/requests/refresh', { method: 'POST' }),

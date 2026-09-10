@@ -77,3 +77,15 @@ class RequestRefreshJob(BaseModel):
 
 class ApproveRequestBody(BaseModel):
     full: str | None = None  # pick a specific alternative; omit to take the best
+
+
+class AcquireSuggestion(BaseModel):
+    title: str
+    author: str | None = None
+    isbn13: str | None = None
+    from_list: str | None = None
+
+
+class AcquireSuggestions(BaseModel):
+    want_to_read: list[AcquireSuggestion] = []
+    from_lists: list[AcquireSuggestion] = []

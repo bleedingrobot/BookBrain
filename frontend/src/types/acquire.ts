@@ -54,6 +54,18 @@ export interface OpenRequest {
   resolved_at: string | null
 }
 
+export interface AcquireSuggestion {
+  title: string
+  author: string | null
+  isbn13: string | null
+  from_list?: string | null
+}
+
+export interface AcquireSuggestions {
+  want_to_read: AcquireSuggestion[]
+  from_lists: AcquireSuggestion[]
+}
+
 export interface RequestRefreshJob {
   job_id: string
   status: 'running' | 'done' | 'failed'

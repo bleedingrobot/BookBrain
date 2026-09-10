@@ -225,3 +225,38 @@ async def test_list_requests_excludes_deleted_and_sorts(db_session, monkeypatch)
     views = await svc.list_requests(object(), "lib")
     assert [v.request_id for v in views] == ["r2", "r1"]  # pending before no_match; "gone" dropped
     assert views[0].requested_by == "Sam"
+
+
+async def test_list_suggestions_reads_the_two_sidecars(monkeypatch):
+    import app.services.library_index_service as lib
+
+    files = {
+        "bookbrain-reading.json": {
+            "wantUnowned": [
+                {"title": "The Blade Itself", "author": "Joe Abercrombie", "isbn13": "9780575079793"},
+                {"title": "  ", "author": "x"},  # blank → dropped
+                "junk",
+            ]
+        },
+        "bookbrain-lists.json": {
+            "candidates": [
+                {"title": "Gideon the Ninth", "author": "Tamsyn Muir", "isbn13": None, "fromList": "Best of 2019"},
+            ]
+        },
+    }
+    monkeypatch.setattr(lib, "_read_json_file", lambda provider, folder, name: files.get(name, {}))
+
+    out = await svc.list_suggestions(object(), "lib")
+    assert [s["title"] for s in out["want_to_read"]] == ["The Blade Itself"]
+    assert out["want_to_read"][0]["isbn13"] == "9780575079793"
+    assert out["from_lists"] == [
+        {"title": "Gideon the Ninth", "author": "Tamsyn Muir", "isbn13": None, "from_list": "Best of 2019"}
+    ]
+
+
+async def test_list_suggestions_tolerates_missing_sidecars(monkeypatch):
+    import app.services.library_index_service as lib
+
+    monkeypatch.setattr(lib, "_read_json_file", lambda *a: {})
+    out = await svc.list_suggestions(object(), "lib")
+    assert out == {"want_to_read": [], "from_lists": []}

@@ -14,6 +14,7 @@ from app.schemas.acquire import (
     AcquireSearchRequest,
     AcquireSearchResponse,
     AcquireStatus,
+    AcquireSuggestions,
     ApproveRequestBody,
     OpenBooksServerStatus,
     OpenRequest,
@@ -131,6 +132,20 @@ async def download(
 # --------------------------------------------------------------------------
 # Fill open viewer requests (bookbrain-wishlist.json items still "wanted")
 # --------------------------------------------------------------------------
+
+
+@router.get("/suggestions", response_model=AcquireSuggestions)
+async def list_suggestions(
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> AcquireSuggestions:
+    _require_enabled()
+    repo = SettingsRepository(db)
+    library = await DriveService.get_library_folder_config(repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    data = await acquisition_service.list_suggestions(provider, library.folder_id)
+    return AcquireSuggestions(**data)
 
 
 @router.get("/requests", response_model=list[OpenRequest])
