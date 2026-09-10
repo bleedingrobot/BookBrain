@@ -104,6 +104,46 @@ async def test_all_feeds_down_returns_empty(_two_feeds) -> None:
     assert await fetch_news() == []
 
 
+@respx.mock
+async def test_a_wedged_parse_is_skipped_and_the_rest_still_return(_two_feeds, monkeypatch) -> None:
+    import time
+
+    monkeypatch.setattr(sff_news_service, "_PARSE_TIMEOUT", 0.2)
+    real_parse = sff_news_service._parse_feed
+
+    def slow_or_normal(content: bytes, source: str):
+        if source == "Test Mag":
+            time.sleep(2)  # a pathological feed that spins in feedparser
+        return real_parse(content, source)
+
+    monkeypatch.setattr(sff_news_service, "_parse_feed", slow_or_normal)
+    _mock(
+        {
+            "https://testmag.example/feed/": httpx.Response(200, text=RSS),
+            "https://blog.example/atom": httpx.Response(200, text=ATOM),
+            "https://dead.example/feed/": httpx.Response(200, text="<rss></rss>"),
+        }
+    )
+
+    items = await fetch_news()
+    assert [i["source"] for i in items] == ["Blogger Blog"]  # Test Mag timed out
+
+
+@respx.mock
+async def test_an_absurdly_large_feed_is_skipped(_two_feeds, monkeypatch) -> None:
+    # between the ATOM feed's size and the (larger) RSS feed's size
+    monkeypatch.setattr(sff_news_service, "_MAX_FEED_BYTES", len(ATOM) + 50)
+    _mock(
+        {
+            "https://testmag.example/feed/": httpx.Response(200, text=RSS),
+            "https://blog.example/atom": httpx.Response(200, text=ATOM),
+            "https://dead.example/feed/": httpx.Response(200, text="<rss></rss>"),
+        }
+    )
+    items = await fetch_news()
+    assert [i["source"] for i in items] == ["Blogger Blog"]  # the big RSS feed was skipped
+
+
 def test_plain_strips_double_escaped_tags_and_entities() -> None:
     assert _plain("Tom &amp; Jerry &lt;b&gt;win&lt;/b&gt;") == "Tom & Jerry win"
     assert _plain("") == ""

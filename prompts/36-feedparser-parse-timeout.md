@@ -1,5 +1,12 @@
 # Task 36 — bound `feedparser.parse` with a timeout (REVIEW-2026-09-10 F8)
 
+**SHIPPED 2026-09-10.** `sff_news_service._fetch_one` now wraps the parse in
+`asyncio.wait_for(..., timeout=_PARSE_TIMEOUT=15)` (→ skip + log on
+`TimeoutError`) and skips any response over `_MAX_FEED_BYTES = 5_000_000`
+before parsing. Two tests added (a `time.sleep` parse is skipped; an
+over-size feed is skipped) — the rest of the batch still returns.
+
+
 Read `prompts/README.md`. Backend-only, tiny. No Anthropic, no real-Drive
 write.
 

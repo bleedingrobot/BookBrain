@@ -52,7 +52,15 @@ _FEEDS: list[tuple[str, str]] = [
 _PER_FEED = 6  # newest entries kept per source
 _SUMMARY_CAP = 280  # chars, after HTML strip
 _TOTAL_CAP = 50
-_TIMEOUT = 12.0
+_TIMEOUT = 12.0  # HTTP GET
+# feedparser.parse() itself is unbounded — a pathological feed (huge, deeply
+# nested, entity expansion) can spin for a long time, and one wedged parse
+# would hang the whole nightly news step. Bound it. Note: asyncio.wait_for
+# cancels the *await*, but a to_thread worker can't be interrupted — the
+# thread keeps running to completion in the background (one pool thread; the
+# default pool has room; it finishes eventually).
+_PARSE_TIMEOUT = 15.0
+_MAX_FEED_BYTES = 5_000_000  # a real feed is a few hundred KB; anything past this is junk
 # Some WordPress / Cloudflare hosts 403 the default httpx UA.
 _UA = "BookBrain/1.0 (+https://github.com/bleedingrobot/BookBrain) feed reader"
 
@@ -143,7 +151,17 @@ async def _fetch_one(client: httpx.AsyncClient, name: str, url: str) -> list[dic
     try:
         resp = await client.get(url, headers={"User-Agent": _UA}, follow_redirects=True)
         resp.raise_for_status()
-        return await asyncio.to_thread(_parse_feed, resp.content, name)
+        if len(resp.content) > _MAX_FEED_BYTES:
+            logger.warning(
+                "sff news: feed is absurdly large (%d bytes), skipping: %s", len(resp.content), name
+            )
+            return []
+        return await asyncio.wait_for(
+            asyncio.to_thread(_parse_feed, resp.content, name), timeout=_PARSE_TIMEOUT
+        )
+    except TimeoutError:
+        logger.warning("sff news: feed parse timed out, skipping: %s (%s)", name, url)
+        return []
     except Exception:  # noqa: BLE001 — one bad feed must not sink the batch
         logger.warning("sff news: feed failed, skipping: %s (%s)", name, url, exc_info=True)
         return []
