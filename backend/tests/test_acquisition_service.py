@@ -655,3 +655,78 @@ async def test_autoget_researches_a_stale_command_before_downloading(db_session,
     assert searched == ["Departure"]          # re-searched first
     assert got["server"] == "Oatmeal"          # download used the fresh, better pick
     assert out["got"] == "Departure"
+
+
+async def test_autoget_retries_a_failed_row_after_re_searching(db_session, monkeypatch, _autoget_idle):
+    # A row that failed to download last time — auto-get should re-search it
+    # (fresh command / server) and try again, once the 15-min backoff is up.
+    import datetime as _dt
+
+    row = AcquisitionCandidate(
+        request_id="wtr:d", source="want_to_read",
+        request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub",
+        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
+        message="download failed: no response from Bsk",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=20)
+    await db_session.commit()
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["id"] = request_id
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert searched == ["Departure"]   # re-searched because it previously failed
+    assert got["id"] == "wtr:d"
+    assert out["got"] == "Departure"
+
+
+async def test_autoget_leaves_a_just_failed_row_alone(db_session, monkeypatch, _autoget_idle):
+    # Inside the 15-min backoff window — don't re-hit it.
+    import datetime as _dt
+
+    row = AcquisitionCandidate(
+        request_id="wtr:d", source="want_to_read",
+        request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub",
+        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=2)
+    await db_session.commit()
+
+    async def no_search(item):
+        raise AssertionError("should not re-search inside the backoff window")
+
+    async def no_approve(*a):
+        raise AssertionError("should not download inside the backoff window")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "approve_request", no_approve)
+
+    async def fake_refresh(provider, folder, *, limit=None, job=None):
+        return {"targets": 0, "outstanding": 0, "searched": 0, "withCandidates": 0}
+
+    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
+
+    out = await svc.autoget_tick()
+    assert out == {"skipped": "nothing to get"}

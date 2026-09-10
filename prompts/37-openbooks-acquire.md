@@ -36,10 +36,13 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
   + skip as before.
 - **Auto-get** (toggle on the panel, `settings` key `openbooks_autoget_enabled`,
   off by default): `scheduler._run_scheduled_autoget` → `acquisition_service.autoget_tick`
-  every 60s downloads the single highest-`score` `pending` row **≥ 0.9**, but
+  every 60s downloads the single highest-`score` candidate **≥ 0.9**, but
   only when idle (OpenBooks up + `openbooks_service.is_busy()` false + no scan
-  + no refresh job). A failed row's `resolved_at` is stamped so it isn't
-  re-hit for 15 min. **When the queue has nothing ready** it instead searches
+  + no refresh job). `pending` rows go first; then `failed` ones are retried
+  — a `failed` row (or one with a `> 90 min` old command) is re-searched
+  first for a fresh `!server file` + currently-best server, which flips it to
+  `pending`/`no_match` rather than leaving it stuck. A failed row's
+  `resolved_at` is stamped so it isn't re-hit for 15 min. **When the queue has nothing ready** it instead searches
   `_AUTOGET_SEARCH_BATCH = 5` more targets to refill it — the loop then
   alternates search-batch / download / download… on its own. **When the inbox
   hits `_AUTOSCAN_INBOX_THRESHOLD = 20`** it fire-and-forgets a scan so

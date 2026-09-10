@@ -25,7 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.db import async_session_factory
@@ -839,9 +839,11 @@ async def _run_autoscan(scan_svc, job_id: str, creds, inbox_folder_id: str) -> N
 async def autoget_tick(trigger: str = "scheduler") -> dict:
     """One iteration of the auto-get loop (the scheduler calls this every
     ~60s). While everything's idle: kicks a scan if the inbox has piled up
-    (>= 20), else downloads the single highest-confidence `pending`
-    candidate (re-searching it first if the command is > 90 min old), else
-    searches a few more targets to refill the queue. Never raises."""
+    (>= 20), else downloads the single highest-confidence candidate —
+    `pending` rows first, then `failed` ones to retry (re-searching first if
+    the row previously failed or its command is > 90 min old, with a 15-min
+    backoff between attempts), else searches a few more targets to refill the
+    queue. Never raises."""
     from app.core.config import get_settings
     from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
     from app.data.repositories.settings_repository import SettingsRepository
@@ -892,11 +894,18 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
 
     cutoff = datetime.now(UTC) - _AUTOGET_RETRY_AFTER
     async with async_session_factory() as session:
+        # `pending` rows first, then `failed` ones to retry (a fresh
+        # re-search below gets them a new command / working server).
+        status_rank = case(
+            (AcquisitionCandidate.status == AcquisitionStatus.pending, 0), else_=1
+        )
         row = (
             await session.execute(
                 select(AcquisitionCandidate)
                 .where(
-                    AcquisitionCandidate.status == AcquisitionStatus.pending,
+                    AcquisitionCandidate.status.in_(
+                        [AcquisitionStatus.pending, AcquisitionStatus.failed]
+                    ),
                     AcquisitionCandidate.candidate_full.is_not(None),
                     AcquisitionCandidate.score >= _AUTOGET_MIN_SCORE,
                     or_(
@@ -904,7 +913,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
                         AcquisitionCandidate.resolved_at < cutoff,
                     ),
                 )
-                .order_by(AcquisitionCandidate.score.desc(), AcquisitionCandidate.id.asc())
+                .order_by(status_rank, AcquisitionCandidate.score.desc(), AcquisitionCandidate.id.asc())
                 .limit(1)
             )
         ).scalar_one_or_none()
@@ -925,12 +934,15 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
         return {"searched": r["searched"], "found": r["withCandidates"], "outstanding": r["outstanding"]}
 
     request_id, title = row.request_id, row.request_title
+    was_failed = row.status == AcquisitionStatus.failed
 
-    # Freshen a stale command before downloading it.
+    # Freshen the command first if it's stale or the last attempt failed —
+    # get a new `!server file` and re-rank the servers by what's answering now.
     updated = row.updated_at
     if updated is not None and updated.tzinfo is None:
         updated = updated.replace(tzinfo=UTC)
-    if updated is not None and datetime.now(UTC) - updated > _AUTOGET_RESEARCH_AFTER:
+    stale = updated is not None and datetime.now(UTC) - updated > _AUTOGET_RESEARCH_AFTER
+    if was_failed or stale:
         item = {
             "request_id": request_id,
             "source": row.source or "wishlist",
