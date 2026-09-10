@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     openbooks_enabled: bool = False
     openbooks_ws_url: str = "ws://localhost:5228/ws"
     openbooks_download_dir: str = r"C:\Users\Giant\Documents\epub-librarian\backend\tools\openbooks-dl"
+    # Path to the openbooks executable. Empty = look for
+    # backend/tools/openbooks.exe next to this checkout. The admin "Find a
+    # Book" page has a Start/Stop button that launches it with this.
+    openbooks_binary: str = ""
 
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older

@@ -7,7 +7,7 @@ from app.data.db import Base
 from app.data import models  # noqa: F401  (registers models on Base.metadata)
 from app.jobs.backup_job import reset_backup_lock
 from app.jobs.nightly import reset_nightly_lock
-from app.services import book_repository, openbooks_service
+from app.services import book_repository, openbooks_process_service, openbooks_service
 from app.services.metadata_writeback_service import reset_write_lock as reset_metadata_writeback_lock
 from app.services.organize_service import get_folder_path_cache
 
@@ -33,6 +33,7 @@ def _reset_shared_singletons():
     reset_backup_lock()
     reset_metadata_writeback_lock()
     openbooks_service._reset_for_tests()
+    openbooks_process_service._reset_for_tests()
 
 
 @pytest.fixture(autouse=True)

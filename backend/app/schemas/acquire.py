@@ -5,6 +5,13 @@ class AcquireStatus(BaseModel):
     enabled: bool
 
 
+class OpenBooksServerStatus(BaseModel):
+    installed: bool
+    running: bool
+    managed: bool
+    pid: int | None = None
+
+
 class AcquireSearchRequest(BaseModel):
     query: str
 

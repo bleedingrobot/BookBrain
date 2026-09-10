@@ -2,6 +2,13 @@ export interface AcquireStatus {
   enabled: boolean
 }
 
+export interface OpenBooksServerStatus {
+  installed: boolean
+  running: boolean
+  managed: boolean
+  pid: number | null
+}
+
 export interface AcquireBook {
   server: string
   author: string

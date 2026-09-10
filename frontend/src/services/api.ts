@@ -30,6 +30,7 @@ import type {
   AcquireDownloadResponse,
   AcquireSearchResponse,
   AcquireStatus,
+  OpenBooksServerStatus,
 } from '../types/acquire'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
@@ -282,6 +283,11 @@ export const api = {
     request<DismissResult>('/local-scan/dismiss', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
 
   acquireStatus: () => request<AcquireStatus>('/acquire/status'),
+  openBooksServerStatus: () => request<OpenBooksServerStatus>('/acquire/server'),
+  startOpenBooksServer: () =>
+    request<OpenBooksServerStatus>('/acquire/server/start', { method: 'POST' }),
+  stopOpenBooksServer: () =>
+    request<OpenBooksServerStatus>('/acquire/server/stop', { method: 'POST' }),
   acquireSearch: (query: string) =>
     request<AcquireSearchResponse>('/acquire/search', {
       method: 'POST',

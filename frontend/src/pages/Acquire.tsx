@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../services/api'
@@ -7,6 +7,72 @@ import type { AcquireBook } from '../types/acquire'
 type RowState = { status: 'idle' | 'working' | 'done' | 'error'; message?: string }
 
 const PREFERRED_FORMATS = ['epub', 'kepub', 'mobi', 'azw3', 'cbz', 'cbr']
+
+function ServerControl() {
+  const queryClient = useQueryClient()
+  const server = useQuery({
+    queryKey: ['openbooks-server'],
+    queryFn: api.openBooksServerStatus,
+    refetchInterval: (q) => (q.state.data?.running ? 15000 : 4000),
+  })
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['openbooks-server'] })
+  const start = useMutation({ mutationFn: api.startOpenBooksServer, onSuccess: refresh })
+  const stop = useMutation({ mutationFn: api.stopOpenBooksServer, onSuccess: refresh })
+
+  const running = server.data?.running ?? false
+  const busy = start.isPending || stop.isPending
+  const err =
+    start.error instanceof ApiError
+      ? start.error.message
+      : stop.error instanceof ApiError
+        ? stop.error.message
+        : null
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800">
+      <span className="flex items-center gap-2">
+        <span
+          className={`h-2 w-2 rounded-full ${running ? 'bg-emerald-500' : 'bg-neutral-400'}`}
+        />
+        OpenBooks server{' '}
+        <span className="text-neutral-500">
+          {running
+            ? server.data?.managed
+              ? '· running (started here)'
+              : '· running'
+            : '· stopped'}
+        </span>
+      </span>
+
+      {running ? (
+        <button
+          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          disabled={busy}
+          onClick={() => stop.mutate()}
+        >
+          {stop.isPending ? 'Stopping…' : 'Stop'}
+        </button>
+      ) : (
+        <button
+          className="rounded bg-neutral-900 px-2.5 py-1 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          disabled={busy || server.data?.installed === false}
+          onClick={() => start.mutate()}
+        >
+          {start.isPending ? 'Starting…' : 'Start'}
+        </button>
+      )}
+
+      {server.data?.installed === false && (
+        <span className="text-xs text-amber-600">
+          openbooks.exe not found in backend/tools/ — download it from
+          github.com/evan-buss/openbooks/releases
+        </span>
+      )}
+      {err && <span className="text-xs text-red-600">{err}</span>}
+    </div>
+  )
+}
 
 export function Acquire() {
   const status = useQuery({ queryKey: ['acquire-status'], queryFn: api.acquireStatus })
@@ -83,12 +149,8 @@ export function Acquire() {
         <p className="mt-3 text-sm text-neutral-500">
           The OpenBooks integration is turned off. To try it, set{' '}
           <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">OPENBOOKS_ENABLED=true</code>{' '}
-          in <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">backend/.env</code>,
-          restart the backend, and run{' '}
-          <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">
-            backend/tools/run-openbooks.ps1
-          </code>
-          .
+          in <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">backend/.env</code> and
+          restart the backend — then a Start button here launches the OpenBooks server for you.
         </p>
       </div>
     )
@@ -108,6 +170,8 @@ export function Acquire() {
         </Link>{' '}
         after.
       </p>
+
+      <ServerControl />
 
       <div className="mt-4 flex gap-2">
         <input

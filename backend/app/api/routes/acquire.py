@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,9 +14,11 @@ from app.schemas.acquire import (
     AcquireSearchRequest,
     AcquireSearchResponse,
     AcquireStatus,
+    OpenBooksServerStatus,
 )
-from app.services import acquire_service, openbooks_service
+from app.services import acquire_service, openbooks_process_service, openbooks_service
 from app.services.drive_service import DriveService
+from app.services.openbooks_process_service import OpenBooksProcessError
 from app.services.openbooks_service import (
     OpenBooksError,
     OpenBooksRateLimited,
@@ -35,6 +39,32 @@ def _require_enabled() -> None:
 @router.get("/status", response_model=AcquireStatus)
 async def get_status() -> AcquireStatus:
     return AcquireStatus(enabled=openbooks_service.is_enabled())
+
+
+@router.get("/server", response_model=OpenBooksServerStatus)
+async def server_status() -> OpenBooksServerStatus:
+    _require_enabled()
+    return OpenBooksServerStatus(**await asyncio.to_thread(openbooks_process_service.status))
+
+
+@router.post("/server/start", response_model=OpenBooksServerStatus)
+async def server_start() -> OpenBooksServerStatus:
+    _require_enabled()
+    try:
+        state = await asyncio.to_thread(openbooks_process_service.start)
+    except OpenBooksProcessError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return OpenBooksServerStatus(**state)
+
+
+@router.post("/server/stop", response_model=OpenBooksServerStatus)
+async def server_stop() -> OpenBooksServerStatus:
+    _require_enabled()
+    try:
+        state = await asyncio.to_thread(openbooks_process_service.stop)
+    except OpenBooksProcessError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return OpenBooksServerStatus(**state)
 
 
 @router.post("/search", response_model=AcquireSearchResponse)
