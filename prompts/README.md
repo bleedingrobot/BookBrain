@@ -127,7 +127,20 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   /api/library/news`); viewer `<NewsFeed>` compact section + `<NewsScreen>`
   with a source filter, `showNews` setting (default on). Live: 50 items.
 
-## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — open
+## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
+
+Reviewed `prompts/29`–`32` + this session's fixes. Recommended order:
+**33 → 36 → 34 → 35** (33 is the only P1; 33/36 are independent and fit one
+session; 34/35 are independent of everything).
+
+| # | File | Sev | Status | One line |
+|---|------|-----|--------|----------|
+| 33 | [`33-harden-reading-writeback.md`](33-harden-reading-writeback.md) | **P1**+P2 | open | F1: `_resolve_book_id` marks the *wrong* book read on Hardcover (search fallback, zero similarity check, common path). F2: unresolvable write-backs retried forever. F4: a persistently-partial reading pull freezes the sidecar silently. F7: a missed reading match is silent. |
+| 34 | [`34-sidecar-sync-helper.md`](34-sidecar-sync-helper.md) | P2 | open | F6: 11 hand-rolled sidecar fetch modules (3 also hand-rolling cache+sync+serialised-write) → one `syncedSidecar<T>` primitive. F3: `bookbrain-reading-pending.json` can silently lose a "mark read" — no `If-Match` on the Drive PATCH; build ETag/412 retry into the helper. |
+| 35 | [`35-admin-discovery-refresh.md`](35-admin-discovery-refresh.md) | P2 | open | F5: the admin app has no button to refresh any Hardcover/discovery sidecar — this session needed manual `curl` re-runs repeatedly. A "Discovery data" panel in Settings + `GET /api/library/discovery-status`. |
+| 36 | [`36-feedparser-parse-timeout.md`](36-feedparser-parse-timeout.md) | P2 | open | F8: `feedparser.parse` runs with no timeout; a hijacked/garbage feed wedges the nightly news step. Wrap in `asyncio.wait_for`. |
+
+## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — shipped
 
 No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24. **All shipped 2026-09-08.**
 
