@@ -34,6 +34,16 @@ The library-viewer can't do any of this itself (static site, no backend,
 localhost-only OpenBooks) — the request list is the only thing it contributes.
 Still admin-only for the actual searching/downloading.
 
+### "Ideas to look for" (added 2026-09-10)
+
+`GET /api/acquire/suggestions` reads `bookbrain-reading.json` (`wantUnowned`)
+and `bookbrain-lists.json` (`candidates`) straight from Drive, read-only. The
+Find a Book page shows an "Ideas to look for" card with two collapsible
+sections — **From your Hardcover want-to-read** and **From lists you'd like** —
+each item with a **Find** button that runs the plain OpenBooks search for that
+title+author. No queue/approve tracking (those aren't wishlist requests); it's
+a shortcut into the existing search.
+
 ## Running it
 
 - `openbooks.exe` is gitignored — download once from
