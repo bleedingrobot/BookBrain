@@ -27,3 +27,4 @@ dist/
 .vscode/
 .DS_Store
 backend/tests/identification_corpus/ANSWER-KEY-REVIEW.md
+backend/logs/

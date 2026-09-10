@@ -26,37 +26,44 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
 
 - **Search 25 more** (`POST /api/acquire/requests/refresh?limit=25`) searches
   OpenBooks for the next N un-searched targets (~11s apiece, capped 1..100),
-  keeps the best **EPUB** matches + up to 6 alternatives. Repeat, or let the
-  nightly (`limit=50`) grind through — **the nightly acquire step only runs
-  when auto-get is off**, since auto-get does its own refill searches. The
-  job reports `outstanding` (how many left) so the UI can say "N still to
-  search".
+  keeps the best **EPUB** matches + up to 6 alternatives, for a manual "Get".
+  Repeat, or let the nightly (`limit=50`) grind through — **the nightly
+  acquire step only runs when auto-get is off** (with auto-get on it does its
+  own fresh searches). The job reports `outstanding` so the UI can say "N
+  still to search".
 - **Get** per row → downloads into the inbox via `acquire_service`; a wishlist
   row also flips its item to `sourced` (best-effort sidecar RMW). Alternatives
   + skip as before.
 - **Auto-get** (toggle on the panel, `settings` key `openbooks_autoget_enabled`,
   off by default): `scheduler._run_scheduled_autoget` → `acquisition_service.autoget_tick`
-  every 60s downloads the single highest-`score` candidate **≥ 0.9**, but
-  only when idle (OpenBooks up + `openbooks_service.is_busy()` false + no scan
-  + no refresh job). `pending` rows go first; then `failed` ones are retried
-  — a `failed` row (or one with a `> 90 min` old command) is re-searched
-  first for a fresh `!server file` + currently-best server, which flips it to
-  `pending`/`no_match` rather than leaving it stuck. A failed row's
-  `resolved_at` is stamped so it isn't re-hit for 15 min. **When the queue has nothing ready** it instead searches
-  `_AUTOGET_SEARCH_BATCH = 5` more targets to refill it — the loop then
-  alternates search-batch / download / download… on its own. **When the inbox
-  hits `_AUTOSCAN_INBOX_THRESHOLD = 20`** it fire-and-forgets a scan so
-  auto-got books don't pile up unscanned until the nightly (the next tick's
-  `has_running_job()` guard pauses auto-get until it's done). **A candidate
-  older than `_AUTOGET_RESEARCH_AFTER = 90 min` is re-searched first** — a
-  `!server file` string found at 2am often won't transfer at 8am (bot cycled
-  offline, file renamed, our nick on the server's DCC cooldown). `PUT
-  /api/acquire/autoget` toggles it and re-syncs the APScheduler
-  `IntervalTrigger` job.
-- `list_requests` calls **`_prune_now_in_library`** first: an `approved` row
-  whose title+author now matches an organised book is deleted (self-cleans the
-  want-to-read / list rows; wishlist rows also drop once the viewer reconciles
-  the item to `acquired`).
+  every 60s, only when idle (OpenBooks up + `openbooks_service.is_busy()` false
+  + no scan + no refresh job). **Search-fresh-then-get** (reworked 2026-09-11 —
+  James: "not pre-searching anything… so it's always fresh and current"): each
+  tick picks the next `_gather_targets` book that's **due** (no row yet, or its
+  backoff elapsed), **searches OpenBooks for it right then** and downloads the
+  best EPUB **≥ 0.9** immediately — the `!server file` command is always
+  seconds old. On a *validation* failure (stub / corrupt) it tries the next
+  candidate, up to `_AUTOGET_INTICK_TRIES = 3`; on a *transient* failure (75s
+  no-deliver, dead server) it stops and lets the backoff carry it. Backoff:
+  `_AUTOGET_RETRY_AFTER = 30 min`, then `_AUTOGET_STUBBORN_BACKOFF = 6 h` once
+  a book's been failing `> _AUTOGET_STUBBORN_AFTER = 2 h` (measured by row
+  `created_at` — no schema change), `_AUTOGET_NOMATCH_BACKOFF = 7 days` for a
+  searched-but-nothing-found book. A momentary empty re-search **keeps** the
+  previous match (`_upsert(preserve_existing=True)`) rather than wiping it to
+  `no_match`. `acquisition_candidates` is now an **attempt log**, not a
+  pre-searched queue. **When the inbox hits `_AUTOSCAN_INBOX_THRESHOLD = 20`**
+  it fire-and-forgets a scan (the next tick's `has_running_job()` guard pauses
+  auto-get until it's done). Dropped in the rework: the `_AUTOGET_SEARCH_BATCH`
+  refill and the `_AUTOGET_RESEARCH_AFTER` staleness re-search (both moot —
+  every tick searches fresh). `PUT /api/acquire/autoget` toggles it and
+  re-syncs the APScheduler `IntervalTrigger` job.
+- `list_requests` calls **`_dedupe_candidates`** (one book on wishlist +
+  want-to-read + a list → one row, keeping the wishlist id) then
+  **`_prune_now_in_library`**: an `approved` row whose title+author now matches
+  an organised book is deleted (self-cleans the want-to-read / list rows;
+  wishlist rows also drop once the viewer reconciles the item to `acquired`).
+  It also suppresses the synthetic `unsearched` row for a wishlist book that
+  already has a candidate row under another id.
 
 `GET /api/acquire/suggestions` still exists (reads the two sidecars raw,
 read-only) but the frontend `<Suggestions>` browse was removed — the batch

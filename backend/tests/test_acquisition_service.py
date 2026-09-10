@@ -1,3 +1,6 @@
+import asyncio
+import datetime as _dt
+
 import pytest
 from sqlalchemy import select
 
@@ -553,130 +556,114 @@ def _autoget_idle(monkeypatch):
     _Provider.inbox_count = 0
     monkeypatch.setattr(svc, "DriveProvider", lambda svc_obj: _Provider())
 
-    return {"Provider": _Provider, "ScanSvc": _ScanSvc}
+    class _Targets:
+        items: list = []
+
+    async def _fake_gather(provider, folder):
+        return list(_Targets.items)
+
+    _Targets.items = []
+    monkeypatch.setattr(svc, "_gather_targets", _fake_gather)
+
+    return {"Provider": _Provider, "ScanSvc": _ScanSvc, "Targets": _Targets}
 
 
-async def test_autoget_downloads_the_highest_confidence_pending_row(db_session, monkeypatch, _autoget_idle):
-    for rid, score in [("low", 0.85), ("best", 0.99), ("mid", 0.93)]:
-        db_session.add(
-            AcquisitionCandidate(
-                request_id=rid,
-                request_title=rid,
-                status=AcquisitionStatus.pending,
-                candidate_full=f"!Bsk {rid}.epub",
-                score=score,
-            )
-        )
-    await db_session.commit()
+def _target(title, author="A N Author", request_id=None, source="wishlist"):
+    return {
+        "request_id": request_id or f"wl-{title}",
+        "source": source,
+        "title": title,
+        "author": author,
+        "isbn13": None,
+    }
+
+
+
+
+# --- auto-get (search-fresh-then-get) --------------------------------
+
+
+async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                      full="!Bsk A G Riddle - Departure.epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
 
     got = {}
 
     async def fake_approve(request_id, full, provider, inbox, library):
-        got["id"] = request_id
-        return {"filename": f"{request_id}.epub", "drive_file_id": "d1", "size_bytes": 1}
+        got["id"], got["full"] = request_id, full
+        return {"filename": "Departure.epub"}
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert got["id"] == "best"  # 0.99 — the 0.85 one is below the 0.9 auto bar
-    assert out["got"] == "best"
+    assert searched == ["Departure"]
+    assert got["id"] == "wl-dep"
+    assert got["full"] == "!Bsk A G Riddle - Departure.epub"
+    assert out["got"] == "Departure"
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.request_title == "Departure"
 
 
 async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
-    db_session.add(
-        AcquisitionCandidate(
-            request_id="r", request_title="r", status=AcquisitionStatus.pending,
-            candidate_full="!Bsk r.epub", score=0.99,
-        )
-    )
-    await db_session.commit()
+    _autoget_idle["Targets"].items = [_target("Departure")]
     monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: True)
 
-    called = False
+    async def no_search(item):
+        raise AssertionError("must not search when busy")
 
-    async def fake_approve(*a):
-        nonlocal called
-        called = True
-
-    monkeypatch.setattr(svc, "approve_request", fake_approve)
+    monkeypatch.setattr(svc, "_search_one", no_search)
     out = await svc.autoget_tick()
     assert out == {"skipped": "busy"}
-    assert called is False
 
 
-async def test_autoget_refills_the_queue_when_nothing_is_ready(db_session, monkeypatch, _autoget_idle):
-    db_session.add(
-        AcquisitionCandidate(
-            request_id="weak", request_title="weak", status=AcquisitionStatus.pending,
-            candidate_full="!Bsk weak.epub", score=0.8,  # below the auto-get bar
-        )
-    )
-    await db_session.commit()
-
-    seen = {}
-
-    async def fake_refresh(provider, folder, *, limit=None, job=None):
-        seen["limit"] = limit
-        return {"targets": 20, "outstanding": 15, "searched": limit, "withCandidates": 3}
-
-    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
-
-    async def no_approve(*a):
-        raise AssertionError("should not download when nothing scores >= 0.9")
-
-    monkeypatch.setattr(svc, "approve_request", no_approve)
-
+async def test_autoget_nothing_to_do_when_no_targets(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = []
     out = await svc.autoget_tick()
-    assert seen["limit"] == 5
-    assert out == {"searched": 5, "found": 3, "outstanding": 15}
+    assert out == {"skipped": "no targets"}
 
 
-async def test_autoget_nothing_at_all(db_session, monkeypatch, _autoget_idle):
-    async def fake_refresh(provider, folder, *, limit=None, job=None):
-        return {"targets": 0, "outstanding": 0, "searched": 0, "withCandidates": 0}
-
-    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
-    out = await svc.autoget_tick()
-    assert out == {"skipped": "nothing to get"}
-
-
-async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
-    import asyncio
-
-    _autoget_idle["Provider"].inbox_count = 20  # at the threshold
-
-    async def no_approve(*a):
-        raise AssertionError("should scan, not download, when the inbox is full")
-
-    monkeypatch.setattr(svc, "approve_request", no_approve)
-
-    out = await svc.autoget_tick()
-    await asyncio.sleep(0.02)  # let the fire-and-forget scan task run
-
-    assert out == {"scan_started": 20}
-    assert _autoget_idle["ScanSvc"].scans == ["scan-1"]
-
-
-async def test_autoget_researches_a_stale_command_before_downloading(db_session, monkeypatch, _autoget_idle):
-    import datetime as _dt
-
-    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=3)
+async def test_autoget_respects_the_backoff_window(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", request_id="wl-dep")]
     row = AcquisitionCandidate(
-        request_id="wtr:x", source="want_to_read",
-        request_title="Departure", request_author="A G Riddle",
-        status=AcquisitionStatus.pending, score=0.99,
-        candidate_full="!Bsk A G Riddle - Departure.epub",
-        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
+        request_id="wl-dep", request_title="Departure", request_author="A N Author",
+        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk x.epub",
     )
     db_session.add(row)
     await db_session.commit()
-    row.updated_at = old
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=10)
     await db_session.commit()
 
-    searched = []
+    async def no_search(item):
+        raise AssertionError("inside the 30-min backoff - must not re-search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"] == "all caught up or cooling down"
+
+
+async def test_autoget_retries_once_the_backoff_elapses(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk old.epub",
+        candidate_server="Bsk",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=45)
+    await db_session.commit()
 
     async def fake_search_one(item):
-        searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
                       full="!Oatmeal A G Riddle - Departure (retail).epub")]
 
@@ -685,91 +672,175 @@ async def test_autoget_researches_a_stale_command_before_downloading(db_session,
     got = {}
 
     async def fake_approve(request_id, full, provider, inbox, library):
-        # approve_request reads the row's (now refreshed) candidate itself
-        r = (await db_session.execute(
-            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == request_id)
-        )).scalar_one()
-        got["server"] = r.candidate_server
-        return {"filename": "x.epub"}
-
-    monkeypatch.setattr(svc, "approve_request", fake_approve)
-
-    out = await svc.autoget_tick()
-    assert searched == ["Departure"]          # re-searched first
-    assert got["server"] == "Oatmeal"          # download used the fresh, better pick
-    assert out["got"] == "Departure"
-
-
-async def test_autoget_retries_a_failed_row_after_re_searching(db_session, monkeypatch, _autoget_idle):
-    # A row that failed to download last time — auto-get should re-search it
-    # (fresh command / server) and try again, once the 15-min backoff is up.
-    import datetime as _dt
-
-    row = AcquisitionCandidate(
-        request_id="wtr:d", source="want_to_read",
-        request_title="Departure", request_author="A G Riddle",
-        status=AcquisitionStatus.failed, score=0.99,
-        candidate_full="!Bsk A G Riddle - Departure.epub",
-        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
-        message="download failed: no response from Bsk",
-    )
-    db_session.add(row)
-    await db_session.commit()
-    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=20)
-    await db_session.commit()
-
-    searched = []
-
-    async def fake_search_one(item):
-        searched.append(item["title"])
-        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
-                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
-
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
-
-    got = {}
-
-    async def fake_approve(request_id, full, provider, inbox, library):
-        got["id"] = request_id
+        got["full"] = full
         return {"filename": "d.epub"}
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert searched == ["Departure"]   # re-searched because it previously failed
-    assert got["id"] == "wtr:d"
     assert out["got"] == "Departure"
+    assert got["full"] == "!Oatmeal A G Riddle - Departure (retail).epub"
 
 
-async def test_autoget_leaves_a_just_failed_row_alone(db_session, monkeypatch, _autoget_idle):
-    # Inside the 15-min backoff window — don't re-hit it.
-    import datetime as _dt
-
+async def test_autoget_long_backoff_for_a_stubborn_book(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", request_id="wl-dep")]
     row = AcquisitionCandidate(
-        request_id="wtr:d", source="want_to_read",
-        request_title="Departure", request_author="A G Riddle",
-        status=AcquisitionStatus.failed, score=0.99,
-        candidate_full="!Bsk A G Riddle - Departure.epub",
-        candidate_title="Departure", candidate_server="Bsk", candidate_size="900KB",
+        request_id="wl-dep", request_title="Departure", request_author="A N Author",
+        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk x.epub",
     )
     db_session.add(row)
     await db_session.commit()
-    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=2)
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.created_at = old - _dt.timedelta(hours=5)
+    row.resolved_at = old - _dt.timedelta(hours=2)
     await db_session.commit()
 
     async def no_search(item):
-        raise AssertionError("should not re-search inside the backoff window")
-
-    async def no_approve(*a):
-        raise AssertionError("should not download inside the backoff window")
+        raise AssertionError("stubborn book still inside the 6h backoff")
 
     monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"] == "all caught up or cooling down"
+
+
+async def test_autoget_marks_no_match_when_search_is_empty(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Obscure Pamphlet", request_id="wl-obs")]
+
+    async def empty_search(item):
+        return []
+
+    monkeypatch.setattr(svc, "_search_one", empty_search)
+
+    async def no_approve(*a):
+        raise AssertionError("nothing to download")
+
     monkeypatch.setattr(svc, "approve_request", no_approve)
 
-    async def fake_refresh(provider, folder, *, limit=None, job=None):
-        return {"targets": 0, "outstanding": 0, "searched": 0, "withCandidates": 0}
+    out = await svc.autoget_tick()
+    assert out == {"no_match": "Obscure Pamphlet"}
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-obs")
+    )).scalar_one()
+    assert row.status == AcquisitionStatus.no_match
 
-    monkeypatch.setattr(svc, "refresh_candidates", fake_refresh)
+
+async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.pending, score=0.97,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_server="Bsk",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=1)
+    await db_session.commit()
+
+    async def empty_search(item):
+        return []
+
+    monkeypatch.setattr(svc, "_search_one", empty_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"].startswith("re-search found nothing")
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.status == AcquisitionStatus.pending
+    assert row.candidate_full == "!Bsk A G Riddle - Departure.epub"
+
+
+async def test_autoget_tries_an_alternative_when_the_top_pick_fails_validation(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    async def fake_search_one(item):
+        return [
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk stub.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal real.epub"),
+        ]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    calls = []
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        calls.append(full)
+        if full == "!Bsk stub.epub":
+            raise svc.OpenBooksError("the downloaded .epub is corrupt or not actually an EPUB")
+        return {"filename": "real.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert out == {"skipped": "nothing to get"}
+    assert calls == ["!Bsk stub.epub", "!Oatmeal real.epub"]
+    assert out["got"] == "Departure"
+    assert out["tries"] == 2
+
+
+async def test_autoget_stops_after_a_transient_download_error(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    async def fake_search_one(item):
+        return [
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk a.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB", full="!Oatmeal b.epub"),
+        ]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    calls = []
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        calls.append(full)
+        raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s (the source server ...)")
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert calls == ["!Bsk a.epub"]
+    assert out["failed"] == "Departure"
+
+
+async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Provider"].inbox_count = 20
+    _autoget_idle["Targets"].items = [_target("Departure")]
+
+    async def no_search(item):
+        raise AssertionError("should scan, not search, when the inbox is full")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    out = await svc.autoget_tick()
+    await asyncio.sleep(0.02)
+    assert out == {"scan_started": 20}
+    assert _autoget_idle["ScanSvc"].scans == ["scan-1"]
+
+
+async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [
+        _target("Departure", "A G Riddle", request_id="wl-dep", source="wishlist")
+    ]
+    stale = AcquisitionCandidate(
+        request_id="wtr:departure|a g riddle", source="want_to_read",
+        request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.9, candidate_full="!Bsk x.epub",
+    )
+    db_session.add(stale)
+    await db_session.commit()
+    stale.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=1)
+    await db_session.commit()
+
+    async def fake_search_one(item):
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert out["got"] == "Departure"
+    rows = list((await db_session.execute(select(AcquisitionCandidate))).scalars())
+    assert len(rows) == 1
+    assert rows[0].request_id == "wl-dep"

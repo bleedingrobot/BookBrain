@@ -64,12 +64,14 @@ function RequestRow({ req }: { req: OpenRequest }) {
         )}
 
         {req.status === 'unsearched' && (
-          <p className="mt-1 text-xs text-neutral-400">Not searched yet — hit “Search 25 more”.</p>
+          <p className="mt-1 text-xs text-neutral-400">
+            Not searched yet — auto-get will get to it, or hit “Search 25 more”.
+          </p>
         )}
 
         {req.status === 'no_match' && (
           <div className="mt-1 flex items-center gap-3 text-xs text-neutral-500">
-            <span>No EPUB found yet — try again after the next search.</span>
+            <span>No EPUB found — auto-get re-checks about weekly.</span>
             <button className="underline hover:text-neutral-800" onClick={() => skip.mutate()}>
               skip
             </button>
@@ -208,9 +210,10 @@ function OpenRequests() {
         <Link to="/wishlist" className="underline">
           Wishlist
         </Link>{' '}
-        requests + your Hardcover want-to-read + curated-list picks that aren’t in the library. Each
-        “Search {BATCH} more” checks OpenBooks for an EPUB of the next {BATCH} (~10s apiece); repeat,
-        or let the nightly run finish the list. “Get” drops it in the Book Dump.
+        requests + your Hardcover want-to-read + curated-list picks that aren’t in the library. With
+        auto-get on, BookBrain searches and downloads these itself, one at a time, always with a
+        fresh result. “Search {BATCH} more” checks OpenBooks now for the next {BATCH} so you can
+        “Get” one by hand.
       </p>
 
       {searching && job.data && (
@@ -236,8 +239,8 @@ function OpenRequests() {
           disabled={setAutoGet.isPending || autoGet.isLoading}
           onChange={(e) => setAutoGet.mutate(e.target.checked)}
         />
-        Auto-get — download one confident book a minute while idle (and search 5 more when the
-        queue runs dry)
+        Auto-get — while idle, search fresh and download one confident book at a time; back off a
+        book the sources won’t deliver
         {autoGet.data?.enabled && <span className="text-emerald-600">· on</span>}
       </label>
 
