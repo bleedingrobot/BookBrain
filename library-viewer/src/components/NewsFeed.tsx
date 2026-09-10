@@ -1,4 +1,15 @@
+import { useState } from 'react'
 import { timeAgo, type NewsItem } from '../lib/news'
+
+const COLLAPSE_KEY = 'bookbrain.newsCollapsed'
+
+function loadCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 // One article row — a source chip, the headline as an outbound link, a short
 // excerpt, and how long ago it went up. Shared by NewsFeed and NewsScreen.
@@ -52,27 +63,58 @@ export function NewsFeed({
   onDismiss: (link: string) => void
   onSeeAll: () => void
 }) {
+  const [collapsed, setCollapsed] = useState(loadCollapsed)
   const visible = items.filter((i) => !dismissed.has(i.link)).slice(0, 6)
   if (visible.length === 0) return null
 
+  function toggle() {
+    setCollapsed((c) => {
+      const next = !c
+      try {
+        localStorage.setItem(COLLAPSE_KEY, String(next))
+      } catch {
+        /* private mode */
+      }
+      return next
+    })
+  }
+
   return (
     <section className="mb-5">
-      <div className="mb-1 flex items-baseline justify-between">
-        <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
-          From around the SFF world
-        </h2>
+      <div className="mb-1 flex items-center justify-between">
         <button
-          className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
-          onClick={onSeeAll}
+          className="flex items-center gap-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+          onClick={toggle}
+          aria-expanded={!collapsed}
         >
-          More →
+          <svg
+            viewBox="0 0 12 12"
+            className={`h-3 w-3 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M4 2l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          From around the SFF world
+          {collapsed && <span className="ml-1 font-normal normal-case">({visible.length})</span>}
         </button>
+        {!collapsed && (
+          <button
+            className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+            onClick={onSeeAll}
+          >
+            More →
+          </button>
+        )}
       </div>
-      <ul className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-        {visible.map((item) => (
-          <NewsRow key={item.link} item={item} onDismiss={() => onDismiss(item.link)} />
-        ))}
-      </ul>
+      {!collapsed && (
+        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+          {visible.map((item) => (
+            <NewsRow key={item.link} item={item} onDismiss={() => onDismiss(item.link)} />
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
