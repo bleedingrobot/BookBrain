@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -456,6 +457,48 @@ class DismissedAuditCluster(Base):
     __table_args__ = (UniqueConstraint("kind", "member_ids_key", name="uq_dismissed_audit_cluster"),)
 
 
+class AcquisitionStatus(str, enum.Enum):
+    pending = "pending"  # a candidate has been found, waiting for James to approve
+    approved = "approved"  # downloaded and pushed into the Drive inbox
+    skipped = "skipped"  # James dismissed it — don't re-offer until reset
+    no_match = "no_match"  # searched OpenBooks, nothing good enough (re-tried each refresh)
+    failed = "failed"  # a download attempt failed (re-tried each refresh)
+
+
+class AcquisitionCandidate(Base):
+    """prompts/37 — an OpenBooks search result matched to an unfilled request
+    on the viewer's `bookbrain-wishlist.json` (status "wanted"). Populated by
+    `acquisition_service.refresh_candidates` (the admin "Search open requests"
+    button and a nightly step); James approves one per request from the Find a
+    Book page, which downloads it and marks the wishlist item "sourced".
+
+    Keyed on the wishlist item id. EPUB candidates only, by design."""
+
+    __tablename__ = "acquisition_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    request_title: Mapped[str] = mapped_column(String, nullable=False)
+    request_author: Mapped[str | None] = mapped_column(String)
+    status: Mapped[AcquisitionStatus] = mapped_column(
+        Enum(AcquisitionStatus), nullable=False, default=AcquisitionStatus.pending
+    )
+    # The current best pick (null for no_match).
+    candidate_full: Mapped[str | None] = mapped_column(String)
+    candidate_title: Mapped[str | None] = mapped_column(String)
+    candidate_author: Mapped[str | None] = mapped_column(String)
+    candidate_format: Mapped[str | None] = mapped_column(String)
+    candidate_size: Mapped[str | None] = mapped_column(String)
+    candidate_server: Mapped[str | None] = mapped_column(String)
+    score: Mapped[float | None] = mapped_column(Float)
+    # Other plausible EPUBs, best first: [{full,title,author,format,size,server,score}].
+    alternatives_json: Mapped[list | None] = mapped_column(JSON)
+    message: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column()
+
+
 __all__ = [
     "Author",
     "Series",
@@ -477,4 +520,6 @@ __all__ = [
     "AuditClusterKind",
     "DismissedAuditCluster",
     "DismissedReidentFlag",
+    "AcquisitionStatus",
+    "AcquisitionCandidate",
 ]

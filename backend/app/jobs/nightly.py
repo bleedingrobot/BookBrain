@@ -122,6 +122,37 @@ async def _pull_local_folder(creds: Credentials, inbox_folder_id: str) -> str | 
         return "torrents: pull failed (see logs)"
 
 
+async def _acquire_candidates_phase(creds: Credentials, library_folder_id: str) -> str:
+    """prompts/37 — refresh OpenBooks candidates for open viewer requests.
+    Best-effort; starts the OpenBooks server if needed and stops it after."""
+    from app.services import acquisition_service, openbooks_process_service, openbooks_service
+
+    started_here = False
+    try:
+        state = await asyncio.to_thread(openbooks_process_service.status)
+        if not state["running"]:
+            if not state["installed"]:
+                return "acquire: skipped (openbooks not installed)"
+            await asyncio.to_thread(openbooks_process_service.start)
+            started_here = True
+        provider = DriveProvider(build_drive_service(creds))
+        result = await acquisition_service.refresh_candidates(provider, library_folder_id)
+        return (
+            f"acquire: searched {result['searched']}/{result['requests']}, "
+            f"{result['withCandidates']} with a candidate"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("nightly: acquire candidates refresh failed")
+        return f"acquire: FAILED — {exc}"
+    finally:
+        if started_here:
+            try:
+                await openbooks_service.aclose()
+                await asyncio.to_thread(openbooks_process_service.stop)
+            except Exception:  # noqa: BLE001
+                logger.exception("nightly: couldn't stop the OpenBooks server")
+
+
 async def _scan_phase(creds: Credentials, inbox_folder_id: str) -> str:
     """Runs the same scan the "Start scan" button does — including its
     tail-end auto-organize of everything that cleared the threshold."""
@@ -248,6 +279,12 @@ async def run_nightly(
         except Exception as exc:  # noqa: BLE001
             logger.exception("nightly: news refresh failed")
             steps.append(f"news: FAILED — {exc}")
+        # prompts/37 — search OpenBooks for still-"wanted" viewer requests and
+        # queue EPUB candidates for James to approve in the morning. Never
+        # downloads. Only when OPENBOOKS_ENABLED; starts/stops the OpenBooks
+        # server itself if it isn't already up. Never fails the run.
+        if get_settings().openbooks_enabled:
+            steps.append(await _acquire_candidates_phase(creds, library_folder_id))
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"

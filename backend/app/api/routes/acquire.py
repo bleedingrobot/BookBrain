@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_drive_provider
@@ -14,9 +14,17 @@ from app.schemas.acquire import (
     AcquireSearchRequest,
     AcquireSearchResponse,
     AcquireStatus,
+    ApproveRequestBody,
     OpenBooksServerStatus,
+    OpenRequest,
+    RequestRefreshJob,
 )
-from app.services import acquire_service, openbooks_process_service, openbooks_service
+from app.services import (
+    acquire_service,
+    acquisition_service,
+    openbooks_process_service,
+    openbooks_service,
+)
 from app.services.drive_service import DriveService
 from app.services.openbooks_process_service import OpenBooksProcessError
 from app.services.openbooks_service import (
@@ -26,6 +34,18 @@ from app.services.openbooks_service import (
 )
 
 router = APIRouter(prefix="/acquire", tags=["acquire"])
+
+
+async def _require_folders(db: AsyncSession) -> tuple[str, str]:
+    """(inbox_folder_id, library_folder_id) or a 400."""
+    repo = SettingsRepository(db)
+    inbox = await DriveService.get_inbox_folder_config(repo)
+    library = await DriveService.get_library_folder_config(repo)
+    if inbox is None:
+        raise HTTPException(status_code=400, detail="no inbox folder configured yet")
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    return inbox.folder_id, library.folder_id
 
 
 def _require_enabled() -> None:
@@ -106,3 +126,79 @@ async def download(
     except OpenBooksError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return AcquireDownloadResponse(**result)
+
+
+# --------------------------------------------------------------------------
+# Fill open viewer requests (bookbrain-wishlist.json items still "wanted")
+# --------------------------------------------------------------------------
+
+
+@router.get("/requests", response_model=list[OpenRequest])
+async def list_requests(
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> list[OpenRequest]:
+    _require_enabled()
+    _, library_folder_id = await _require_folders(db)
+    views = await acquisition_service.list_requests(provider, library_folder_id)
+    return [OpenRequest(**vars(v)) for v in views]
+
+
+@router.post("/requests/refresh", response_model=RequestRefreshJob)
+async def refresh_requests(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> RequestRefreshJob:
+    _require_enabled()
+    _, library_folder_id = await _require_folders(db)
+    job = acquisition_service.new_refresh_job()
+    background_tasks.add_task(
+        acquisition_service.run_refresh_job, job.job_id, provider, library_folder_id
+    )
+    return RequestRefreshJob(**vars(job))
+
+
+@router.get("/requests/refresh/{job_id}", response_model=RequestRefreshJob)
+async def refresh_status(job_id: str) -> RequestRefreshJob:
+    job = acquisition_service.get_refresh_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    return RequestRefreshJob(**vars(job))
+
+
+@router.post("/requests/{request_id}/approve", response_model=AcquireDownloadResponse)
+async def approve_request(
+    request_id: str,
+    body: ApproveRequestBody,
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> AcquireDownloadResponse:
+    _require_enabled()
+    inbox_folder_id, library_folder_id = await _require_folders(db)
+    try:
+        result = await acquisition_service.approve_request(
+            request_id, body.full, provider, inbox_folder_id, library_folder_id
+        )
+    except OpenBooksRateLimited as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except OpenBooksUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OpenBooksError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return AcquireDownloadResponse(**result)
+
+
+@router.post("/requests/{request_id}/skip", status_code=204)
+async def skip_request(request_id: str) -> None:
+    _require_enabled()
+    try:
+        await acquisition_service.skip_request(request_id)
+    except OpenBooksError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/requests/{request_id}/reset", status_code=204)
+async def reset_request(request_id: str) -> None:
+    _require_enabled()
+    await acquisition_service.reset_request(request_id)

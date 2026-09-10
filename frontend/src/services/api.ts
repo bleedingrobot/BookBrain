@@ -31,6 +31,8 @@ import type {
   AcquireSearchResponse,
   AcquireStatus,
   OpenBooksServerStatus,
+  OpenRequest,
+  RequestRefreshJob,
 } from '../types/acquire'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
@@ -298,6 +300,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ full, filename }),
     }),
+
+  listOpenRequests: () => request<OpenRequest[]>('/acquire/requests'),
+  refreshOpenRequests: () =>
+    request<RequestRefreshJob>('/acquire/requests/refresh', { method: 'POST' }),
+  openRequestsRefreshStatus: (jobId: string) =>
+    request<RequestRefreshJob>(`/acquire/requests/refresh/${jobId}`),
+  approveOpenRequest: (requestId: string, full?: string) =>
+    request<AcquireDownloadResponse>(`/acquire/requests/${encodeURIComponent(requestId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ full: full ?? null }),
+    }),
+  skipOpenRequest: (requestId: string) =>
+    request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/skip`, { method: 'POST' }),
+  resetOpenRequest: (requestId: string) =>
+    request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/reset`, { method: 'POST' }),
 }
 
 export { ApiError }

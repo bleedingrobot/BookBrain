@@ -1,12 +1,210 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../services/api'
-import type { AcquireBook } from '../types/acquire'
+import type { AcquireBook, OpenRequest, RequestCandidate } from '../types/acquire'
 
 type RowState = { status: 'idle' | 'working' | 'done' | 'error'; message?: string }
 
 const PREFERRED_FORMATS = ['epub', 'kepub', 'mobi', 'azw3', 'cbz', 'cbr']
+
+function candidateLine(c: RequestCandidate): string {
+  return [c.title || c.full, c.size, c.server].filter(Boolean).join(' · ')
+}
+
+function RequestRow({ req }: { req: OpenRequest }) {
+  const queryClient = useQueryClient()
+  const [showAlts, setShowAlts] = useState(false)
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['open-requests'] })
+
+  const approve = useMutation({
+    mutationFn: (full?: string) => api.approveOpenRequest(req.request_id, full),
+    onSuccess: invalidate,
+  })
+  const skip = useMutation({
+    mutationFn: () => api.skipOpenRequest(req.request_id),
+    onSuccess: invalidate,
+  })
+
+  const err =
+    approve.error instanceof ApiError ? approve.error.message : approve.isError ? 'Download failed' : null
+
+  return (
+    <li className="flex gap-3 py-3">
+      <span className="flex h-16 w-11 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-200 text-neutral-400 dark:bg-neutral-800">
+        {req.cover ? (
+          <img
+            src={req.cover}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
+        ) : (
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Z" />
+          </svg>
+        )}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{req.title}</div>
+        <div className="text-xs text-neutral-500">
+          {req.author || 'Unknown author'}
+          {req.requested_by ? ` · asked by ${req.requested_by}` : ''}
+        </div>
+
+        {req.status === 'approved' && (
+          <p className="mt-1 text-xs text-emerald-600">✓ Sourced — added to the Book Dump</p>
+        )}
+
+        {req.status === 'no_match' && (
+          <div className="mt-1 flex items-center gap-3 text-xs text-neutral-500">
+            <span>No EPUB found yet — try again after the next search.</span>
+            <button className="underline hover:text-neutral-800" onClick={() => skip.mutate()}>
+              skip
+            </button>
+          </div>
+        )}
+
+        {(req.status === 'pending' || req.status === 'failed') && req.candidate && (
+          <div className="mt-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-neutral-600 dark:text-neutral-300">
+                {candidateLine(req.candidate)}
+              </span>
+              <button
+                className="rounded bg-neutral-900 px-2 py-0.5 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                disabled={approve.isPending}
+                onClick={() => approve.mutate(undefined)}
+              >
+                {approve.isPending ? 'Getting…' : 'Get this'}
+              </button>
+              {req.alternatives.length > 0 && (
+                <button
+                  className="underline text-neutral-500 hover:text-neutral-800"
+                  onClick={() => setShowAlts((v) => !v)}
+                >
+                  {showAlts ? 'hide' : `${req.alternatives.length} other${req.alternatives.length === 1 ? '' : 's'}`}
+                </button>
+              )}
+              <button
+                className="underline text-neutral-500 hover:text-neutral-800"
+                onClick={() => skip.mutate()}
+              >
+                skip
+              </button>
+            </div>
+
+            {showAlts && (
+              <ul className="mt-1 space-y-1 border-l border-neutral-200 pl-3 dark:border-neutral-700">
+                {req.alternatives.map((alt) => (
+                  <li key={alt.full} className="flex items-center gap-2 text-xs">
+                    <span className="text-neutral-500">{candidateLine(alt)}</span>
+                    <button
+                      className="rounded border border-neutral-300 px-2 py-0.5 disabled:opacity-50 dark:border-neutral-700"
+                      disabled={approve.isPending}
+                      onClick={() => approve.mutate(alt.full)}
+                    >
+                      Get
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {req.status === 'failed' && req.message && (
+              <p className="mt-1 text-xs text-amber-600">Last attempt failed: {req.message}</p>
+            )}
+            {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+          </div>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function OpenRequests() {
+  const queryClient = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
+
+  const requests = useQuery({ queryKey: ['open-requests'], queryFn: api.listOpenRequests })
+
+  const job = useQuery({
+    queryKey: ['open-requests-job', jobId],
+    queryFn: () => api.openRequestsRefreshStatus(jobId as string),
+    enabled: !!jobId,
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== 'running' ? false : 2000),
+  })
+
+  useEffect(() => {
+    if (jobId && job.data && job.data.status !== 'running') {
+      setJobId(null)
+      queryClient.invalidateQueries({ queryKey: ['open-requests'] })
+    }
+  }, [jobId, job.data, queryClient])
+
+  const refresh = useMutation({
+    mutationFn: api.refreshOpenRequests,
+    onSuccess: (j) => setJobId(j.job_id),
+  })
+
+  const rows = requests.data ?? []
+  const pending = rows.filter((r) => r.status === 'pending').length
+  const searching = !!jobId || refresh.isPending
+
+  return (
+    <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">
+          Open requests from the library{' '}
+          <span className="text-neutral-400">
+            {pending > 0 ? `· ${pending} ready to get` : rows.length > 0 ? `· ${rows.length}` : ''}
+          </span>
+        </h2>
+        <button
+          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          disabled={searching}
+          onClick={() => refresh.mutate()}
+        >
+          {searching ? 'Searching…' : 'Search open requests'}
+        </button>
+      </div>
+
+      <p className="mt-1 text-xs text-neutral-500">
+        Everything on the household{' '}
+        <Link to="/wishlist" className="underline">
+          Wishlist
+        </Link>{' '}
+        still marked “wanted”. Searching checks OpenBooks for an EPUB of each (≈10s apiece). Getting
+        one drops it in the Book Dump and marks the request “sourced”.
+      </p>
+
+      {searching && job.data && (
+        <p className="mt-2 text-xs text-neutral-500">
+          {job.data.searched}/{job.data.total || '…'} searched · {job.data.with_candidates} found
+        </p>
+      )}
+      {refresh.error instanceof ApiError && (
+        <p className="mt-2 text-xs text-red-600">{refresh.error.message}</p>
+      )}
+
+      {requests.isLoading ? (
+        <p className="mt-3 text-xs text-neutral-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-3 text-xs text-neutral-400">
+          No open requests. When someone marks a book “wanted” on the Wishlist, hit “Search open
+          requests”.
+        </p>
+      ) : (
+        <ul className="mt-1 divide-y divide-neutral-100 dark:divide-neutral-800">
+          {rows.map((req) => (
+            <RequestRow key={req.request_id} req={req} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function ServerControl() {
   const queryClient = useQueryClient()
@@ -172,8 +370,10 @@ export function Acquire() {
       </p>
 
       <ServerControl />
+      <OpenRequests />
 
-      <div className="mt-4 flex gap-2">
+      <h2 className="mt-6 text-sm font-medium">Search for anything</h2>
+      <div className="mt-2 flex gap-2">
         <input
           className="flex-1 rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
           placeholder="title and author, e.g. mistborn brandon sanderson"

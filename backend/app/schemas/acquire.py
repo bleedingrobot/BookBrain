@@ -40,3 +40,40 @@ class AcquireDownloadResponse(BaseModel):
     filename: str
     drive_file_id: str | None = None
     size_bytes: int
+
+
+class RequestCandidate(BaseModel):
+    full: str
+    title: str | None = None
+    author: str | None = None
+    format: str | None = None
+    size: str | None = None
+    server: str | None = None
+    score: float | None = None
+
+
+class OpenRequest(BaseModel):
+    request_id: str
+    title: str
+    author: str | None = None
+    requested_by: str | None = None
+    cover: str | None = None
+    status: str
+    candidate: RequestCandidate | None = None
+    alternatives: list[RequestCandidate] = []
+    score: float | None = None
+    message: str | None = None
+    resolved_at: str | None = None
+
+
+class RequestRefreshJob(BaseModel):
+    job_id: str
+    status: str
+    searched: int = 0
+    total: int = 0
+    with_candidates: int = 0
+    detail: str | None = None
+
+
+class ApproveRequestBody(BaseModel):
+    full: str | None = None  # pick a specific alternative; omit to take the best
