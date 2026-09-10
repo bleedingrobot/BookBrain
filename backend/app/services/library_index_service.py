@@ -922,6 +922,71 @@ async def build_reading_payload(
     return payload
 
 
+# (key, filename, JSON key whose list/int length is the "count"). newReleases
+# and embeddings are special-cased below.
+_DISCOVERY_SIDECARS: tuple[tuple[str, str, str | None], ...] = (
+    ("index", INDEX_FILENAME, "count"),
+    ("recommendations", RECS_FILENAME, "count"),
+    ("newReleases", NEW_RELEASES_FILENAME, None),
+    ("reading", READING_FILENAME, "count"),
+    ("prompts", PROMPTS_FILENAME, "prompts"),
+    ("lists", LISTS_FILENAME, "candidates"),
+    ("news", NEWS_FILENAME, "items"),
+)
+
+
+def discovery_status(provider: DriveProvider, library_folder_id: str) -> dict:
+    """F5 — per-sidecar `{generatedAt, version?, count?}` (or `None` if the
+    file doesn't exist / won't parse), for the admin 'Discovery data' panel.
+    One folder listing + a download per present sidecar. No Hardcover calls."""
+    files = {f["name"]: f for f in provider.list_files_in_folder(library_folder_id)}
+    out: dict[str, dict | None] = {}
+
+    for key, name, count_key in _DISCOVERY_SIDECARS:
+        found = files.get(name)
+        if found is None:
+            out[key] = None
+            continue
+        try:
+            raw = json.loads(provider.download_file(found["id"]).decode("utf-8"))
+        except Exception:  # noqa: BLE001 — a corrupt sidecar reads as "missing"
+            out[key] = None
+            continue
+        entry: dict = {"generatedAt": raw.get("generatedAt")}
+        if isinstance(raw.get("version"), int):
+            entry["version"] = raw["version"]
+        if key == "newReleases":
+            entry["count"] = sum(
+                len(raw.get(k) or []) for k in ("recent", "upcoming", "global", "trending")
+            )
+        elif count_key is not None:
+            val = raw.get(count_key)
+            if isinstance(val, list):
+                entry["count"] = len(val)
+            elif isinstance(val, int):
+                entry["count"] = val
+        if key == "reading":
+            entry["partial"] = bool(raw.get("partial"))
+        out[key] = entry
+
+    emb = files.get(EMBEDDINGS_FILENAME)
+    if emb is None:
+        out["embeddings"] = None
+    else:
+        try:
+            data = provider.download_file(emb["id"])
+            hlen = int.from_bytes(data[:4], "little")
+            header = json.loads(data[4 : 4 + hlen])
+            out["embeddings"] = {
+                "generatedAt": header.get("generatedAt"),
+                "version": header.get("version"),
+                "count": header.get("count"),
+            }
+        except Exception:  # noqa: BLE001
+            out["embeddings"] = None
+    return out
+
+
 def _read_pending_reading(provider: DriveProvider, library_folder_id: str) -> list[dict]:
     """The viewer's queued reading-status changes. Best-effort."""
     try:

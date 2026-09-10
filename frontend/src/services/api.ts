@@ -8,6 +8,7 @@ import type {
   CoverJobStatus,
   DescriptionBackfillEstimate,
   DescriptionJobStatus,
+  DiscoveryStatus,
   LibraryExportResult,
   MetadataWritebackJobStatus,
   RebuildEstimate,
@@ -227,6 +228,33 @@ export const api = {
   createBackup: () => request<BackupResult>('/library/backup', { method: 'POST' }),
   listBackups: () => request<BackupInfo[]>('/library/backups'),
   refreshLibraryIndex: () => request<{ books: number }>('/library/index', { method: 'POST' }),
+
+  getDiscoveryStatus: () => request<DiscoveryStatus>('/library/discovery-status'),
+  // Fire-and-forget sidecar rewrites (re-derive from the DB / re-fetch; seconds).
+  refreshReadingFile: () => request<{ books: number }>('/library/reading', { method: 'POST' }),
+  refreshRecommendationsFile: () =>
+    request<{ books: number }>('/library/recommendations', { method: 'POST' }),
+  refreshNewReleasesFile: () =>
+    request<{ books: number }>('/library/new-releases', { method: 'POST' }),
+  refreshPromptsFile: () => request<{ prompts: number }>('/library/prompts', { method: 'POST' }),
+  refreshListsFile: () => request<{ candidates: number }>('/library/lists', { method: 'POST' }),
+  refreshNewsFile: () => request<{ items: number }>('/library/news', { method: 'POST' }),
+  refreshEmbeddingsFile: () => request<{ books: number }>('/library/embeddings', { method: 'POST' }),
+  // The slow ones: page through the library / hit Hardcover per author. A
+  // single ?stale_days=0 click = "force a full re-sync"; the nightly + a
+  // repeat click converge. Don't loop these in the UI.
+  resyncBookRecs: () =>
+    request<Record<string, unknown>>('/library/book-recs/refresh?stale_days=0', { method: 'POST' }),
+  resyncSeriesCatalog: () =>
+    request<Record<string, unknown>>('/library/series-catalog/refresh?stale_days=0', {
+      method: 'POST',
+    }),
+  resyncNewReleases: () =>
+    request<Record<string, unknown>>('/library/new-releases/refresh?stale_days=0', {
+      method: 'POST',
+    }),
+  computeEmbeddings: () =>
+    request<Record<string, unknown>>('/library/embeddings/refresh', { method: 'POST' }),
   generateCovers: () => request<CoverJobStatus>('/library/covers', { method: 'POST' }),
   getCoverStatus: (jobId: string) => request<CoverJobStatus>(`/library/covers/${jobId}`),
   backfillDescriptions: (ai: boolean) =>

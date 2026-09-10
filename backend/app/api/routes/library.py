@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +36,7 @@ from app.services.metadata_writeback_service import (
     get_metadata_writeback_service,
 )
 from app.services.library_index_service import (
+    discovery_status,
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_lists,
@@ -95,6 +98,20 @@ async def get_rebuild_status(
     if status is None:
         raise HTTPException(status_code=404, detail="rebuild job not found")
     return status
+
+
+@router.get("/discovery-status")
+async def get_discovery_status(
+    db: AsyncSession = Depends(get_db),
+    provider: DriveProvider = Depends(require_drive_provider),
+) -> dict:
+    """REVIEW-2026-09-10 F5 — per-sidecar generatedAt / version / count, so
+    the admin 'Discovery data' panel can show what's stale and offer a
+    Refresh. Read-only: never triggers a regeneration."""
+    library = await DriveService.get_library_folder_config(SettingsRepository(db))
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    return await asyncio.to_thread(discovery_status, provider, library.folder_id)
 
 
 @router.post("/index")

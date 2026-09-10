@@ -534,3 +534,43 @@ async def test_build_reading_payload_logs_a_read_near_miss(db_session, caplog) -
         "looks owned but didn't match" in r.message and "The Will of the Many" in r.message
         for r in caplog.records
     )
+
+
+# --- F5: discovery-status for the admin refresh panel -----------------
+
+
+def test_discovery_status_reports_present_sidecars_and_tolerates_missing() -> None:
+    from app.services.library_index_service import discovery_status
+
+    idx = json.dumps({"version": 7, "generatedAt": "2026-09-10T00:00:00+00:00", "count": 2470}).encode()
+    reading = json.dumps(
+        {"version": 4, "generatedAt": "2026-09-10T01:00:00+00:00", "count": 405, "partial": True}
+    ).encode()
+    news = json.dumps(
+        {"version": 1, "generatedAt": "2026-09-10T02:00:00+00:00", "items": [{}, {}, {}]}
+    ).encode()
+    nr = json.dumps(
+        {"version": 2, "generatedAt": "x", "recent": [{}], "upcoming": [{}, {}], "global": [], "trending": [{}]}
+    ).encode()
+    header = json.dumps({"version": 1, "generatedAt": "2026-09-10T03:00:00+00:00", "count": 12}).encode()
+    emb_bin = len(header).to_bytes(4, "little") + header + b"\x00\x00"
+
+    provider = _FakeProvider(
+        {
+            "bookbrain-index.json": idx,
+            "bookbrain-reading.json": reading,
+            "bookbrain-news.json": news,
+            "bookbrain-new-releases.json": nr,
+            "bookbrain-embeddings.bin": emb_bin,
+            "bookbrain-recommendations.json": b"{ this is not json",  # corrupt → None
+        }
+    )
+    out = discovery_status(provider, "folder")
+
+    assert out["index"] == {"generatedAt": "2026-09-10T00:00:00+00:00", "version": 7, "count": 2470}
+    assert out["reading"]["count"] == 405 and out["reading"]["partial"] is True
+    assert out["news"]["count"] == 3
+    assert out["newReleases"]["count"] == 4  # 1 + 2 + 0 + 1
+    assert out["embeddings"] == {"generatedAt": "2026-09-10T03:00:00+00:00", "version": 1, "count": 12}
+    assert out["recommendations"] is None  # corrupt
+    assert out["prompts"] is None and out["lists"] is None  # absent

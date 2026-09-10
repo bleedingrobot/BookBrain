@@ -92,3 +92,13 @@ export interface MetadataWritebackJobStatus {
   failed: number
   remaining: number
 }
+
+export interface DiscoverySidecar {
+  generatedAt: string | null
+  version?: number
+  count?: number
+  partial?: boolean
+}
+
+// key -> its status, or null when the sidecar doesn't exist / won't parse
+export type DiscoveryStatus = Record<string, DiscoverySidecar | null>

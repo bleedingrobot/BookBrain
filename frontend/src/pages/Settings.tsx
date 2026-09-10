@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../services/api'
 import { DRIVE_FILE_SCOPE, type FolderMode } from '../types/auth'
 import { FolderPicker } from '../components/FolderPicker'
+import { DiscoveryPanel } from '../components/DiscoveryPanel'
 
 export function Settings() {
   const queryClient = useQueryClient()
@@ -550,6 +551,8 @@ export function Settings() {
           )}
         </div>
       </section>
+
+      <DiscoveryPanel />
 
       <section className="mt-8">
         <h2 className="font-medium">System</h2>

@@ -1,5 +1,18 @@
 # Task 35 — admin "Discovery data" refresh panel (REVIEW-2026-09-10 F5)
 
+**SHIPPED 2026-09-10.** `GET /api/library/discovery-status` →
+`library_index_service.discovery_status` (one folder listing + a download per
+present sidecar; `{generatedAt, version?, count?}` or `null`, embeddings.bin
+header parsed, corrupt file → `null`). `frontend/src/components/DiscoveryPanel.tsx`
+in Settings: one row per sidecar (index / reading / recs / new-releases /
+prompts / lists / news / embeddings) with "Nh ago" (red past 36h) + a
+fire-and-forget **Refresh**, plus one "Full Hardcover re-sync (slow)" button
+that fires `series-catalog`, `book-recs`, `new-releases/refresh` (`?stale_days=0`)
++ `embeddings/refresh` with `Promise.allSettled` and treats a timeout as
+"still running". `discovery_status` unit-tested (shape + missing + corrupt +
+newReleases count sum).
+
+
 Read `prompts/README.md`. Backend gets one small read-only endpoint; the rest
 is `frontend/` (the local admin app). No Anthropic, no real-Drive write in
 tests.
