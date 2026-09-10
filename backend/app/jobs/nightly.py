@@ -283,11 +283,22 @@ async def run_nightly(
             logger.exception("nightly: news refresh failed")
             steps.append(f"news: FAILED — {exc}")
         # prompts/37 — search OpenBooks for still-"wanted" viewer requests and
-        # queue EPUB candidates for James to approve in the morning. Never
-        # downloads. Only when OPENBOOKS_ENABLED; starts/stops the OpenBooks
-        # server itself if it isn't already up. Never fails the run.
+        # queue EPUB candidates. Only when OPENBOOKS_ENABLED *and* the
+        # always-on auto-get loop is off — with auto-get on it does its own
+        # refill searches (and downloads), so the nightly batch would just be
+        # redundant OpenBooks/IRC churn. Never downloads here; never fails the run.
         if get_settings().openbooks_enabled:
-            steps.append(await _acquire_candidates_phase(creds, library_folder_id))
+            from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+            from app.data.repositories.settings_repository import SettingsRepository
+
+            async with async_session_factory() as session:
+                autoget_on = (
+                    await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)
+                ) == "true"
+            if autoget_on:
+                steps.append("acquire: skipped (auto-get is handling it)")
+            else:
+                steps.append(await _acquire_candidates_phase(creds, library_folder_id))
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"
