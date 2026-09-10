@@ -18,12 +18,14 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.settings_keys import (
     BACKUP_RUN_ENABLED,
     BACKUP_RUN_HOUR,
     NIGHTLY_RUN_ENABLED,
     NIGHTLY_RUN_HOUR,
+    OPENBOOKS_AUTOGET_ENABLED,
 )
 from app.data.db import async_session_factory
 from app.data.repositories.settings_repository import SettingsRepository
@@ -34,8 +36,10 @@ logger = logging.getLogger(__name__)
 
 _NIGHTLY_JOB_ID = "nightly-run"
 _BACKUP_JOB_ID = "backup-run"
+_AUTOGET_JOB_ID = "openbooks-autoget"
 DEFAULT_NIGHTLY_HOUR = 2
 DEFAULT_BACKUP_HOUR = 3
+AUTOGET_INTERVAL_SECONDS = 60
 
 
 async def _run_scheduled_nightly() -> None:
@@ -44,6 +48,15 @@ async def _run_scheduled_nightly() -> None:
 
 async def _run_scheduled_backup() -> None:
     await run_backup_job(trigger="scheduler")
+
+
+async def _run_scheduled_autoget() -> None:
+    from app.services import acquisition_service
+
+    try:
+        await acquisition_service.autoget_tick(trigger="scheduler")
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("openbooks auto-get tick failed")
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -113,3 +126,29 @@ async def sync_backup_schedule(scheduler: AsyncIOScheduler) -> None:
         scheduler, job_id=_BACKUP_JOB_ID, name="BookBrain backup",
         func=_run_scheduled_backup, enabled=enabled, hour=hour,
     )
+
+
+async def read_autoget_enabled() -> bool:
+    async with async_session_factory() as session:
+        return (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) == "true"
+
+
+async def sync_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
+    """An interval job (every ~60s) that downloads one confident 'Books to
+    get' candidate when idle. Registered only while the toggle is on."""
+    enabled = await read_autoget_enabled()
+    existing = scheduler.get_job(_AUTOGET_JOB_ID)
+    if not enabled:
+        if existing is not None:
+            scheduler.remove_job(_AUTOGET_JOB_ID)
+            logger.info("openbooks auto-get: disabled")
+        return
+    trigger = IntervalTrigger(seconds=AUTOGET_INTERVAL_SECONDS)
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_autoget, trigger=trigger, id=_AUTOGET_JOB_ID,
+            name="OpenBooks auto-get", max_instances=1, coalesce=True, misfire_grace_time=30,
+        )
+        logger.info("openbooks auto-get: enabled, one candidate per %ds when idle", AUTOGET_INTERVAL_SECONDS)
+    else:
+        scheduler.reschedule_job(_AUTOGET_JOB_ID, trigger=trigger)

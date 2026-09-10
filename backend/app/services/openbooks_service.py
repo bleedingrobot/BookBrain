@@ -292,6 +292,12 @@ def is_enabled() -> bool:
     return get_settings().openbooks_enabled
 
 
+def is_busy() -> bool:
+    """True while a search or download holds the client lock — so the
+    auto-get tick can step aside instead of queueing behind a manual action."""
+    return _client._lock.locked()
+
+
 async def search(query: str) -> SearchOutcome:
     return await _client.search(query)
 

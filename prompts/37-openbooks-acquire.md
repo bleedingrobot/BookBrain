@@ -32,6 +32,13 @@ Three sources, merged and deduped by book (ISBN, else title+author) in
 - **Get** per row → downloads into the inbox via `acquire_service`; a wishlist
   row also flips its item to `sourced` (best-effort sidecar RMW). Alternatives
   + skip as before.
+- **Auto-get** (toggle on the panel, `settings` key `openbooks_autoget_enabled`,
+  off by default): `scheduler._run_scheduled_autoget` → `acquisition_service.autoget_tick`
+  every 60s downloads the single highest-`score` `pending` row **≥ 0.9**, but
+  only when idle (OpenBooks up + `openbooks_service.is_busy()` false + no scan
+  + no refresh job). A failed row's `resolved_at` is stamped so it isn't
+  re-hit for 15 min. `PUT /api/acquire/autoget` toggles it and re-syncs the
+  APScheduler `IntervalTrigger` job.
 - `list_requests` calls **`_prune_now_in_library`** first: an `approved` row
   whose title+author now matches an organised book is deleted (self-cleans the
   want-to-read / list rows; wishlist rows also drop once the viewer reconciles

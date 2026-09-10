@@ -345,6 +345,12 @@ export const api = {
     request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/skip`, { method: 'POST' }),
   resetOpenRequest: (requestId: string) =>
     request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/reset`, { method: 'POST' }),
+  getAutoGet: () => request<{ enabled: boolean }>('/acquire/autoget'),
+  setAutoGet: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/acquire/autoget', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
 }
 
 export { ApiError }

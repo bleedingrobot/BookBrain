@@ -167,6 +167,12 @@ function OpenRequests() {
     if (job.data && job.data.status !== 'running') setLastOutstanding(job.data.outstanding)
   }, [job.data])
 
+  const autoGet = useQuery({ queryKey: ['acquire-autoget'], queryFn: api.getAutoGet })
+  const setAutoGet = useMutation({
+    mutationFn: (enabled: boolean) => api.setAutoGet(enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['acquire-autoget'] }),
+  })
+
   const rows = requests.data ?? []
   const pending = rows.filter((r) => r.status === 'pending').length
   const unsearched = rows.filter((r) => r.status === 'unsearched').length
@@ -222,6 +228,17 @@ function OpenRequests() {
       {refresh.error instanceof ApiError && (
         <p className="mt-2 text-xs text-red-600">{refresh.error.message}</p>
       )}
+
+      <label className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+        <input
+          type="checkbox"
+          checked={autoGet.data?.enabled ?? false}
+          disabled={setAutoGet.isPending || autoGet.isLoading}
+          onChange={(e) => setAutoGet.mutate(e.target.checked)}
+        />
+        Auto-get — download one confident book a minute while nothing else is running
+        {autoGet.data?.enabled && <span className="text-emerald-600">· on</span>}
+      </label>
 
       {requests.isLoading ? (
         <p className="mt-3 text-xs text-neutral-400">Loading…</p>

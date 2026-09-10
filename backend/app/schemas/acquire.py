@@ -81,6 +81,10 @@ class ApproveRequestBody(BaseModel):
     full: str | None = None  # pick a specific alternative; omit to take the best
 
 
+class AutoGetSettings(BaseModel):
+    enabled: bool
+
+
 class AcquireSuggestion(BaseModel):
     title: str
     author: str | None = None

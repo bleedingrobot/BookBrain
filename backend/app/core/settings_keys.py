@@ -34,6 +34,12 @@ NIGHTLY_RUN_HOUR = "nightly_run_hour"
 BACKUP_RUN_ENABLED = "backup_run_enabled"
 BACKUP_RUN_HOUR = "backup_run_hour"
 
+# prompts/37 — when on, an in-process job downloads one confident "Books to
+# get" candidate per minute (only while idle: OpenBooks up, nothing else
+# searching/scanning). Off by default — James turns it on from the Find a
+# Book page.
+OPENBOOKS_AUTOGET_ENABLED = "openbooks_autoget_enabled"
+
 # Cached Bulk Re-identify Audit report (reident_audit_service). A JSON blob —
 # expensive to build (a provider lookup per organised book), so it's stored
 # and only regenerated on demand, like the nightly job_runs trail. Carries

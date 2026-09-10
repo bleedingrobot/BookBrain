@@ -9,9 +9,10 @@ Find a Book page. Approving downloads it into the Drive inbox (via
 household can see it's handled; the viewer's own reconcile moves it to
 ``acquired`` once the organised book lands in the library.
 
-Two entry points populate the queue: the admin "Search open requests" button
-(a background job) and a nightly step. Neither downloads anything — that's
-always a manual approve.
+Two entry points populate the queue: the admin "Search…" button (a background
+job) and a nightly step — neither downloads. Downloading is a manual "Get
+this" per row, or, when James turns it on, `autoget_tick` (an in-process job,
+one confident candidate per minute while everything's idle).
 """
 
 from __future__ import annotations
@@ -22,9 +23,9 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.db import async_session_factory
@@ -229,6 +230,10 @@ _jobs: dict[str, RefreshJob] = {}
 
 def get_refresh_job(job_id: str) -> RefreshJob | None:
     return _jobs.get(job_id)
+
+
+def has_active_refresh_job() -> bool:
+    return any(j.status == "running" for j in _jobs.values())
 
 
 def new_refresh_job() -> RefreshJob:
@@ -758,6 +763,7 @@ async def approve_request(
         except OpenBooksError as exc:
             row.status = AcquisitionStatus.failed
             row.message = str(exc)
+            row.resolved_at = datetime.now(UTC)  # so auto-get won't re-hit it straight away
             await session.commit()
             raise
 
@@ -806,3 +812,84 @@ async def reset_request(request_id: str) -> None:
         if row is not None:
             await session.delete(row)
             await session.commit()
+
+
+# --------------------------------------------------------------------------
+# auto-get — download one confident candidate per minute, while idle
+# --------------------------------------------------------------------------
+
+_AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
+_AUTOGET_RETRY_AFTER = timedelta(minutes=15)  # don't re-hit a just-failed row
+
+
+async def autoget_tick(trigger: str = "scheduler") -> dict:
+    """One iteration of the auto-get loop (the scheduler calls this every
+    ~60s). Downloads the single highest-confidence `pending` candidate — but
+    only when everything's idle. Never raises."""
+    from app.core.config import get_settings
+    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+    from app.data.repositories.settings_repository import SettingsRepository
+    from app.providers.drive.client import build_drive_service
+    from app.services import openbooks_process_service, openbooks_service
+    from app.services.auth_service import get_auth_service
+    from app.services.drive_service import DriveService
+    from app.services.scan_service import get_scan_service
+
+    if not get_settings().openbooks_enabled:
+        return {"skipped": "openbooks disabled"}
+    async with async_session_factory() as session:
+        if (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) != "true":
+            return {"skipped": "auto-get off"}
+
+    if (
+        openbooks_service.is_busy()
+        or has_active_refresh_job()
+        or get_scan_service().has_running_job()
+    ):
+        return {"skipped": "busy"}
+    if not (await asyncio.to_thread(openbooks_process_service.status)).get("running"):
+        return {"skipped": "openbooks server not running"}
+
+    async with async_session_factory() as session:
+        repo = SettingsRepository(session)
+        try:
+            creds = await get_auth_service().get_credentials(repo)
+        except Exception:  # noqa: BLE001 — token refresh failure, etc.
+            return {"skipped": "no drive credentials"}
+        inbox = await DriveService.get_inbox_folder_config(repo)
+        library = await DriveService.get_library_folder_config(repo)
+    if creds is None or inbox is None or library is None:
+        return {"skipped": "not configured"}
+
+    cutoff = datetime.now(UTC) - _AUTOGET_RETRY_AFTER
+    async with async_session_factory() as session:
+        row = (
+            await session.execute(
+                select(AcquisitionCandidate)
+                .where(
+                    AcquisitionCandidate.status == AcquisitionStatus.pending,
+                    AcquisitionCandidate.candidate_full.is_not(None),
+                    AcquisitionCandidate.score >= _AUTOGET_MIN_SCORE,
+                    or_(
+                        AcquisitionCandidate.resolved_at.is_(None),
+                        AcquisitionCandidate.resolved_at < cutoff,
+                    ),
+                )
+                .order_by(AcquisitionCandidate.score.desc(), AcquisitionCandidate.id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if row is None:
+        return {"skipped": "nothing to get"}
+
+    request_id, title = row.request_id, row.request_title
+    provider = DriveProvider(build_drive_service(creds))
+    try:
+        result = await approve_request(
+            request_id, None, provider, inbox.folder_id, library.folder_id
+        )
+        logger.info("acquire: auto-got %r (%s)", title, result.get("filename"))
+        return {"got": title, "filename": result.get("filename")}
+    except Exception as exc:  # noqa: BLE001 — approve_request already flagged the row failed
+        logger.warning("acquire: auto-get failed for %r: %s", title, exc)
+        return {"failed": title, "error": str(exc)}

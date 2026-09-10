@@ -433,3 +433,122 @@ async def test_list_requests_reranks_a_stub_pick_to_a_real_alternative(db_sessio
     row = next(v for v in views if v.request_id == "wtr:af")
     assert row.candidate["size"] == "680.08KB"  # promoted the real copy
     assert row.candidate["server"] == "Bsk"
+
+
+# --- auto-get ---------------------------------------------------------
+
+
+@pytest.fixture
+def _autoget_idle(monkeypatch):
+    """All the 'is it idle?' gates pass, and drive creds/folders resolve."""
+    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    class _Cfg:
+        openbooks_enabled = True
+
+    import app.core.config as cfg
+
+    monkeypatch.setattr(cfg, "get_settings", lambda: _Cfg())
+
+    async def _repo_get(self, key):
+        return "true" if key == OPENBOOKS_AUTOGET_ENABLED else None
+
+    monkeypatch.setattr(SettingsRepository, "get", _repo_get)
+    monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: False)
+    monkeypatch.setattr(svc, "has_active_refresh_job", lambda: False)
+
+    import app.services.scan_service as scan_svc
+
+    class _Scan:
+        def has_running_job(self):
+            return False
+
+    monkeypatch.setattr(scan_svc, "get_scan_service", lambda: _Scan())
+
+    import app.services.openbooks_process_service as ps
+
+    monkeypatch.setattr(ps, "status", lambda: {"running": True, "installed": True, "managed": True, "pid": 1})
+
+    import app.services.auth_service as auth_svc
+
+    class _Auth:
+        async def get_credentials(self, repo):
+            return object()
+
+    monkeypatch.setattr(auth_svc, "get_auth_service", lambda: _Auth())
+
+    import app.services.drive_service as ds
+
+    class _Folder:
+        folder_id = "f"
+
+    async def _inbox(repo):
+        return _Folder()
+
+    monkeypatch.setattr(ds.DriveService, "get_inbox_folder_config", staticmethod(_inbox))
+    monkeypatch.setattr(ds.DriveService, "get_library_folder_config", staticmethod(_inbox))
+    import app.providers.drive.client as dc
+
+    monkeypatch.setattr(dc, "build_drive_service", lambda creds: None)
+    monkeypatch.setattr(svc, "DriveProvider", lambda svc_obj: object())
+
+
+async def test_autoget_downloads_the_highest_confidence_pending_row(db_session, monkeypatch, _autoget_idle):
+    for rid, score in [("low", 0.85), ("best", 0.99), ("mid", 0.93)]:
+        db_session.add(
+            AcquisitionCandidate(
+                request_id=rid,
+                request_title=rid,
+                status=AcquisitionStatus.pending,
+                candidate_full=f"!Bsk {rid}.epub",
+                score=score,
+            )
+        )
+    await db_session.commit()
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["id"] = request_id
+        return {"filename": f"{request_id}.epub", "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert got["id"] == "best"  # 0.99 — the 0.85 one is below the 0.9 auto bar
+    assert out["got"] == "best"
+
+
+async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r", request_title="r", status=AcquisitionStatus.pending,
+            candidate_full="!Bsk r.epub", score=0.99,
+        )
+    )
+    await db_session.commit()
+    monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: True)
+
+    called = False
+
+    async def fake_approve(*a):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+    out = await svc.autoget_tick()
+    assert out == {"skipped": "busy"}
+    assert called is False
+
+
+async def test_autoget_nothing_to_get(db_session, monkeypatch, _autoget_idle):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="weak", request_title="weak", status=AcquisitionStatus.pending,
+            candidate_full="!Bsk weak.epub", score=0.8,  # below the auto bar
+        )
+    )
+    await db_session.commit()
+    out = await svc.autoget_tick()
+    assert out == {"skipped": "nothing to get"}

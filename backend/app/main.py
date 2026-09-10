@@ -6,7 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
-from app.jobs.scheduler import create_scheduler, sync_backup_schedule, sync_nightly_schedule
+from app.jobs.scheduler import (
+    create_scheduler,
+    sync_autoget_schedule,
+    sync_backup_schedule,
+    sync_nightly_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +27,7 @@ async def lifespan(app: FastAPI):
     try:
         await sync_nightly_schedule(scheduler)
         await sync_backup_schedule(scheduler)
+        await sync_autoget_schedule(scheduler)
         scheduler.start()
     except Exception:  # a broken schedule must never stop the API booting
         logger.exception("scheduler failed to start")

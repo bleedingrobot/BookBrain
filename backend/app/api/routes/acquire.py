@@ -1,8 +1,11 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+from app.jobs.scheduler import sync_autoget_schedule
 
 from app.api.deps import require_drive_provider
 from app.data.db import get_db
@@ -17,6 +20,7 @@ from app.schemas.acquire import (
     AcquireStatus,
     AcquireSuggestions,
     ApproveRequestBody,
+    AutoGetSettings,
     OpenBooksServerStatus,
     OpenRequest,
     RequestRefreshJob,
@@ -229,3 +233,24 @@ async def skip_request(request_id: str) -> None:
 async def reset_request(request_id: str) -> None:
     _require_enabled()
     await acquisition_service.reset_request(request_id)
+
+
+@router.get("/autoget", response_model=AutoGetSettings)
+async def get_autoget(db: AsyncSession = Depends(get_db)) -> AutoGetSettings:
+    _require_enabled()
+    v = await SettingsRepository(db).get(OPENBOOKS_AUTOGET_ENABLED)
+    return AutoGetSettings(enabled=v == "true")
+
+
+@router.put("/autoget", response_model=AutoGetSettings)
+async def set_autoget(
+    body: AutoGetSettings, request: Request, db: AsyncSession = Depends(get_db)
+) -> AutoGetSettings:
+    """When on, a background job downloads one confident 'Books to get'
+    candidate per minute while nothing else is running."""
+    _require_enabled()
+    await SettingsRepository(db).set(OPENBOOKS_AUTOGET_ENABLED, "true" if body.enabled else "false")
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        await sync_autoget_schedule(scheduler)
+    return AutoGetSettings(enabled=body.enabled)
