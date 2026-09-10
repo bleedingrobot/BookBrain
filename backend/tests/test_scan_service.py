@@ -1134,3 +1134,41 @@ async def test_auto_trash_duplicates_off(db_session, monkeypatch):
     n = await ScanService()._auto_trash_duplicates(creds=object())
     assert n == 0
     assert trashed == []
+
+
+async def test_reroute_now_eligible_review_releases_low_confidence_books(db_session):
+    author = Author(name="A")
+    book = Book(canonical_title="B", author=author)
+    db_session.add_all([author, book])
+    await db_session.flush()
+
+    def _rf(fid, status_reason):
+        return File(
+            drive_file_id=fid, drive_parent_id="inbox", filename=f"{fid}.epub",
+            sha256=fid, size_bytes=10, status=FileStatus.review,
+            status_reason=status_reason, book_id=book.id, quality_score=5,
+        )
+
+    lo = _rf("lo", FileStatusReason.low_confidence)        # 55% — released at bar 40
+    hi_reason = _rf("corr", FileStatusReason.previously_rejected)  # other reason — left alone
+    too_low = _rf("toolow", FileStatusReason.low_confidence)  # 20% — stays
+    db_session.add_all([lo, hi_reason, too_low])
+    await db_session.flush()
+    db_session.add_all([
+        AIDecision(file_id=lo.id, model="m", prompt_hash="p", evidence_hash="e",
+                   raw_response_json={}, computed_confidence=55),
+        AIDecision(file_id=hi_reason.id, model="m", prompt_hash="p", evidence_hash="e",
+                   raw_response_json={}, computed_confidence=90),
+        AIDecision(file_id=too_low.id, model="m", prompt_hash="p", evidence_hash="e",
+                   raw_response_json={}, computed_confidence=20),
+    ])
+    await db_session.commit()
+
+    n = await ScanService()._reroute_now_eligible_review(threshold=40)
+    assert n == 1
+    await db_session.refresh(lo)
+    await db_session.refresh(hi_reason)
+    await db_session.refresh(too_low)
+    assert lo.status == FileStatus.inbox and lo.status_reason is None
+    assert hi_reason.status == FileStatus.review   # different reason, untouched
+    assert too_low.status == FileStatus.review     # below the bar

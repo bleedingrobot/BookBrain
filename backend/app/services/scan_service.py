@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -402,14 +402,53 @@ class ScanService:
             logger.exception("scan: auto-trash duplicates failed")
             return 0
 
+    async def _reroute_now_eligible_review(self, threshold: int) -> int:
+        """Lowering the auto-organize bar should also release books already
+        parked in the review queue *only* for low confidence — flip those at or
+        above the new bar back to `inbox` so this same pass organizes them.
+        Books flagged for any other reason (a correction, a real ambiguity)
+        are left alone."""
+        async with async_session_factory() as session:
+            latest = (
+                select(
+                    AIDecision.file_id.label("fid"),
+                    func.max(AIDecision.id).label("mid"),
+                )
+                .group_by(AIDecision.file_id)
+                .subquery()
+            )
+            rows = (
+                await session.execute(
+                    select(File)
+                    .join(latest, latest.c.fid == File.id)
+                    .join(AIDecision, AIDecision.id == latest.c.mid)
+                    .where(
+                        File.status == FileStatus.review,
+                        File.status_reason == FileStatusReason.low_confidence,
+                        File.book_id.is_not(None),
+                        AIDecision.computed_confidence >= threshold,
+                    )
+                )
+            ).scalars().all()
+            for row in rows:
+                row.status = FileStatus.inbox
+                row.status_reason = None
+            if rows:
+                await session.commit()
+                logger.info("scan: released %d review-queue book(s) at/above the %d%% bar", len(rows), threshold)
+        return len(rows)
+
     async def _auto_organize(self, creds: Credentials) -> int:
         async with async_session_factory() as session:
             settings_repo = SettingsRepository(session)
             dry_run = await get_organize_dry_run(settings_repo)
+            threshold = await get_confidence_auto_flagged(settings_repo)
             library = await DriveService.get_library_folder_config(settings_repo)
 
         if library is None:
             return 0
+
+        await self._reroute_now_eligible_review(threshold)
 
         counts, _failures = await get_organize_service().organize_eligible_files(
             creds=creds if not dry_run else None,
