@@ -37,6 +37,7 @@ from app.services.metadata_writeback_service import (
 )
 from app.services.library_index_service import (
     discovery_status,
+    regenerate_dashboard,
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_lists,
@@ -230,6 +231,30 @@ async def refresh_news_file(
     if count is None:
         raise HTTPException(status_code=500, detail="news refresh failed — see logs")
     return {"items": count}
+
+
+@router.post("/dashboard")
+async def refresh_dashboard_file(
+    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Writes bookbrain-dashboard.json — the viewer's Dashboard screen reads
+    the OpenBooks acquisition-pipeline snapshot (queue size, up next, recent
+    downloads, hit rate) from here, since that lives in this backend's own
+    SQLite DB rather than a Drive sidecar the viewer already holds. Also
+    refreshed automatically by the nightly run and after every auto-get
+    download."""
+    settings_repo = SettingsRepository(db)
+    creds = await auth.get_credentials(settings_repo)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="not connected to Google Drive")
+    library = await DriveService.get_library_folder_config(settings_repo)
+    if library is None:
+        raise HTTPException(status_code=400, detail="no library folder configured yet")
+    result = await regenerate_dashboard(creds, library.folder_id)
+    if result is None:
+        raise HTTPException(status_code=500, detail="dashboard refresh failed — see logs")
+    return result
 
 
 @router.post("/prompts")

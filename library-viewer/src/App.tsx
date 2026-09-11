@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityScreen } from './components/ActivityScreen'
 import { BookList } from './components/BookList'
 import { ContinueReading } from './components/ContinueReading'
+import { DashboardScreen } from './components/DashboardScreen'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { Reader } from './components/Reader'
@@ -68,6 +69,7 @@ import {
   type News,
 } from './lib/news'
 import { EMPTY_PROMPTS, fetchPrompts, type Prompts } from './lib/prompts'
+import { EMPTY_DASHBOARD, fetchDashboard, type Dashboard } from './lib/dashboard'
 import { EMPTY_LISTS, fetchLists, type Lists } from './lib/lists'
 import {
   activeSnoozes,
@@ -170,6 +172,10 @@ export default function App() {
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
   const [showPromptsScreen, setShowPromptsScreen] = useState(false)
+  // The acquisition-pipeline snapshot (queue/up-next/hit-rate) — everything
+  // else on the Dashboard screen is computed client-side from allRows.
+  const [dashboard, setDashboard] = useState<Dashboard>(EMPTY_DASHBOARD)
+  const [showDashboardScreen, setShowDashboardScreen] = useState(false)
   const [lists, setLists] = useState<Lists>(EMPTY_LISTS)
   // prompts/30 — the owner's Hardcover reading status, fetched lazily
   // alongside the new-releases sidecar. `pendingReading` overlays changes
@@ -259,6 +265,7 @@ export default function App() {
       )
       void fetchPrompts(token, folderId).then(setPrompts)
       void fetchLists(token, folderId).then(setLists)
+      void fetchDashboard(token, folderId).then(setDashboard)
       void readNextSnoozesSynced(token, folderId).then(setReadNextSnoozes)
     }
     if (ric) ric(run)
@@ -968,6 +975,22 @@ export default function App() {
     )
   }
 
+  if (showDashboardScreen) {
+    return (
+      <DashboardScreen
+        rows={allRows}
+        index={index}
+        dashboard={dashboard}
+        token={token}
+        onBack={() => setShowDashboardScreen(false)}
+        onOpenBook={(id) => {
+          setShowDashboardScreen(false)
+          jumpToRecent(id)
+        }}
+      />
+    )
+  }
+
   if (showWishlist) {
     return (
       <WishlistScreen
@@ -1034,6 +1057,7 @@ export default function App() {
         onShowPrompts={
           prompts.prompts.length > 0 ? () => setShowPromptsScreen(true) : undefined
         }
+        onShowDashboard={() => setShowDashboardScreen(true)}
         onShare={handleShare}
         onCopyLink={handleCopyLink}
         onEditSettings={() => setEditingSettings(true)}

@@ -59,6 +59,7 @@ from app.services.auth_service import get_auth_service
 from app.services.cover_service import regenerate_covers
 from app.services.drive_service import DriveService
 from app.services.library_index_service import (
+    regenerate_dashboard,
     regenerate_embeddings,
     regenerate_library_index,
     regenerate_lists,
@@ -302,6 +303,19 @@ async def run_nightly(
                 steps.append("acquire: skipped (auto-get is handling it)")
             else:
                 steps.append(await _acquire_candidates_phase(creds, library_folder_id))
+            # The viewer's Dashboard screen — a snapshot of the acquisition
+            # queue (wanted/pending/downloaded, up next, hit rate). Cheap;
+            # never fails the run.
+            try:
+                dash = await regenerate_dashboard(creds, library_folder_id)
+                steps.append(
+                    f"dashboard: {dash['wanted']} wanted, {dash['pending']} pending"
+                    if dash is not None
+                    else "dashboard: skipped"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("nightly: dashboard refresh failed")
+                steps.append(f"dashboard: FAILED — {exc}")
         index_count = await regenerate_library_index(creds, library_folder_id)
         steps.append(
             f"index: {index_count} books" if index_count is not None else "index: skipped"

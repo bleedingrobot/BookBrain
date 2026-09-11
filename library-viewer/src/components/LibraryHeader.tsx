@@ -11,6 +11,7 @@ interface Props {
   onShowNews: () => void
   onShowStats?: () => void
   onShowPrompts?: () => void
+  onShowDashboard: () => void
   onShare: () => void
   onCopyLink: () => void
   onEditSettings: () => void
@@ -31,6 +32,7 @@ export function LibraryHeader({
   onShowNews,
   onShowStats,
   onShowPrompts,
+  onShowDashboard,
   onShare,
   onCopyLink,
   onEditSettings,
@@ -42,6 +44,7 @@ export function LibraryHeader({
   const [menuOpen, setMenuOpen] = useState(false)
 
   const items = [
+    { label: 'Dashboard', fn: onShowDashboard },
     { label: 'Activity', fn: onShowActivity },
     ...(onShowStats ? [{ label: 'Reading stats', fn: onShowStats }] : []),
     ...(onShowPrompts ? [{ label: 'Your library answers', fn: onShowPrompts }] : []),

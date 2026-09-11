@@ -9,7 +9,8 @@ import asyncio
 import json
 import logging
 import re
-from datetime import UTC, datetime
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 
 from google.oauth2.credentials import Credentials
 from sqlalchemy import func, select
@@ -87,6 +88,16 @@ LISTS_FILENAME = "bookbrain-lists.json"
 LISTS_VERSION = 1
 _NEW_RELEASES_CAP = 60
 _WISHLIST_FILENAME = "bookbrain-wishlist.json"
+
+# The viewer's Dashboard screen — a snapshot of the OpenBooks acquisition
+# pipeline (queue size, up-next picks, recent downloads, hit rate). This is
+# the one dashboard section that can't come from data the viewer already
+# holds: acquisition_candidates lives in the backend's own SQLite DB, not a
+# Drive sidecar, so it has to be written out like this.
+DASHBOARD_FILENAME = "bookbrain-dashboard.json"
+DASHBOARD_VERSION = 1
+_UP_NEXT_CAP = 6
+_RECENT_DOWNLOADS_CAP = 8
 
 # prompts/29 — one binary sidecar of int8-quantised sentence embeddings for
 # the viewer's semantic search. A 4-byte LE uint32 header length, then a JSON
@@ -682,6 +693,126 @@ async def regenerate_news(
         return len(items)
     except Exception:
         logger.exception("sff news refresh failed")
+        return None
+
+
+async def regenerate_dashboard(
+    creds: Credentials | None, library_folder_id: str | None
+) -> dict | None:
+    """Write bookbrain-dashboard.json from the current `acquisition_candidates`
+    table: how many targets are still unsearched ("wanted"), how many have a
+    confident match waiting to download ("pending" — the "up next" list),
+    how many have been downloaded, and the all-time hit rate. Best-effort,
+    never raises into the caller (same contract as the other regenerate_*)."""
+    if creds is None or not library_folder_id:
+        return None
+    try:
+        from app.data.models import AcquisitionCandidate, AcquisitionStatus
+        from app.services import acquisition_service
+
+        provider = DriveProvider(build_drive_service(creds))
+        targets = await acquisition_service._gather_targets(provider, library_folder_id)
+        target_ids = {t["request_id"] for t in targets}
+
+        async with async_session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(
+                        AcquisitionCandidate.request_id,
+                        AcquisitionCandidate.status,
+                        AcquisitionCandidate.request_title,
+                        AcquisitionCandidate.request_author,
+                        AcquisitionCandidate.candidate_title,
+                        AcquisitionCandidate.candidate_author,
+                        AcquisitionCandidate.candidate_server,
+                        AcquisitionCandidate.score,
+                        AcquisitionCandidate.resolved_at,
+                    )
+                )
+            ).all()
+
+        by_status: dict[AcquisitionStatus, list] = defaultdict(list)
+        searched_ids: set[str] = set()
+        for r in rows:
+            searched_ids.add(r.request_id)
+            by_status[r.status].append(r)
+
+        wanted = sum(1 for tid in target_ids if tid not in searched_ids)
+        pending = by_status.get(AcquisitionStatus.pending, [])
+        approved = by_status.get(AcquisitionStatus.approved, [])
+        no_match = by_status.get(AcquisitionStatus.no_match, [])
+        failed = by_status.get(AcquisitionStatus.failed, [])
+
+        now = datetime.now(UTC)
+
+        def _aware(dt: datetime | None) -> datetime | None:
+            if dt is None:
+                return None
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+        downloaded = sorted(
+            ((_aware(r.resolved_at), r) for r in approved if r.resolved_at),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        last_24h = sum(1 for at, _ in downloaded if now - at <= timedelta(hours=24))
+        last_7d = sum(1 for at, _ in downloaded if now - at <= timedelta(days=7))
+        avg_per_day = last_7d / 7
+
+        up_next = sorted(
+            (r for r in pending if r.score is not None), key=lambda r: r.score, reverse=True
+        )[:_UP_NEXT_CAP]
+
+        hit_denom = len(approved) + len(no_match)
+
+        payload = {
+            "version": DASHBOARD_VERSION,
+            "generatedAt": now.isoformat(),
+            "queue": {
+                "wanted": wanted,
+                "pending": len(pending),
+                "noMatch": len(no_match),
+                "failed": len(failed),
+                "approvedAllTime": len(approved),
+            },
+            "upNext": [
+                {
+                    "title": r.candidate_title or r.request_title,
+                    "author": r.candidate_author or r.request_author,
+                    "server": r.candidate_server,
+                    "score": round(r.score, 2) if r.score is not None else None,
+                }
+                for r in up_next
+            ],
+            "recentDownloads": [
+                {
+                    "title": r.candidate_title or r.request_title,
+                    "author": r.candidate_author or r.request_author,
+                    "server": r.candidate_server,
+                    "at": at.isoformat(),
+                }
+                for at, r in downloaded[:_RECENT_DOWNLOADS_CAP]
+            ],
+            "hitRate": {
+                "approved": len(approved),
+                "noMatch": len(no_match),
+                "pct": round(len(approved) / hit_denom * 100, 1) if hit_denom else None,
+            },
+            "downloadsLast24h": last_24h,
+            "downloadsLast7d": last_7d,
+            "avgPerDay7d": round(avg_per_day, 2),
+            "etaDays": round((wanted + len(pending)) / avg_per_day, 1) if avg_per_day > 0 else None,
+        }
+        await asyncio.to_thread(
+            _write_json_file, provider, library_folder_id, DASHBOARD_FILENAME, payload
+        )
+        logger.info(
+            "dashboard sidecar: %d wanted, %d pending, %d downloaded all-time",
+            wanted, len(pending), len(approved),
+        )
+        return {"wanted": wanted, "pending": len(pending)}
+    except Exception:
+        logger.exception("dashboard refresh failed")
         return None
 
 

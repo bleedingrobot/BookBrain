@@ -1230,6 +1230,12 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     try:
         result = await approve_request(rid, cand.full, provider, inbox.folder_id, library.folder_id)
         logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), cand.server)
+        try:
+            from app.services.library_index_service import regenerate_dashboard
+
+            await regenerate_dashboard(creds, library.folder_id)
+        except Exception:  # noqa: BLE001 — the download already succeeded either way
+            logger.exception("acquire: dashboard refresh after auto-get failed")
         return {"got": title, "filename": result.get("filename"), "server": cand.server}
     except Exception as exc:  # noqa: BLE001 — approve_request already flagged the row
         logger.warning("acquire: auto-get failed for %r via %s: %s", title, cand.server, exc)
