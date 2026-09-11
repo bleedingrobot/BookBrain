@@ -137,6 +137,16 @@ describe('computeSeriesGaps (Hardcover catalog path)', () => {
     ])
   })
 
+  it('does not call a title-matching owned book "missing" even if it is tagged under a different series name', () => {
+    // Real case: "The Worst Witch" #7 got organised with series tag "Worst
+    // Witch" (no article) — invisible to this series' owned-set by name, but
+    // the book is still on the shelf under that exact title.
+    const misTagged = { ...book('Worst Witch', '2'), title: 'The Well of Ascension' }
+    const gap = computeSeriesGaps([...rows, misTagged], cat).get('Mistborn')!
+    expect(gap.missing).toEqual([])
+    expect(gap.missingEntries).toEqual([])
+  })
+
   it('never lists entries above the highest owned (unreleased / not-yet-bought)', () => {
     // owns 1 and 3 → #4 is in the catalog but must not show as "missing"
     const gap = computeSeriesGaps(rows, cat).get('Mistborn')!

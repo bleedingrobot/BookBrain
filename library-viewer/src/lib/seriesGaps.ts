@@ -1,5 +1,6 @@
 import type { BookRow } from './books'
 import type { SeriesCatalog } from './libraryIndex'
+import { libraryMatch } from './wishlist'
 
 // A catalogue entry above what you own — the next released book you're
 // missing, or a not-yet-published one. prompts/26 Part A; prompts/27 Part 1
@@ -78,7 +79,20 @@ function ownedWholeNumbers(rows: BookRow[]): Map<string, Set<number>> {
 // entry at or below the highest owned position that isn't owned. Capping at
 // the highest owned position keeps unreleased / not-yet-bought later books
 // out of "missing" — those are "what's next", not "what's absent".
-function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): SeriesGap | null {
+//
+// `rows` is the full library, not just this series' rows — a book can be
+// owned but organised under a slightly different series name/tag (article,
+// casing, a bad match: "Worst Witch" vs "The Worst Witch" is a real one in
+// the wild) and so invisible to `owned`, but its *title* still matches. Cross-
+// checking with `libraryMatch` before calling something "missing" catches
+// that: it's still worth fixing the underlying series tag, but the wishlist
+// shouldn't ask you to re-request a book you already have.
+function fromCatalog(
+  name: string,
+  owned: Set<number>,
+  catalog: SeriesCatalog,
+  rows: BookRow[],
+): SeriesGap | null {
   const have = [...owned].sort((a, b) => a - b)
   const maxOwned = have[have.length - 1]
 
@@ -94,8 +108,11 @@ function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): 
   const missingEntries: SeriesReleaseEntry[] = []
   for (let i = 1; i < maxOwned; i++) {
     if (owned.has(i)) continue
-    missing.push(i)
     const b = bookAt.get(i)
+    if (b && libraryMatch({ title: b.title, author: null, isbn13: b.isbn13 ?? null }, rows)) {
+      continue // already on the shelf under a different series tag
+    }
+    missing.push(i)
     if (b) {
       missingTitles[i] = b.title
       missingEntries.push({
@@ -115,7 +132,13 @@ function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): 
   let nextUp: SeriesReleaseEntry | null = null
   const upcoming: SeriesReleaseEntry[] = []
   const aboveOwned = catalog.books
-    .filter((b) => Number.isInteger(b.position) && b.position > maxOwned && !owned.has(b.position))
+    .filter(
+      (b) =>
+        Number.isInteger(b.position) &&
+        b.position > maxOwned &&
+        !owned.has(b.position) &&
+        !libraryMatch({ title: b.title, author: null, isbn13: b.isbn13 ?? null }, rows),
+    )
     .sort((a, b) => a.position - b.position)
   for (const b of aboveOwned) {
     const date = realReleaseDate(b)
@@ -180,7 +203,7 @@ export function computeSeriesGaps(
   for (const [name, owned] of ownedWholeNumbers(rows)) {
     const cat = catalog[name]
     const gap =
-      (cat && cat.books.length > 0 ? fromCatalog(name, owned, cat) : null) ?? fromGuess(owned)
+      (cat && cat.books.length > 0 ? fromCatalog(name, owned, cat, rows) : null) ?? fromGuess(owned)
     if (gap) out.set(name, gap)
   }
   return out
