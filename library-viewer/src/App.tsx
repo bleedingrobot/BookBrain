@@ -1365,12 +1365,14 @@ export default function App() {
             <br />
             Search, or pick a filter, to see them.
           </p>
-          <button
-            className="btn btn-neutral mt-4"
-            onClick={() => setShowAll(true)}
-          >
-            Show all books
-          </button>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button className="btn btn-neutral" onClick={() => setShowAll(true)}>
+              Show all books
+            </button>
+            <button className="btn btn-ghost" onClick={() => setShowDashboardScreen(true)}>
+              Dashboard
+            </button>
+          </div>
         </div>
       )}
 
