@@ -5,6 +5,7 @@ import { isAuthError } from '../lib/drive'
 import { searchBooks, type BookHit } from '../lib/bookSearch'
 import type { ListCandidate } from '../lib/lists'
 import type { WantCandidate } from '../lib/reading'
+import type { ReleaseItem } from '../lib/releases'
 import {
   alreadyListed,
   EMPTY_WISHLIST,
@@ -94,6 +95,7 @@ export function WishlistScreen({
   viewerName,
   wantCandidates,
   listCandidates,
+  seriesGapCandidates,
   onBack,
 }: {
   token: string
@@ -104,6 +106,8 @@ export function WishlistScreen({
   wantCandidates: WantCandidate[]
   // Books on curated Hardcover lists this library part-owns (prompts/31 E2).
   listCandidates: ListCandidate[]
+  // Books missing below the highest entry you own in a series (2026-09-11).
+  seriesGapCandidates: ReleaseItem[]
   onBack: () => void
 }) {
   const [list, setList] = useState<Wishlist>(EMPTY_WISHLIST)
@@ -113,6 +117,7 @@ export function WishlistScreen({
   const [showAcquired, setShowAcquired] = useState(false)
   const [showAllWant, setShowAllWant] = useState(false)
   const [showAllList, setShowAllList] = useState(false)
+  const [showAllGaps, setShowAllGaps] = useState(false)
 
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<BookHit[] | null>(null)
@@ -288,6 +293,13 @@ export function WishlistScreen({
   )
   const shownList = showAllList ? listSuggestions : listSuggestions.slice(0, 20)
 
+  // Series gaps already exclude what you own (computeSeriesGaps works off the
+  // current rows), so this only needs the wishlist-dedup check.
+  const gapSuggestions = seriesGapCandidates.filter(
+    (c) => !alreadyListed(candidateToHit(c), list.items),
+  )
+  const shownGaps = showAllGaps ? gapSuggestions : gapSuggestions.slice(0, 20)
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
       <button
@@ -437,6 +449,52 @@ export function WishlistScreen({
               onClick={() => setShowAllList(true)}
             >
               Show all {listSuggestions.length}
+            </button>
+          )}
+        </div>
+      )}
+
+      {gapSuggestions.length > 0 && (
+        <div className="card mt-4 p-4">
+          <h2 className="text-sm font-medium">
+            Missing from your series{' '}
+            <span className="font-normal text-neutral-400">({gapSuggestions.length})</span>
+          </h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Books below the newest one you own in a series you're partway through.
+          </p>
+          <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800">
+            {shownGaps.map((c, i) => (
+              <li
+                key={`${c.title}|${c.author ?? ''}|${i}`}
+                className="flex items-center gap-3 py-2"
+              >
+                <CoverThumb url={null} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{c.title}</div>
+                  <div className="truncate text-xs text-neutral-500">
+                    {c.author ?? 'Unknown author'}
+                    {c.series && (
+                      <span className="text-neutral-400">
+                        {' '}
+                        &middot; {c.series}
+                        {c.seriesPosition != null ? ` #${c.seriesPosition}` : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button className="btn btn-neutral btn-xs" onClick={() => add(candidateToHit(c))}>
+                  Request
+                </button>
+              </li>
+            ))}
+          </ul>
+          {gapSuggestions.length > shownGaps.length && (
+            <button
+              className="mt-2 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              onClick={() => setShowAllGaps(true)}
+            >
+              Show all {gapSuggestions.length}
             </button>
           )}
         </div>

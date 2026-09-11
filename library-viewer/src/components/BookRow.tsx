@@ -3,8 +3,8 @@ import { sendKey, type BookRow as Row, type SendStatus } from '../lib/books'
 import type { DriveFile } from '../lib/drive'
 import type { RecBook } from '../lib/recommendations'
 import type { ReadingStatus } from '../lib/reading'
-import { monthYear } from '../lib/releases'
-import type { SeriesGap } from '../lib/seriesGaps'
+import { monthYear, seriesEntryToItem, type ReleaseItem } from '../lib/releases'
+import type { SeriesGap, SeriesReleaseEntry } from '../lib/seriesGaps'
 import type { KoboDevice } from '../lib/settings'
 import { libraryMatch } from '../lib/wishlist'
 import { Cover } from './Cover'
@@ -41,6 +41,7 @@ interface Props {
   onFilterGenre: (genre: string) => void
   onFilterMood?: (mood: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
+  onRequestRelease: (item: ReleaseItem) => Promise<RequestResult>
 }
 
 const READING_STATUS_LABELS: Record<ReadingStatus, string> = {
@@ -171,6 +172,42 @@ function ReadersAlsoLiked({
   )
 }
 
+// A small inline "request" action for a single series entry — used by the
+// "Missing from X" / "Next in X" / "Coming" lines so they're actionable
+// instead of plain text (2026-09-11).
+function SeriesEntryAction({
+  entry,
+  onRequestRelease,
+}: {
+  entry: SeriesReleaseEntry
+  onRequestRelease: (item: ReleaseItem) => Promise<RequestResult>
+}) {
+  const [state, setState] = useState<RequestResult | 'pending' | null>(null)
+
+  async function request() {
+    setState('pending')
+    try {
+      setState(await onRequestRelease(seriesEntryToItem(entry)))
+    } catch {
+      setState(null)
+    }
+  }
+
+  if (state === 'added' || state === 'already-listed') {
+    return <span className="text-[11px] text-neutral-400">(on wishlist)</span>
+  }
+  return (
+    <button
+      type="button"
+      className="text-[11px] text-neutral-400 underline underline-offset-2 hover:text-neutral-600 disabled:opacity-50 dark:hover:text-neutral-300"
+      disabled={state === 'pending'}
+      onClick={request}
+    >
+      {state === 'pending' ? '…' : 'request'}
+    </button>
+  )
+}
+
 const isEpub = (name: string) => name.toLowerCase().endsWith('.epub')
 
 export function BookRow({
@@ -199,6 +236,7 @@ export function BookRow({
   onFilterGenre,
   onFilterMood,
   onRequestBook,
+  onRequestRelease,
 }: Props) {
   const seriesPeers = expanded && row.series ? allRows.filter((r) => r.series === row.series) : []
   const authorPeers = expanded && row.author ? allRows.filter((r) => r.author === row.author) : []
@@ -387,9 +425,22 @@ export function BookRow({
             {gap && gap.missing.length > 0 && row.series && (
               <p className="mt-1.5 text-amber-700 dark:text-amber-500">
                 Missing from {row.series}:{' '}
-                {gap.missing
-                  .map((n) => (gap.missingTitles?.[n] ? `#${n} ${gap.missingTitles[n]}` : `#${n}`))
-                  .join(', ')}
+                {gap.missing.map((n, i) => {
+                  const entry = gap.missingEntries?.find((e) => e.position === n)
+                  return (
+                    <span key={n}>
+                      {i > 0 && ', '}
+                      {entry ? (
+                        <>
+                          #{n} {entry.title}{' '}
+                          <SeriesEntryAction entry={entry} onRequestRelease={onRequestRelease} />
+                        </>
+                      ) : (
+                        `#${n}`
+                      )}
+                    </span>
+                  )
+                })}
                 {gap.source === 'hardcover' && gap.hardcoverSlug && (
                   <>
                     {' '}
@@ -407,20 +458,20 @@ export function BookRow({
             )}
             {gap?.nextUp && row.series && (
               <p className="mt-1.5 text-neutral-500">
-                Next in {row.series}: #{gap.nextUp.position} {gap.nextUp.title}
+                Next in {row.series}: #{gap.nextUp.position} {gap.nextUp.title}{' '}
+                <SeriesEntryAction entry={gap.nextUp} onRequestRelease={onRequestRelease} />
               </p>
             )}
             {gap?.upcoming && gap.upcoming.length > 0 && row.series && (
               <p className="mt-1.5 text-neutral-500">
                 Coming:{' '}
-                {gap.upcoming
-                  .map(
-                    (u) =>
-                      `#${u.position} ${u.title}${
-                        monthYear(u.releaseDate) ? ` — ${monthYear(u.releaseDate)}` : ''
-                      }`,
-                  )
-                  .join(', ')}
+                {gap.upcoming.map((u, i) => (
+                  <span key={u.position}>
+                    {i > 0 && ', '}#{u.position} {u.title}
+                    {monthYear(u.releaseDate) ? ` — ${monthYear(u.releaseDate)}` : ''}{' '}
+                    <SeriesEntryAction entry={u} onRequestRelease={onRequestRelease} />
+                  </span>
+                ))}
               </p>
             )}
             {(seriesPeers.length > 1 || authorPeers.length > 1) && (

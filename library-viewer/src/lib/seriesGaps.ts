@@ -20,6 +20,11 @@ export interface SeriesGap {
   source: 'hardcover' | 'guess'
   // Present only when source === 'hardcover': missing number -> its title.
   missingTitles?: Record<number, string>
+  // Present only when source === 'hardcover': the same missing entries as
+  // `missing`/`missingTitles`, but request-ready (isbn13 included) — one per
+  // missing number that has a matching catalog title. Feeds the "Request"
+  // buttons and the Wishlist screen's "Missing from your series" card.
+  missingEntries?: SeriesReleaseEntry[]
   // Present only when source === 'hardcover': the Hardcover series slug, for
   // a "via Hardcover" link.
   hardcoverSlug?: string | null
@@ -77,20 +82,31 @@ function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): 
   const have = [...owned].sort((a, b) => a - b)
   const maxOwned = have[have.length - 1]
 
-  const titleAt = new Map<number, string>()
+  const bookAt = new Map<number, SeriesCatalog['books'][number]>()
   for (const b of catalog.books) {
     if (Number.isInteger(b.position) && b.position >= 1 && b.position <= maxOwned) {
-      titleAt.set(b.position, b.title)
+      bookAt.set(b.position, b)
     }
   }
 
   const missing: number[] = []
   const missingTitles: Record<number, string> = {}
+  const missingEntries: SeriesReleaseEntry[] = []
   for (let i = 1; i < maxOwned; i++) {
     if (owned.has(i)) continue
     missing.push(i)
-    const t = titleAt.get(i)
-    if (t) missingTitles[i] = t
+    const b = bookAt.get(i)
+    if (b) {
+      missingTitles[i] = b.title
+      missingEntries.push({
+        seriesName: name,
+        hardcoverSlug: catalog.hardcoverSlug,
+        position: i,
+        title: b.title,
+        releaseDate: null, // already out — this is what makes it "missing"
+        isbn13: b.isbn13 ?? null,
+      })
+    }
   }
 
   // Everything above what you own: split into already-out ("next up", the
@@ -124,6 +140,7 @@ function fromCatalog(name: string, owned: Set<number>, catalog: SeriesCatalog): 
     missing,
     source: 'hardcover',
     missingTitles,
+    missingEntries,
     hardcoverSlug: catalog.hardcoverSlug,
     nextUp,
     upcoming,
@@ -230,10 +247,13 @@ export function incompleteSeriesNames(gaps: Map<string, SeriesGap>): Set<string>
 // series" strips. "recent" = the released-but-unowned `nextUp`, plus any
 // `upcoming` entry whose announced date has since passed (Hardcover data
 // lags); "upcoming" = still-future entries, soonest first. Deduped (a book
-// can sit in two overlapping series) and capped.
+// can sit in two overlapping series) and capped. `missing` (2026-09-11) adds
+// the below-what-you-own gaps the same way, for the Wishlist screen's
+// "Missing from your series" card + the inline per-row Request buttons.
 export interface CollectedReleases {
   recent: SeriesReleaseEntry[]
   upcoming: SeriesReleaseEntry[]
+  missing: SeriesReleaseEntry[]
 }
 
 const RELEASE_CAP = 30
@@ -254,6 +274,7 @@ export function collectSeriesReleases(gaps: Map<string, SeriesGap>): CollectedRe
   const now = Date.now()
   const recent: SeriesReleaseEntry[] = []
   const upcoming: SeriesReleaseEntry[] = []
+  const missing: SeriesReleaseEntry[] = []
   for (const gap of gaps.values()) {
     if (gap.source !== 'hardcover') continue
     if (gap.nextUp) recent.push(gap.nextUp)
@@ -262,12 +283,15 @@ export function collectSeriesReleases(gaps: Map<string, SeriesGap>): CollectedRe
       const hasPassed = d != null && !Number.isNaN(d.getTime()) && d.getTime() <= now
       ;(hasPassed ? recent : upcoming).push(entry)
     }
+    missing.push(...(gap.missingEntries ?? []))
   }
   recent.sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
   upcoming.sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
+  missing.sort((a, b) => a.seriesName.localeCompare(b.seriesName) || a.position - b.position)
   return {
     recent: dedupeReleases(recent).slice(0, RELEASE_CAP),
     upcoming: dedupeReleases(upcoming).slice(0, RELEASE_CAP),
+    missing: dedupeReleases(missing).slice(0, RELEASE_CAP),
   }
 }
 

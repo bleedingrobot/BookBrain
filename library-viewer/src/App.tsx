@@ -427,6 +427,12 @@ export default function App() {
   // prompts/27 Part 1 — "New / Coming soon in your series" strips, flattened
   // straight out of the per-series Hardcover catalogues already in the index.
   const seriesReleases = useMemo(() => collectSeriesReleases(seriesGaps), [seriesGaps])
+  // The below-what-you-own gaps as wishlist-ready candidates — feeds the
+  // Wishlist screen's "Missing from your series" card (2026-09-11).
+  const seriesGapCandidates = useMemo(
+    () => seriesReleases.missing.map(seriesEntryToItem),
+    [seriesReleases],
+  )
   // The feed powering the two release strips + <NewReleasesScreen>: series
   // entries (viewer-derived) merged with the author sidecar, then sorted by
   // how-much-you-read-the-author (bucketed 0/1/2/3+, so a stale release from a
@@ -971,6 +977,7 @@ export default function App() {
         viewerName={viewerName}
         wantCandidates={reading.wantUnowned}
         listCandidates={lists.candidates}
+        seriesGapCandidates={seriesGapCandidates}
         onBack={() => setShowWishlist(false)}
       />
     )
@@ -1380,6 +1387,7 @@ export default function App() {
           onFilterGenre={filterToGenre}
           onFilterMood={filterToMood}
           onRequestBook={requestBook}
+          onRequestRelease={requestRelease}
         />
       )}
     </div>

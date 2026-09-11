@@ -3,6 +3,7 @@ import { groupHeading, type BookRow as Row, type SendStatus, type SortKey } from
 import type { DriveFile } from '../lib/drive'
 import type { RecBook, Recommendations } from '../lib/recommendations'
 import type { ReadingStatus } from '../lib/reading'
+import type { ReleaseItem } from '../lib/releases'
 import type { SeriesGap } from '../lib/seriesGaps'
 import type { SentMap } from '../lib/sentTracker'
 import type { KoboDevice } from '../lib/settings'
@@ -43,6 +44,10 @@ interface Props {
   onFilterGenre: (genre: string) => void
   onFilterMood?: (mood: string) => void
   onRequestBook: (rec: RecBook) => Promise<RequestResult>
+  // "Missing from X" / "Next in X" / "Coming" inline buttons (2026-09-11) —
+  // same wishlist add as onRequestBook, but for a series-derived entry that
+  // also carries the series name/position.
+  onRequestRelease: (item: ReleaseItem) => Promise<RequestResult>
 }
 
 export function BookList({
@@ -75,6 +80,7 @@ export function BookList({
   onFilterGenre,
   onFilterMood,
   onRequestBook,
+  onRequestRelease,
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const visibleRows = rows.slice(0, visibleCount)
@@ -171,6 +177,7 @@ export function BookList({
                 onFilterGenre={onFilterGenre}
                 onFilterMood={onFilterMood}
                 onRequestBook={onRequestBook}
+                onRequestRelease={onRequestRelease}
               />
             </Fragment>
           )

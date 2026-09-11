@@ -116,6 +116,27 @@ describe('computeSeriesGaps (Hardcover catalog path)', () => {
     expect(gap.hardcoverSlug).toBe('mistborn')
   })
 
+  it('builds a request-ready entry (with isbn13) for each named missing title', () => {
+    const withIsbn = {
+      Mistborn: catalog('mistborn', [
+        { position: 1, title: 'The Final Empire' },
+        { position: 2, title: 'The Well of Ascension', isbn13: '9780765316882' },
+        { position: 3, title: 'The Hero of Ages' },
+      ]),
+    }
+    const gap = computeSeriesGaps(rows, withIsbn).get('Mistborn')!
+    expect(gap.missingEntries).toEqual([
+      {
+        seriesName: 'Mistborn',
+        hardcoverSlug: 'mistborn',
+        position: 2,
+        title: 'The Well of Ascension',
+        releaseDate: null,
+        isbn13: '9780765316882',
+      },
+    ])
+  })
+
   it('never lists entries above the highest owned (unreleased / not-yet-bought)', () => {
     // owns 1 and 3 → #4 is in the catalog but must not show as "missing"
     const gap = computeSeriesGaps(rows, cat).get('Mistborn')!
@@ -258,9 +279,31 @@ describe('collectSeriesReleases (Part 1)', () => {
     expect(collectSeriesReleases(gaps).recent.map((e) => e.title)).toEqual(['Shared'])
   })
 
+  it('flattens missing (below-owned) entries too, sorted by series then position', () => {
+    const gaps = computeSeriesGaps(
+      [book('A', '1'), book('A', '4'), book('B', '1'), book('B', '3')],
+      {
+        A: catalog('a', [
+          { position: 1, title: 'A1' },
+          { position: 2, title: 'A2', isbn13: '9990000000002' },
+          { position: 3, title: 'A3' },
+          { position: 4, title: 'A4' },
+        ]),
+        B: catalog('b', [
+          { position: 1, title: 'B1' },
+          { position: 2, title: 'B2' },
+          { position: 3, title: 'B3' },
+        ]),
+      },
+    )
+    const { missing } = collectSeriesReleases(gaps)
+    expect(missing.map((e) => `${e.seriesName}#${e.position}`)).toEqual(['A#2', 'A#3', 'B#2'])
+    expect(missing[0].isbn13).toBe('9990000000002')
+  })
+
   it('ignores guess-path series (no Hardcover catalogue)', () => {
     const gaps = computeSeriesGaps([book('G', '1'), book('G', '3')])
-    expect(collectSeriesReleases(gaps)).toEqual({ recent: [], upcoming: [] })
+    expect(collectSeriesReleases(gaps)).toEqual({ recent: [], upcoming: [], missing: [] })
   })
 })
 
