@@ -883,6 +883,44 @@ async def approve_request(
     inbox_folder_id: str,
     library_folder_id: str,
 ) -> dict:
+    # A manual "Get this" on the row's own top pick (no explicit alternative
+    # chosen) can be clicked long after it was last searched — `list_requests`
+    # re-ranks stored data on every page load, which can flip a `failed` row
+    # back to `pending` without ever re-touching OpenBooks, so "ready to
+    # download" in the panel doesn't mean "searched recently". Same 60-min
+    # reuse window auto-get uses: refresh it first rather than spend a
+    # download attempt on a command that's likely gone stale. An explicitly
+    # picked alternative is a deliberate choice — honoured as-is, no refresh.
+    if full_override is None:
+        async with async_session_factory() as session:
+            row = (
+                await session.execute(
+                    select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == request_id)
+                )
+            ).scalar_one_or_none()
+            stale = row is not None and (
+                (updated := _aware(row.updated_at)) is None
+                or datetime.now(UTC) - updated > _AUTOGET_SEARCH_REUSE
+            )
+            item = (
+                {
+                    "request_id": request_id, "source": row.source or "wishlist",
+                    "title": row.request_title, "author": row.request_author,
+                }
+                if stale
+                else None
+            )
+        if item is not None:
+            try:
+                async with async_session_factory() as session:
+                    demerits = await _server_demerits(session)
+                ranked = _rank(item["title"], item.get("author"), await _search_one(item), demerits=demerits)
+            except OpenBooksError as exc:
+                raise OpenBooksError(f"couldn't refresh the search before downloading: {exc}") from exc
+            async with async_session_factory() as session:
+                await _upsert(session, item, ranked, preserve_existing=True)
+                await session.commit()
+
     async with async_session_factory() as session:
         row = (
             await session.execute(

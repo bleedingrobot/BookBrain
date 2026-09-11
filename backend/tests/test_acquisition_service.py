@@ -245,6 +245,66 @@ async def test_approve_with_alternative_full(db_session, monkeypatch):
     assert seen["full"] == "!Ook alt.epub"
 
 
+async def test_approve_refreshes_a_stale_top_pick_before_downloading(db_session, monkeypatch):
+    row = AcquisitionCandidate(
+        request_id="r1", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.pending, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Bsk", candidate_size="900KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.updated_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=90)
+    await db_session.commit()
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    seen = {}
+
+    async def fake_acquire(full, filename, provider, inbox):
+        seen["full"] = full
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+
+    await svc.approve_request("r1", None, object(), "inbox", "lib")
+    assert searched == ["Departure"]  # re-searched because the top-pick row was stale
+    assert seen["full"] == "!Oatmeal A G Riddle - Departure (retail).epub"  # used the fresh pick
+
+
+async def test_approve_does_not_refresh_an_explicitly_chosen_alternative(db_session, monkeypatch):
+    row = AcquisitionCandidate(
+        request_id="r1", request_title="T", status=AcquisitionStatus.pending,
+        candidate_full="!Bsk best.epub", candidate_title="best",
+        alternatives_json=[{"full": "!Ook alt.epub", "title": "alt", "author": "A"}],
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.updated_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=5)
+    await db_session.commit()
+
+    async def no_search(item):
+        raise AssertionError("an explicitly picked alternative must not trigger a re-search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    async def fake_acquire(full, filename, provider, inbox):
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+
+    await svc.approve_request("r1", "!Ook alt.epub", object(), "inbox", "lib")
+
+
 async def test_skip_and_reset(db_session, monkeypatch):
     db_session.add(
         AcquisitionCandidate(request_id="r1", request_title="T", status=AcquisitionStatus.pending)
