@@ -3,6 +3,7 @@ import { logActivity } from '../lib/activityLog'
 import type { BookRow } from '../lib/books'
 import { isAuthError } from '../lib/drive'
 import { searchBooks, type BookHit } from '../lib/bookSearch'
+import type { SeriesCatalog } from '../lib/libraryIndex'
 import type { ListCandidate } from '../lib/lists'
 import type { WantCandidate } from '../lib/reading'
 import type { ReleaseItem } from '../lib/releases'
@@ -112,6 +113,64 @@ function groupBySeries(items: ReleaseItem[]): { series: string; items: ReleaseIt
     .sort((a, b) => b.items.length - a.items.length || a.series.localeCompare(b.series))
 }
 
+// A search hit and BookBrain's own Hardcover-matched series data don't share
+// an id — the only thing to join on is title. Only series the library
+// already has a catalog for (i.e. you own at least one entry of) are known
+// here at all; an untracked series just won't surface siblings, same
+// graceful degradation as the rest of the series-gap features.
+const SIBLING_DISPLAY_CAP = 10
+
+// wishlist.ts's normTitle drops everything from the first ':' on, which is
+// right for a real subtitle ("Book: A Novel") but wrong here — Hardcover
+// often titles series entries "Series Name: Book Title" (real case: every
+// Mistborn book), and that pattern collapses every entry in the series to
+// the same "seriesname" key, breaking the join entirely. Strip a leading
+// "<series name>: " instead of truncating at the first colon anywhere.
+function normForSeriesJoin(title: string, series?: string): string {
+  const stripped = series
+    ? title.replace(new RegExp(`^${series.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:—-]\\s*`, 'i'), '')
+    : title
+  return stripped
+    .toLowerCase()
+    .replace(/^(the|a|an)\s+/, '')
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function findSeriesForTitle(
+  title: string,
+  catalog: Record<string, SeriesCatalog>,
+): { series: string; cat: SeriesCatalog } | null {
+  if (!title.trim()) return null
+  for (const [series, cat] of Object.entries(catalog)) {
+    // Strip the same series-name prefix from the query too — a search hit
+    // titled "Mistborn: The Final Empire" needs it stripped just as much as
+    // the catalog entry does, and only this series' own name is a
+    // plausible prefix on either side.
+    const t = normForSeriesJoin(title, series)
+    if (cat.books.some((b) => normForSeriesJoin(b.title, series) === t)) return { series, cat }
+  }
+  return null
+}
+
+// Same colon-collapse problem rules out wishlist.ts's libraryMatch/
+// alreadyListed here (they're built on normTitle) — a plain title compare,
+// series-prefix-aware, is what these three checks need.
+function ownedElsewhere(
+  bookTitle: string,
+  isbn13: string | null,
+  series: string,
+  rows: BookRow[],
+): boolean {
+  if (isbn13 && rows.some((r) => r.isbn === isbn13)) return true
+  const t = normForSeriesJoin(bookTitle, series)
+  return rows.some((r) => normForSeriesJoin(r.title, series) === t)
+}
+
+function listedElsewhere(bookTitle: string, series: string, items: WishlistItem[]): boolean {
+  const t = normForSeriesJoin(bookTitle, series)
+  return items.some((i) => normForSeriesJoin(i.title, series) === t)
+}
+
 export function WishlistScreen({
   token,
   libraryFolderId,
@@ -120,6 +179,7 @@ export function WishlistScreen({
   wantCandidates,
   listCandidates,
   seriesGapCandidates,
+  seriesCatalog,
   onBack,
 }: {
   token: string
@@ -132,6 +192,9 @@ export function WishlistScreen({
   listCandidates: ListCandidate[]
   // Books missing below the highest entry you own in a series (2026-09-11).
   seriesGapCandidates: ReleaseItem[]
+  // Every Hardcover-matched series catalog the library knows about, keyed by
+  // series name — lets a manual search show "also in this series" siblings.
+  seriesCatalog: Record<string, SeriesCatalog>
   onBack: () => void
 }) {
   const [list, setList] = useState<Wishlist>(EMPTY_WISHLIST)
@@ -277,7 +340,10 @@ export function WishlistScreen({
   // Request every book in one group at once — a single state update/save
   // rather than looping `add()`, which would have each call close over the
   // same stale `list` and clobber all but the last one.
-  function addMany(items: { title: string; author: string | null; isbn13: string | null }[], label: string) {
+  function addMany(
+    items: { title: string; author: string | null; isbn13: string | null; series?: string | null }[],
+    label: string,
+  ) {
     const hits = items.map(candidateToHit)
     const fresh = hits.filter((h) => !alreadyListed(h, list.items))
     if (fresh.length === 0) return
@@ -387,28 +453,99 @@ export function WishlistScreen({
             {hits.map((hit, i) => {
               const inLibrary = libraryMatch(hit, rows)
               const listed = alreadyListed(hit, list.items)
+              const found = findSeriesForTitle(hit.title, seriesCatalog)
+              const siblings = found
+                ? found.cat.books
+                    .filter(
+                      (b) =>
+                        normForSeriesJoin(b.title, found.series) !==
+                        normForSeriesJoin(hit.title, found.series),
+                    )
+                    .filter((b) => !ownedElsewhere(b.title, b.isbn13 ?? null, found.series, rows))
+                    .filter((b) => !listedElsewhere(b.title, found.series, list.items))
+                    .sort((a, b) => a.position - b.position)
+                : []
               return (
-                <li key={i} className="flex items-center gap-3 py-2">
-                  <CoverThumb url={hit.cover} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{hit.title}</div>
-                    <div className="truncate text-xs text-neutral-500">
-                      {hit.author ?? 'Unknown author'}
-                      {hit.year ? ` · ${hit.year}` : ''}
+                <li key={i} className="py-2">
+                  <div className="flex items-center gap-3">
+                    <CoverThumb url={hit.cover} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{hit.title}</div>
+                      <div className="truncate text-xs text-neutral-500">
+                        {hit.author ?? 'Unknown author'}
+                        {hit.year ? ` · ${hit.year}` : ''}
+                      </div>
                     </div>
+                    {inLibrary ? (
+                      <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                        In library
+                      </span>
+                    ) : listed ? (
+                      <span className="badge bg-neutral-100 text-neutral-500 dark:bg-neutral-800">
+                        On list
+                      </span>
+                    ) : (
+                      <button className="btn btn-neutral btn-xs" onClick={() => add(hit)}>
+                        Request
+                      </button>
+                    )}
                   </div>
-                  {inLibrary ? (
-                    <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
-                      In library
-                    </span>
-                  ) : listed ? (
-                    <span className="badge bg-neutral-100 text-neutral-500 dark:bg-neutral-800">
-                      On list
-                    </span>
-                  ) : (
-                    <button className="btn btn-neutral btn-xs" onClick={() => add(hit)}>
-                      Request
-                    </button>
+                  {siblings.length > 0 && (
+                    <div className="mt-2 ml-[52px] rounded border border-neutral-100 p-2 dark:border-neutral-800">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-neutral-500">
+                          Also in {found!.series} ({siblings.length} more)
+                        </span>
+                        {siblings.length > 1 && (
+                          <button
+                            className="btn btn-neutral btn-xs shrink-0"
+                            onClick={() =>
+                              addMany(
+                                siblings.map((b) => ({
+                                  title: b.title,
+                                  author: hit.author,
+                                  isbn13: b.isbn13 ?? null,
+                                  series: found!.series,
+                                })),
+                                found!.series,
+                              )
+                            }
+                          >
+                            Request all {siblings.length}
+                          </button>
+                        )}
+                      </div>
+                      <ul className="mt-1 divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {siblings.slice(0, SIBLING_DISPLAY_CAP).map((b) => (
+                          <li key={b.position} className="flex items-center gap-2 py-1.5">
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              #{b.position} {b.title}
+                            </span>
+                            <button
+                              className="btn btn-neutral btn-xs shrink-0"
+                              onClick={() =>
+                                add({
+                                  title: b.title,
+                                  author: hit.author,
+                                  series: found!.series,
+                                  isbn13: b.isbn13 ?? null,
+                                  cover: null,
+                                  year: null,
+                                })
+                              }
+                            >
+                              Request
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      {siblings.length > SIBLING_DISPLAY_CAP && (
+                        <p className="mt-1 text-xs text-neutral-400">
+                          +{siblings.length - SIBLING_DISPLAY_CAP} more — use "Request all" to get
+                          the rest.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </li>
               )

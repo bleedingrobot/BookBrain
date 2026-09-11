@@ -978,6 +978,7 @@ export default function App() {
         wantCandidates={reading.wantUnowned}
         listCandidates={lists.candidates}
         seriesGapCandidates={seriesGapCandidates}
+        seriesCatalog={index.series}
         onBack={() => setShowWishlist(false)}
       />
     )
