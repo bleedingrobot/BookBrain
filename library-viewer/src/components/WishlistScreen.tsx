@@ -84,8 +84,32 @@ function StatusPicker({
   )
 }
 
-function candidateToHit(c: { title: string; author: string | null; isbn13: string | null }): BookHit {
-  return { title: c.title, author: c.author, series: null, isbn13: c.isbn13, cover: null, year: null }
+function candidateToHit(c: {
+  title: string
+  author: string | null
+  isbn13: string | null
+  series?: string | null
+}): BookHit {
+  return { title: c.title, author: c.author, series: c.series ?? null, isbn13: c.isbn13, cover: null, year: null }
+}
+
+// Series-gap candidates, bucketed by series so "Request all" can add a
+// whole run in one go instead of one click per book. Sorted biggest gap
+// first — that's the series most worth a bulk request.
+function groupBySeries(items: ReleaseItem[]): { series: string; items: ReleaseItem[] }[] {
+  const map = new Map<string, ReleaseItem[]>()
+  for (const c of items) {
+    const key = c.series ?? 'Other'
+    const arr = map.get(key)
+    if (arr) arr.push(c)
+    else map.set(key, [c])
+  }
+  return [...map.entries()]
+    .map(([series, group]) => ({
+      series,
+      items: group.sort((a, b) => (a.seriesPosition ?? 0) - (b.seriesPosition ?? 0)),
+    }))
+    .sort((a, b) => b.items.length - a.items.length || a.series.localeCompare(b.series))
 }
 
 export function WishlistScreen({
@@ -250,6 +274,24 @@ export function WishlistScreen({
     )
   }
 
+  // Request every book in one group at once — a single state update/save
+  // rather than looping `add()`, which would have each call close over the
+  // same stale `list` and clobber all but the last one.
+  function addMany(items: { title: string; author: string | null; isbn13: string | null }[], label: string) {
+    const hits = items.map(candidateToHit)
+    const fresh = hits.filter((h) => !alreadyListed(h, list.items))
+    if (fresh.length === 0) return
+    const newItems = fresh.map((h) => hitToItem(h, viewerName))
+    void persist({ ...list, items: [...newItems, ...list.items] })
+    void logActivity(
+      token,
+      libraryFolderId,
+      viewerName,
+      'request',
+      `${fresh.length} book${fresh.length === 1 ? '' : 's'} from ${label}`,
+    )
+  }
+
   function setStatus(item: WishlistItem, status: WishlistStatus) {
     void persist({
       ...list,
@@ -298,7 +340,8 @@ export function WishlistScreen({
   const gapSuggestions = seriesGapCandidates.filter(
     (c) => !alreadyListed(candidateToHit(c), list.items),
   )
-  const shownGaps = showAllGaps ? gapSuggestions : gapSuggestions.slice(0, 20)
+  const gapGroups = groupBySeries(gapSuggestions)
+  const shownGapGroups = showAllGaps ? gapGroups : gapGroups.slice(0, 8)
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
@@ -461,40 +504,59 @@ export function WishlistScreen({
             <span className="font-normal text-neutral-400">({gapSuggestions.length})</span>
           </h2>
           <p className="mt-1 text-xs text-neutral-500">
-            Books below the newest one you own in a series you're partway through.
+            Books below the newest one you own in a series you're partway through, grouped by
+            series so you can request a whole run in one go.
           </p>
-          <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800">
-            {shownGaps.map((c, i) => (
-              <li
-                key={`${c.title}|${c.author ?? ''}|${i}`}
-                className="flex items-center gap-3 py-2"
-              >
-                <CoverThumb url={null} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{c.title}</div>
-                  <div className="truncate text-xs text-neutral-500">
-                    {c.author ?? 'Unknown author'}
-                    {c.series && (
-                      <span className="text-neutral-400">
-                        {' '}
-                        &middot; {c.series}
-                        {c.seriesPosition != null ? ` #${c.seriesPosition}` : ''}
-                      </span>
-                    )}
-                  </div>
+          <div className="mt-3 space-y-4">
+            {shownGapGroups.map((g) => (
+              <div key={g.series}>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                    {g.series}{' '}
+                    <span className="font-normal text-neutral-400">
+                      ({g.items.length} missing)
+                    </span>
+                  </h3>
+                  {g.items.length > 1 && (
+                    <button
+                      className="btn btn-neutral btn-xs shrink-0"
+                      onClick={() => addMany(g.items, g.series)}
+                    >
+                      Request all {g.items.length}
+                    </button>
+                  )}
                 </div>
-                <button className="btn btn-neutral btn-xs" onClick={() => add(candidateToHit(c))}>
-                  Request
-                </button>
-              </li>
+                <ul className="mt-1 divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {g.items.map((c, i) => (
+                    <li
+                      key={`${c.title}|${c.author ?? ''}|${i}`}
+                      className="flex items-center gap-3 py-2"
+                    >
+                      <CoverThumb url={null} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{c.title}</div>
+                        <div className="truncate text-xs text-neutral-500">
+                          {c.author ?? 'Unknown author'}
+                          {c.seriesPosition != null && (
+                            <span className="text-neutral-400"> &middot; #{c.seriesPosition}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button className="btn btn-neutral btn-xs" onClick={() => add(candidateToHit(c))}>
+                        Request
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
-          {gapSuggestions.length > shownGaps.length && (
+          </div>
+          {gapGroups.length > shownGapGroups.length && (
             <button
-              className="mt-2 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+              className="mt-3 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
               onClick={() => setShowAllGaps(true)}
             >
-              Show all {gapSuggestions.length}
+              Show all {gapGroups.length} series
             </button>
           )}
         </div>
