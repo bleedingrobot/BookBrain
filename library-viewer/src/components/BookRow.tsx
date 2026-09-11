@@ -182,28 +182,38 @@ function SeriesEntryAction({
   entry: SeriesReleaseEntry
   onRequestRelease: (item: ReleaseItem) => Promise<RequestResult>
 }) {
-  const [state, setState] = useState<RequestResult | 'pending' | null>(null)
+  const [state, setState] = useState<RequestResult | 'pending' | 'error' | null>(null)
 
   async function request() {
     setState('pending')
     try {
       setState(await onRequestRelease(seriesEntryToItem(entry)))
     } catch {
-      setState(null)
+      // Previously reset to null here, which looked identical to "never
+      // clicked" — a real failure (a lapsed token, a Drive error) silently
+      // reverted the button with no sign anything happened. Surface it.
+      setState('error')
     }
   }
 
   if (state === 'added' || state === 'already-listed') {
     return <span className="text-[11px] text-neutral-400">(on wishlist)</span>
   }
+  if (state === 'owned') {
+    return <span className="text-[11px] text-neutral-400">(in library)</span>
+  }
   return (
     <button
       type="button"
-      className="text-[11px] text-neutral-400 underline underline-offset-2 hover:text-neutral-600 disabled:opacity-50 dark:hover:text-neutral-300"
+      className={`text-[11px] underline underline-offset-2 disabled:opacity-50 ${
+        state === 'error'
+          ? 'text-red-500 hover:text-red-600'
+          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+      }`}
       disabled={state === 'pending'}
       onClick={request}
     >
-      {state === 'pending' ? '…' : 'request'}
+      {state === 'pending' ? '…' : state === 'error' ? 'failed — retry' : 'request'}
     </button>
   )
 }
