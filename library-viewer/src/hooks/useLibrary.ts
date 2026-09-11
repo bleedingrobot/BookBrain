@@ -3,6 +3,7 @@ import { logActivity } from '../lib/activityLog'
 import { clearCoverCache, loadCoverManifest } from '../lib/covers'
 import { isAuthError, type DriveFile } from '../lib/drive'
 import { requestAccessToken, SCOPE_FULL } from '../lib/googleAuth'
+import { setTokenRefresher } from '../lib/tokenBroker'
 import { loadRemoteKoboDevices, saveRemoteKoboDevices } from '../lib/koboDeviceSync'
 import { getViewerName } from '../lib/viewerIdentity'
 import {
@@ -175,6 +176,31 @@ export function useLibrary(settings: ViewerSettings | null) {
     }, delay)
     return () => clearTimeout(id)
   }, [token, tokenExpiresAt, settings, scope, applyToken])
+
+  // Let the low-level Drive helpers force a token refresh + retry when a
+  // write comes back 401 (the timer above can miss if the tab slept).
+  useEffect(() => {
+    if (!settings) return
+    setTokenRefresher(
+      () =>
+        new Promise<string>((resolve, reject) => {
+          requestAccessToken(
+            settings.googleClientId,
+            scope,
+            (t, exp) => {
+              applyToken(t, exp)
+              resolve(t)
+            },
+            (message) => {
+              setSessionExpired(true)
+              reject(new Error(message || 'Sign-in expired — sign in again.'))
+            },
+            { silent: true },
+          )
+        }),
+    )
+    return () => setTokenRefresher(null)
+  }, [settings, scope, applyToken])
 
   const refresh = useCallback(async () => {
     if (!token) return

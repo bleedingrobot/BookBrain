@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { logActivity } from '../lib/activityLog'
 import type { BookRow } from '../lib/books'
+import { isAuthError } from '../lib/drive'
 import { searchBooks, type BookHit } from '../lib/bookSearch'
 import type { ListCandidate } from '../lib/lists'
 import type { WantCandidate } from '../lib/reading'
@@ -120,14 +121,20 @@ export function WishlistScreen({
   const rowsRef = useRef(rows)
   rowsRef.current = rows
 
+  // The token changes on every silent renewal — read it through a ref inside
+  // the load effect so a renewal doesn't re-run the load and wipe local edits
+  // that haven't reached Drive yet.
+  const tokenRef = useRef(token)
+  tokenRef.current = token
+
   // Track the Drive file id across rapid successive saves so two quick edits
   // don't each take the "no file yet" path and create duplicate files.
   const fileIdRef = useRef<string | null>(null)
 
-  // Load + reconcile once.
+  // Load + reconcile once (per library folder).
   useEffect(() => {
     let cancelled = false
-    loadWishlist(token, libraryFolderId)
+    loadWishlist(tokenRef.current, libraryFolderId)
       .then(async (loaded) => {
         if (cancelled) return
         fileIdRef.current = loaded.fileId
@@ -153,21 +160,65 @@ export function WishlistScreen({
     return () => {
       cancelled = true
     }
-  }, [token, libraryFolderId])
+  }, [libraryFolderId])
 
-  async function persist(next: Wishlist) {
-    setList(next)
+  // Every wishlist edit rewrites the whole ~50 KB file. Clicking several
+  // "Request" / status buttons in a row used to fire that many PATCHes back to
+  // back — enough to trip Drive's per-user write limit (403). Update the UI
+  // immediately, but coalesce the Drive writes: one save ~1s after the last
+  // edit, always sending the newest state, retrying on failure.
+  const latestRef = useRef<Wishlist>(list)
+  latestRef.current = list
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savingRef = useRef(false)
+
+  async function flushSave() {
+    saveTimerRef.current = null
+    if (savingRef.current) {
+      scheduleSave(50) // a save is in flight — check again right after it
+      return
+    }
+    savingRef.current = true
     try {
       const saved = await saveWishlist(token, libraryFolderId, {
-        ...next,
-        fileId: fileIdRef.current,
+        ...latestRef.current,
+        fileId: latestRef.current.fileId ?? fileIdRef.current,
       })
       fileIdRef.current = saved.fileId
-      setList(saved)
-    } catch {
-      setError('Change saved locally but not to Drive — try again.')
+      latestRef.current = { ...latestRef.current, fileId: saved.fileId }
+      setError(null)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      setError(
+        isAuthError(err)
+          ? 'Sign-in expired — reload the page to sign in again, then retry.'
+          : `Change saved locally but not to Drive (${detail}). Kept locally — retrying…`,
+      )
+      scheduleSave(6000)
+    } finally {
+      savingRef.current = false
     }
   }
+
+  function scheduleSave(delay = 1000) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => void flushSave(), delay)
+  }
+
+  function persist(next: Wishlist) {
+    setList(next)
+    latestRef.current = next
+    scheduleSave()
+  }
+
+  // Don't lose a pending save when the screen closes.
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) void flushSave()
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   async function runSearch() {
     if (!query.trim()) return

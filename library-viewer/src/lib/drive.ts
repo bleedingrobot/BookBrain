@@ -1,3 +1,5 @@
+import { refreshAccessToken } from './tokenBroker'
+
 export interface DriveFile {
   id: string
   name: string
@@ -231,38 +233,46 @@ export async function writeJsonFile(
   name: string,
   content: unknown,
   existingId: string | null,
+  retried = false,
 ): Promise<string> {
   const body = JSON.stringify(content)
+  const auth = (t: string) => ({ Authorization: `Bearer ${t}` })
+
+  let resp: Response
   if (existingId) {
-    const resp = await fetch(
+    resp = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&fields=id`,
+      { method: 'PATCH', headers: { ...auth(token), 'Content-Type': 'application/json' }, body },
+    )
+  } else {
+    const boundary = 'bookbrain' + Math.random().toString(36).slice(2)
+    const multipart =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+      `${JSON.stringify({ name, parents: [folderId] })}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
+    resp = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
       {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body,
+        method: 'POST',
+        headers: { ...auth(token), 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body: multipart,
       },
     )
-    if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
-    return existingId
   }
-  const boundary = 'bookbrain' + Math.random().toString(36).slice(2)
-  const multipart =
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
-    `${JSON.stringify({ name, parents: [folderId] })}\r\n` +
-    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
-  const resp = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`,
-      },
-      body: multipart,
-    },
-  )
-  if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
-  return ((await resp.json()) as { id: string }).id
+
+  // A lapsed access token (tab open a long time, machine slept through the
+  // silent renewal) — get a fresh one and try the write once more so a
+  // queued change isn't dropped. isAuthError() also matches the "(401)"
+  // message for callers that don't retry.
+  if (resp.status === 401 && !retried) {
+    const fresh = await refreshAccessToken() // throws "Sign-in expired…" if it can't
+    return writeJsonFile(fresh, folderId, name, content, existingId, true)
+  }
+  if (!resp.ok) {
+    if (resp.status === 401) throw new Error('Sign-in expired — sign in again.')
+    throw new Error(`Failed to save (${resp.status})`)
+  }
+  return existingId ?? ((await resp.json()) as { id: string }).id
 }
 
 export async function trashFile(token: string, fileId: string): Promise<void> {
