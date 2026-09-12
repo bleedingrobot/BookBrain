@@ -30,44 +30,54 @@ declare global {
   }
 }
 
-// Needs full read/write access, not just drive.readonly — "Send to Kobo"
-// copies a file into another folder (files.copy), and drive.file's
-// narrower "only files this app created or you explicitly picked" scope
-// wouldn't cover pre-existing library files this app never created.
-const SCOPE = 'https://www.googleapis.com/auth/drive'
+// Everyone gets full read/write — "Send to Kobo" copies a file into another
+// folder (files.copy), and the wishlist / activity-log / device-settings
+// sidecars are all writes, none of which drive.file's narrower scope would
+// cover for pre-existing library files this app never created.
+export const SCOPE_FULL = 'https://www.googleapis.com/auth/drive'
 
 let tokenClient: TokenClient | null = null
-let currentClientId: string | null = null
+let currentKey: string | null = null
 
-function getTokenClient(clientId: string, onToken: (token: string) => void, onError: (message: string) => void): TokenClient {
-  if (tokenClient && currentClientId === clientId) return tokenClient
+interface Handlers {
+  onToken: (token: string, expiresInSeconds: number) => void
+  onError: (message: string) => void
+}
+
+function getTokenClient(clientId: string, scope: string, handlers: Handlers): TokenClient {
+  const key = `${clientId}|${scope}`
+  if (tokenClient && currentKey === key) return tokenClient
   if (!window.google) {
     throw new Error('Google sign-in script has not loaded yet — try again in a moment.')
   }
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: clientId,
-    scope: SCOPE,
+    scope,
     callback: (resp) => {
       if (resp.error || !resp.access_token) {
-        onError(resp.error || 'Sign-in failed.')
+        handlers.onError(resp.error || 'Sign-in failed.')
         return
       }
-      onToken(resp.access_token)
+      handlers.onToken(resp.access_token, resp.expires_in || 3600)
     },
-    error_callback: (err) => onError(err.type || 'Sign-in failed.'),
+    error_callback: (err) => handlers.onError(err.type || 'Sign-in failed.'),
   })
-  currentClientId = clientId
+  currentKey = key
   return tokenClient
 }
 
 export function requestAccessToken(
   clientId: string,
-  onToken: (token: string) => void,
+  scope: string,
+  onToken: (token: string, expiresInSeconds: number) => void,
   onError: (message: string) => void,
+  opts?: { silent?: boolean },
 ): void {
   try {
-    const client = getTokenClient(clientId, onToken, onError)
-    client.requestAccessToken()
+    const client = getTokenClient(clientId, scope, { onToken, onError })
+    // prompt: '' asks GIS to reuse the existing Google session without a
+    // popup — used for the silent pre-expiry refresh.
+    client.requestAccessToken(opts?.silent ? { prompt: '' } : undefined)
   } catch (err) {
     onError(err instanceof Error ? err.message : 'Sign-in failed.')
   }

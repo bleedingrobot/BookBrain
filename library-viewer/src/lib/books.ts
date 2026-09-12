@@ -1,0 +1,196 @@
+import type { DriveFile } from './drive'
+import type { IndexMeta, LibraryIndex } from './libraryIndex'
+import { parseFilename } from './parseFilename'
+import type { Reading, ReadingEntry } from './reading'
+import type { SentMap } from './sentTracker'
+
+// One row = one Drive file, with metadata taken from the sidecar index when
+// it's there and recovered from the organized filename when it isn't.
+export interface BookRow {
+  id: string
+  file: DriveFile
+  filename: string
+  title: string
+  author: string | null
+  series: string | null
+  seriesNumber: string | null
+  description: string | null
+  addedAt: string | null
+  isbn: string | null
+  meta: IndexMeta | null
+  // prompts/30 — the owner's Hardcover reading status/rating, when the
+  // reading sidecar has an entry for this book.
+  reading: ReadingEntry | null
+}
+
+// Identifies one row's send-to-one-device button, for per-button in-flight/
+// error state — a plain string so App.tsx and BookRow can both key off the
+// same value without importing each other.
+export function sendKey(fileId: string, deviceFolderId: string): string {
+  return `${fileId}:${deviceFolderId}`
+}
+
+export type SendStatus = 'pending' | 'error'
+
+export type SortKey = 'title' | 'author' | 'series' | 'added' | 'rating' | 'lists'
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  title: 'Title',
+  author: 'Author',
+  series: 'Series',
+  added: 'Recently added',
+  rating: 'Rating',
+  lists: 'Most listed',
+}
+
+export function buildRows(
+  files: DriveFile[],
+  index: LibraryIndex,
+  reading?: Reading,
+): BookRow[] {
+  return files.map((file) => {
+    const meta = index.entries[file.id]
+    const parsed = parseFilename(file.name)
+    return {
+      id: file.id,
+      file,
+      filename: file.name,
+      title: meta?.title ?? parsed.title,
+      author: meta?.author ?? parsed.author,
+      series: meta?.series ?? parsed.series,
+      seriesNumber:
+        meta?.seriesNumber != null ? String(meta.seriesNumber) : parsed.seriesNumber,
+      description: meta?.description ?? null,
+      addedAt: meta?.addedAt ?? null,
+      isbn: meta?.isbn ?? null,
+      meta: meta?.meta ?? null,
+      reading: reading?.books[file.id] ?? null,
+    }
+  })
+}
+
+// The genres present across the library, most common first — the source for
+// the genre facet chips. Capped so a long tail of one-off genres doesn't
+// swamp the filter bar.
+export function topGenres(rows: BookRow[], limit = 12): string[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    for (const g of row.meta?.genres ?? []) counts.set(g, (counts.get(g) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([g]) => g)
+}
+
+// The moods present across the library, most common first — the source for
+// the mood facet chips (prompts/31 Part A). Same shape as topGenres.
+export function topMoods(rows: BookRow[], limit = 10): string[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    for (const m of row.meta?.moods ?? []) counts.set(m, (counts.get(m) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([m]) => m)
+}
+
+export function matchesRow(row: BookRow, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const haystack =
+    `${row.author ?? ''} ${row.title} ${row.series ?? ''} ${row.filename}`.toLowerCase()
+  return q.split(/\s+/).every((term) => haystack.includes(term))
+}
+
+// Filter chips. `all`, `noseries` and `gaps` are self-contained; `on:<id>`
+// and `off:<id>` are built per device at render time.
+export type FilterKey =
+  | 'all'
+  | 'noseries'
+  | 'gaps'
+  | 'comingsoon'
+  | 'read'
+  | 'unread'
+  | 'want'
+  | 'favourites'
+  | `on:${string}`
+  | `off:${string}`
+  | 'unsent'
+  | `genre:${string}`
+  | `mood:${string}`
+
+export function matchesFilter(
+  row: BookRow,
+  filter: FilterKey,
+  sent: SentMap,
+  incompleteSeries: Set<string>,
+  comingSoonSeries: Set<string> = new Set(),
+): boolean {
+  if (filter === 'all') return true
+  if (filter === 'noseries') return !row.series
+  if (filter === 'gaps') return row.series != null && incompleteSeries.has(row.series)
+  if (filter === 'comingsoon') return row.series != null && comingSoonSeries.has(row.series)
+  if (filter === 'read') return row.reading?.status === 'read'
+  if (filter === 'unread') return row.reading?.status !== 'read'
+  if (filter === 'want') return row.reading?.status === 'want'
+  if (filter === 'favourites') return (row.reading?.rating ?? 0) >= 4
+  if (filter === 'unsent') return !Object.values(sent).some((bucket) => bucket[row.id])
+  if (filter.startsWith('on:')) return Boolean(sent[filter.slice(3)]?.[row.id])
+  if (filter.startsWith('off:')) return !sent[filter.slice(4)]?.[row.id]
+  if (filter.startsWith('genre:')) return row.meta?.genres.includes(filter.slice(6)) ?? false
+  if (filter.startsWith('mood:')) return row.meta?.moods.includes(filter.slice(5)) ?? false
+  return true
+}
+
+// Sorts after the low one so unknowns sink to the bottom of a name sort but
+// don't collide with a real "A" author.
+const LAST = '￿'
+const num = (s: string | null) => (s == null || s === '' ? Number.POSITIVE_INFINITY : Number(s))
+
+function byNameThenSeries(a: BookRow, b: BookRow, key: 'author' | 'series'): number {
+  const an = (a[key] ?? LAST).toLowerCase()
+  const bn = (b[key] ?? LAST).toLowerCase()
+  if (an !== bn) return an < bn ? -1 : 1
+  const as = (a.series ?? LAST).toLowerCase()
+  const bs = (b.series ?? LAST).toLowerCase()
+  if (as !== bs) return as < bs ? -1 : 1
+  const asn = num(a.seriesNumber)
+  const bsn = num(b.seriesNumber)
+  if (asn !== bsn) return asn - bsn
+  return a.title.localeCompare(b.title)
+}
+
+export const SORTS: Record<SortKey, (a: BookRow, b: BookRow) => number> = {
+  title: (a, b) => a.title.localeCompare(b.title),
+  author: (a, b) => byNameThenSeries(a, b, 'author'),
+  series: (a, b) => byNameThenSeries(a, b, 'series'),
+  // Newest first; anything with no known added-date drops to the end.
+  added: (a, b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? '') || a.title.localeCompare(b.title),
+  // Highest Hardcover rating first; unrated books sink to the bottom.
+  rating: (a, b) =>
+    (b.meta?.rating ?? -1) - (a.meta?.rating ?? -1) || a.title.localeCompare(b.title),
+  // On the most Hardcover lists first — a "most canonical / talked-about" sort.
+  lists: (a, b) =>
+    (b.meta?.listsCount ?? -1) - (a.meta?.listsCount ?? -1) || a.title.localeCompare(b.title),
+}
+
+// prompts/31 Part B — "quick wins" score for the want-to-read view: a short,
+// highly-rated book scores high; a long one scores low. Books with no page
+// count or rating land in the middle. Used to reorder the `want` filter so the
+// easy, promising reads float to the top.
+export function quickWinScore(row: BookRow): number {
+  const pages = row.meta?.pages ?? null
+  const lengthTier = pages == null ? 0 : pages < 350 ? 1 : pages <= 600 ? 0 : -1
+  const rating = row.reading?.rating ?? row.meta?.rating ?? 3.5
+  return lengthTier + (rating - 3.5)
+}
+
+// The heading shown above a run of rows when a name sort is active — null
+// means "no heading here" (title/added sorts, or the value is unknown).
+export function groupHeading(row: BookRow, sort: SortKey): string | null {
+  if (sort === 'author') return row.author
+  if (sort === 'series') return row.series
+  return null
+}

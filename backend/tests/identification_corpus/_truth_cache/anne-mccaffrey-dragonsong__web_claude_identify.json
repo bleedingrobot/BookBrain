@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_identify",
+  "title": "Dragonsong",
+  "author": "Anne McCaffrey",
+  "series": "Harper Hall",
+  "series_number": 1.0,
+  "url": "https://www.goodreads.com/book/show/28541.Dragonsong",
+  "note": "conf=0.96; Filename labels it \"Pern 03\" (its slot in the broader Dragonriders of Pern publication order), but the tight sub-series is the Harper Hall Trilogy, where Dragonsong is volume 1 (followed by Dragonsinger and Dragondrums). ISBN 0689860080 for the Simon & Schuster edition."
+}

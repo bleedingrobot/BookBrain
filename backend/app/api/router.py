@@ -1,11 +1,13 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    acquire,
     auth,
     drive,
     duplicates,
     files,
     health,
+    jobs,
     library,
     library_audit,
     local_scan,
@@ -14,6 +16,7 @@ from app.api.routes import (
     reviews,
     scan,
     settings,
+    wishlist,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -30,3 +33,6 @@ api_router.include_router(files.router)
 api_router.include_router(library.router)
 api_router.include_router(library_audit.router)
 api_router.include_router(local_scan.router)
+api_router.include_router(jobs.router)
+api_router.include_router(wishlist.router)
+api_router.include_router(acquire.router)

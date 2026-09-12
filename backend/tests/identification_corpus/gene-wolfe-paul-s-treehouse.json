@@ -1,0 +1,85 @@
+{
+  "id": "gene-wolfe-paul-s-treehouse",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / Paul's Treehouse / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 1865,
+    "drive_file_id": "1872cU_TK6pTDxcHl8mIX-PcDbba1BZ8H",
+    "filename": "Paul's Treehouse - Gene Wolfe.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Paul's Treehouse - Gene Wolfe.epub",
+  "evidence": {
+    "title": "Paul's Treehouse",
+    "authors": [
+      "Gene Wolfe"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Paul's Treehouse",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 80,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"Paul's Treehouse\" by Gene Wolfe — a known Gene Wolfe short story (originally in Orbit 5, 1969). No provider candidates found and no ISBN, and the EPUB body text contains only boilerplate CSS, so the identification rests solely on self-reported metadata; it is likely a single short story file rather than a full book, which may warrant human review.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Paul's Treehouse",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Paul's Treehouse",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Paul's Treehouse",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://isfdb.org/cgi-bin/pl.cgi?6282=",
+      "note": "conf=0.95; Standalone short story (1969), first published in Orbit 5, ed. Damon Knight. Collected in Gene Wolfe's Book of Days (1981) and Castle of Days (1992); these are collections, not a series to which the story belongs. ISFDB lists no series affiliation for the title. This ebook is a single-story file with no ISBN."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Paul's Treehouse",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "http://www.isfdb.org/cgi-bin/title.cgi?57390=",
+      "note": "conf=0.94; Standalone short story (first published 1969), not part of any series. It appears in the collections Gene Wolfe's Book of Days (1981, Arbor Day entry) and the omnibus Castle of Days, but those are single-author collections, not a series. Title and author metadata confirmed correct; no series exists."
+    }
+  ],
+  "truth_disagreements": []
+}

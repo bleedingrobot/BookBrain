@@ -1,0 +1,576 @@
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+
+from app.data.models import (
+    Author,
+    Book,
+    File,
+    FileStatus,
+    Identifier,
+    IdentifierType,
+    MetadataSource,
+    Series,
+)
+import json
+
+from app.services.library_index_service import (
+    _plain_text,
+    _read_pending_reading,
+    build_index_payload,
+    build_lists_payload,
+    build_new_releases_payload,
+    build_prompts_payload,
+    build_reading_payload,
+    build_recommendations_payload,
+    match_hardcover_book_ids,
+)
+
+
+class _FakeProvider:
+    """Minimal stand-in: one folder, files addressed by name. Supports the
+    write path (`_write_bytes_file` → update/upload) too."""
+
+    def __init__(self, files: dict[str, bytes]):
+        self._by_name = dict(files)
+        self._ids = {name: f"id-{name}" for name in files}
+
+    def list_files_in_folder(self, _folder_id: str):
+        return [{"id": self._ids[n], "name": n} for n in self._by_name]
+
+    def download_file(self, file_id: str) -> bytes:
+        name = next(n for n, i in self._ids.items() if i == file_id)
+        return self._by_name[name]
+
+    def update_file_content(self, file_id: str, *, new_name: str, data: bytes, mime_type: str = "") -> dict:
+        name = next(n for n, i in self._ids.items() if i == file_id)
+        self._by_name[name] = data
+        return {"id": file_id}
+
+    def upload_new_file(self, *, name: str, data: bytes, parent_id: str, mime_type: str = "") -> dict:
+        self._by_name[name] = data
+        self._ids[name] = f"id-{name}"
+        return {"id": self._ids[name]}
+
+    def json(self, name: str) -> dict:
+        return json.loads(self._by_name[name].decode())
+
+
+def test_read_pending_reading_filters_to_valid_changes() -> None:
+    raw = {
+        "version": 1,
+        "changes": [
+            {"driveFileId": "d1", "status": "read", "title": "A"},
+            {"status": "read"},  # no driveFileId → dropped
+            "nonsense",  # not a dict → dropped
+        ],
+    }
+    provider = _FakeProvider({"bookbrain-reading-pending.json": json.dumps(raw).encode()})
+    out = _read_pending_reading(provider, "folder")
+    assert [c["driveFileId"] for c in out] == ["d1"]
+
+
+def test_read_pending_reading_missing_file_is_empty() -> None:
+    assert _read_pending_reading(_FakeProvider({}), "folder") == []
+
+
+def test_plain_text_strips_html_and_caps() -> None:
+    assert _plain_text("<b>John Wick</b><BR>meets <i>Ghost</i>") == "John Wick meets Ghost"
+    assert _plain_text(None) is None
+    assert _plain_text("   <br>  ") is None
+    assert len(_plain_text("x" * 5000)) == 1500
+
+
+def test_plain_text_strips_publisher_labels() -> None:
+    assert _plain_text("SUMMARY: There are no rules in the dark.") == "There are no rules in the dark."
+    assert _plain_text("<p>Publisher's Description:</p> A boy.") == "A boy."
+    assert _plain_text("From the Publisher — Great book") == "Great book"
+    # only a leading label, and only once
+    assert _plain_text("A summary: of events") == "A summary: of events"
+
+
+async def _seed(db_session) -> None:
+    author = Author(name="James Islington")
+    series = Series(name="The Hierarchy")
+    db_session.add_all([author, series])
+    await db_session.flush()
+
+    organised = Book(
+        canonical_title="The Will of the Many",
+        author_id=author.id,
+        series_id=series.id,
+        series_number=1,
+        description="A boy hides who he is.",
+    )
+    standalone = Book(canonical_title="Scion", author_id=author.id)
+    inbox_book = Book(canonical_title="Not Placed Yet", author_id=author.id)
+    db_session.add_all([organised, standalone, inbox_book])
+    await db_session.flush()
+
+    placed = File(
+        drive_file_id="drive-will",
+        filename="James Islington, The Will of the Many, The Hierarchy, 1.epub",
+        sha256="a",
+        size_bytes=1,
+        status=FileStatus.organised,
+        book_id=organised.id,
+    )
+    placed_2 = File(
+        drive_file_id="drive-scion",
+        filename="James Islington, Scion.epub",
+        sha256="b",
+        size_bytes=1,
+        status=FileStatus.organised,
+        book_id=standalone.id,
+    )
+    not_placed = File(
+        drive_file_id="drive-inbox",
+        filename="whatever.epub",
+        sha256="c",
+        size_bytes=1,
+        status=FileStatus.inbox,
+        book_id=inbox_book.id,
+    )
+    db_session.add_all([placed, placed_2, not_placed])
+    await db_session.flush()
+
+    # Scion has no book.description — the EPUB blurb should be used instead.
+    db_session.add(
+        MetadataSource(
+            file_id=placed_2.id,
+            field_name="description",
+            value="<b>John Wick meets Ghost in the Shell.</b>",
+            source="epub",
+        )
+    )
+    db_session.add(Identifier(book_id=organised.id, type=IdentifierType.isbn13, value="9781234567890"))
+    db_session.add(Identifier(book_id=standalone.id, type=IdentifierType.isbn10, value="1668239248"))
+    await db_session.commit()
+
+
+async def test_build_index_payload_only_organised_files(db_session) -> None:
+    await _seed(db_session)
+    payload = await build_index_payload(db_session)
+
+    assert payload["version"] == 7
+    assert payload["count"] == 2
+    assert set(payload["books"]) == {"drive-will", "drive-scion"}
+
+    will = payload["books"]["drive-will"]
+    assert will["title"] == "The Will of the Many"
+    assert will["author"] == "James Islington"
+    assert will["series"] == "The Hierarchy"
+    assert will["seriesNumber"] == 1
+    assert will["description"] == "A boy hides who he is."
+    assert will["isbn"] == "9781234567890"
+
+    scion = payload["books"]["drive-scion"]
+    assert scion["series"] is None
+    assert scion["seriesNumber"] is None
+    assert scion["description"] == "John Wick meets Ghost in the Shell."
+    assert scion["isbn"] == "1668239248"
+
+    # No Hardcover data seeded → empty series map.
+    assert payload["series"] == {}
+
+
+async def test_build_index_payload_includes_matched_hardcover_series(db_session) -> None:
+    await _seed(db_session)
+    series = (
+        await db_session.execute(select(Series).where(Series.name == "The Hierarchy"))
+    ).scalar_one()
+    series.hardcover_json = {
+        "id": 55,
+        "name": "The Hierarchy",
+        "slug": "the-hierarchy",
+        "primaryCount": 3,
+        "books": [
+            {
+                "position": 1.0,
+                "title": "The Will of the Many",
+                "releaseDate": "2023-05-23",
+                "isbn13": "9781234567890",
+            },
+            {"position": 2.0, "title": "The Strength of the Few"},
+        ],
+        "match": "auto",
+    }
+    # An unmatched series must not appear.
+    other = Series(name="Ghostwater", hardcover_json={"match": "none"})
+    db_session.add(other)
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    assert set(payload["series"]) == {"The Hierarchy"}
+    entry = payload["series"]["The Hierarchy"]
+    assert entry["hardcoverSlug"] == "the-hierarchy"
+    assert entry["primaryCount"] == 3
+    assert [b["title"] for b in entry["books"]] == [
+        "The Will of the Many",
+        "The Strength of the Few",
+    ]
+    assert entry["books"][0]["releaseDate"] == "2023-05-23"  # prompts/26 Part A
+    assert entry["books"][0]["isbn13"] == "9781234567890"  # prompts/27 Part 1
+
+
+async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.hardcover_json = {
+        "id": 1,
+        "similar": [],
+        "meta": {
+            "rating": 4.42,
+            "ratingsCount": 5645,
+            "pages": 541,
+            "category": "Book",
+            "literaryType": "Fiction",
+            "genres": ["Fantasy", "Epic Fantasy"],
+            "moods": ["dark", "tense"],
+            "contentWarnings": ["Violence", "Death"],
+            "listsCount": 3223,
+            "description": "A boy hides who he is.",  # not carried into the index
+        },
+    }
+    scion = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))
+    ).scalar_one()
+    scion.hardcover_json = {"similar": [], "meta": {}}  # looked, found nothing
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    meta = payload["books"]["drive-will"]["meta"]
+    assert meta == {
+        "rating": 4.42,
+        "ratingsCount": 5645,
+        "pages": 541,
+        "category": "Book",
+        "literaryType": "Fiction",
+        "genres": ["Fantasy", "Epic Fantasy"],
+        "moods": ["dark", "tense"],
+        "contentWarnings": ["Violence", "Death"],
+        "listsCount": 3223,
+    }
+    assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
+
+
+async def test_match_hardcover_book_ids_and_prompts_payload(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    scion = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))
+    ).scalar_one()
+    will.hardcover_json = {"id": 100, "similar": [], "meta": {}}
+    scion.hardcover_json = {"id": 200, "similar": [], "meta": {}}
+    await db_session.commit()
+
+    assert await match_hardcover_book_ids(db_session, {100, 200, 999}) == {
+        100: "drive-will",
+        200: "drive-scion",
+    }
+
+    prompts_raw = [
+        {"question": "Two owned?", "slug": "a", "bookIds": [100, 200, 999]},  # kept: 2 owned
+        {"question": "One owned?", "slug": "b", "bookIds": [100, 999]},  # dropped: < 2
+        {"question": "None owned?", "slug": "c", "bookIds": [999]},  # dropped
+    ]
+    payload = await build_prompts_payload(db_session, prompts_raw)
+    assert payload["version"] == 1
+    assert [p["question"] for p in payload["prompts"]] == ["Two owned?"]
+    assert payload["prompts"][0]["driveIds"] == ["drive-will", "drive-scion"]
+
+
+async def test_build_lists_payload_drops_owned_and_wishlisted_candidates(db_session) -> None:
+    await _seed(db_session)  # owns "The Will of the Many" / "Scion" by James Islington
+    from app.services.library_index_service import _norm_key
+
+    result = {
+        "lists": [{"name": "Best SFF", "slug": "sff", "owned": 2, "total": 20}],
+        "candidates": [
+            {"title": "The Will of the Many", "author": "James Islington", "isbn13": None,
+             "fromList": "Best SFF"},  # owned → dropped
+            {"title": "Wishlisted Book", "author": "W", "isbn13": None, "fromList": "Best SFF"},
+            {"title": "A Fresh One", "author": "F", "isbn13": "9990000000002", "fromList": "Best SFF"},
+        ],
+    }
+    wishlist_keys = {_norm_key("Wishlisted Book", "W")}
+    payload = await build_lists_payload(db_session, result, wishlist_keys)
+
+    assert payload["version"] == 1
+    assert payload["lists"] == result["lists"]
+    assert [c["title"] for c in payload["candidates"]] == ["A Fresh One"]
+
+
+async def test_build_recommendations_payload(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.hardcover_json = {
+        "id": 1,
+        "similar": [
+            {"title": "The Will of the Many", "author": "James Islington", "isbn13": None},  # self
+            {"title": "Red Rising", "author": "Pierce Brown", "isbn13": "9780553588484"},
+            {"title": "The Poppy War", "author": "R.F. Kuang", "isbn13": None},
+        ],
+    }
+    await db_session.commit()
+
+    payload = await build_recommendations_payload(db_session)
+
+    assert payload["version"] == 1
+    # self-reference dropped, only the file that has recs is present
+    assert list(payload["books"]) == ["drive-will"]
+    assert [r["title"] for r in payload["books"]["drive-will"]] == ["Red Rising", "The Poppy War"]
+
+
+async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_session) -> None:
+    await _seed(db_session)  # James Islington owns "The Will of the Many" + "Scion"
+    author = (
+        await db_session.execute(select(Author).where(Author.name == "James Islington"))
+    ).scalar_one()
+    today = datetime.now(UTC).date()
+    author.hardcover_json = {
+        "books": [
+            {"title": "The Will of the Many", "releaseDate": "2023-05-23"},  # owned → drop
+            {"title": "The Strength of the Few", "releaseDate": "2020-01-01"},  # wishlisted → drop
+            {"title": "Blade Breaker", "releaseDate": "2024-01-01", "isbn13": "9990000000001"},
+            {
+                "title": "The Hierarchy 3",
+                "releaseDate": (today.replace(year=today.year + 1)).isoformat(),
+                "genres": ["Fantasy"],
+            },
+        ]
+    }
+    await db_session.commit()
+
+    from app.services.library_index_service import _norm_key
+
+    wishlist_keys = {_norm_key("The Strength of the Few", "James Islington")}
+    global_raw = [
+        {"title": "Blade Breaker", "author": "James Islington", "releaseDate": "2024-01-01"},  # dup
+        {"title": "Some Hyped Book", "author": "Other Person", "releaseDate": "2027-01-01"},
+    ]
+    trending_raw = [
+        {"title": "Some Hyped Book", "author": "Other Person"},  # dup of global → dropped
+        {"title": "Trending Now", "author": "Zadie Z", "genres": ["Literary"]},
+    ]
+    payload = await build_new_releases_payload(db_session, wishlist_keys, global_raw, trending_raw)
+
+    assert payload["version"] == 2
+    assert [b["title"] for b in payload["recent"]] == ["Blade Breaker"]
+    assert [b["title"] for b in payload["upcoming"]] == ["The Hierarchy 3"]
+    assert payload["recent"][0]["source"] == "author"
+    assert payload["upcoming"][0]["genres"] == ["Fantasy"]
+    # global: the author-feed dup is dropped, the fresh one kept
+    assert [b["title"] for b in payload["global"]] == ["Some Hyped Book"]
+    assert payload["global"][0]["source"] == "global"
+    # trending: the global dup is dropped, order preserved, source tagged
+    assert [b["title"] for b in payload["trending"]] == ["Trending Now"]
+    assert payload["trending"][0]["source"] == "trending"
+
+
+async def test_build_reading_payload_matches_and_counts_unmatched(db_session) -> None:
+    await _seed(db_session)  # drive-will (isbn13 9781234567890), drive-scion (title/author)
+    rows = [
+        {"title": "The Will of the Many", "author": "?", "isbn13": "9781234567890",
+         "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1},
+        {"title": "Scion", "author": "James Islington", "isbn13": None,
+         "status": "reading", "rating": None, "readDate": None, "readCount": 0,
+         "progress": 0.42},
+        {"title": "A Book Not In The Library", "author": "Someone", "isbn13": "9990000000000",
+         "status": "read", "rating": 5.0, "readDate": None, "readCount": 1},
+    ]
+    rows.append(
+        {"title": "Some Wanted Book", "author": "A Writer", "isbn13": "9990000000123",
+         "status": "want", "rating": None, "readDate": None, "readCount": 0}
+    )
+    goal = {"year": 2026, "target": 50, "progress": 48}
+    payload = await build_reading_payload(db_session, rows, "James", goal)
+
+    assert payload["version"] == 4 and payload["reader"] == "James" and payload["count"] == 2
+    assert payload["books"]["drive-will"] == {
+        "status": "read", "rating": 4.5, "readDate": "2026-01-02", "readCount": 1
+    }
+    # prompts/31 Part I — mid-read progress carried through
+    assert payload["books"]["drive-scion"] == {"status": "reading", "progress": 0.42}
+    assert payload["unmatched"] == {"read": 1, "want": 1, "reading": 0}
+    # want-to-read not in the library → a wishlist candidate (read/reading stay counts-only)
+    assert payload["wantUnowned"] == [
+        {"title": "Some Wanted Book", "author": "A Writer", "isbn13": "9990000000123"}
+    ]
+    assert payload["goal"] == goal
+
+    # no goal → the key is omitted entirely
+    assert "goal" not in await build_reading_payload(db_session, rows, "James")
+
+
+# --- F2: unresolvable write-back changes stop retrying forever ----------
+
+
+def test_prune_pending_changes_gives_up_after_five_attempts() -> None:
+    from app.services.library_index_service import _prune_pending_changes
+
+    change = {"driveFileId": "d1", "title": "Stuck Book"}
+    for run in range(1, 5):
+        left, given_up = _prune_pending_changes([change], applied=[], failed=["d1"])
+        assert given_up == []
+        assert left[0]["attempts"] == run
+        change = left[0]
+    left, given_up = _prune_pending_changes([change], applied=[], failed=["d1"])
+    assert left == []
+    assert [c["driveFileId"] for c in given_up] == ["d1"]
+
+
+def test_prune_pending_changes_keeps_unattempted_and_drops_applied() -> None:
+    from app.services.library_index_service import _prune_pending_changes
+
+    pending = [
+        {"driveFileId": "done", "title": "A"},
+        {"driveFileId": "fail", "title": "B", "attempts": 2},
+        {"driveFileId": "notrun", "title": "C"},  # rate-limited mid-queue
+    ]
+    left, given_up = _prune_pending_changes(pending, applied=["done"], failed=["fail"])
+    assert given_up == []
+    assert {c["driveFileId"] for c in left} == {"fail", "notrun"}
+    assert next(c for c in left if c["driveFileId"] == "fail")["attempts"] == 3
+    assert "attempts" not in next(c for c in left if c["driveFileId"] == "notrun")
+
+
+# --- F4: 3+ consecutive partial-and-smaller pulls surface, not freeze --
+
+
+async def test_regenerate_reading_forces_a_partial_write_after_three_streaks(
+    db_session, monkeypatch
+) -> None:
+    import app.services.library_index_service as svc
+    from app.services import hardcover_reading_service
+
+    await _seed(db_session)
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(svc, "async_session_factory", lambda: _CM())
+    monkeypatch.setattr(svc, "build_drive_service", lambda _creds: None)
+
+    # A healthy existing sidecar claiming 5 matched rows.
+    existing = json.dumps(
+        {"version": 4, "count": 5, "unmatched": {"read": 0, "want": 0, "reading": 0}}
+    ).encode()
+    provider = _FakeProvider({"bookbrain-reading.json": existing})
+    monkeypatch.setattr(svc, "DriveProvider", lambda _svc: provider)
+
+    async def fake_fetch():  # every pull is partial and smaller (1 row)
+        return (
+            [{"title": "Scion", "author": "James Islington", "isbn13": None, "status": "reading"}],
+            "James",
+            False,
+        )
+
+    async def no_goal():
+        return None
+
+    monkeypatch.setattr(hardcover_reading_service, "fetch_reading", fake_fetch)
+    monkeypatch.setattr(hardcover_reading_service, "fetch_goal", no_goal)
+
+    # Runs 1 and 2: kept frozen (returns None, file unchanged).
+    assert await svc.regenerate_reading(object(), "folder") is None
+    assert await svc.regenerate_reading(object(), "folder") is None
+    assert provider.json("bookbrain-reading.json")["count"] == 5
+
+    # Run 3: writes the partial payload, flagged.
+    assert await svc.regenerate_reading(object(), "folder") == 1
+    written = provider.json("bookbrain-reading.json")
+    assert written["partial"] is True
+    assert written["count"] == 1
+
+    # A later complete pull clears the streak and drops the flag.
+    async def full_fetch():
+        return (
+            [
+                {"title": "The Will of the Many", "author": "?", "isbn13": "9781234567890", "status": "read"},
+                {"title": "Scion", "author": "James Islington", "isbn13": None, "status": "reading"},
+            ],
+            "James",
+            True,
+        )
+
+    monkeypatch.setattr(hardcover_reading_service, "fetch_reading", full_fetch)
+    assert await svc.regenerate_reading(object(), "folder") == 2
+    assert "partial" not in provider.json("bookbrain-reading.json")
+
+
+# --- F7: an unmatched read row that looks owned is logged --------------
+
+
+async def test_build_reading_payload_logs_a_read_near_miss(db_session, caplog) -> None:
+    import logging
+
+    await _seed(db_session)  # owns "The Will of the Many", "Scion"
+    rows = [
+        {
+            "title": "The Hierarchy: The Will of the Many",  # leading series prefix, no ISBN
+            "author": "James Islington",
+            "isbn13": None,
+            "status": "read",
+        }
+    ]
+    with caplog.at_level(logging.INFO, logger="app.services.library_index_service"):
+        payload = await build_reading_payload(db_session, rows, "James")
+
+    assert payload["unmatched"]["read"] == 1
+    assert any(
+        "looks owned but didn't match" in r.message and "The Will of the Many" in r.message
+        for r in caplog.records
+    )
+
+
+# --- F5: discovery-status for the admin refresh panel -----------------
+
+
+def test_discovery_status_reports_present_sidecars_and_tolerates_missing() -> None:
+    from app.services.library_index_service import discovery_status
+
+    idx = json.dumps({"version": 7, "generatedAt": "2026-09-10T00:00:00+00:00", "count": 2470}).encode()
+    reading = json.dumps(
+        {"version": 4, "generatedAt": "2026-09-10T01:00:00+00:00", "count": 405, "partial": True}
+    ).encode()
+    news = json.dumps(
+        {"version": 1, "generatedAt": "2026-09-10T02:00:00+00:00", "items": [{}, {}, {}]}
+    ).encode()
+    nr = json.dumps(
+        {"version": 2, "generatedAt": "x", "recent": [{}], "upcoming": [{}, {}], "global": [], "trending": [{}]}
+    ).encode()
+    header = json.dumps({"version": 1, "generatedAt": "2026-09-10T03:00:00+00:00", "count": 12}).encode()
+    emb_bin = len(header).to_bytes(4, "little") + header + b"\x00\x00"
+
+    provider = _FakeProvider(
+        {
+            "bookbrain-index.json": idx,
+            "bookbrain-reading.json": reading,
+            "bookbrain-news.json": news,
+            "bookbrain-new-releases.json": nr,
+            "bookbrain-embeddings.bin": emb_bin,
+            "bookbrain-recommendations.json": b"{ this is not json",  # corrupt → None
+        }
+    )
+    out = discovery_status(provider, "folder")
+
+    assert out["index"] == {"generatedAt": "2026-09-10T00:00:00+00:00", "version": 7, "count": 2470}
+    assert out["reading"]["count"] == 405 and out["reading"]["partial"] is True
+    assert out["news"]["count"] == 3
+    assert out["newReleases"]["count"] == 4  # 1 + 2 + 0 + 1
+    assert out["embeddings"] == {"generatedAt": "2026-09-10T03:00:00+00:00", "version": 1, "count": 12}
+    assert out["recommendations"] is None  # corrupt
+    assert out["prompts"] is None and out["lists"] is None  # absent

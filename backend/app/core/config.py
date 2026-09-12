@@ -18,6 +18,40 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5"
     google_books_api_key: str = ""
 
+    # Hardcover (https://hardcover.app) as a third metadata provider — a
+    # human-curated catalogue whose series data beats Google Books / Open
+    # Library. A Personal Access Token from hardcover.app account settings
+    # (Hardcover API -> New API Key). Backend only — their API forbids
+    # browser use. Empty = the provider is not added to candidate_service and
+    # nothing changes. See prompts/25-hardcover-integration.md.
+    hardcover_api_token: str = ""
+    # prompts/30 — display name for whoever's Hardcover reading data the
+    # `bookbrain-reading.json` sidecar carries. Empty → the Hardcover username.
+    hardcover_reader_name: str = ""
+
+    # prompts/15 Stage A — web-search grounding for the identify call. When on
+    # (default), the AI identification path may call the Anthropic web_search
+    # server tool to verify title/author/series/first-publication year against
+    # the live web before answering — targeting the post-training-cutoff
+    # "invented a plausible series" failure. It is billed per search, so
+    # identification_service.should_ground only turns it on for books with a
+    # recent-year signal (filename or provider pub date within ~2 years) — a
+    # few percent of AI-path calls, not all of them. Set False to disable
+    # entirely (tests never hit the network regardless).
+    ai_web_search_enabled: bool = True
+    ai_web_search_max_uses: int = 2
+
+    # prompts/15 Stage H — a second, adversarial AI call ("confirm this exactly
+    # or correct it") for AI-path identifications that land in the uncertain
+    # band (70 <= computed_confidence < confidence_auto_organize). OFF by
+    # default: it is one extra ~$0.03 model call per uncertain new book, and
+    # James is hard budget-limited. Turn on only when the review queue is
+    # noisier than the spend. When on: an agreeing verifier lifts confidence a
+    # little (double-checked); a disagreeing one takes the correction AND forces
+    # the review queue (two AI opinions differed — a human should look).
+    ai_verify_enabled: bool = False
+    ai_verify_cost_usd: float = 0.03
+
     frontend_origin: str = "http://localhost:5173"
 
     # EPUB safe-parsing limits (SPEC.md §1)
@@ -30,13 +64,56 @@ class Settings(BaseSettings):
     confidence_auto_organize: int = 95
     confidence_auto_flagged: int = 85
 
-    # Calibre CLI conversion (mobi/rtf -> epub before processing)
+    # AI spend guard rails (finding 11). Per-call figures are padded
+    # estimates in the same spirit as reident_audit_service's
+    # ~1.5k in + 0.4k out; they exist to show the user a "~$X" before a
+    # click, not to bill anything.
+    ai_description_cap: int = 200  # max model-written blurbs per backfill run
+    ai_description_cost_usd: float = 0.01  # describe(): ~150 in + ~400 out
+    # a full forced-tool identify pass. Only a few percent of these ground
+    # (prompts/15 Stage A — recent books only), so the blended figure is
+    # barely above the un-grounded ~0.03.
+    ai_identify_cost_usd: float = 0.035
+
+    # Calibre CLI conversion (mobi/rtf/txt -> epub before processing)
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120
+
+    # 7-Zip CLI, used only to read .cbr (RAR) comic archives — .cbr is kept
+    # as-is like .cbz, never converted. Empty = auto-detect: PATH (7z / 7za /
+    # 7zz), then the standard Windows install dir.
+    seven_zip_binary: str = ""
+    seven_zip_timeout_seconds: int = 60
 
     # Local folder watched for new ebooks (e.g. a torrents download dir) to
     # offer copying into the Drive inbox
     torrents_watch_folder: str = r"D:\Torrents"
+
+    # OpenBooks (https://github.com/evan-buss/openbooks) — an experimental
+    # "Find a book" flow in the admin app. OpenBooks runs separately in
+    # server mode (backend/tools/run-openbooks.ps1) and BookBrain talks to
+    # its WebSocket API as the single allowed client: search -> pick a
+    # result -> download -> upload into the Drive inbox, where the normal
+    # scan/identify/organize pipeline takes over. Off unless
+    # OPENBOOKS_ENABLED=true. `openbooks_download_dir` must match the `--dir`
+    # OpenBooks was started with (files land in its `books/` subfolder).
+    # See prompts/37-openbooks-acquire.md.
+    openbooks_enabled: bool = False
+    openbooks_ws_url: str = "ws://localhost:5228/ws"
+    openbooks_download_dir: str = r"C:\Users\Giant\Documents\epub-librarian\backend\tools\openbooks-dl"
+    # IRC bot that answers searches on #ebook. "search" is the default; flip to
+    # "searchook" when "search" is down (OpenBooks' own advice). Takes effect
+    # on the next Start of the OpenBooks server.
+    openbooks_searchbot: str = "search"
+    # Path to the openbooks executable. Empty = look for
+    # backend/tools/openbooks.exe next to this checkout. The admin "Find a
+    # Book" page has a Start/Stop button that launches it with this.
+    openbooks_binary: str = ""
+
+    # Nightly SQLite backup to Drive (backup_service). How many dated
+    # snapshots to keep in the library folder's backups/ subfolder — older
+    # ones are trashed (recoverable) after each new upload.
+    backup_retention: int = 7
 
 
 @lru_cache

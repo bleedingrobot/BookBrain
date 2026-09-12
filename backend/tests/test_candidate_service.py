@@ -81,3 +81,39 @@ async def test_empty_provider_list_is_a_safe_no_op() -> None:
     results = await service.generate_candidates(isbn13="9780441172719", title="Dune")
 
     assert results == []
+
+
+def test_default_service_adds_hardcover_only_when_token_is_set(monkeypatch) -> None:
+    from app.core.config import get_settings
+    from app.services.candidate_service import default_candidate_service
+
+    settings = get_settings()
+
+    monkeypatch.setattr(settings, "hardcover_api_token", "")
+    names = {p.name for p in default_candidate_service()._providers}
+    assert "hardcover" not in names
+    assert {"google_books", "open_library"} <= names
+
+    monkeypatch.setattr(settings, "hardcover_api_token", "tok")
+    assert "hardcover" in {p.name for p in default_candidate_service()._providers}
+
+
+async def test_resolve_author_person_id_without_hardcover_is_none() -> None:
+    service = CandidateService(providers=[_FakeProvider("a")])
+    assert await service.resolve_author_person_id("Iain Banks") is None
+    assert await service.resolve_author_person_id(None) is None
+
+
+async def test_resolve_author_person_id_delegates_to_hardcover(monkeypatch) -> None:
+    from app.providers.metadata.hardcover import HardcoverProvider
+
+    hc = HardcoverProvider(token="t")
+
+    async def _fake(name):
+        return 95997 if name == "Iain M. Banks" else None
+
+    monkeypatch.setattr(hc, "resolve_person_id", _fake)
+    service = CandidateService(providers=[_FakeProvider("a"), hc])
+
+    assert await service.resolve_author_person_id("Iain M. Banks") == 95997
+    assert await service.resolve_author_person_id("Someone Else") is None

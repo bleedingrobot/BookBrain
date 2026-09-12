@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "City of Torment",
+  "author": "Bruce R. Cordell",
+  "series": "Abolethic Sovereignty",
+  "series_number": 2.0,
+  "url": "https://www.goodreads.com/review/show/71315125",
+  "note": "conf=0.97; Refuted the proposed series string: 'Forgotten Realms.Abolethic Sovereignty.Forgotten Realms.2 of 3._.ICB Best' is filename metadata cruft (duplicated universe name, count, and a scan-quality tag), not a published series name. The real tight sub-series is the Abolethic Sovereignty trilogy (Plague of Spells #1, City of Torment #2, Key of Stars #3), set in the wider Forgotten Realms universe. Title, author, and position #2 confirmed; ISBN 9780786956142 is the ebook edition (print ISBN 9780786951840)."
+}

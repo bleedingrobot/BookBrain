@@ -8,11 +8,16 @@ venv/
 
 # Backend runtime
 backend/.env
+backend/nightly-runs.log*
+backend/backup-runs.log*
+backend/uvicorn-dev*.log*
 backend/*.db
 backend/*.db-journal
 backend/*.db-shm
 backend/*.db-wal
 backend/*.db.bak-*
+backend/*.db.pre-restore-*
+backend/*.db.before-restore
 
 # Node / frontend
 node_modules/
@@ -21,3 +26,5 @@ dist/
 # Editors / OS
 .vscode/
 .DS_Store
+backend/tests/identification_corpus/ANSWER-KEY-REVIEW.md
+backend/logs/

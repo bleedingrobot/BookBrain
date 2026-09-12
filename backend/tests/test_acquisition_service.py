@@ -1,0 +1,996 @@
+import asyncio
+import datetime as _dt
+
+import pytest
+from sqlalchemy import select
+
+from app.data.models import AcquisitionCandidate, AcquisitionStatus
+from app.services import acquisition_service as svc
+from app.services.acquisition_service import _Wishlist, score_candidate
+from app.services.openbooks_service import BookResult, SearchOutcome
+
+
+@pytest.fixture(autouse=True)
+def _route_db(db_session, monkeypatch):
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(svc, "async_session_factory", lambda: _CM())
+    monkeypatch.setattr(svc, "_SEARCH_SPACING_SECONDS", 0)
+
+
+def _book(title, author, fmt="epub", full=None, server="Bsk", size="1.2MB"):
+    return BookResult(
+        server=server,
+        author=author,
+        title=title,
+        format=fmt,
+        size=size,
+        full=full or f"!{server} {author} - {title}.{fmt}",
+    )
+
+
+# --- scoring -------------------------------------------------------------
+
+
+def test_score_exact_and_contained_title():
+    b = _book("The Left Hand of Darkness", "Ursula K Le Guin")
+    assert score_candidate("The Left Hand of Darkness", "Ursula K Le Guin", b) >= 0.9
+
+
+def test_score_handles_openbooks_swapping_author_and_title():
+    swapped = _book(title="Ursula Le Guin", author="The Dispossessed")
+    assert score_candidate("The Dispossessed", "Ursula K Le Guin", swapped) >= 0.85
+
+
+def test_score_rejects_a_different_book():
+    b = _book("A Wizard of Earthsea", "Ursula K Le Guin")
+    assert score_candidate("The Dispossessed", "Ursula K Le Guin", b) == 0.0
+
+
+def test_score_prefers_a_reliable_server_with_a_real_size():
+    good = _book("The Dispossessed", "Ursula K Le Guin", server="Bsk", size="1.2MB")
+    flaky = _book("The Dispossessed", "Ursula K Le Guin", server="Dumbledore", size="N/A")
+    sg = score_candidate("The Dispossessed", "Ursula K Le Guin", good)
+    sf = score_candidate("The Dispossessed", "Ursula K Le Guin", flaky)
+    assert sg > sf
+    # a strong title+author match on a flaky server still stays a usable alternative
+    assert sf >= 0.72
+
+    ranked = svc._rank("The Dispossessed", "Ursula K Le Guin", [flaky, good])
+    assert ranked[0][1].server == "Bsk"
+
+
+def test_score_drops_a_stub_sized_file():
+    stub = _book("Academ's Fury", "Jim Butcher", server="Oatmeal", size="12.71KB")
+    real = _book("Academ's Fury", "Jim Butcher", server="Bsk", size="680.08KB")
+    assert score_candidate("Academ's Fury", "Jim Butcher", stub) < 0.72  # filtered out of _rank
+    assert score_candidate("Academ's Fury", "Jim Butcher", real) >= 0.9
+    ranked = svc._rank("Academ's Fury", "Jim Butcher", [stub, real])
+    assert [r[1].size for r in ranked] == ["680.08KB"]  # the stub is gone
+
+
+def test_size_bytes_parses_openbooks_formats():
+    assert svc._size_bytes("1.26MB") == int(1.26 * 1024**2)
+    assert svc._size_bytes("970.98KB") == int(970.98 * 1024)
+    assert svc._size_bytes("1.26") == int(1.26 * 1024**2)  # bare = MB (Firebook)
+    assert svc._size_bytes("N/A") is None
+    assert svc._size_bytes(None) is None
+
+
+# --- refresh ------------------------------------------------------------
+
+
+def _wishlist(items):
+    return _Wishlist(file_id="wl1", raw={"version": 2, "items": items}, items=items)
+
+
+async def test_refresh_creates_pending_and_no_match_rows(db_session, monkeypatch):
+    items = [
+        {"id": "r1", "title": "The Dispossessed", "author": "Ursula K Le Guin", "status": "wanted"},
+        {"id": "r2", "title": "Some Obscure Thing", "author": "Nobody", "status": "wanted"},
+        {"id": "r3", "title": "Already Handled", "author": "X", "status": "sourced"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    async def fake_search(query):
+        if "Dispossessed" in query:
+            return SearchOutcome(
+                results=[
+                    _book("The Dispossessed", "Ursula K Le Guin"),
+                    _book("The Dispossessed", "Ursula K Le Guin", fmt="mobi"),  # dropped: not epub
+                    _book("The Dispossessed (retail)", "Ursula K Le Guin", server="Ook"),
+                ]
+            )
+        return SearchOutcome(results=[_book("Totally Different Book", "Someone Else")])
+
+    monkeypatch.setattr(svc.openbooks_service, "search", fake_search)
+
+    result = await svc.refresh_candidates(object(), "libfolder")
+    assert result == {"targets": 2, "outstanding": 0, "searched": 2, "withCandidates": 1}
+
+    rows = {r.request_id: r for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()}
+    assert rows["r1"].status == AcquisitionStatus.pending
+    assert rows["r1"].source == "wishlist"
+    assert rows["r1"].candidate_format == "epub"
+    assert len(rows["r1"].alternatives_json) == 1  # the retail one; mobi filtered out
+    assert rows["r2"].status == AcquisitionStatus.no_match
+    assert "r3" not in rows  # not "wanted"
+
+
+async def test_refresh_pulls_from_all_three_sources_and_respects_limit(db_session, monkeypatch):
+    targets = [
+        {"request_id": "r1", "source": "wishlist", "title": "Book One", "author": "A", "isbn13": None},
+        {"request_id": "wtr:x", "source": "want_to_read", "title": "Book Two", "author": "B", "isbn13": None},
+        {"request_id": "list:y", "source": "list", "title": "Book Three", "author": "C", "isbn13": None},
+    ]
+
+    async def fake_gather(p, f):
+        return targets
+
+    monkeypatch.setattr(svc, "_gather_targets", fake_gather)
+
+    async def fake_search(query):
+        return SearchOutcome(results=[_book(query.rsplit(" ", 1)[0], "Whoever")])
+
+    monkeypatch.setattr(svc.openbooks_service, "search", fake_search)
+
+    result = await svc.refresh_candidates(object(), "f", limit=2)
+    assert result == {"targets": 3, "outstanding": 1, "searched": 2, "withCandidates": 2}
+
+    rows = {r.request_id: r.source for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()}
+    assert rows == {"r1": "wishlist", "wtr:x": "want_to_read"}  # 3rd left for next run
+
+    result = await svc.refresh_candidates(object(), "f", limit=2)
+    assert result["searched"] == 1 and result["outstanding"] == 0  # just the leftover
+
+
+async def test_refresh_skips_already_approved_unchanged_request(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            request_title="The Dispossessed",
+            request_author="Ursula K Le Guin",
+            status=AcquisitionStatus.approved,
+        )
+    )
+    await db_session.commit()
+
+    items = [{"id": "r1", "title": "The Dispossessed", "author": "Ursula K Le Guin", "status": "wanted"}]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    called = False
+
+    async def fake_search(query):
+        nonlocal called
+        called = True
+        return SearchOutcome(results=[])
+
+    monkeypatch.setattr(svc.openbooks_service, "search", fake_search)
+
+    result = await svc.refresh_candidates(object(), "libfolder")
+    assert result["searched"] == 0
+    assert called is False
+
+
+# --- approve / skip / reset -------------------------------------------
+
+
+async def test_approve_downloads_and_marks_sourced(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            request_title="The Dispossessed",
+            request_author="Ursula K Le Guin",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Bsk Ursula K Le Guin - The Dispossessed.epub",
+            candidate_title="The Dispossessed",
+            candidate_author="Ursula K Le Guin",
+            candidate_format="epub",
+        )
+    )
+    await db_session.commit()
+
+    seen = {}
+
+    async def fake_acquire(full, filename, provider, inbox):
+        seen["full"] = full
+        seen["filename"] = filename
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 123}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    marked = {}
+    monkeypatch.setattr(
+        svc, "_mark_wishlist_sourced", lambda p, f, rid: marked.setdefault("rid", rid) or True
+    )
+
+    result = await svc.approve_request("r1", None, object(), "inbox", "lib")
+    assert result["drive_file_id"] == "d1"
+    assert seen["full"] == "!Bsk Ursula K Le Guin - The Dispossessed.epub"
+    assert seen["filename"] == "Ursula K Le Guin - The Dispossessed.epub"
+    assert marked["rid"] == "r1"
+
+    row = (await db_session.execute(select(AcquisitionCandidate))).scalar_one()
+    assert row.status == AcquisitionStatus.approved
+    assert row.resolved_at is not None
+
+
+async def test_approve_with_alternative_full(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            request_title="T",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Bsk best.epub",
+            candidate_title="best",
+            alternatives_json=[{"full": "!Ook alt.epub", "title": "alt", "author": "A"}],
+        )
+    )
+    await db_session.commit()
+
+    seen = {}
+
+    async def fake_acquire(full, filename, provider, inbox):
+        seen["full"] = full
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+
+    await svc.approve_request("r1", "!Ook alt.epub", object(), "inbox", "lib")
+    assert seen["full"] == "!Ook alt.epub"
+
+
+async def test_approve_refreshes_a_stale_top_pick_before_downloading(db_session, monkeypatch):
+    row = AcquisitionCandidate(
+        request_id="r1", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.pending, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Bsk", candidate_size="900KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.updated_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=90)
+    await db_session.commit()
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    seen = {}
+
+    async def fake_acquire(full, filename, provider, inbox):
+        seen["full"] = full
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+
+    await svc.approve_request("r1", None, object(), "inbox", "lib")
+    assert searched == ["Departure"]  # re-searched because the top-pick row was stale
+    assert seen["full"] == "!Oatmeal A G Riddle - Departure (retail).epub"  # used the fresh pick
+
+
+async def test_approve_does_not_refresh_an_explicitly_chosen_alternative(db_session, monkeypatch):
+    row = AcquisitionCandidate(
+        request_id="r1", request_title="T", status=AcquisitionStatus.pending,
+        candidate_full="!Bsk best.epub", candidate_title="best",
+        alternatives_json=[{"full": "!Ook alt.epub", "title": "alt", "author": "A"}],
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.updated_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=5)
+    await db_session.commit()
+
+    async def no_search(item):
+        raise AssertionError("an explicitly picked alternative must not trigger a re-search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    async def fake_acquire(full, filename, provider, inbox):
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+
+    await svc.approve_request("r1", "!Ook alt.epub", object(), "inbox", "lib")
+
+
+async def test_skip_and_reset(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(request_id="r1", request_title="T", status=AcquisitionStatus.pending)
+    )
+    await db_session.commit()
+
+    await svc.skip_request("r1")
+    row = (await db_session.execute(select(AcquisitionCandidate))).scalar_one()
+    assert row.status == AcquisitionStatus.skipped
+
+    await svc.reset_request("r1")
+    rows = (await db_session.execute(select(AcquisitionCandidate))).scalars().all()
+    assert rows == []
+
+
+async def test_list_requests_excludes_deleted_and_sorts(db_session, monkeypatch):
+    for rid, status, score in [
+        ("r1", AcquisitionStatus.no_match, None),
+        ("r2", AcquisitionStatus.pending, 0.95),
+        ("gone", AcquisitionStatus.pending, 0.9),
+    ]:
+        db_session.add(
+            AcquisitionCandidate(
+                request_id=rid,
+                request_title=rid,
+                status=status,
+                score=score,
+                candidate_full=("!x.epub" if score else None),
+            )
+        )
+    await db_session.commit()
+
+    items = [
+        {"id": "r1", "title": "One", "author": None, "status": "wanted", "requestedBy": "Jo"},
+        {"id": "r2", "title": "Two", "author": "A", "status": "wanted", "requestedBy": "Sam"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    views = await svc.list_requests(object(), "lib")
+    assert [v.request_id for v in views] == ["r2", "r1"]  # pending before no_match; "gone" dropped
+    assert views[0].requested_by == "Sam"
+
+
+async def test_list_suggestions_reads_the_two_sidecars(monkeypatch):
+    import app.services.library_index_service as lib
+
+    files = {
+        "bookbrain-reading.json": {
+            "wantUnowned": [
+                {"title": "The Blade Itself", "author": "Joe Abercrombie", "isbn13": "9780575079793"},
+                {"title": "  ", "author": "x"},  # blank → dropped
+                "junk",
+            ]
+        },
+        "bookbrain-lists.json": {
+            "candidates": [
+                {"title": "Gideon the Ninth", "author": "Tamsyn Muir", "isbn13": None, "fromList": "Best of 2019"},
+            ]
+        },
+    }
+    monkeypatch.setattr(lib, "_read_json_file", lambda provider, folder, name: files.get(name, {}))
+
+    out = await svc.list_suggestions(object(), "lib")
+    assert [s["title"] for s in out["want_to_read"]] == ["The Blade Itself"]
+    assert out["want_to_read"][0]["isbn13"] == "9780575079793"
+    assert out["from_lists"] == [
+        {"title": "Gideon the Ninth", "author": "Tamsyn Muir", "isbn13": None, "from_list": "Best of 2019"}
+    ]
+
+
+async def test_list_suggestions_tolerates_missing_sidecars(monkeypatch):
+    import app.services.library_index_service as lib
+
+    monkeypatch.setattr(lib, "_read_json_file", lambda *a: {})
+    out = await svc.list_suggestions(object(), "lib")
+    assert out == {"want_to_read": [], "from_lists": []}
+
+
+async def test_list_requests_drops_a_sourced_book_now_in_the_library(db_session, monkeypatch):
+    from app.data.models import Author, Book, File, FileStatus
+
+    author = Author(name="Joe Abercrombie")
+    db_session.add(author)
+    await db_session.flush()
+    book = Book(canonical_title="The Blade Itself", author_id=author.id)
+    db_session.add(book)
+    await db_session.flush()
+    db_session.add(
+        File(
+            drive_file_id="d1",
+            filename="x.epub",
+            sha256="s",
+            size_bytes=1,
+            status=FileStatus.organised,
+            book_id=book.id,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:x",
+            source="want_to_read",
+            request_title="The Blade Itself",
+            request_author="Joe Abercrombie",
+            status=AcquisitionStatus.approved,
+            candidate_full="!Bsk x.epub",
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:y",
+            source="want_to_read",
+            request_title="Still Missing",
+            request_author="Someone",
+            status=AcquisitionStatus.approved,
+            candidate_full="!Bsk y.epub",
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist([]))
+    views = await svc.list_requests(object(), "lib")
+
+    assert [v.request_id for v in views] == ["wtr:y"]  # the in-library one is gone
+    remaining = (await db_session.execute(select(AcquisitionCandidate))).scalars().all()
+    assert {r.request_id for r in remaining} == {"wtr:y"}  # and its row was deleted
+
+
+async def test_list_requests_shows_unsearched_wishlist_items(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            source="wishlist",
+            request_title="Searched One",
+            request_author="A",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Bsk x.epub",
+            candidate_title="Searched One",
+        )
+    )
+    await db_session.commit()
+
+    items = [
+        {"id": "r1", "title": "Searched One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Not Yet Searched", "author": "B", "status": "wanted", "requestedBy": "Jo"},
+        {"id": "r3", "title": "Declined One", "author": "C", "status": "declined"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    views = {v.request_id: v for v in await svc.list_requests(object(), "lib")}
+    assert set(views) == {"r1", "r2"}  # r3 declined → hidden
+    assert views["r1"].status == "pending"
+    assert views["r2"].status == "unsearched"
+    assert views["r2"].requested_by == "Jo"
+
+
+async def test_list_requests_reranks_a_stub_pick_to_a_real_alternative(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wtr:af",
+            source="want_to_read",
+            request_title="Academ's Fury",
+            request_author="Jim Butcher",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Oatmeal Jim Butcher - Academ's Fury.epub",
+            candidate_title="Academ's Fury",
+            candidate_author="Jim Butcher",
+            candidate_format="epub",
+            candidate_size="12.71KB",  # stub — was picked before the size check
+            candidate_server="Oatmeal",
+            score=0.98,
+            alternatives_json=[
+                {
+                    "full": "!Bsk Jim Butcher - Academ's Fury.epub",
+                    "title": "Academ's Fury",
+                    "author": "Jim Butcher",
+                    "format": "epub",
+                    "size": "680.08KB",
+                    "server": "Bsk",
+                    "score": 0.98,
+                }
+            ],
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist([]))
+    views = await svc.list_requests(object(), "lib")
+
+    row = next(v for v in views if v.request_id == "wtr:af")
+    assert row.candidate["size"] == "680.08KB"  # promoted the real copy
+    assert row.candidate["server"] == "Bsk"
+
+
+async def test_dedupe_collapses_a_book_on_two_sources_onto_the_wishlist_row(db_session):
+    # Same book from the wishlist (no_match) and want-to-read (pending w/ a
+    # candidate). One row survives — the wishlist one — carrying the pending
+    # candidate.
+    db_session.add_all([
+        AcquisitionCandidate(
+            request_id="wish-1", source="wishlist",
+            request_title="The Collapsing Empire", request_author="John Scalzi",
+            status=AcquisitionStatus.no_match,
+        ),
+        AcquisitionCandidate(
+            request_id="wtr:the collapsing empire|john scalzi", source="want_to_read",
+            request_title="The Collapsing Empire", request_author="John Scalzi",
+            status=AcquisitionStatus.pending, score=0.97,
+            candidate_full="!Bsk John Scalzi - The Collapsing Empire.epub",
+            candidate_title="The Collapsing Empire", candidate_server="Bsk",
+            candidate_size="1.1MB",
+        ),
+    ])
+    await db_session.commit()
+
+    removed = await svc._dedupe_candidates(db_session)
+    assert removed == 1
+
+    rows = list((await db_session.execute(select(AcquisitionCandidate))).scalars())
+    assert len(rows) == 1
+    assert rows[0].request_id == "wish-1"                     # wishlist id kept
+    assert rows[0].status == AcquisitionStatus.pending        # best status folded on
+    assert rows[0].candidate_server == "Bsk"
+
+
+async def test_dedupe_leaves_distinct_books_alone(db_session):
+    db_session.add_all([
+        AcquisitionCandidate(request_id="a", request_title="Departure", request_author="A G Riddle",
+                             status=AcquisitionStatus.failed),
+        AcquisitionCandidate(request_id="b", request_title="Sepulchre", request_author="Kate Mosse",
+                             status=AcquisitionStatus.failed),
+    ])
+    await db_session.commit()
+    assert await svc._dedupe_candidates(db_session) == 0
+    assert len(list((await db_session.execute(select(AcquisitionCandidate))).scalars())) == 2
+
+
+# --- auto-get ---------------------------------------------------------
+
+
+@pytest.fixture
+def _autoget_idle(monkeypatch):
+    """All the 'is it idle?' gates pass, and drive creds/folders resolve."""
+    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    class _Cfg:
+        openbooks_enabled = True
+
+    import app.core.config as cfg
+
+    monkeypatch.setattr(cfg, "get_settings", lambda: _Cfg())
+
+    async def _repo_get(self, key):
+        return "true" if key == OPENBOOKS_AUTOGET_ENABLED else None
+
+    monkeypatch.setattr(SettingsRepository, "get", _repo_get)
+    monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: False)
+    monkeypatch.setattr(svc, "has_active_refresh_job", lambda: False)
+
+    import app.services.scan_service as scan_svc
+
+    class _ScanSvc:
+        scans: list = []
+
+        def has_running_job(self):
+            return False
+
+        def create_job(self):
+            return type("_J", (), {"job_id": "scan-1"})()
+
+        async def run_scan(self, job_id, creds, folder):
+            _ScanSvc.scans.append(job_id)
+
+    _ScanSvc.scans = []
+    monkeypatch.setattr(scan_svc, "get_scan_service", lambda: _ScanSvc())
+
+    import app.services.openbooks_process_service as ps
+
+    monkeypatch.setattr(ps, "status", lambda: {"running": True, "installed": True, "managed": True, "pid": 1})
+
+    import app.services.auth_service as auth_svc
+
+    class _Auth:
+        async def get_credentials(self, repo):
+            return object()
+
+    monkeypatch.setattr(auth_svc, "get_auth_service", lambda: _Auth())
+
+    import app.services.drive_service as ds
+
+    class _Folder:
+        folder_id = "f"
+
+    async def _inbox(repo):
+        return _Folder()
+
+    monkeypatch.setattr(ds.DriveService, "get_inbox_folder_config", staticmethod(_inbox))
+    monkeypatch.setattr(ds.DriveService, "get_library_folder_config", staticmethod(_inbox))
+    import app.providers.drive.client as dc
+
+    monkeypatch.setattr(dc, "build_drive_service", lambda creds: None)
+
+    class _Provider:
+        inbox_count = 0  # tests bump this to trip the auto-scan
+
+        def list_files_in_folder(self, _folder):
+            return [{"id": f"f{i}", "name": f"b{i}.epub"} for i in range(_Provider.inbox_count)]
+
+    _Provider.inbox_count = 0
+    monkeypatch.setattr(svc, "DriveProvider", lambda svc_obj: _Provider())
+
+    class _Targets:
+        items: list = []
+
+    async def _fake_gather(provider, folder):
+        return list(_Targets.items)
+
+    _Targets.items = []
+    monkeypatch.setattr(svc, "_gather_targets", _fake_gather)
+
+    return {"Provider": _Provider, "ScanSvc": _ScanSvc, "Targets": _Targets}
+
+
+def _target(title, author="A N Author", request_id=None, source="wishlist"):
+    return {
+        "request_id": request_id or f"wl-{title}",
+        "source": source,
+        "title": title,
+        "author": author,
+        "isbn13": None,
+    }
+
+
+
+
+# --- auto-get (search-fresh-then-get) --------------------------------
+
+
+async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    searched = []
+
+    async def fake_search_one(item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                      full="!Bsk A G Riddle - Departure.epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["id"], got["full"] = request_id, full
+        return {"filename": "Departure.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert searched == ["Departure"]
+    assert got["id"] == "wl-dep"
+    assert got["full"] == "!Bsk A G Riddle - Departure.epub"
+    assert out["got"] == "Departure"
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.request_title == "Departure"
+
+
+async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure")]
+    monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: True)
+
+    async def no_search(item):
+        raise AssertionError("must not search when busy")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out == {"skipped": "busy"}
+
+
+async def test_autoget_nothing_to_do_when_no_targets(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = []
+    out = await svc.autoget_tick()
+    assert out == {"skipped": "no targets"}
+
+
+async def test_autoget_respects_the_backoff_window(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A N Author",
+        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk x.epub",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=10)
+    await db_session.commit()
+
+    async def no_search(item):
+        raise AssertionError("inside the 30-min backoff - must not re-search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"] == "all caught up or cooling down"
+
+
+async def test_autoget_re_searches_a_stale_row_once_the_backoff_elapses(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Bsk",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.resolved_at = old - _dt.timedelta(minutes=45)
+    row.updated_at = old - _dt.timedelta(minutes=90)   # search stale → re-search, not reuse
+    await db_session.commit()
+
+    async def fake_search_one(item):
+        return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["full"] = full
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert out["got"] == "Departure"
+    assert got["full"] == "!Oatmeal A G Riddle - Departure (retail).epub"
+
+
+async def test_autoget_reuses_a_recent_search_instead_of_re_searching(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.99,
+        candidate_full="!Oatmeal A G Riddle - Departure.epub", candidate_title="Departure",
+        candidate_author="A G Riddle", candidate_server="Oatmeal", candidate_size="700KB",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=40)
+    await db_session.commit()  # updated_at ~ now → search is fresh
+
+    async def no_search(item):
+        raise AssertionError("search is fresh — should reuse the stored command")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    got = {}
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        got["full"] = full
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert out["got"] == "Departure"
+    assert got["full"] == "!Oatmeal A G Riddle - Departure.epub"
+
+
+async def test_autoget_search_budget_caps_fresh_searches(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    monkeypatch.setattr(svc, "_recent_search_times", [svc.time.monotonic()] * svc._SEARCH_BUDGET_PER_HOUR)
+
+    async def no_search(item):
+        raise AssertionError("budget spent — must not search")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"].startswith("search budget spent")
+
+
+async def test_autoget_long_backoff_for_a_stubborn_book(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A N Author",
+        status=AcquisitionStatus.failed, score=0.99, candidate_full="!Bsk x.epub",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.created_at = old - _dt.timedelta(hours=5)
+    row.resolved_at = old - _dt.timedelta(hours=2)
+    await db_session.commit()
+
+    async def no_search(item):
+        raise AssertionError("stubborn book still inside the 6h backoff")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"] == "all caught up or cooling down"
+
+
+async def test_autoget_marks_no_match_when_search_is_empty(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Obscure Pamphlet", request_id="wl-obs")]
+
+    async def empty_search(item):
+        return []
+
+    monkeypatch.setattr(svc, "_search_one", empty_search)
+
+    async def no_approve(*a):
+        raise AssertionError("nothing to download")
+
+    monkeypatch.setattr(svc, "approve_request", no_approve)
+
+    out = await svc.autoget_tick()
+    assert out == {"no_match": "Obscure Pamphlet"}
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-obs")
+    )).scalar_one()
+    assert row.status == AcquisitionStatus.no_match
+
+
+async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.pending, score=0.97,
+        candidate_full="!Bsk A G Riddle - Departure.epub", candidate_server="Bsk",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    row.resolved_at = old - _dt.timedelta(hours=1)
+    row.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
+    await db_session.commit()
+
+    async def empty_search(item):
+        return []
+
+    monkeypatch.setattr(svc, "_search_one", empty_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"].startswith("re-search found nothing")
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.status == AcquisitionStatus.pending
+    assert row.candidate_full == "!Bsk A G Riddle - Departure.epub"
+
+
+async def test_autoget_one_download_attempt_per_tick(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    async def fake_search_one(item):
+        return [
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                  full="!Bsk A G Riddle - Departure.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
+                  full="!Oatmeal A G Riddle - Departure.epub"),
+        ]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    calls = []
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        calls.append(full)
+        raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert len(calls) == 1                     # exactly one attempt this tick
+    assert out["failed"] == "Departure"
+
+
+async def test_autoget_rotates_the_pick_after_a_failed_download(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+
+    searches = []
+
+    async def fake_search_one(item):
+        searches.append(1)
+        return [
+            _book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                  full="!Bsk A G Riddle - Departure.epub"),
+            _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
+                  full="!Oatmeal A G Riddle - Departure.epub"),
+        ]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    calls = []
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        calls.append(full)
+        if len(calls) == 1:
+            raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    # tick 1: searches, tries the top pick, fails, rotates it out of the row
+    out1 = await svc.autoget_tick()
+    assert out1["failed"] == "Departure"
+    row = (await db_session.execute(
+        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+    )).scalar_one()
+    assert row.candidate_full != calls[0]                  # the failed pick was rotated out
+    assert row.candidate_full.startswith("!")
+    row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=40)
+    await db_session.commit()
+
+    # tick 2: reuses the (still fresh) search, tries the rotated pick, succeeds
+    out2 = await svc.autoget_tick()
+    assert len(searches) == 1                  # no second search
+    assert len(calls) == 2 and calls[1] != calls[0]   # different server the 2nd time
+    assert out2["got"] == "Departure"
+
+
+async def test_rank_demotes_a_server_that_keeps_timing_out(db_session):
+    bsk = _book("The Core", "Peter V Brett", server="Bsk", size="2MB", full="!Bsk core.epub")
+    oat = _book("The Core", "Peter V Brett", server="Oatmeal", size="2MB", full="!Oatmeal core.epub")
+    ranked = svc._rank("The Core", "Peter V Brett", [bsk, oat], demerits={"bsk": 0.25})
+    assert ranked[0][1].server == "Oatmeal"
+
+
+async def test_server_demerits_counts_recent_download_timeouts(db_session):
+    db_session.add_all([
+        AcquisitionCandidate(request_id="a", request_title="A", status=AcquisitionStatus.failed,
+                             candidate_server="Bsk", message="OpenBooks didn't deliver the file within 75s"),
+        AcquisitionCandidate(request_id="b", request_title="B", status=AcquisitionStatus.failed,
+                             candidate_server="Bsk", message="OpenBooks didn't deliver the file within 75s"),
+        AcquisitionCandidate(request_id="c", request_title="C", status=AcquisitionStatus.failed,
+                             candidate_server="Oatmeal", message="the downloaded .epub is corrupt"),
+    ])
+    await db_session.commit()
+    d = await svc._server_demerits(db_session)
+    assert d == {"bsk": 2 * svc._SERVER_DEMERIT_STEP}
+
+
+async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Provider"].inbox_count = 20
+    _autoget_idle["Targets"].items = [_target("Departure")]
+
+    async def no_search(item):
+        raise AssertionError("should scan, not search, when the inbox is full")
+
+    monkeypatch.setattr(svc, "_search_one", no_search)
+
+    out = await svc.autoget_tick()
+    await asyncio.sleep(0.02)
+    assert out == {"scan_started": 20}
+    assert _autoget_idle["ScanSvc"].scans == ["scan-1"]
+
+
+async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypatch, _autoget_idle):
+    _autoget_idle["Targets"].items = [
+        _target("Departure", "A G Riddle", request_id="wl-dep", source="wishlist")
+    ]
+    stale = AcquisitionCandidate(
+        request_id="wtr:departure|a g riddle", source="want_to_read",
+        request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.failed, score=0.9, candidate_full="!Bsk x.epub",
+    )
+    db_session.add(stale)
+    await db_session.commit()
+    old = _dt.datetime.now(_dt.UTC).replace(tzinfo=None)
+    stale.resolved_at = old - _dt.timedelta(hours=1)
+    stale.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
+    await db_session.commit()
+
+    async def fake_search_one(item):
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")]
+
+    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        return {"filename": "d.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert out["got"] == "Departure"
+    rows = list((await db_session.execute(select(AcquisitionCandidate))).scalars())
+    assert len(rows) == 1
+    assert rows[0].request_id == "wl-dep"

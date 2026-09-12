@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Eisenhorn: The Omnibus",
+  "author": "Dan Abnett",
+  "series": "Eisenhorn",
+  "series_number": null,
+  "url": "https://www.booktopia.com.au/eisenhorn-dan-abnett/ebook/9781800269187.html",
+  "note": "conf=0.92; ISBN 9781800269187 verified as the Black Library ebook edition of \"Eisenhorn: The Omnibus\" by Dan Abnett, published October 2022 (OverDrive lists it under the Warhammer 40,000: Eisenhorn series, Black Library). It is an omnibus collecting the Eisenhorn novels (Xenos, Malleus, Hereticus, The Magos) plus short stories, so it belongs to the Eisenhorn sub-series of the wider Warhammer 40,000 universe but is not itself a numbered volume — series_number left null. Proposed fields were all empty; title, author, and series supplied/corrected."
+}

@@ -16,9 +16,26 @@ dependencies = [
     "google-api-python-client>=2.149",
     "google-auth-oauthlib>=1.2",
     "google-auth-httplib2>=0.2",
-    "anthropic>=0.39",
+    "anthropic[aiohttp]>=0.39",
+    "apscheduler>=3.10,<4",
     "cryptography>=43.0",
     "httpx>=0.27",
+    # prompts/37 — WebSocket client for a locally-run OpenBooks server (the
+    # experimental "Find a book" flow). Also pulled transitively by
+    # uvicorn[standard]; pinned here because we import it directly.
+    "websockets>=13",
+    # prompts/32 — parse the SFF news RSS/Atom feeds server-side (the static
+    # viewer can't: CORS). Pure-Python, no C deps.
+    "feedparser>=6.0",
+    "pillow>=10.4",
+    "imagehash>=4.3",
+    # prompts/29 — local sentence embeddings for the viewer's semantic search.
+    # onnxruntime + tokenizers (no torch); the model is fetched from the HF
+    # Hub on first use and cached. numpy is already pulled by pillow/imagehash.
+    "onnxruntime>=1.20",
+    "tokenizers>=0.20",
+    "huggingface-hub>=0.25",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +43,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "respx>=0.21",
+    "ebooklib>=0.18",
 ]
 
 [build-system]
@@ -37,3 +55,11 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The `corpus` suite is the identification ground-truth eval (prompts/15 Stage 0).
+# It is offline and deterministic but slow-ish and noisy (prints a score table),
+# so it is NOT part of the default `pytest` run — invoke it explicitly:
+#   pytest -m corpus
+addopts = "-m 'not corpus'"
+markers = [
+    "corpus: ground-truth first-pass identification eval; offline, run with `pytest -m corpus`",
+]

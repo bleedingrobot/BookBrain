@@ -1,0 +1,14 @@
+foliate-js — vendored for the library-viewer EPUB reader (prompts/17).
+
+Upstream:  https://github.com/johnfactotum/foliate-js
+Commit:    78914aef4466eb960965702401634c2cb348e9b1
+Vendored:  2026-09-07
+License:   MIT (see ./LICENSE)
+
+Only the EPUB rendering path is vendored. view.js is patched: its makeBook()
+CBZ / FBZ / PDF / MOBI / FB2 branches are removed so the bundle never pulls
+comic-book.js / fb2.js / pdf.js / mobi.js / vendor/fflate.js. zip.js runs with
+useWebWorkers:false (view.js makeZipLoader) so no worker/wasm is needed.
+
+To update: re-clone upstream at the new commit, copy the same file set, and
+re-apply the makeBook patch (search "BookBrain: EPUB-only" in view.js).

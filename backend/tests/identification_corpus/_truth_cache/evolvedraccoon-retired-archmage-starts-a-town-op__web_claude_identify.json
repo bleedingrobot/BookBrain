@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_identify",
+  "title": "Retired Archmage Starts a Town",
+  "author": "EvolvedRaccoon",
+  "series": "Retired Archmage",
+  "series_number": 1.0,
+  "url": "https://us.amazon.com/Retired-Archmage-Starts-Town-Litrpg-ebook/dp/B0GX311PC3",
+  "note": "conf=0.9; Amazon lists a \"Retired Archmage\" series by EvolvedRaccoon: Book 1 is \"Retired Archmage Starts a Town: OP MC Cozy Slice of Life Litrpg\" (ASIN B0GX311PC3, no numeral in title), followed by \"Retired Archmage Starts a Town 2\" (Book 2) and \"...Town 3\" (Book 3). The EPUB's title metadata matches Book 1 exactly (no numeral), so this is volume 1. Caution: an Audible edition of Book 2 is listed without the numeral in its display title, but its blurb (Rune Hollow eight months later, imperial assessor) belongs to Book 2, not this file."
+}

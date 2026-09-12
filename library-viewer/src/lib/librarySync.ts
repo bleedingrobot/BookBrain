@@ -4,17 +4,29 @@ import {
   isSupportedEbook,
   listAllChanges,
   listLibraryTree,
+  StalePageTokenError,
   type DriveChange,
   type DriveFile,
 } from './drive'
 
 const CACHE_KEY = 'bookbrain.libraryCache'
 
+// Incremental sync trusts Drive's changes feed and our own diffing logic to
+// stay correct forever — but a bug in either (we've already had to fix one:
+// see the "brand-new nested folder" fix) can silently drop something and
+// then advance the sync token past it. Once that happens it's permanently
+// invisible to Refresh, since nothing about the dropped item changes again
+// afterward for Drive to report. A periodic full walk is the only thing
+// that can catch and correct that kind of silent drift without the user
+// ever noticing something's missing.
+const AUTO_REBUILD_INTERVAL_MS = 24 * 60 * 60 * 1000
+
 export interface LibraryCache {
   libraryFolderId: string
   pageToken: string
   files: DriveFile[]
   folderIds: string[]
+  builtAt: number
 }
 
 function loadCache(): LibraryCache | null {
@@ -47,12 +59,12 @@ async function fullRebuild(token: string, libraryFolderId: string): Promise<Libr
   // (harmlessly) on the very next incremental sync.
   const pageToken = await getStartPageToken(token)
   const { files, folderIds } = await listLibraryTree(token, libraryFolderId)
-  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds }
+  const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds, builtAt: Date.now() }
   saveCache(cache)
   return cache
 }
 
-function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
+export function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache {
   const filesById = new Map(cache.files.map((f) => [f.id, f]))
   const folderIds = new Set(cache.folderIds)
 
@@ -93,7 +105,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   }
   for (const change of folderChanges) {
     const file = change.file!
-    if (!(file.parents ?? []).some((p) => folderIds.has(p))) {
+    // `parents` absent (not `[]`) means the change record carries no
+    // placement info — Drive doesn't send `parents` on every delta. Don't
+    // evict a folder we already know over that; only an explicit
+    // removed/trashed (handled above) or a populated `parents` with no known
+    // ancestor means it genuinely left the tree.
+    if (file.parents === undefined) continue
+    if (!file.parents.some((p) => folderIds.has(p))) {
       folderIds.delete(file.id) // not ours, or moved out of the tree
     }
   }
@@ -101,7 +119,13 @@ function applyChanges(cache: LibraryCache, changes: DriveChange[]): LibraryCache
   for (const change of live) {
     const file = change.file!
     if (file.mimeType === FOLDER_MIME_TYPE) continue
-    const parentKnown = (file.parents ?? []).some((p) => folderIds.has(p))
+    // Same missing-`parents` guard as the folder pass: a change with no
+    // `parents` key tells us nothing about where the file is — leave any
+    // existing cache entry alone rather than dropping it until the 24h
+    // rebuild. `parents: []` (explicitly empty) still means "not in our
+    // tree" and is handled by the `.some` below.
+    if (file.parents === undefined) continue
+    const parentKnown = file.parents.some((p) => folderIds.has(p))
     if (parentKnown && isSupportedEbook(file.name)) {
       filesById.set(file.id, { id: file.id, name: file.name })
     } else {
@@ -122,15 +146,25 @@ export async function syncLibrary(
     return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
   }
 
+  if (!existing.builtAt || Date.now() - existing.builtAt > AUTO_REBUILD_INTERVAL_MS) {
+    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  }
+
   try {
     const { changes, newStartPageToken } = await listAllChanges(token, existing.pageToken)
     const cache: LibraryCache = { ...applyChanges(existing, changes), pageToken: newStartPageToken }
     saveCache(cache)
     return { cache, rebuilt: false }
-  } catch {
-    // The sync token can go stale — Drive only retains change history for
-    // a limited window. Fall back to a full rebuild instead of surfacing
-    // an error the user can't do anything about.
-    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  } catch (err) {
+    // A *stale sync token* is the one thing a full rebuild fixes — Drive only
+    // keeps change history for a limited window. Every other failure (a
+    // transient 500, offline, a rate-limit) must surface: a blind rebuild
+    // here would fire hundreds of Drive calls and hide the real problem. The
+    // caller (useLibrary.runSync) keeps showing the last cached list + an
+    // error, and the 24h auto-rebuild above is the backstop for silent drift.
+    if (err instanceof StalePageTokenError) {
+      return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+    }
+    throw err
   }
 }

@@ -3,15 +3,17 @@ import type { ReactNode } from 'react'
 function Step({ title, children }: { title: string; children: ReactNode }) {
   return (
     <li className="border-t border-neutral-200 py-4 first:border-t-0 dark:border-neutral-800">
-      <h2 className="text-sm font-medium">{title}</h2>
-      <div className="mt-1.5 space-y-1.5 text-sm text-neutral-600 dark:text-neutral-400">{children}</div>
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="mt-1.5 space-y-1.5 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+        {children}
+      </div>
     </li>
   )
 }
 
 function Code({ children }: { children: ReactNode }) {
   return (
-    <code className="block overflow-x-auto rounded bg-neutral-100 px-2 py-1 font-mono text-xs dark:bg-neutral-800">
+    <code className="block overflow-x-auto rounded-md bg-neutral-100 px-2 py-1.5 font-mono text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
       {children}
     </code>
   )
@@ -19,21 +21,26 @@ function Code({ children }: { children: ReactNode }) {
 
 export function SetupChecklist({ onBack }: { onBack: () => void }) {
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <button className="text-xs text-neutral-400 underline" onClick={onBack}>
+    <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
+      <button
+        className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+        onClick={onBack}
+      >
         &larr; Back
       </button>
 
-      <h1 className="mt-3 text-xl font-semibold">Recovering on a new computer</h1>
-      <p className="mt-2 text-sm text-neutral-500">
+      <h1 className="mt-3 text-xl font-semibold tracking-tight">Recovering on a new computer</h1>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-500">
         Your actual books already live safely in Google Drive, and the code is safely in GitHub —
         losing a hard drive doesn't lose either of those. This page is reachable from any browser,
         on any machine, without anything installed, specifically so it survives that scenario too.
       </p>
 
-      <div className="mt-4 rounded border border-amber-300 p-3 text-sm dark:border-amber-800">
-        <p className="font-medium text-amber-700 dark:text-amber-400">Do this now, before disaster strikes</p>
-        <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+      <div className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50/50 p-4 text-sm dark:border-amber-800/60 dark:bg-amber-950/20">
+        <p className="font-semibold text-amber-700 dark:text-amber-400">
+          Do this now, before disaster strikes
+        </p>
+        <p className="mt-1 leading-relaxed text-neutral-600 dark:text-neutral-400">
           Save these four values in a password manager. They're technically all re-fetchable from
           their respective consoles later, but the Google client secret specifically can't be
           re-viewed once created — only regenerated — so saving it now avoids that trip entirely.

@@ -38,9 +38,28 @@ def test_start_records_pending_state() -> None:
     service = AuthService()
     url = service.start("app_created")
     state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
-    scope, code_verifier = service._pending_states[state]
+    scope, code_verifier, _ = service._pending_states[state]
     assert scope == DRIVE_FILE_SCOPE
     assert code_verifier  # PKCE verifier must be captured for the token exchange
+
+
+def test_start_prunes_abandoned_pending_states(monkeypatch) -> None:
+    # Regression: a closed tab / abandoned sign-in never calls
+    # handle_callback, so nothing else ever pops its _pending_states entry —
+    # without pruning, this dict grows without bound over the app's life.
+    import app.services.auth_service as auth_module
+
+    service = AuthService()
+    clock = [1000.0]
+    monkeypatch.setattr(auth_module.time, "monotonic", lambda: clock[0])
+
+    service.start("app_created")
+    assert len(service._pending_states) == 1
+
+    clock[0] += auth_module._PENDING_STATE_TTL_SECONDS + 1
+    service.start("app_created")
+
+    assert len(service._pending_states) == 1  # the stale entry was pruned, not kept alongside the new one
 
 
 async def test_handle_callback_reuses_start_code_verifier(db_session, monkeypatch) -> None:
@@ -50,7 +69,7 @@ async def test_handle_callback_reuses_start_code_verifier(db_session, monkeypatc
     service = AuthService()
     url = service.start("app_created")
     state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
-    _, expected_verifier = service._pending_states[state]
+    _, expected_verifier, _ = service._pending_states[state]
 
     captured: dict[str, str | None] = {}
 

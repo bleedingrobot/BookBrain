@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_identify",
+  "title": "Heir of the Shattered Flame",
+  "author": "A. J. Nguyen",
+  "series": "The Eye of the Beholder",
+  "series_number": 3.0,
+  "url": "https://www.amazon.com/amz-books/sdp/B0G5HX7L7R",
+  "note": "conf=0.92; Amazon series page (ASIN B0G5HX7L7R) shows \"The Eye of the Beholder\" as a 3-book Kindle series by A. J. Nguyen, with Heir of the Shattered Flame as the concluding volume; an ebook-distribution listing also lists the series as books 1-3 with this title third. Matches the EPUB metadata \"The Eye of the Beholder Book 3\". Note: distinct from the unrelated dystopian \"Eye of the Beholder\" series by another author. Author name given only as \"Nguyen\" in file metadata; full form is A. J. Nguyen."
+}

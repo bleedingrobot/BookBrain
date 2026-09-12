@@ -1,6 +1,15 @@
 from pydantic import BaseModel
 
 
+class ConfirmBatchRequest(BaseModel):
+    file_ids: list[int]
+
+
+class ConfirmBatchResult(BaseModel):
+    confirmed: int
+    skipped: int
+
+
 class FileSummary(BaseModel):
     id: int
     filename: str

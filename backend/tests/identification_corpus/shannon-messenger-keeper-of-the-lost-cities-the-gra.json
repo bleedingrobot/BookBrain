@@ -1,0 +1,65 @@
+{
+  "id": "shannon-messenger-keeper-of-the-lost-cities-the-gra",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: Shannon Messenger / Keeper of the Lost Cities: The Graphic Novel Part 1 / series=Keeper of the Lost Cities: The Graphic Novel #1.0 (model=claude-opus-5, conf=0)",
+  "source": {
+    "file_id": 2483,
+    "drive_file_id": "1NVE1iZ8FWcVfslw_XWXGvQ8ae28NSR10",
+    "filename": "Keeper of the Lost Cities_ The Graphic Novel Part 1 Volume 1 - Shannon Messenger.cbz",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 0
+  },
+  "filename": "Keeper of the Lost Cities_ The Graphic Novel Part 1 Volume 1 - Shannon Messenger.cbz",
+  "evidence": {
+    "title": null,
+    "authors": [],
+    "language": null,
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": ""
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Keeper of the Lost Cities: The Graphic Novel Part 1",
+    "author": "Shannon Messenger",
+    "series": "Keeper of the Lost Cities: The Graphic Novel",
+    "series_number": 1,
+    "ai_confidence": 72,
+    "reasoning_summary": "The only evidence is the filename, which clearly names \"Keeper of the Lost Cities: The Graphic Novel Part 1 Volume 1\" by Shannon Messenger. The file is a .cbz (comic archive), consistent with a graphic novel adaptation. No EPUB metadata and no provider candidates were available to corroborate, and the \"Part 1 / Volume 1\" duplication in the filename leaves some ambiguity about the exact edition/volume naming, so human review is advisable.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": null,
+      "author": null,
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
+}

@@ -1,0 +1,115 @@
+{
+  "id": "j-k-rowling-harry-potter-og-mysteriekammeret",
+  "case_tags": [
+    "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: J. K. Rowling / Harry Potter og Mysteriekammeret / series=Harry Potter #2.0 (model=claude-opus-5, conf=80)",
+  "source": {
+    "file_id": 2122,
+    "drive_file_id": "13DiKKAd9mGnGAkWM4NVgcNiHeOW7QUpG",
+    "filename": "Harry Potter og Mysteriekammere - J. K. Rowling.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 80
+  },
+  "filename": "Harry Potter og Mysteriekammere - J. K. Rowling.epub",
+  "evidence": {
+    "title": "Harry Potter og Mysteriekammeret",
+    "authors": [
+      "J. K. Rowling"
+    ],
+    "language": "no",
+    "description": "<p><i>«Det er et komplott, Harry Potter. Et komplott som vil få de forferdeligste ting til å skje på Galtvort høyere skole for hekseri og trolldom dette året.»</i><p>Harry Potters sommer har inkludert den verste bursdagen noensinne, skremmende advarsler fra husnissen Noldus og vennen Ronny Wiltersen reddet ham fra Dumlingene i en magisk, flyvende bil!Harry er tilbake på Galtvort høyere skole for hekseri og trolldom for sitt andre år, og hører hvisking som gir gjenklang i de tomme korridorene&#8212;og så starter angrepene. Det blir funnet elever som er forvandlet til stein...De skremmende spådommene til Noldus ser ut til å gå i oppfyllelse.",
+    "isbn10": null,
+    "isbn13": "9781781107461",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Harry Potter og Mysteriekammeret"
+  },
+  "candidates": [
+    {
+      "title": "Harry Potter og mysteriekammeret",
+      "authors": [
+        "J. K. Rowling"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Harry Potter og Mysteriekammeret",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 2,
+    "ai_confidence": 96,
+    "reasoning_summary": "EPUB metadata, filename, and Open Library candidate all agree on the Norwegian ('no') edition of 'Harry Potter og Mysteriekammeret' by J. K. Rowling — the Norwegian translation of 'Harry Potter and the Chamber of Secrets', book 2 of the Harry Potter series. ISBN 9781781107461 corresponds to a Pottermore digital edition of the series. Series name/number inferred from known work rather than stated in the file.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Harry Potter og Mysteriekammeret",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 2.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Harry Potter og mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Harry Potter and the Chamber of Secrets",
+      "author": null,
+      "series": null,
+      "series_number": 2.0,
+      "url": "https://www.wikidata.org/wiki/Q47209",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 2.0,
+      "url": "https://elibraryhh.overdrive.com/media/2938075",
+      "note": "conf=0.97; ISBN 9781781107461 matches the Norwegian-language ebook edition of Harry Potter og Mysteriekammeret (Pottermore Publishing, 23 Aug 2016), the Norwegian translation (by Torstein Bugge Høverstad) of Harry Potter and the Chamber of Secrets — book 2 of the Harry Potter series. Ark.no lists it under the Harry Potter series. Filename drops the final -t (\"Mysteriekammere\"); canonical title per metadata/retailers is \"Harry Potter og Mysteriekammeret\"."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Harry Potter og Mysteriekammeret",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 2.0,
+      "url": "https://www.ark.no/produkt/boker/barneboker/harry-potter-og-mysteriekammeret-9781781107461",
+      "note": "conf=0.97; ISBN 9781781107461 resolves to the Norwegian (bokmål) ebook edition of Harry Potter and the Chamber of Secrets, published by Pottermore Publishing (release 23 Aug 2016), translated by Torstein Bugge Høverstad. OverDrive lists series \"Harry Potter\"; it is book 2 of the seven-volume series. Filename's \"Mysteriekammere\" is a typo; correct title per EPUB metadata and retailer listings is \"Harry Potter og Mysteriekammeret\". Proposed record had all fields null, so all were filled in/corrected."
+    }
+  ],
+  "truth_disagreements": [
+    "title: chose 'Harry Potter og Mysteriekammeret', wikidata said 'Harry Potter and the Chamber of Secrets'"
+  ]
+}

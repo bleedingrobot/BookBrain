@@ -2,13 +2,53 @@ import type { AuthStartResponse, AuthStatus, FolderMode } from '../types/auth'
 import type { DriveFileListing, DriveFolder, FolderConfig } from '../types/drive'
 import type { ClearDuplicatesResult, DuplicateGroup } from '../types/duplicates'
 import type { FileSummary } from '../types/files'
-import type { LibraryAuditResult } from '../types/libraryAudit'
+import type {
+  BackupInfo,
+  BackupResult,
+  CoverJobStatus,
+  DescriptionBackfillEstimate,
+  DescriptionJobStatus,
+  DiscoveryStatus,
+  LibraryExportResult,
+  MetadataWritebackJobStatus,
+  RebuildEstimate,
+  RecentlyOrganizedResponse,
+} from '../types/library'
+import type {
+  AuditClusterKind,
+  DismissedClusterInfo,
+  LibraryAuditResult,
+  TitleMergeRepairResult,
+} from '../types/libraryAudit'
+import type {
+  DeepCheckEstimate,
+  DeepCheckResult,
+  ReidentDismissedInfo,
+  ReidentRebuildJobStatus,
+  ReidentReport,
+} from '../types/reidentAudit'
+import type {
+  AcquireDownloadResponse,
+  AcquireSearchResponse,
+  AcquireStatus,
+  AcquireSuggestions,
+  OpenBooksServerStatus,
+  OpenRequest,
+  RequestRefreshJob,
+} from '../types/acquire'
 import type { CopyResult, DismissResult, LocalFileSummary } from '../types/localScan'
 import type { OperationSummary } from '../types/operations'
 import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
+import type { SeriesMergeProposal, SeriesMergeResult } from '../types/seriesMerge'
+import type {
+  ResolveResult,
+  WishlistItem,
+  WishlistItemCreate,
+} from '../types/wishlist'
 import type { ScanJobStatus } from '../types/scan'
 import type { SystemStatus } from '../types/system'
+import type { BackupSettings, NightlySettings } from '../types/jobs'
 
 class ApiError extends Error {
   status: number
@@ -80,10 +120,10 @@ export const api = {
     }),
 
   getOrganizeSettings: () => request<OrganizeSettings>('/settings/organize'),
-  updateOrganizeSettings: (dryRun: boolean) =>
+  updateOrganizeSettings: (next: OrganizeSettings) =>
     request<OrganizeSettings>('/settings/organize', {
       method: 'PUT',
-      body: JSON.stringify({ dry_run: dryRun }),
+      body: JSON.stringify(next),
     }),
   startOrganize: () => request<OrganizeJobStatus>('/organize', { method: 'POST' }),
   getOrganizeStatus: (jobId: string) => request<OrganizeJobStatus>(`/organize/${jobId}`),
@@ -101,19 +141,170 @@ export const api = {
 
   listDuplicates: () => request<DuplicateGroup[]>('/duplicates'),
   clearDuplicates: () => request<ClearDuplicatesResult>('/duplicates/clear', { method: 'POST' }),
+  clearSameBookDuplicates: () =>
+    request<ClearDuplicatesResult>('/duplicates/clear-same-book', { method: 'POST' }),
+  clearOneDuplicate: (fileId: number) =>
+    request<ClearDuplicatesResult>(`/duplicates/${fileId}/clear`, { method: 'POST' }),
+  unflagDuplicate: (fileId: number) =>
+    request<void>(`/duplicates/${fileId}/unflag`, { method: 'POST' }),
   getLibraryAudit: () => request<LibraryAuditResult>('/library-audit'),
+  repairTitleMerges: () =>
+    request<TitleMergeRepairResult>('/library-audit/repair-title-merges', { method: 'POST' }),
+  dismissAuditCluster: (kind: AuditClusterKind, memberIds: number[]) =>
+    request<void>('/library-audit/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ kind, member_ids: memberIds }),
+    }),
+  listDismissedClusters: () => request<DismissedClusterInfo[]>('/library-audit/dismissed'),
+  restoreDismissedCluster: (id: number) =>
+    request<void>(`/library-audit/dismissed/${id}/restore`, { method: 'POST' }),
+  getReidentReport: () => request<ReidentReport>('/library-audit/reident'),
+  rebuildReidentReport: () =>
+    request<ReidentRebuildJobStatus>('/library-audit/reident/rebuild', { method: 'POST' }),
+  getReidentRebuildStatus: (jobId: string) =>
+    request<ReidentRebuildJobStatus>(`/library-audit/reident/rebuild/${jobId}`),
+  estimateReidentDeepCheck: (bookIds: number[]) =>
+    request<DeepCheckEstimate>('/library-audit/reident/deep-check/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ book_ids: bookIds }),
+    }),
+  runReidentDeepCheck: (bookIds: number[]) =>
+    request<DeepCheckResult>('/library-audit/reident/deep-check', {
+      method: 'POST',
+      body: JSON.stringify({ book_ids: bookIds }),
+    }),
+  dismissReidentFlag: (bookId: number) =>
+    request<void>('/library-audit/reident/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId }),
+    }),
+  listReidentDismissed: () =>
+    request<ReidentDismissedInfo[]>('/library-audit/reident/dismissed'),
+  restoreReidentFlag: (bookId: number) =>
+    request<void>(`/library-audit/reident/dismissed/${bookId}/restore`, { method: 'POST' }),
+
+  investigateSeriesMerge: (seriesIds: number[]) =>
+    request<SeriesMergeProposal>('/library-audit/series/investigate', {
+      method: 'POST',
+      body: JSON.stringify({ series_ids: seriesIds }),
+    }),
+  applySeriesMerge: (seriesIds: number[], canonicalSeriesName: string, excludedSeriesNames: string[]) =>
+    request<SeriesMergeResult>('/library-audit/series/apply', {
+      method: 'POST',
+      body: JSON.stringify({
+        series_ids: seriesIds,
+        canonical_series_name: canonicalSeriesName,
+        excluded_series_names: excludedSeriesNames,
+        confirm_same_series: true,
+      }),
+    }),
 
   listFiles: (status?: string) =>
     request<FileSummary[]>(`/files${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  removeFile: (id: number) => request<void>(`/files/${id}/remove`, { method: 'POST' }),
+  correctFile: (id: number, body: CorrectReviewRequest) =>
+    request<FileSummary>(`/files/${id}/correct`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  confirmFile: (id: number) =>
+    request<FileSummary>(`/files/${id}/confirm`, { method: 'POST' }),
+  confirmFiles: (fileIds: number[]) =>
+    request<{ confirmed: number; skipped: number }>('/files/confirm-batch', {
+      method: 'POST',
+      body: JSON.stringify({ file_ids: fileIds }),
+    }),
+  getRecentlyOrganized: (since: string) =>
+    request<RecentlyOrganizedResponse>(
+      `/library/recently-organized?since=${encodeURIComponent(since)}`,
+    ),
 
   clearLibrary: () => request<void>('/library/clear', { method: 'POST' }),
   rebuildLibrary: () => request<ScanJobStatus>('/library/rebuild', { method: 'POST' }),
+  rebuildEstimate: () => request<RebuildEstimate>('/library/rebuild/estimate'),
+  descriptionEstimate: () =>
+    request<DescriptionBackfillEstimate>('/library/descriptions/estimate'),
   getRebuildStatus: (jobId: string) => request<ScanJobStatus>(`/library/rebuild/${jobId}`),
+  exportLibrary: () => request<LibraryExportResult>('/library/export', { method: 'POST' }),
+  createBackup: () => request<BackupResult>('/library/backup', { method: 'POST' }),
+  listBackups: () => request<BackupInfo[]>('/library/backups'),
+  refreshLibraryIndex: () => request<{ books: number }>('/library/index', { method: 'POST' }),
+
+  getDiscoveryStatus: () => request<DiscoveryStatus>('/library/discovery-status'),
+  // Fire-and-forget sidecar rewrites (re-derive from the DB / re-fetch; seconds).
+  refreshReadingFile: () => request<{ books: number }>('/library/reading', { method: 'POST' }),
+  refreshRecommendationsFile: () =>
+    request<{ books: number }>('/library/recommendations', { method: 'POST' }),
+  refreshNewReleasesFile: () =>
+    request<{ books: number }>('/library/new-releases', { method: 'POST' }),
+  refreshPromptsFile: () => request<{ prompts: number }>('/library/prompts', { method: 'POST' }),
+  refreshListsFile: () => request<{ candidates: number }>('/library/lists', { method: 'POST' }),
+  refreshNewsFile: () => request<{ items: number }>('/library/news', { method: 'POST' }),
+  refreshEmbeddingsFile: () => request<{ books: number }>('/library/embeddings', { method: 'POST' }),
+  // The slow ones: page through the library / hit Hardcover per author. A
+  // single ?stale_days=0 click = "force a full re-sync"; the nightly + a
+  // repeat click converge. Don't loop these in the UI.
+  resyncBookRecs: () =>
+    request<Record<string, unknown>>('/library/book-recs/refresh?stale_days=0', { method: 'POST' }),
+  resyncSeriesCatalog: () =>
+    request<Record<string, unknown>>('/library/series-catalog/refresh?stale_days=0', {
+      method: 'POST',
+    }),
+  resyncNewReleases: () =>
+    request<Record<string, unknown>>('/library/new-releases/refresh?stale_days=0', {
+      method: 'POST',
+    }),
+  computeEmbeddings: () =>
+    request<Record<string, unknown>>('/library/embeddings/refresh', { method: 'POST' }),
+  generateCovers: () => request<CoverJobStatus>('/library/covers', { method: 'POST' }),
+  getCoverStatus: (jobId: string) => request<CoverJobStatus>(`/library/covers/${jobId}`),
+  backfillDescriptions: (ai: boolean) =>
+    request<DescriptionJobStatus>(`/library/descriptions${ai ? '?ai=true' : ''}`, {
+      method: 'POST',
+    }),
+  getDescriptionStatus: (jobId: string) =>
+    request<DescriptionJobStatus>(`/library/descriptions/${jobId}`),
+  writeEmbeddedMetadata: (dryRun: boolean) =>
+    request<MetadataWritebackJobStatus>(
+      `/library/embedded-metadata${dryRun ? '?dry_run=true' : ''}`,
+      { method: 'POST' },
+    ),
+  getEmbeddedMetadataStatus: (jobId: string) =>
+    request<MetadataWritebackJobStatus>(`/library/embedded-metadata/${jobId}`),
+
+  resolveWishlist: (text: string) =>
+    request<ResolveResult>('/wishlist/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  listWishlist: () => request<WishlistItem[]>('/wishlist'),
+  addWishlist: (body: WishlistItemCreate) =>
+    request<WishlistItem>('/wishlist', { method: 'POST', body: JSON.stringify(body) }),
+  setWishlistStatus: (id: number, status: 'wanted' | 'acquired') =>
+    request<WishlistItem>(`/wishlist/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  deleteWishlist: (id: number) => request<void>(`/wishlist/${id}`, { method: 'DELETE' }),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),
 
   getSystemStatus: () => request<SystemStatus>('/settings/status'),
+
+  getNightlySettings: () => request<NightlySettings>('/jobs/nightly'),
+  updateNightlySettings: (enabled: boolean, hour: number) =>
+    request<NightlySettings>('/jobs/nightly', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, hour }),
+    }),
+
+  getBackupSchedule: () => request<BackupSettings>('/jobs/backup'),
+  updateBackupSchedule: (enabled: boolean, hour: number) =>
+    request<BackupSettings>('/jobs/backup', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, hour }),
+    }),
 
   scanLocalFolder: () => request<LocalFileSummary[]>('/local-scan', { method: 'POST' }),
   getPendingLocalFiles: () => request<LocalFileSummary[]>('/local-scan/pending'),
@@ -121,6 +312,45 @@ export const api = {
     request<CopyResult>('/local-scan/copy', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
   dismissLocalFiles: (fileIds: number[]) =>
     request<DismissResult>('/local-scan/dismiss', { method: 'POST', body: JSON.stringify({ file_ids: fileIds }) }),
+
+  acquireStatus: () => request<AcquireStatus>('/acquire/status'),
+  openBooksServerStatus: () => request<OpenBooksServerStatus>('/acquire/server'),
+  startOpenBooksServer: () =>
+    request<OpenBooksServerStatus>('/acquire/server/start', { method: 'POST' }),
+  stopOpenBooksServer: () =>
+    request<OpenBooksServerStatus>('/acquire/server/stop', { method: 'POST' }),
+  acquireSearch: (query: string) =>
+    request<AcquireSearchResponse>('/acquire/search', {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    }),
+  acquireDownload: (full: string, filename: string) =>
+    request<AcquireDownloadResponse>('/acquire/download', {
+      method: 'POST',
+      body: JSON.stringify({ full, filename }),
+    }),
+
+  acquireSuggestions: () => request<AcquireSuggestions>('/acquire/suggestions'),
+  listOpenRequests: () => request<OpenRequest[]>('/acquire/requests'),
+  refreshOpenRequests: (limit = 25) =>
+    request<RequestRefreshJob>(`/acquire/requests/refresh?limit=${limit}`, { method: 'POST' }),
+  openRequestsRefreshStatus: (jobId: string) =>
+    request<RequestRefreshJob>(`/acquire/requests/refresh/${jobId}`),
+  approveOpenRequest: (requestId: string, full?: string) =>
+    request<AcquireDownloadResponse>(`/acquire/requests/${encodeURIComponent(requestId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ full: full ?? null }),
+    }),
+  skipOpenRequest: (requestId: string) =>
+    request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/skip`, { method: 'POST' }),
+  resetOpenRequest: (requestId: string) =>
+    request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/reset`, { method: 'POST' }),
+  getAutoGet: () => request<{ enabled: boolean }>('/acquire/autoget'),
+  setAutoGet: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/acquire/autoget', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
 }
 
 export { ApiError }

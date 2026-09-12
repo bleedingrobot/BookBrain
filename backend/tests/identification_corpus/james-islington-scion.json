@@ -1,0 +1,96 @@
+{
+  "id": "james-islington-scion",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: James Islington / Scion / series=None #None (model=None, conf=None)",
+  "source": {
+    "file_id": 2368,
+    "drive_file_id": "1jWIlHLs4E11JBeDLja--b4lpvZyCi7qG",
+    "filename": "Scion - James Islington.epub",
+    "captured_from": "db",
+    "stored_model": null,
+    "stored_confidence": null
+  },
+  "filename": "Scion - James Islington.epub",
+  "evidence": {
+    "title": "Scion",
+    "authors": [
+      "James Islington"
+    ],
+    "language": "EN-US",
+    "description": "<b>John Wick meets <I>Ghost in the Shell </I>in this fast-paced cyberpunk thriller by the #1 <i>New York Times </i>bestselling author of <i>The Will of the Many </i>and <i>The Strength of the Few.</i></b><BR>My job, when you think about it, isn't so different from a lot of people's.<BR> <BR> The more old-fashioned crowd do still get hung up on the \"killing people\" part of it, I guess, but that's a them problem: it's been perfectly legal to take out lifers for ages. Besides, once ultrawealthy morons realised they had a way to live forever&#8212;limited resources be damned&#8212;there was only ever going to be one genuinely practical deterrent.<BR> <BR> So, sure, I have to deal with a ton of boring planning. Inconvenient hours. Some pretty awkward face-to-face interactions. And like most of us, I'm really only clocking in to try to crawl out from beneath my debts. But someone's got to do it.<BR> <BR> Luckily, my genetic compatibilities make me really, <i>really </i>good at doing...",
+    "isbn10": null,
+    "isbn13": "9781668239261",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover"
+  },
+  "candidates": [
+    {
+      "title": "Scion",
+      "authors": [
+        "James Islington"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Scion",
+    "author": "James Islington",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": "Scion",
+      "series_number": 1.0,
+      "url": "https://www.amazon.com/Scion-James-Islington/dp/1668239248",
+      "note": "conf=0.72; Scion (2026), James Islington's first sci-fi/cyberpunk novel, published Sept 1 2026 (Saga Press US, ISBN 9781668239261 for the ebook; 9781668239247 hardcover). Confirmed as the FIRST book in a new planned series: the author's own announcement says \"It's now the first in a planned series,\" and Text Publishing lists it as \"Book 1 in an electrifying new series.\" The series has no separately announced name yet, so it is being tracked under the title of the first book (\"Scion\" series, #1) — the series-name portion is inferred from the title; the \"book 1 of a series\" status itself is publisher-confirmed. Distinct from Islington's Hierarchy series and Licanius Trilogy."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Scion",
+      "author": "James Islington",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.kobo.com/us/en/ebook/scion-13",
+      "note": "conf=0.93; EPUB metadata verified. ISBN 9781668239261 is the Kobo/S&S ebook edition of Scion; print hardcover is 9781668239247 (Saga Press, 240pp, pub. 2026-09-01). Author confirmed as James Islington. Series is genuinely null: Scion is a standalone cyberpunk thriller, explicitly described by the author as a side project written between edits on the Hierarchy series, and it is not part of Hierarchy or the Licanius Trilogy. No retailer, publisher, or Locus listing assigns it a series name or number; reviewers discuss it as self-contained with only speculation about possible sequels."
+    }
+  ],
+  "truth_disagreements": []
+}

@@ -1,0 +1,110 @@
+{
+  "id": "charles-stross-wireless",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Charles Stross / Wireless / series=None #None (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 905,
+    "drive_file_id": "1wvNdSrQXgsJ6fuf5v6r2XmtbjKcoj83_",
+    "filename": "Stross, Charles - Wireless (2009, Ace Books, 9780441017195).epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Stross, Charles - Wireless (2009, Ace Books, 9780441017195).epub",
+  "evidence": {
+    "title": "Wireless",
+    "authors": [
+      "Charles Stross"
+    ],
+    "language": "en",
+    "description": "EDITORIAL REVIEW: **Science fiction guru Charles Stross \"sizzles with ideas\" (*Denver Post*) in his first major short story collection.** The Hugo Award-winning author of such groundbreaking and innovative novels as *Accelerando, Halting State*, and *Saturn's Children* delivers a rich selection of speculative fiction- including a novella original to this volume- brought together for the first time in one collection, showcasing the limitless imagination of one of the twenty-first century's most daring visionaries.",
+    "isbn10": null,
+    "isbn13": "9780441017195",
+    "series": null,
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Wireless",
+      "authors": [
+        "Charles Stross"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780441017195",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": null,
+    "series_number": null
+  },
+  "answer": {
+    "title": "Wireless",
+    "author": "Charles Stross",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q8026812",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://archive.org/details/wireless00stro",
+      "note": "conf=0.95; Wireless (Ace Books, 2009, ISBN 9780441017195) is Charles Stross's first major short-story collection, not a novel in a series. UK/other editions carry the subtitle \"The Essential Charles Stross\". It contains nine pieces including the original novella \"Palimpsest\" and \"Down on the Farm\", a Laundry Files (Bob Howard) story — but the collection itself is a standalone volume, not a numbered entry in the Laundry Files or any other series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Wireless",
+      "author": "Charles Stross",
+      "series": null,
+      "series_number": null,
+      "url": "https://openlibrary.org/works/OL2465681W/Wireless",
+      "note": "conf=0.95; Verified: ISBN 9780441017195 = Wireless by Charles Stross, Ace Books, July 2009 (US 1st ed.). It is a standalone single-author short-story collection (contents: Missile Gap, Rogue Farm, A Colder War, MAXOS, Down on the Farm, Unwirer with Cory Doctorow, Snowball's Chance, Trunk and Disorderly, Palimpsest). UK Orbit edition adds the subtitle \"The Essential Charles Stross\" — a subtitle, not a series. Although one story (\"Down on the Farm\") belongs to the Laundry Files universe, the book itself is not part of that or any numbered series, so series = null. Proposed identification confirmed unchanged."
+    }
+  ],
+  "truth_disagreements": []
+}

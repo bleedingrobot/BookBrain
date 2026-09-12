@@ -1,0 +1,113 @@
+{
+  "id": "john-scalzi-the-god-engines",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: John Scalzi / The God Engines / series=None #None (model=claude-opus-5, conf=45)",
+  "source": {
+    "file_id": 2177,
+    "drive_file_id": "1z7WB0pRDJxg1nDxBg0hX132nC6CB6CT8",
+    "filename": "Scalzi, John--The God Engines.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 45
+  },
+  "filename": "Scalzi, John--The God Engines.epub",
+  "evidence": {
+    "title": "The God Engines",
+    "authors": [
+      "John Scalzi"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "The God Engines"
+  },
+  "candidates": [
+    {
+      "title": "The God engines",
+      "authors": [
+        "John Scalzi"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The God Engines",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 96,
+    "reasoning_summary": "Filename, EPUB metadata, and first-page text all agree on 'The God Engines' by John Scalzi, confirmed by an Open Library candidate match. It is a standalone novella, so no series applies.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The God Engines",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The God engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q7736902",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://fantasyliterature.com/reviews/the-god-engines/",
+      "note": "conf=0.95; Dark fantasy/SF novella, Subterranean Press, December 2009, ISBN 9781596062801. Hugo and Nebula Best Novella nominee 2010. Confirmed standalone: Scalzi himself stated on his blog that it is a stand-alone novella; it is not connected to the Old Man's War universe or any other Scalzi series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The God Engines",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_God_Engines",
+      "note": "conf=0.96; Verified: 2009 dark fantasy/SF novella by John Scalzi, published by Subterranean Press (ISBN 978-1-59606-299-3, 136 pp), Nebula nominee. It is a genuine standalone — not part of Old Man's War or any other Scalzi series; Wikidata/ISFDB list it as an unaffiliated novella. Proposed identification is correct as given."
+    }
+  ],
+  "truth_disagreements": []
+}

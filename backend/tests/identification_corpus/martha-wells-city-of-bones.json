@@ -1,0 +1,86 @@
+{
+  "id": "martha-wells-city-of-bones",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Martha Wells / City of Bones / series=None #None (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 669,
+    "drive_file_id": "1MolhkEjCKoV9Ljm2IfMhvJ1tqIV8qWo-",
+    "filename": "Martha Wells - City of Bones.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Martha Wells - City of Bones.epub",
+  "evidence": {
+    "title": "City of Bones",
+    "authors": [
+      "Martha Wells"
+    ],
+    "language": "en",
+    "description": "<div><h3>From Publishers Weekly</h3><p>Wells's second novel (after The Element of Fire) is a delight: an SF adventure with complex characters, archeological puzzles, a dash of mental magic and a lot of fast-paced action. Khat and his partner, Sagai, make their living finding relics that survived the destruction of the Ancients and selling them to the highest bidders. Khat is a Krisman (a bioengineered human whose race was designed for the grueling desert environment most of his world has become), which places him even lower on the social scale than his foreign-born partner. The two are coerced into working with the Patrician Warder, Elen, who is searching out a specific relic for her mentor, the Master Warder. Warders have certain mental powers, although overusing these powers can cause them to go mad. The Master Warder believes that this particular relic will enhance his powers without causing insanity, but Khat and Elen discover that there is a terrible price to be paid for using the artifact, one that may bring about the final destruction of their already ailing planet. This finely crafted novel expertly combines several genres?SF, fantasy, horror?and, perhaps most impressive of all, even manages to avoid an overly sentimental ending. <br>Copyright 1995 Reed Business Information, Inc. </p><h3>From Booklist</h3><p>Wells' second novel is a reasonably original postholocaust fantasy. The holocaust in this case caused the sea to dry up and left a good number of relics of the ancient days. There has grown up a trade in the latter, and as in all times and climes, archaeology attracts criminals, pretenders, and well-meaning amateurs as well as strict professionals. Mix those kinds of characters up in palace intrigue with mad or at least obsessive wizards, beautiful maidens, and a hunt for the Secret of the Remnant, and you have the makings of a decent adventure tale with an Arabian Nights flavor that Wells has the technical skill, as well as the verve and wit, to bring off quite nicely. <em>Roland Green</em></p></div>",
+    "isbn10": null,
+    "isbn13": "9781435705456",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "City of Bones",
+      "authors": [
+        "Martha Wells"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9781435705456",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": null,
+    "series_number": null
+  },
+  "answer": {
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "City of Bones",
+      "author": "Martha Wells",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "City of Bones",
+      "author": "Martha Wells",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='City of Bones'; provider='City of Bones'",
+    "author: epub='Martha Wells'; provider='Martha Wells'"
+  ]
+}

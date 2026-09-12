@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "We Sold Our Souls",
+  "author": "Grady Hendrix",
+  "series": null,
+  "series_number": null,
+  "url": "https://www.amazon.com/We-Sold-Our-Souls-Novel-ebook/dp/B078LRC6GP",
+  "note": "conf=0.96; ISBN 9781683690214 matches the Quirk Books ebook edition (Sept 18, 2018) of We Sold Our Souls by Grady Hendrix. Canonical title is \"We Sold Our Souls\"; \"A Novel\" is a retail subtitle. Verified as a genuine standalone — no series listing on Goodreads editions page or any retail edition; Hendrix's horror novels are unconnected standalones. Proposed fields were all null, so title/author added and series correctly remains null."
+}

@@ -1,0 +1,110 @@
+{
+  "id": "dean-koontz-the-taking",
+  "case_tags": [
+    "lastfirst-author"
+  ],
+  "notes": "lastfirst-author; stored: Dean Koontz / The Taking / series=None #None (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1066,
+    "drive_file_id": "1qlpF1K-fD9peL8XajoFEVxL6Y_PrYJrK",
+    "filename": "Taking, The - Dean Koontz.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Taking, The - Dean Koontz.epub",
+  "evidence": {
+    "title": "The Taking",
+    "authors": [
+      "Dean Koontz"
+    ],
+    "language": "en",
+    "description": "SUMMARY:\n#1 NEW YORK TIMES BESTSELLER On the morning that marks the end of the world they have known, Molly and Neil Sloan awaken to the drumbeat of rain on their roof. A luminous silvery downpour is drenching their small California mountain town. It has haunted their sleep, invaded their dreams, and now, in the moody purple dawn, the young couple cannot shake the sense of something terribly wrong. As the hours pass, Molly and Neil listen to disturbing news of extreme weather phenomena across the globe. By nightfall, their little town loses all contact with the outside world. A thick fog transforms the once-friendly village into a ghostly labyrinth. And soon the Sloans and their neighbors will be forced to draw on reserves of courage and humanity they never knew they had. For within the misty gloom they will encounter something that reveals in a shattering instant what is happening to their world-something that is hunting them with ruthless efficiency.",
+    "isbn10": null,
+    "isbn13": "9780553593501",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "The Taking",
+      "authors": [
+        "Dean Koontz"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780553593501",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": null,
+    "series_number": null
+  },
+  "answer": {
+    "title": "The Taking",
+    "author": "Dean Koontz",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q2438593",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Taking_(novel)",
+      "note": "conf=0.95; 2004 horror/suspense novel by Dean Koontz (Bantam Books). ISBN 9780553593501 is the Bantam/Random House mass market paperback edition, confirmed via Penguin Random House and Books-A-Million. No source (Wikipedia, publisher, Kirkus, TV Tropes) associates it with any series; it is a genuine standalone, distinct from Koontz's Odd Thomas or Frankenstein series."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Taking",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Taking_(novel)",
+      "note": "conf=0.95; ISBN 9780553593501 (ISBN-10 0553593501) resolves to the Bantam August 2010 mass-market edition of \"The Taking\" by Dean Koontz, matching the EPUB metadata. Wikipedia confirms it is a 2004 Bantam horror/suspense novel (first hardcover ISBN 0-553-80250-X); retailer listings show no series designation (\"Book Series: N/A\"). No evidence of it belonging to any Koontz series (not Odd Thomas, Frankenstein, Jane Hawk, etc.). Proposed identification is correct as-is."
+    }
+  ],
+  "truth_disagreements": []
+}

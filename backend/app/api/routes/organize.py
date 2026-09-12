@@ -1,13 +1,12 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.settings_keys import ORGANIZE_DRY_RUN
 from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
 from app.schemas.organize import OrganizeJobStatus
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.drive_service import DriveService
-from app.services.organize_service import OrganizeService, get_organize_service
+from app.services.organize_service import OrganizeService, get_organize_dry_run, get_organize_service
 
 router = APIRouter(prefix="/organize", tags=["organize"])
 
@@ -20,7 +19,7 @@ async def start_organize(
     service: OrganizeService = Depends(get_organize_service),
 ) -> OrganizeJobStatus:
     settings_repo = SettingsRepository(db)
-    dry_run = (await settings_repo.get(ORGANIZE_DRY_RUN)) != "false"
+    dry_run = await get_organize_dry_run(settings_repo)
 
     if dry_run:
         job = service.create_job()

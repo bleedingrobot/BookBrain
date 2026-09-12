@@ -38,6 +38,7 @@ async def test_search_by_isbn_returns_candidate() -> None:
     assert results[0].isbn13 == "9780441172719"
     assert results[0].isbn10 == "0441172717"
     assert results[0].source == "google_books"
+    assert results[0].series is None
 
 
 @respx.mock
@@ -84,3 +85,85 @@ async def test_api_key_included_when_configured() -> None:
         await provider.search_by_isbn("9780441172719")
 
     assert dict(httpx.QueryParams(route.calls.last.request.url.query))["key"] == "secret-key"
+
+
+@respx.mock
+async def test_series_number_from_series_info_plus_name_from_title_paren() -> None:
+    respx.get(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "volumeInfo": {
+                            "title": "The Final Empire (Mistborn, #1)",
+                            "authors": ["Brandon Sanderson"],
+                            "categories": ["Fiction / Fantasy / Epic"],
+                            "seriesInfo": {
+                                "bookDisplayNumber": "1",
+                                "volumeSeries": [{"seriesId": "abc", "orderNumber": 1}],
+                            },
+                        }
+                    }
+                ]
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        results = await GoogleBooksProvider(client=client).search_by_isbn("9780765311788")
+
+    assert results[0].series == "Mistborn"
+    assert results[0].series_number == 1.0
+    assert results[0].genre == "Epic"
+
+
+@respx.mock
+async def test_parenthetical_without_a_number_is_not_treated_as_a_series() -> None:
+    respx.get(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "volumeInfo": {
+                            "title": "Dune (Movie Tie-in Edition)",
+                            "authors": ["Frank Herbert"],
+                        }
+                    }
+                ]
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        results = await GoogleBooksProvider(client=client).search_by_isbn("9780441172719")
+
+    assert results[0].series is None
+    assert results[0].series_number is None
+
+
+@respx.mock
+async def test_series_info_number_with_no_derivable_name_is_dropped() -> None:
+    respx.get(ENDPOINT).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "volumeInfo": {
+                            "title": "Leviathan Wakes",
+                            "authors": ["James S. A. Corey"],
+                            "seriesInfo": {"bookDisplayNumber": "1"},
+                        }
+                    }
+                ]
+            },
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        results = await GoogleBooksProvider(client=client).search_by_isbn("9780316129084")
+
+    assert results[0].series is None
+    assert results[0].series_number is None

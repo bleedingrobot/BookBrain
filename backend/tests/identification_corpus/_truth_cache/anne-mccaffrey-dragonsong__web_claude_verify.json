@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Dragonsong",
+  "author": "Anne McCaffrey",
+  "series": "Harper Hall Trilogy",
+  "series_number": 1.0,
+  "url": "https://www.amazon.com/Dragonsong-Harper-Hall-Trilogy-Book/dp/0689860080",
+  "note": "conf=0.96; Title and author confirmed. The proposed series string \"Pern (Harper Hall Trilogy)\" mixes the broad universe with a parenthetical; the tight, actually-published sub-series is the Harper Hall Trilogy, in which Dragonsong is book 1 (publisher listings: \"Harper Hall Trilogy, Book 1\"). The filename's \"Pern 03\" reflects an internal-chronology/publication numbering of the wider Dragonriders of Pern universe, not this book's position in the trilogy."
+}

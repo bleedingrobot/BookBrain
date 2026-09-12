@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Halo",
+  "author": "Charles Stross",
+  "series": "Macx Family",
+  "series_number": 4.0,
+  "url": "http://www.isfdb.org/cgi-bin/title.cgi?100466=",
+  "note": "conf=0.9; EPUB metadata fields are swapped (title field holds author + shelving label; author field holds the title). \"Lobsters 04\" is not a published series; it is a fan-made label derived from the first story of the sequence. The canonical series per ISFDB is \"Macx Family,\" in which Halo is #4 (Lobsters, Troubadour, Tourist, Halo, Router, Nightfall, Curator, Elector, Survivor). The nine stories were later combined into the fix-up novel Accelerando (2005); Macx Family is the tighter/verified series designation. Halo first appeared in Asimov's SF, June 2002 (Hugo and Sturgeon nominee); the 2011 date in the filename reflects an ebook repackaging, not first publication. No ISBN for the standalone novelette."
+}

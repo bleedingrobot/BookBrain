@@ -5,6 +5,8 @@ const LINKS = [
   { to: '/inbox', label: 'Inbox' },
   { to: '/review', label: 'Review Queue' },
   { to: '/library', label: 'Library' },
+  { to: '/wishlist', label: 'Wishlist' },
+  { to: '/acquire', label: 'Find a Book' },
   { to: '/library-audit', label: 'Library Audit' },
   { to: '/duplicates', label: 'Duplicates' },
   { to: '/activity', label: 'Activity' },

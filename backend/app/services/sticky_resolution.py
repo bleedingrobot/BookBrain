@@ -1,11 +1,19 @@
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.models import File, LibraryRule, Review, ReviewStatus, RuleType
 from app.providers.epub.parser import EpubEvidence
 from app.services.book_repository import resolve_book
 from app.services.identification_service import IdentificationResult, hash_evidence
+from app.services.metadata_sanity import looks_like_placeholder_title
 from app.services.text_match import normalize
+
+# A library rule aliases an author/series — it says nothing about the title.
+# When the EPUB's own title is a placeholder (or missing, so the filename is
+# all we'd have), the rule can't be trusted to auto-organize: route it to
+# review at this confidence, with the alias still applied, instead of filing a
+# junk title at 100.
+_UNVERIFIED_TITLE_CONFIDENCE = 60
 
 # NOTE: a sha256-keyed correction lookup (find a corrected identification by
 # content hash alone) is deliberately NOT exposed as a standalone step in
@@ -17,10 +25,16 @@ from app.services.text_match import normalize
 
 
 async def _latest_correction(session: AsyncSession, sha256: str) -> Review | None:
+    # Match a file's current hash OR the hash it had before BookBrain
+    # rewrote its embedded metadata — a correction made against the
+    # pristine original must still stick after a writeback changes the bytes.
     result = await session.execute(
         select(Review)
         .join(File, Review.file_id == File.id)
-        .where(Review.status == ReviewStatus.corrected, File.sha256 == sha256)
+        .where(
+            Review.status == ReviewStatus.corrected,
+            or_(File.sha256 == sha256, File.original_sha256 == sha256),
+        )
         .order_by(Review.resolved_at.desc())
     )
     review = result.scalars().first()
@@ -86,15 +100,34 @@ async def find_rule_match(
     if not matched:
         return None
 
+    title = evidence.title or filename
+    corroborated = bool(evidence.isbn13 or evidence.isbn10)
+    title_unverified = evidence.title is None or looks_like_placeholder_title(
+        title, corroborated=corroborated
+    )
+
+    if title_unverified:
+        confidence = _UNVERIFIED_TITLE_CONFIDENCE
+        needs_review = True
+        reasoning = (
+            "Matched a saved library rule (author/series alias), but the EPUB "
+            "has no usable title — a human should confirm the title before this "
+            "is filed."
+        )
+    else:
+        confidence = 100
+        needs_review = False
+        reasoning = "Matched a saved library rule (author/series alias)."
+
     return IdentificationResult(
-        title=evidence.title or filename,
+        title=title,
         author=matched_author,
         series=matched_series,
         series_number=evidence.series_number,
-        computed_confidence=100,
+        computed_confidence=confidence,
         ai_reported_confidence=None,
-        needs_human_review=False,
-        reasoning_summary="Matched a saved library rule (author/series alias).",
+        needs_human_review=needs_review,
+        reasoning_summary=reasoning,
         model="library_rule",
         prompt_hash="",
         evidence_hash=hash_evidence(filename, evidence, []),
