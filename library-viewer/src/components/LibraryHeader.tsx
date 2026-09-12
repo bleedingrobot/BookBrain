@@ -58,6 +58,10 @@ export function LibraryHeader({
     { label: 'Copy link', fn: onCopyLink },
     { label: 'Change settings', fn: onEditSettings },
     { label: 'Recovery checklist', fn: onShowSetup },
+    {
+      label: 'Admin panel',
+      fn: () => window.open('http://homeserver:8000/', '_blank', 'noopener,noreferrer'),
+    },
   ]
 
   return (
