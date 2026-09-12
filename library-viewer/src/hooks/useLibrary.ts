@@ -141,7 +141,7 @@ export function useLibrary(settings: ViewerSettings | null) {
         applyToken(newToken, expiresIn)
         const who = getViewerName()
         if (who) void logActivity(newToken, settings.libraryFolderId, who, 'sign-in', '')
-        const cached = loadCachedFiles(settings.libraryFolderId)
+        const cached = await loadCachedFiles(settings.libraryFolderId)
         if (cached) {
           setFiles(cached)
           setIndex(loadCachedIndex(settings.libraryFolderId))
@@ -211,7 +211,7 @@ export function useLibrary(settings: ViewerSettings | null) {
 
   const rebuild = useCallback(async () => {
     if (!token) return
-    clearLibraryCache()
+    await clearLibraryCache()
     clearCachedIndex()
     clearCoverCache()
     setLoading(true)
@@ -221,7 +221,7 @@ export function useLibrary(settings: ViewerSettings | null) {
 
   // Drop every trace of the session and its data (App clears settings).
   const reset = useCallback(() => {
-    clearLibraryCache()
+    void clearLibraryCache()
     clearCachedIndex()
     clearCoverCache()
     setToken(null)

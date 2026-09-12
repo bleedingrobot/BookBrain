@@ -12,10 +12,9 @@ vi.mock('./drive', async (importOriginal) => {
 })
 
 import { getStartPageToken, listAllChanges, listLibraryTree, StalePageTokenError } from './drive'
-import { syncLibrary, type LibraryCache } from './librarySync'
+import { saveCache, syncLibrary, type LibraryCache } from './librarySync'
 
 const LIB = 'lib-root'
-const CACHE_KEY = 'bookbrain.libraryCache'
 
 const freshCache: LibraryCache = {
   libraryFolderId: LIB,
@@ -34,7 +33,7 @@ beforeEach(() => {
 
 describe('syncLibrary error handling', () => {
   it('rebuilds on a StalePageTokenError', async () => {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(freshCache))
+    await saveCache(freshCache)
     vi.mocked(listAllChanges).mockRejectedValue(new StalePageTokenError('expired'))
 
     const { rebuilt } = await syncLibrary('tok', LIB)
@@ -44,7 +43,7 @@ describe('syncLibrary error handling', () => {
   })
 
   it('does NOT rebuild — it rethrows — on a transient error', async () => {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(freshCache))
+    await saveCache(freshCache)
     vi.mocked(listAllChanges).mockRejectedValue(new Error('Drive API error (500)'))
 
     await expect(syncLibrary('tok', LIB)).rejects.toThrow(/500/)
@@ -61,7 +60,7 @@ describe('syncLibrary error handling', () => {
   })
 
   it('applies changes normally on success', async () => {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(freshCache))
+    await saveCache(freshCache)
     vi.mocked(listAllChanges).mockResolvedValue({ changes: [], newStartPageToken: 't1' })
 
     const { rebuilt, cache } = await syncLibrary('tok', LIB)

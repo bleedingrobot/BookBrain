@@ -1,4 +1,12 @@
 import { beforeEach } from 'vitest'
+import { IDBFactory } from 'fake-indexeddb'
+
+// A fresh in-memory IndexedDB per test — librarySync.ts and bookCache.ts both
+// use it for real (localStorage isn't roomy enough for either's data), and
+// Node has no indexedDB of its own to test against.
+beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory()
+})
 
 // Minimal localStorage for the node test environment — the sent-tracker and
 // index/settings modules all persist through it.
