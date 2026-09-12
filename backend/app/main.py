@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -77,3 +79,18 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+# Serve the built admin frontend (frontend/dist, produced by `npm run build`)
+# from this same always-on backend, so there is one permanent URL instead of
+# a locally-launched dev server. Registered after api_router so /api/* still
+# wins; falls back to index.html for any other path so client-side routing
+# (react-router) keeps working on a hard refresh/direct link.
+_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if _frontend_dist.is_dir():
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str) -> FileResponse:
+        candidate = _frontend_dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_frontend_dist / "index.html")
