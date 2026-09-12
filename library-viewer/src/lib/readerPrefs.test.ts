@@ -15,7 +15,14 @@ describe('readerPrefs', () => {
   it('clamps out-of-range values and rejects unknown enums', () => {
     localStorage.setItem(
       'bookbrain.readerPrefs',
-      JSON.stringify({ fontSize: 9000, lineHeight: 0.1, margin: -5, theme: 'neon', font: 'comic' }),
+      JSON.stringify({
+        fontSize: 9000,
+        lineHeight: 0.1,
+        margin: -5,
+        theme: 'neon',
+        font: 'comic',
+        ttsRate: 99,
+      }),
     )
     const p = loadReaderPrefs()
     expect(p.fontSize).toBe(180)
@@ -23,6 +30,14 @@ describe('readerPrefs', () => {
     expect(p.margin).toBe(20)
     expect(p.theme).toBe('light')
     expect(p.font).toBe('publisher')
+    expect(p.ttsRate).toBe(2)
+    expect(p.ttsVoiceURI).toBeNull()
+  })
+
+  it('round-trips a chosen TTS voice and rate', () => {
+    const prefs = { ...DEFAULT_PREFS, ttsRate: 1.5, ttsVoiceURI: 'Google US English' }
+    saveReaderPrefs(prefs)
+    expect(loadReaderPrefs()).toEqual(prefs)
   })
 
   it('readerCss reflects theme + font size', () => {

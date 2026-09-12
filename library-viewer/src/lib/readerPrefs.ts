@@ -12,6 +12,8 @@ export interface ReaderPrefs {
   lineHeight: number // 1.2..2.0
   margin: number // px, 20..100
   theme: ReaderTheme
+  ttsRate: number // 0.5..2.0
+  ttsVoiceURI: string | null // null = browser default voice
 }
 
 export const DEFAULT_PREFS: ReaderPrefs = {
@@ -20,6 +22,8 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   lineHeight: 1.5,
   margin: 48,
   theme: 'light',
+  ttsRate: 1,
+  ttsVoiceURI: null,
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
@@ -35,6 +39,8 @@ export function loadReaderPrefs(): ReaderPrefs {
       lineHeight: clamp(Number(p.lineHeight) || DEFAULT_PREFS.lineHeight, 1.2, 2),
       margin: clamp(Number(p.margin) || DEFAULT_PREFS.margin, 20, 100),
       theme: p.theme === 'sepia' || p.theme === 'dark' ? p.theme : 'light',
+      ttsRate: clamp(Number(p.ttsRate) || DEFAULT_PREFS.ttsRate, 0.5, 2),
+      ttsVoiceURI: typeof p.ttsVoiceURI === 'string' ? p.ttsVoiceURI : null,
     }
   } catch {
     return { ...DEFAULT_PREFS }
