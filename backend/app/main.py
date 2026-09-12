@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -32,6 +33,18 @@ async def lifespan(app: FastAPI):
     except Exception:  # a broken schedule must never stop the API booting
         logger.exception("scheduler failed to start")
     app.state.scheduler = scheduler
+    if settings.openbooks_enabled:
+        # Auto-start the OpenBooks child process so auto-get survives a
+        # backend restart/reboot unattended, matching the scheduler above.
+        # Runs as a managed child of this process (see
+        # openbooks_process_service) rather than its own systemd unit, since
+        # the app can only stop/restart a server it started itself on Linux.
+        try:
+            from app.services import openbooks_process_service
+
+            await asyncio.to_thread(openbooks_process_service.start)
+        except Exception:  # binary missing / port busy — don't block startup
+            logger.exception("openbooks: failed to auto-start at boot")
     try:
         yield
     finally:
