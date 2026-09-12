@@ -92,7 +92,7 @@ def test_default_service_adds_hardcover_only_when_token_is_set(monkeypatch) -> N
     monkeypatch.setattr(settings, "hardcover_api_token", "")
     names = {p.name for p in default_candidate_service()._providers}
     assert "hardcover" not in names
-    assert {"google_books", "open_library"} <= names
+    assert {"google_books", "open_library", "wikidata"} <= names
 
     monkeypatch.setattr(settings, "hardcover_api_token", "tok")
     assert "hardcover" in {p.name for p in default_candidate_service()._providers}
