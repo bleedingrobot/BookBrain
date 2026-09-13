@@ -424,6 +424,17 @@ mis-identification guards). The rest of that session's ideas, for later:
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".
+  - **Explore Piper for read-aloud** — `lib/tts.ts` currently drives the
+    browser's built-in Web Speech API (`speechSynthesis`), which sounds
+    pretty robotic and has spotty/inconsistent voice availability across
+    browsers and devices. [Piper](https://github.com/OHF-Voice/piper1-gpl)
+    is a fast local neural TTS (used by Home Assistant) with much more
+    natural voices. Worth investigating as a replacement or opt-in
+    alternative: it'd need to run somewhere (backend-side synthesis
+    streamed to the viewer, since it's not a browser API) rather than
+    in-browser like today, so this is a bigger shape change than a
+    drop-in swap — needs a design pass on where synthesis happens and
+    how audio gets to the reader before committing to it.
 - **Observability + safety net.**
   - **AI cost ledger** — batch-11 added *estimates*; there's no record of
     *actual* spend. Wrap `AnthropicIdentificationClient` to log every call with
