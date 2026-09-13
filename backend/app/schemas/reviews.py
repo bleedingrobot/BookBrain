@@ -15,6 +15,17 @@ class CandidateItem(BaseModel):
     source: str
 
 
+class AgreementLine(BaseModel):
+    """A field where >=2 stored candidates agree, for the reviewer's
+    reference — see app.services.provider_agreement. Purely informational;
+    it doesn't reflect or affect the computed confidence score."""
+
+    field: str
+    value: str
+    provider_count: int
+    sources: list[str]
+
+
 class ReviewSummary(BaseModel):
     id: int
     file_id: int
@@ -32,6 +43,7 @@ class ReviewDetail(ReviewSummary):
     reasoning_summary: str | None
     evidence: list[EvidenceItem]
     candidates: list[CandidateItem]
+    agreement: list[AgreementLine]
 
 
 class CorrectReviewRequest(BaseModel):

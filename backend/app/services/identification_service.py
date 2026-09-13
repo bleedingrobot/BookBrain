@@ -16,6 +16,7 @@ from app.services.metadata_sanity import (
     looks_like_placeholder_author,
     looks_like_placeholder_title,
 )
+from app.services.provider_agreement import compute_agreement
 from app.services.text_match import (
     normalize,
     normalize_words,
@@ -493,6 +494,15 @@ def _build_prompt(
                 f"series={series_note!r} genre={candidate.genre!r} "
                 f"published={candidate.first_published!r}"
             )
+        agreement = compute_agreement(candidates)
+        if agreement:
+            lines.append("")
+            for field_name, info in agreement.items():
+                lines.append(
+                    f"Providers agree on {field_name}: {info.value!r} "
+                    f"({info.provider_count}/{len(candidates)} sources: "
+                    f"{', '.join(info.sources)})."
+                )
     else:
         lines.append("")
         lines.append("No metadata provider candidates were found.")

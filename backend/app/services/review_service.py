@@ -18,8 +18,17 @@ from app.data.models import (
     RuleType,
 )
 from app.providers.drive.provider import DriveProvider
-from app.schemas.reviews import CandidateItem, CorrectReviewRequest, EvidenceItem, ReviewDetail, ReviewSummary
+from app.providers.metadata.types import MetadataCandidate
+from app.schemas.reviews import (
+    AgreementLine,
+    CandidateItem,
+    CorrectReviewRequest,
+    EvidenceItem,
+    ReviewDetail,
+    ReviewSummary,
+)
 from app.services.book_repository import get_book_write_lock, resolve_book
+from app.services.provider_agreement import compute_agreement
 from app.services.text_match import normalize
 
 # Structural issues (a Drive-side conflict, not an identification problem) are
@@ -64,6 +73,21 @@ async def get_review_detail(session: AsyncSession, review_id: int) -> ReviewDeta
         .all()
     )
 
+    # BookCandidate doesn't persist genre (only the transient
+    # MetadataCandidate used at identification time does), so agreement here
+    # only ever covers title/author/series — never genre.
+    agreement = compute_agreement(
+        [
+            MetadataCandidate(
+                title=c.title,
+                authors=[c.author] if c.author else [],
+                series=c.series,
+                source=c.source,
+            )
+            for c in candidate_rows
+        ]
+    )
+
     summary = _to_summary(review)
     return ReviewDetail(
         **summary.model_dump(),
@@ -82,6 +106,15 @@ async def get_review_detail(session: AsyncSession, review_id: int) -> ReviewDeta
                 source=c.source,
             )
             for c in candidate_rows
+        ],
+        agreement=[
+            AgreementLine(
+                field="author" if field_name == "authors" else field_name,
+                value=info.value,
+                provider_count=info.provider_count,
+                sources=list(info.sources),
+            )
+            for field_name, info in agreement.items()
         ],
     )
 

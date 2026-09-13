@@ -126,6 +126,20 @@ export function ReviewDialog({
         </div>
       )}
 
+      {review.agreement.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {review.agreement.map((a, i) => (
+            <span
+              key={i}
+              className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+              title={`Sources: ${a.sources.join(', ')}`}
+            >
+              ✓ {a.field} agreed by {a.provider_count} sources
+            </span>
+          ))}
+        </div>
+      )}
+
       {!editing ? (
         <div className="mt-5 flex gap-2">
           <button
