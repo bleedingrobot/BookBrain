@@ -115,6 +115,7 @@ Q_UNSEARCHED=0; Q_PENDING=0; Q_APPROVED=0; Q_NOMATCH=0; Q_FAILED=0; Q_TOTAL=0
 HIT_PCT="n/a"
 ORG_24H="?"; ORG_7D="?"
 SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""
+TAG_ENABLED="?"; TAG_DONE="?"; TAG_PENDING="?"
 SPARK_LINE=""
 SSH_LINE="none"; CLAUDE_COUNT=0; CLAUDE_DURS=""; VSCODE_WINDOWS=0; ACTIVITY_LINE="n/a"
 
@@ -242,6 +243,13 @@ while true; do
             [ -z "$GOT_JSON" ] && GOT_JSON="[]"
             LAST_GOT_AT=$(echo "$GOT_JSON" | jq -r '.[0].resolved_at // empty' 2>/dev/null)
         fi
+        TAGGING=$(curl -s -m 3 "$API/api/library/llm-tagging" 2>/dev/null)
+        if [ -n "$TAGGING" ]; then
+            TAG_ENABLED=$(echo "$TAGGING" | jq -r 'if .enabled and .configured then "RUNNING" elif .enabled then "pending" else "off" end' 2>/dev/null)
+            TAG_DONE=$(echo "$TAGGING" | jq -r '.full_done // "?"' 2>/dev/null)
+            TAG_PENDING=$(echo "$TAGGING" | jq -r '.full_pending // "?"' 2>/dev/null)
+        fi
+
         RECENT7=$(curl -s -m 5 "$API/api/library/recently-organized?since=168" 2>/dev/null)
         ORG_7D=$(echo "$RECENT7" | jq '.organized | length' 2>/dev/null)
         [ -z "$ORG_7D" ] && ORG_7D="?"
@@ -298,6 +306,8 @@ while true; do
         "books: $BOOK_COUNT" "reviews: $REVIEW_N" "inbox: $INBOX_N" "duplicates: $DUP_N" "local scan: $LOCALSCAN_N"
     printf "  organized last 24h: %-8s organized last 7d: %-8s  %s%s%s\n" \
         "$ORG_24H" "$ORG_7D" "$CYAN" "${SPARK_LINE:-(warming up)}" "$RESET"
+    printf "  LLM tagging: %s%-18s%s tagged: %-6s remaining: %-6s\n" \
+        "$(status_color "$TAG_ENABLED")" "$TAG_ENABLED" "$RESET" "$TAG_DONE" "$TAG_PENDING"
     echo
     echo "  ${BOLD}Acquisition queue${RESET} (OpenBooks) -- refreshed every ${SLOW_EVERY}x${FAST_REFRESH}s"
     printf "  %s  total %s\n" "$(segbar "$Q_APPROVED" "$Q_PENDING" "$Q_UNSEARCHED" "$Q_NOMATCH" 60)" "$Q_TOTAL"

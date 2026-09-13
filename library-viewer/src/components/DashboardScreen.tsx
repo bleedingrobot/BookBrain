@@ -50,6 +50,19 @@ function QueueBar({ queue }: { queue: Dashboard['queue'] }) {
   )
 }
 
+// prompts/38 — a plain two-tone fill: tagged (brand) vs. still to go (grey).
+// Only one split, unlike QueueBar's four, since a book is only ever done or
+// not yet done.
+function TaggingBar({ done, pending }: { done: number; pending: number }) {
+  const total = done + pending
+  if (total === 0) return null
+  return (
+    <div className="flex h-3 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+      <div className="h-full bg-brand-500" style={{ width: `${(done / total) * 100}%` }} />
+    </div>
+  )
+}
+
 function GrowthSparkline({ rows }: { rows: BookRow[] }) {
   const days = useMemo(() => growthHistogram(rows, 14), [rows])
   const max = Math.max(1, ...days.map((d) => d.count))
@@ -94,6 +107,8 @@ export function DashboardScreen({
   const readingNow = rows.filter((r) => r.reading?.status === 'reading').length
   const hasQueue = dashboard.generatedAt !== null
   const queueSize = dashboard.queue.wanted + dashboard.queue.pending
+  const taggingTotal = dashboard.llmTagging.done + dashboard.llmTagging.pending
+  const hasTagging = taggingTotal > 0
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
@@ -270,6 +285,23 @@ export function DashboardScreen({
             Snapshot from {timeAgo(dashboard.generatedAt)} — refreshes nightly and after every
             auto-get download.
           </p>
+        </section>
+      )}
+
+      {/* --- AI tagging ----------------------------------------------------- */}
+      {hasTagging && (
+        <section className="mt-6">
+          <SectionHeading>AI tagging — reading every book, cover to cover</SectionHeading>
+          <p className="mb-2 text-xs text-neutral-500">
+            A local model reads each book's full text overnight to work out genres, moods,
+            themes, content warnings, and a couple of descriptions — a book at a time, never in a
+            rush.
+          </p>
+          <TaggingBar done={dashboard.llmTagging.done} pending={dashboard.llmTagging.pending} />
+          <div className="mt-1.5 text-[11px] text-neutral-400">
+            {dashboard.llmTagging.done.toLocaleString()} of {taggingTotal.toLocaleString()} books
+            tagged ({Math.round((dashboard.llmTagging.done / taggingTotal) * 100)}%)
+          </div>
         </section>
       )}
     </div>

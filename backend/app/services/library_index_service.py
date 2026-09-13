@@ -99,7 +99,7 @@ _WISHLIST_FILENAME = "bookbrain-wishlist.json"
 # holds: acquisition_candidates lives in the backend's own SQLite DB, not a
 # Drive sidecar, so it has to be written out like this.
 DASHBOARD_FILENAME = "bookbrain-dashboard.json"
-DASHBOARD_VERSION = 1
+DASHBOARD_VERSION = 2  # v2 adds llmTagging{} (prompts/38)
 _UP_NEXT_CAP = 6
 _RECENT_DOWNLOADS_CAP = 8
 
@@ -803,6 +803,16 @@ async def regenerate_dashboard(
 
         hit_denom = len(approved) + len(no_match)
 
+        # prompts/38 — LLM-tagging progress (full-text map-reduce pass).
+        # Isolated: a hiccup here shouldn't cost the rest of the dashboard.
+        try:
+            from app.services import llm_tagging_service
+
+            tagging_progress = await llm_tagging_service.get_progress()
+        except Exception:
+            logger.exception("dashboard: llm tagging progress failed")
+            tagging_progress = {"full_done": 0, "full_pending": 0}
+
         payload = {
             "version": DASHBOARD_VERSION,
             "generatedAt": now.isoformat(),
@@ -840,6 +850,10 @@ async def regenerate_dashboard(
             "downloadsLast7d": last_7d,
             "avgPerDay7d": round(avg_per_day, 2),
             "etaDays": round((wanted + len(pending)) / avg_per_day, 1) if avg_per_day > 0 else None,
+            "llmTagging": {
+                "done": tagging_progress["full_done"],
+                "pending": tagging_progress["full_pending"],
+            },
         }
         await asyncio.to_thread(
             _write_json_file, provider, library_folder_id, DASHBOARD_FILENAME, payload

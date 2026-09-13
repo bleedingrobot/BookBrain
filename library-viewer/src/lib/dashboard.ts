@@ -39,6 +39,15 @@ export interface DashboardHitRate {
   pct: number | null
 }
 
+// prompts/38 — progress of the local-LLM full-text tagging pass (genres,
+// moods, themes, content warnings, descriptions), written alongside the
+// acquisition queue since it's also backend-only DB state the static
+// viewer can't see any other way.
+export interface DashboardLlmTagging {
+  done: number
+  pending: number
+}
+
 export interface Dashboard {
   generatedAt: string | null
   queue: DashboardQueue
@@ -49,6 +58,7 @@ export interface Dashboard {
   downloadsLast7d: number
   avgPerDay7d: number
   etaDays: number | null
+  llmTagging: DashboardLlmTagging
 }
 
 export const EMPTY_DASHBOARD: Dashboard = {
@@ -61,6 +71,7 @@ export const EMPTY_DASHBOARD: Dashboard = {
   downloadsLast7d: 0,
   avgPerDay7d: 0,
   etaDays: null,
+  llmTagging: { done: 0, pending: 0 },
 }
 
 interface RawPick {
@@ -86,6 +97,7 @@ interface RawFile {
   downloadsLast7d?: number
   avgPerDay7d?: number
   etaDays?: number | null
+  llmTagging?: Partial<DashboardLlmTagging>
 }
 
 interface Cached {
@@ -137,6 +149,10 @@ export function normaliseDashboard(raw: RawFile): Dashboard {
     downloadsLast7d: num(raw.downloadsLast7d),
     avgPerDay7d: num(raw.avgPerDay7d),
     etaDays: typeof raw.etaDays === 'number' ? raw.etaDays : null,
+    llmTagging: {
+      done: num(raw.llmTagging?.done),
+      pending: num(raw.llmTagging?.pending),
+    },
   }
 }
 
