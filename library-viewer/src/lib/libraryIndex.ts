@@ -64,13 +64,29 @@ export interface SeriesCatalog {
   books: SeriesCatalogBook[]
 }
 
+// bookbrain-index.json v8: admin-defined smart shelves (a query rule
+// resolved server-side — see backend/app/services/collection_rules.py),
+// pre-resolved into a member list since the viewer has no backend of its own
+// to evaluate a rule against.
+export interface CollectionEntry {
+  name: string
+  description: string | null
+  driveFileIds: string[]
+}
+
 export interface LibraryIndex {
   entries: Record<string, IndexEntry>
   series: Record<string, SeriesCatalog>
+  collections: Record<string, CollectionEntry>
   coversFolder: string | null
 }
 
-export const EMPTY_INDEX: LibraryIndex = { entries: {}, series: {}, coversFolder: null }
+export const EMPTY_INDEX: LibraryIndex = {
+  entries: {},
+  series: {},
+  collections: {},
+  coversFolder: null,
+}
 
 interface CachedIndex {
   libraryFolderId: string
@@ -83,6 +99,7 @@ export interface RawIndexFile {
   coversFolder?: string | null
   books?: Record<string, Omit<Partial<IndexEntry>, 'meta'> & { meta?: Partial<IndexMeta> | null }>
   series?: Record<string, Partial<SeriesCatalog>>
+  collections?: Record<string, Partial<CollectionEntry>>
 }
 
 function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | null {
@@ -144,6 +161,21 @@ function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCata
   return out
 }
 
+function normaliseCollections(raw: RawIndexFile['collections']): Record<string, CollectionEntry> {
+  const out: Record<string, CollectionEntry> = {}
+  for (const [id, entry] of Object.entries(raw ?? {})) {
+    if (!entry || typeof entry.name !== 'string' || !Array.isArray(entry.driveFileIds)) continue
+    const driveFileIds = entry.driveFileIds.filter((d): d is string => typeof d === 'string')
+    if (driveFileIds.length === 0) continue
+    out[id] = {
+      name: entry.name,
+      description: typeof entry.description === 'string' ? entry.description : null,
+      driveFileIds,
+    }
+  }
+  return out
+}
+
 export function normalise(raw: RawIndexFile): LibraryIndex {
   const entries: Record<string, IndexEntry> = {}
   for (const [id, entry] of Object.entries(raw.books ?? {})) {
@@ -159,7 +191,12 @@ export function normalise(raw: RawIndexFile): LibraryIndex {
       meta: normaliseMeta(entry.meta),
     }
   }
-  return { entries, series: normaliseSeries(raw.series), coversFolder: raw.coversFolder ?? null }
+  return {
+    entries,
+    series: normaliseSeries(raw.series),
+    collections: normaliseCollections(raw.collections),
+    coversFolder: raw.coversFolder ?? null,
+  }
 }
 
 function readCache(): CachedIndex | null {
@@ -171,6 +208,8 @@ function readCache(): CachedIndex | null {
     if (parsed.index && !('entries' in parsed.index)) return null
     // a cache written before v3 has no `series` map
     if (parsed.index && !parsed.index.series) parsed.index.series = {}
+    // a cache written before v8 has no `collections` map
+    if (parsed.index && !parsed.index.collections) parsed.index.collections = {}
     return parsed
   } catch {
     return null

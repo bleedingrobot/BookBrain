@@ -11,6 +11,7 @@ from app.data.models import (
     IdentifierType,
     MetadataSource,
     Series,
+    SmartCollection,
 )
 import json
 
@@ -152,7 +153,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 7
+    assert payload["version"] == 8
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -256,6 +257,48 @@ async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
         "listsCount": 3223,
     }
     assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
+
+
+async def test_build_index_payload_includes_smart_collection_membership(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.hardcover_json = {"meta": {"genres": ["Fantasy"]}}
+    collection = SmartCollection(name="Fantasy Picks", description="Big fat fantasy", rule="genre:Fantasy")
+    db_session.add(collection)
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    assert set(payload["collections"]) == {str(collection.id)}
+    entry = payload["collections"][str(collection.id)]
+    assert entry["name"] == "Fantasy Picks"
+    assert entry["description"] == "Big fat fantasy"
+    assert entry["driveFileIds"] == ["drive-will"]
+
+
+async def test_build_index_payload_omits_collection_with_no_matches(db_session) -> None:
+    await _seed(db_session)
+    db_session.add(SmartCollection(name="Horror", rule="genre:Horror"))
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    assert payload["collections"] == {}
+
+
+async def test_build_index_payload_skips_collection_with_unresolvable_rule(db_session, caplog) -> None:
+    await _seed(db_session)
+    # Written directly to bypass collection_rules.parse()'s own validation —
+    # simulates a rule that was valid when saved but no longer parses (e.g. a
+    # field later removed from the whitelist).
+    db_session.add(SmartCollection(name="Broken", rule="nonsense:Fantasy"))
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    assert payload["collections"] == {}
 
 
 async def test_match_hardcover_book_ids_and_prompts_payload(db_session) -> None:

@@ -16,6 +16,7 @@ from app.api.routes import (
     reviews,
     scan,
     settings,
+    smart_collections,
     wishlist,
 )
 
@@ -36,3 +37,4 @@ api_router.include_router(local_scan.router)
 api_router.include_router(jobs.router)
 api_router.include_router(wishlist.router)
 api_router.include_router(acquire.router)
+api_router.include_router(smart_collections.router)

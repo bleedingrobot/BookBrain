@@ -6,6 +6,7 @@ import { DashboardScreen } from './components/DashboardScreen'
 import { DeviceLibrary } from './components/DeviceLibrary'
 import { LibraryHeader } from './components/LibraryHeader'
 import { Reader } from './components/Reader'
+import { CollectionsScreen } from './components/CollectionsScreen'
 import { NewReleasesScreen } from './components/NewReleasesScreen'
 import { NewsFeed } from './components/NewsFeed'
 import { NewsScreen } from './components/NewsScreen'
@@ -172,6 +173,7 @@ export default function App() {
   const [showStats, setShowStats] = useState(false)
   const [prompts, setPrompts] = useState<Prompts>(EMPTY_PROMPTS)
   const [showPromptsScreen, setShowPromptsScreen] = useState(false)
+  const [showCollections, setShowCollections] = useState(false)
   // The acquisition-pipeline snapshot (queue/up-next/hit-rate) — everything
   // else on the Dashboard screen is computed client-side from allRows.
   const [dashboard, setDashboard] = useState<Dashboard>(EMPTY_DASHBOARD)
@@ -975,6 +977,21 @@ export default function App() {
     )
   }
 
+  if (showCollections) {
+    return (
+      <CollectionsScreen
+        collections={index.collections}
+        rows={allRows}
+        token={token}
+        onBack={() => setShowCollections(false)}
+        onOpen={(row) => {
+          setShowCollections(false)
+          jumpToRecent(row.id)
+        }}
+      />
+    )
+  }
+
   if (showDashboardScreen) {
     return (
       <DashboardScreen
@@ -1056,6 +1073,9 @@ export default function App() {
         }
         onShowPrompts={
           prompts.prompts.length > 0 ? () => setShowPromptsScreen(true) : undefined
+        }
+        onShowCollections={
+          Object.keys(index.collections).length > 0 ? () => setShowCollections(true) : undefined
         }
         onShowDashboard={() => setShowDashboardScreen(true)}
         onShare={handleShare}

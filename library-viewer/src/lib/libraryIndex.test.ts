@@ -121,13 +121,52 @@ describe('normalise — series catalog', () => {
   })
 })
 
+describe('normalise — collections', () => {
+  it('keeps well-formed collections and coerces missing description to null', () => {
+    const out = normalise({
+      collections: {
+        '1': { name: 'Fantasy Picks', description: 'Big fat fantasy', driveFileIds: ['d1', 'd2'] },
+        '2': { name: 'No Description', driveFileIds: ['d3'] },
+      },
+    })
+    expect(out.collections['1']).toEqual({
+      name: 'Fantasy Picks',
+      description: 'Big fat fantasy',
+      driveFileIds: ['d1', 'd2'],
+    })
+    expect(out.collections['2']).toEqual({
+      name: 'No Description',
+      description: null,
+      driveFileIds: ['d3'],
+    })
+  })
+
+  it('drops a collection with no name, no driveFileIds array, or an empty member list', () => {
+    const out = normalise({
+      collections: {
+        noName: { driveFileIds: ['d1'] } as unknown as { name: string; driveFileIds: string[] },
+        noIds: { name: 'X' },
+        empty: { name: 'Empty', driveFileIds: [] },
+      },
+    })
+    expect(out.collections).toEqual({})
+  })
+
+  it('filters non-string entries out of driveFileIds', () => {
+    const out = normalise({
+      collections: { '1': { name: 'X', driveFileIds: ['d1', 5 as unknown as string] } },
+    })
+    expect(out.collections['1'].driveFileIds).toEqual(['d1'])
+  })
+})
+
 describe('loadCachedIndex', () => {
   it('is EMPTY_INDEX with no cache', () => {
     expect(loadCachedIndex('lib-1')).toBe(EMPTY_INDEX)
   })
 
   it('returns the cached index only for a matching library folder', () => {
-    const index = { entries: { a: { title: 'A' } }, series: {}, coversFolder: null }
+    const index = { entries: { a: { title: 'A' } }, series: {}, collections: {}, coversFolder: null }
     localStorage.setItem(
       'bookbrain.metadataIndex',
       JSON.stringify({ libraryFolderId: 'lib-1', modifiedTime: 't', index }),
@@ -146,6 +185,18 @@ describe('loadCachedIndex', () => {
       }),
     )
     expect(loadCachedIndex('lib-1').series).toEqual({})
+  })
+
+  it('back-fills collections:{} into a pre-v8 cached index', () => {
+    localStorage.setItem(
+      'bookbrain.metadataIndex',
+      JSON.stringify({
+        libraryFolderId: 'lib-1',
+        modifiedTime: 't',
+        index: { entries: { a: { title: 'A' } }, series: {}, coversFolder: null },
+      }),
+    )
+    expect(loadCachedIndex('lib-1').collections).toEqual({})
   })
 
   it('rejects the pre-restructure cache shape', () => {

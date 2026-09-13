@@ -42,6 +42,12 @@ import type { OrganizeJobStatus, OrganizeSettings } from '../types/organize'
 import type { CorrectReviewRequest, ReviewDetail, ReviewSummary } from '../types/reviews'
 import type { SeriesMergeProposal, SeriesMergeResult } from '../types/seriesMerge'
 import type {
+  RulePreviewResult,
+  SmartCollection,
+  SmartCollectionCreate,
+  SmartCollectionUpdate,
+} from '../types/smartCollections'
+import type {
   ResolveResult,
   WishlistItem,
   WishlistItemCreate,
@@ -286,6 +292,22 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
   deleteWishlist: (id: number) => request<void>(`/wishlist/${id}`, { method: 'DELETE' }),
+
+  listSmartCollections: () => request<SmartCollection[]>('/smart-collections'),
+  createSmartCollection: (body: SmartCollectionCreate) =>
+    request<SmartCollection>('/smart-collections', { method: 'POST', body: JSON.stringify(body) }),
+  updateSmartCollection: (id: number, body: SmartCollectionUpdate) =>
+    request<SmartCollection>(`/smart-collections/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteSmartCollection: (id: number) =>
+    request<void>(`/smart-collections/${id}`, { method: 'DELETE' }),
+  previewSmartCollectionRule: (rule: string) =>
+    request<RulePreviewResult>('/smart-collections/preview', {
+      method: 'POST',
+      body: JSON.stringify({ rule }),
+    }),
 
   listOperations: () => request<OperationSummary[]>('/operations'),
   undoOperation: (id: number) => request<OperationSummary>(`/operations/${id}/undo`, { method: 'POST' }),

@@ -26,9 +26,11 @@ from app.data.models import (
     Identifier,
     IdentifierType,
     MetadataSource,
+    SmartCollection,
 )
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
+from app.services.collection_rules import build_query, parse
 from app.services.text_match import normalize_person_name, normalize_title
 
 logger = logging.getLogger(__name__)
@@ -40,8 +42,10 @@ INDEX_FILENAME = "bookbrain-index.json"
 # viewer can cover a not-yet-owned release — prompts/27 Part 1);
 # v6 adds per-book `contentWarnings` to `meta` and surfaces `moods` in the
 # viewer (prompts/31 Part A); v7 adds `listsCount` (E1) + `published` /
-# `audioHours` (Part H).
-INDEX_VERSION = 7
+# `audioHours` (Part H); v8 adds the top-level `collections` map — admin-
+# defined smart shelves (app.services.collection_rules), pre-resolved here
+# since the viewer has no backend of its own to query them live.
+INDEX_VERSION = 8
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
 # facet. `description` stays out — the viewer already gets a blurb from the
@@ -250,13 +254,47 @@ async def build_index_payload(session: AsyncSession) -> dict:
             "books": hc["books"],
         }
 
+    collections_map = await _build_collections_map(session, files)
+
     return {
         "version": INDEX_VERSION,
         "generatedAt": datetime.now(UTC).isoformat(),
         "count": len(books),
         "books": books,
         "series": series_map,
+        "collections": collections_map,
     }
+
+
+async def _build_collections_map(session: AsyncSession, files: list[File]) -> dict[str, dict]:
+    """Admin-defined smart shelves, pre-resolved into `{id, name, description,
+    driveFileIds}` — the viewer just reads these, it never evaluates a rule
+    itself. A collection with a since-invalidated rule (a field removed, say)
+    is skipped rather than failing the whole index build."""
+    drive_id_by_book_id = {f.book_id: f.drive_file_id for f in files if f.book_id is not None}
+    collections = (
+        (await session.execute(select(SmartCollection).order_by(SmartCollection.name)))
+        .scalars()
+        .all()
+    )
+
+    collections_map: dict[str, dict] = {}
+    for collection in collections:
+        try:
+            rule = parse(collection.rule)
+            matched = (await session.execute(build_query(rule))).scalars().unique().all()
+        except Exception:
+            logger.exception("smart collection %r has an unresolvable rule; skipping", collection.name)
+            continue
+        drive_ids = [drive_id_by_book_id[b.id] for b in matched if b.id in drive_id_by_book_id]
+        if not drive_ids:
+            continue
+        collections_map[str(collection.id)] = {
+            "name": collection.name,
+            "description": collection.description,
+            "driveFileIds": drive_ids,
+        }
+    return collections_map
 
 
 def _write_index(provider: DriveProvider, library_folder_id: str, payload: dict) -> None:

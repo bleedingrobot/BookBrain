@@ -40,6 +40,7 @@ describe('buildRows', () => {
     const index: LibraryIndex = {
       coversFolder: null,
       series: {},
+      collections: {},
       entries: {
         '1': {
           title: 'Dune (Deluxe)',

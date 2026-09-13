@@ -504,6 +504,22 @@ class AcquisitionCandidate(Base):
     resolved_at: Mapped[datetime | None] = mapped_column()
 
 
+class SmartCollection(Base):
+    """A named, rule-based shelf: `rule` is a small field:value query string
+    (see app.services.collection_rules) resolved against the library at
+    index-build time, so the collection's membership stays live as the
+    library grows instead of being a fixed, hand-picked list."""
+
+    __tablename__ = "smart_collections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    rule: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 __all__ = [
     "Author",
     "Series",
@@ -527,4 +543,5 @@ __all__ = [
     "DismissedReidentFlag",
     "AcquisitionStatus",
     "AcquisitionCandidate",
+    "SmartCollection",
 ]

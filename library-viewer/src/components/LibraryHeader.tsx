@@ -11,6 +11,7 @@ interface Props {
   onShowNews: () => void
   onShowStats?: () => void
   onShowPrompts?: () => void
+  onShowCollections?: () => void
   onShowDashboard: () => void
   onShare: () => void
   onCopyLink: () => void
@@ -32,6 +33,7 @@ export function LibraryHeader({
   onShowNews,
   onShowStats,
   onShowPrompts,
+  onShowCollections,
   onShowDashboard,
   onShare,
   onCopyLink,
@@ -48,6 +50,7 @@ export function LibraryHeader({
     { label: 'Activity', fn: onShowActivity },
     ...(onShowStats ? [{ label: 'Reading stats', fn: onShowStats }] : []),
     ...(onShowPrompts ? [{ label: 'Your library answers', fn: onShowPrompts }] : []),
+    ...(onShowCollections ? [{ label: 'Collections', fn: onShowCollections }] : []),
     { label: 'SFF news', fn: onShowNews },
     { label: 'Wishlist & requests', fn: onShowWishlist },
     { label: 'Rebuild library', fn: onRebuild, disabled: busy },

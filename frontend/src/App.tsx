@@ -10,6 +10,7 @@ import { Library } from './pages/Library'
 import { LibraryAudit } from './pages/LibraryAudit'
 import { ReviewQueue } from './pages/ReviewQueue'
 import { Settings } from './pages/Settings'
+import { SmartCollections } from './pages/SmartCollections'
 import { Wishlist } from './pages/Wishlist'
 
 const queryClient = new QueryClient()
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/library" element={<Library />} />
           <Route path="/wishlist" element={<Wishlist />} />
+          <Route path="/smart-collections" element={<SmartCollections />} />
           <Route path="/acquire" element={<Acquire />} />
           <Route path="/library-audit" element={<LibraryAudit />} />
           <Route path="/duplicates" element={<Duplicates />} />
