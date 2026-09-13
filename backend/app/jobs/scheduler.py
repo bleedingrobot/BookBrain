@@ -46,12 +46,16 @@ DEFAULT_BACKUP_HOUR = 3
 # per hour on top of this). Jittered so ticks aren't metronomic.
 AUTOGET_INTERVAL_SECONDS = 360
 AUTOGET_INTERVAL_JITTER = 90
-# prompts/38 — one Ollama call per tick (an excerpt pass, or one map/reduce
-# step of a full pass). llm_tagging_service.tick() itself no-ops outside
-# allowed windows / while Ollama is unreachable, so the trigger just needs to
-# fire often enough to notice a window opening — every few minutes is plenty.
-LLM_TAGGING_INTERVAL_SECONDS = 300
-LLM_TAGGING_INTERVAL_JITTER = 60
+# prompts/38 — one Ollama call per tick (one map/reduce step of a book's
+# full-text pass). Originally 300s on the assumption ticks would mostly be
+# no-ops between rare windows opening — James wants full throughput instead:
+# back-to-back as fast as Ollama actually responds (~8-10s/chunk measured).
+# A tiny interval + max_instances=1 + coalesce achieves that: APScheduler
+# fires again the instant the previous tick frees up rather than waiting out
+# the interval, so the real pacing is just "how long the last call took."
+# tick() itself still no-ops outside allowed windows / while Ollama's down.
+LLM_TAGGING_INTERVAL_SECONDS = 2
+LLM_TAGGING_INTERVAL_JITTER = 0
 
 
 async def _run_scheduled_nightly() -> None:
@@ -181,10 +185,11 @@ async def read_llm_tagging_enabled() -> bool:
 
 
 async def sync_llm_tagging_schedule(scheduler: AsyncIOScheduler) -> None:
-    """An interval job (every ~5 min) that does one Ollama-tagging unit of
-    work when a tick lands inside an allowed window. Registered only while
-    the toggle is on — llm_tagging_service.tick() does the actual window/
-    reachability gating on top of that."""
+    """A tight-interval job (effectively back-to-back — see the constants
+    above) that does one Ollama-tagging unit of work when a tick lands
+    inside an allowed window. Registered only while the toggle is on —
+    llm_tagging_service.tick() does the actual window/reachability gating
+    on top of that."""
     enabled = await read_llm_tagging_enabled()
     existing = scheduler.get_job(_LLM_TAGGING_JOB_ID)
     if not enabled:
@@ -200,6 +205,6 @@ async def sync_llm_tagging_schedule(scheduler: AsyncIOScheduler) -> None:
             _run_scheduled_llm_tagging, trigger=trigger, id=_LLM_TAGGING_JOB_ID,
             name="LLM tagging", max_instances=1, coalesce=True, misfire_grace_time=120,
         )
-        logger.info("llm tagging: enabled, ticking every ~%ds", LLM_TAGGING_INTERVAL_SECONDS)
+        logger.info("llm tagging: enabled, running back-to-back inside allowed windows")
     else:
         scheduler.reschedule_job(_LLM_TAGGING_JOB_ID, trigger=trigger)
