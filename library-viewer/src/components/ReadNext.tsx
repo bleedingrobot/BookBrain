@@ -30,7 +30,7 @@ export function ReadNext({ items, token, onRead, onOpen, onSnooze }: Props) {
               className="flex w-56 items-center gap-2.5 rounded-lg border border-neutral-200 bg-white p-2 text-left hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
               onClick={() => (isEpub(row.filename) ? onRead(row.id) : onOpen(row.id))}
             >
-              <Cover token={token} driveId={row.id} isbn={row.isbn} />
+              <Cover token={token} driveId={row.id} isbn={row.isbn} title={row.title} author={row.author} />
               <div className="min-w-0 flex-1">
                 <p className="truncate pr-4 text-xs font-medium text-neutral-800 dark:text-neutral-200">
                   {row.title}

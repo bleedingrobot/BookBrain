@@ -19,6 +19,7 @@ import {
   type ReaderPrefs,
   type ReaderTheme,
 } from '../lib/readerPrefs'
+import { getVoices, isTtsSupported, onVoicesChanged, TtsController, type TtsStatus } from '../lib/tts'
 
 interface Props {
   token: string
@@ -73,9 +74,20 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const [toc, setToc] = useState<FoliateTOCItem[]>([])
-  const [panel, setPanel] = useState<'none' | 'toc' | 'prefs'>('none')
+  const [panel, setPanel] = useState<'none' | 'toc' | 'prefs' | 'tts'>('none')
   const [chrome, setChrome] = useState(true)
   const [pos, setPos] = useState<{ fraction: number; label: string }>({ fraction: 0, label: '' })
+
+  const ttsRef = useRef<TtsController | null>(null)
+  const [ttsStatus, setTtsStatus] = useState<TtsStatus>('idle')
+  const [ttsMessage, setTtsMessage] = useState('')
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+
+  useEffect(() => {
+    if (!isTtsSupported()) return
+    setVoices(getVoices())
+    return onVoicesChanged(() => setVoices(getVoices()))
+  }, [])
 
   const flushSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -116,6 +128,15 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
         view.style.height = '100%'
         viewRef.current = view
         host.append(view)
+        ttsRef.current = new TtsController({
+          view,
+          onStatusChange: (s, message) => {
+            setTtsStatus(s)
+            setTtsMessage(message ?? '')
+          },
+          getRate: () => prefsRef.current.ttsRate,
+          getVoiceURI: () => prefsRef.current.ttsVoiceURI,
+        })
 
         view.addEventListener('relocate', (e) => {
           const d = e.detail
@@ -168,6 +189,8 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
     return () => {
       cancelled = true
       flushSave()
+      ttsRef.current?.destroy()
+      ttsRef.current = null
       try {
         viewRef.current?.close()
         viewRef.current?.remove()
@@ -278,6 +301,14 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
         >
           Contents
         </button>
+        {isTtsSupported() && (
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => setPanel(panel === 'tts' ? 'none' : 'tts')}
+          >
+            {ttsStatus === 'playing' ? '⏸' : ttsStatus === 'paused' ? '▶' : '🔊'} Listen
+          </button>
+        )}
         <button
           className="btn btn-ghost btn-xs"
           onClick={() => setPanel(panel === 'prefs' ? 'none' : 'prefs')}
@@ -395,6 +426,80 @@ export function Reader({ token, book, onClose, onAuthError }: Props) {
               ))}
             </ul>
           )}
+        </ReaderPanel>
+      )}
+
+      {/* read-aloud panel */}
+      {panel === 'tts' && (
+        <ReaderPanel title="Listen" onClose={() => setPanel('none')} theme={prefs.theme}>
+          <div className="space-y-4 p-4 text-sm">
+            <p className="opacity-70">
+              {ttsStatus === 'playing'
+                ? 'Reading…'
+                : ttsStatus === 'paused'
+                  ? 'Paused'
+                  : ttsStatus === 'finished'
+                    ? "Reached the end of what's loaded."
+                    : ttsStatus === 'error'
+                      ? (ttsMessage || 'Something went wrong.')
+                      : 'Reads from wherever you left off, using your device’s voice.'}
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                className="btn btn-neutral btn-sm"
+                disabled={ttsStatus !== 'playing' && ttsStatus !== 'paused'}
+                onClick={() => void ttsRef.current?.skipBack()}
+              >
+                ⏮
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (ttsStatus === 'playing') ttsRef.current?.pause()
+                  else void ttsRef.current?.play()
+                }}
+              >
+                {ttsStatus === 'playing' ? '⏸ Pause' : '▶ Play'}
+              </button>
+              <button
+                className="btn btn-neutral btn-sm"
+                disabled={ttsStatus !== 'playing' && ttsStatus !== 'paused'}
+                onClick={() => void ttsRef.current?.skipForward()}
+              >
+                ⏭
+              </button>
+            </div>
+            {(ttsStatus === 'playing' || ttsStatus === 'paused') && (
+              <button className="btn btn-ghost btn-xs w-full" onClick={() => ttsRef.current?.stop()}>
+                Stop
+              </button>
+            )}
+            <Slider
+              label="Speed"
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={prefs.ttsRate}
+              onChange={(v) => setPrefs((p) => ({ ...p, ttsRate: v }))}
+            />
+            <label className="block">
+              <span className="mb-1 block opacity-70">Voice</span>
+              <select
+                className="field w-full"
+                value={prefs.ttsVoiceURI ?? ''}
+                onChange={(e) =>
+                  setPrefs((p) => ({ ...p, ttsVoiceURI: e.target.value || null }))
+                }
+              >
+                <option value="">Automatic (device default)</option>
+                {voices.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>
+                    {v.name} ({v.lang})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </ReaderPanel>
       )}
 

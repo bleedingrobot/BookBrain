@@ -6,6 +6,7 @@ from app.providers.metadata.google_books import GoogleBooksProvider
 from app.providers.metadata.hardcover import HardcoverProvider
 from app.providers.metadata.open_library import OpenLibraryProvider
 from app.providers.metadata.types import MetadataCandidate
+from app.providers.metadata.wikidata import WikidataProvider
 
 
 class CandidateService:
@@ -60,6 +61,7 @@ def default_candidate_service() -> CandidateService:
     providers: list[BookMetadataProvider] = [
         GoogleBooksProvider(api_key=settings.google_books_api_key),
         OpenLibraryProvider(),
+        WikidataProvider(),
     ]
     # Hardcover is opt-in: only added when a token is configured, so an
     # install without one behaves exactly as before (no extra request,

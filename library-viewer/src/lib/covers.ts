@@ -2,7 +2,11 @@
 //   1. a local thumbnail the backend put in the Drive covers/ folder
 //      (covers/<driveFileId>.jpg) — authenticated fetch, cached as a blob URL
 //   2. Open Library's cover-by-ISBN endpoint (public, no auth)
-//   3. nothing — the row shows a placeholder
+//   3. Google Books — by ISBN if there is one, else a title+author search;
+//      the only tier that can still find something for a book with no ISBN
+//      at all, which tends to be exactly the older/obscure titles least
+//      likely to have an embedded cover either
+//   4. nothing — the row shows a placeholder
 // Only rows actually on screen ever trigger a fetch (see components/Cover).
 
 const blobUrlByBook = new Map<string, string>()
@@ -21,6 +25,44 @@ export function openLibraryCoverUrl(isbn: string): string {
 
 export function hasLocalCover(driveId: string): boolean {
   return coverFileIdByBook.has(driveId)
+}
+
+// Resolved once per (isbn, or title+author) and remembered — many rows can
+// share the same lookup (a recommendation and the shelf copy of the same
+// book), and a book without a cover shouldn't re-query Google every render.
+const googleBooksCoverCache = new Map<string, string | null>()
+
+export async function fetchGoogleBooksCoverUrl(
+  isbn: string | null,
+  title: string,
+  author: string | null,
+): Promise<string | null> {
+  const key = isbn ?? `${title}|${author ?? ''}`
+  const cached = googleBooksCoverCache.get(key)
+  if (cached !== undefined) return cached
+
+  const query = isbn
+    ? `isbn:${isbn}`
+    : `intitle:${title}${author ? `+inauthor:${author}` : ''}`
+  try {
+    const resp = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=1`,
+    )
+    if (!resp.ok) throw new Error(`google books ${resp.status}`)
+    const data = (await resp.json()) as {
+      items?: { volumeInfo?: { imageLinks?: { thumbnail?: string; smallThumbnail?: string } } }[]
+    }
+    const links = data.items?.[0]?.volumeInfo?.imageLinks
+    const raw = links?.thumbnail ?? links?.smallThumbnail ?? null
+    // Google serves these over plain http:// by default, which the browser
+    // blocks as mixed content on an https page.
+    const url = raw ? raw.replace(/^http:\/\//, 'https://') : null
+    googleBooksCoverCache.set(key, url)
+    return url
+  } catch {
+    googleBooksCoverCache.set(key, null)
+    return null
+  }
 }
 
 // Lists the covers/ folder once per folder id and builds driveFileId → cover

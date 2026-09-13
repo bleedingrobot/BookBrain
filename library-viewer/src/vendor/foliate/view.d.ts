@@ -35,6 +35,21 @@ export interface FoliateRenderer extends HTMLElement {
   getContents: () => { doc: Document; index: number }[]
 }
 
+// prompts/ (TTS) — foliate's own read-aloud block walker. Speaks nothing by
+// itself: each call hands back one block of the book as an SSML string with
+// <mark> anchors inside it, which lib/tts.ts flattens to plain text and feeds
+// to the browser's Web Speech API. setMark() re-triggers the block's default
+// highlight (a page-turn via scrollToAnchor if it's off-screen).
+export interface FoliateTTS {
+  doc: Document
+  start: () => string | undefined
+  resume: () => string | undefined
+  prev: (paused?: boolean) => string | undefined
+  next: (paused?: boolean) => string | undefined
+  from: (range: Range) => string | undefined
+  setMark: (mark: string) => void
+}
+
 export interface FoliateView extends HTMLElement {
   open: (book: File | Blob | string) => Promise<void>
   init: (opts: { lastLocation?: string; showTextStart?: boolean }) => Promise<void>
@@ -42,6 +57,8 @@ export interface FoliateView extends HTMLElement {
   book: FoliateBook
   renderer: FoliateRenderer
   lastLocation?: FoliateRelocateDetail | null
+  tts?: FoliateTTS | null
+  initTTS: (granularity?: 'word' | 'sentence', highlight?: (range: Range) => void) => Promise<void>
   goTo: (target: string | number) => Promise<unknown>
   goToFraction: (fraction: number) => Promise<void>
   goLeft: () => Promise<void>

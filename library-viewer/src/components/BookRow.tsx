@@ -138,7 +138,7 @@ function ReadersAlsoLiked({
           const st = owned ? 'owned' : state[key]
           return (
             <li key={i} className="flex items-center gap-2.5 py-1.5">
-              <Cover token={token} driveId={`rec-${key}`} isbn={rec.isbn13} />
+              <Cover token={token} driveId={`rec-${key}`} isbn={rec.isbn13} title={rec.title} author={rec.author} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-300">
                   {rec.title}
@@ -274,7 +274,7 @@ export function BookRow({
           onClick={() => onExpand(row.id)}
           aria-label="Details"
         >
-          <Cover token={token} driveId={row.id} isbn={row.isbn} />
+          <Cover token={token} driveId={row.id} isbn={row.isbn} title={row.title} author={row.author} />
         </button>
         <div className="min-w-0 flex-1">
           <button

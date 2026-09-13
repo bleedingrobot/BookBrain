@@ -1190,6 +1190,14 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
             results = await _search_one(item)
         except OpenBooksError as exc:
             logger.warning("acquire: auto-get search failed for %r: %s", title, exc)
+            _note_search()
+            # A search that errors out (bot busy/offline, timeout) still needs to
+            # touch the row so _target_backoff() has a timestamp to work from —
+            # otherwise there's no backoff at all and the next tick just retries
+            # the same stuck target immediately, forever.
+            async with async_session_factory() as session:
+                await _upsert(session, item, [], preserve_existing=True)
+                await session.commit()
             return {"skipped": "search failed", "error": str(exc)}
         _note_search()
         ranked = _rank(title, item.get("author"), results, demerits=demerits)

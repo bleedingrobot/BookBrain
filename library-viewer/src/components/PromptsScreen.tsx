@@ -59,7 +59,7 @@ export function PromptsScreen({
                   {books.map((row) => (
                     <li key={row.id} className="w-16 shrink-0">
                       <button className="block w-full" onClick={() => onOpen(row)} title={row.title}>
-                        <Cover token={token} driveId={row.id} isbn={row.isbn} />
+                        <Cover token={token} driveId={row.id} isbn={row.isbn} title={row.title} author={row.author} />
                         <span className="mt-1 line-clamp-2 text-[11px] leading-tight text-neutral-500">
                           {row.title}
                         </span>

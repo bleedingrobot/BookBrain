@@ -135,7 +135,7 @@ export function DashboardScreen({
                   className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900"
                   onClick={() => onOpenBook(r.id)}
                 >
-                  <Cover token={token} driveId={r.id} isbn={r.isbn} />
+                  <Cover token={token} driveId={r.id} isbn={r.isbn} title={r.title} author={r.author} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{r.title}</div>
                     <div className="truncate text-xs text-neutral-400">{r.author ?? 'Unknown author'}</div>
