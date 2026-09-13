@@ -1,15 +1,19 @@
 import asyncio
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_drive_provider
+from app.core.config import get_settings
+from app.core.settings_keys import LLM_TAGGING_ENABLED
 from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
+from app.jobs.scheduler import sync_llm_tagging_schedule
 from app.providers.drive.provider import DriveProvider
 from app.schemas.covers import CoverJobStatus
 from app.schemas.descriptions import DescriptionBackfillEstimate, DescriptionJobStatus
 from app.schemas.library import LibraryExportResult, RebuildEstimate
+from app.schemas.llm_tagging import LlmTaggingSettings, LlmTaggingStatus
 from app.schemas.backup import BackupInfo, BackupResult
 from app.schemas.metadata_writeback import MetadataWritebackJobStatus
 from app.schemas.recently_organized import RecentlyOrganizedResponse
@@ -21,6 +25,7 @@ from app.services import (
     hardcover_recs_service,
     hardcover_series_service,
     library_service,
+    llm_tagging_service,
     recently_organized_service,
 )
 from app.services.auth_service import AuthService, get_auth_service
@@ -539,3 +544,28 @@ async def export_library(
     library = await DriveService.get_library_folder_config(settings_repo)
     parent_id = library.folder_id if library else None
     return await library_service.export_to_sheet(db, provider, parent_id=parent_id)
+
+
+@router.get("/llm-tagging", response_model=LlmTaggingStatus)
+async def get_llm_tagging_status(db: AsyncSession = Depends(get_db)) -> LlmTaggingStatus:
+    enabled = (await SettingsRepository(db).get(LLM_TAGGING_ENABLED)) == "true"
+    progress = await llm_tagging_service.get_progress()
+    return LlmTaggingStatus(
+        enabled=enabled, configured=bool(get_settings().ollama_host.strip()), **progress
+    )
+
+
+@router.put("/llm-tagging", response_model=LlmTaggingStatus)
+async def set_llm_tagging(
+    body: LlmTaggingSettings, request: Request, db: AsyncSession = Depends(get_db)
+) -> LlmTaggingStatus:
+    """When on, a background job spends one Ollama call per tick tagging the
+    next organised book still missing tags/descriptions (genres, moods,
+    themes, representation, content warnings, a spoiler-free short
+    description, a full summary) — only inside allowed windows, only while
+    Ollama answers. See prompts/38-llm-tagging.md."""
+    await SettingsRepository(db).set(LLM_TAGGING_ENABLED, "true" if body.enabled else "false")
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        await sync_llm_tagging_schedule(scheduler)
+    return await get_llm_tagging_status(db)

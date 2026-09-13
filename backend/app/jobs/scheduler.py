@@ -23,6 +23,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.settings_keys import (
     BACKUP_RUN_ENABLED,
     BACKUP_RUN_HOUR,
+    LLM_TAGGING_ENABLED,
     NIGHTLY_RUN_ENABLED,
     NIGHTLY_RUN_HOUR,
     OPENBOOKS_AUTOGET_ENABLED,
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 _NIGHTLY_JOB_ID = "nightly-run"
 _BACKUP_JOB_ID = "backup-run"
 _AUTOGET_JOB_ID = "openbooks-autoget"
+_LLM_TAGGING_JOB_ID = "llm-tagging"
 DEFAULT_NIGHTLY_HOUR = 2
 DEFAULT_BACKUP_HOUR = 3
 # Slow and steady — the #ebook bots rate-limit a nick on search and download,
@@ -44,6 +46,12 @@ DEFAULT_BACKUP_HOUR = 3
 # per hour on top of this). Jittered so ticks aren't metronomic.
 AUTOGET_INTERVAL_SECONDS = 360
 AUTOGET_INTERVAL_JITTER = 90
+# prompts/38 — one Ollama call per tick (an excerpt pass, or one map/reduce
+# step of a full pass). llm_tagging_service.tick() itself no-ops outside
+# allowed windows / while Ollama is unreachable, so the trigger just needs to
+# fire often enough to notice a window opening — every few minutes is plenty.
+LLM_TAGGING_INTERVAL_SECONDS = 300
+LLM_TAGGING_INTERVAL_JITTER = 60
 
 
 async def _run_scheduled_nightly() -> None:
@@ -61,6 +69,15 @@ async def _run_scheduled_autoget() -> None:
         await acquisition_service.autoget_tick(trigger="scheduler")
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("openbooks auto-get tick failed")
+
+
+async def _run_scheduled_llm_tagging() -> None:
+    from app.services import llm_tagging_service
+
+    try:
+        await llm_tagging_service.tick()
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("llm tagging tick failed")
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -156,3 +173,33 @@ async def sync_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
         logger.info("openbooks auto-get: enabled, ~one acquisition per %ds when idle", AUTOGET_INTERVAL_SECONDS)
     else:
         scheduler.reschedule_job(_AUTOGET_JOB_ID, trigger=trigger)
+
+
+async def read_llm_tagging_enabled() -> bool:
+    async with async_session_factory() as session:
+        return (await SettingsRepository(session).get(LLM_TAGGING_ENABLED)) == "true"
+
+
+async def sync_llm_tagging_schedule(scheduler: AsyncIOScheduler) -> None:
+    """An interval job (every ~5 min) that does one Ollama-tagging unit of
+    work when a tick lands inside an allowed window. Registered only while
+    the toggle is on — llm_tagging_service.tick() does the actual window/
+    reachability gating on top of that."""
+    enabled = await read_llm_tagging_enabled()
+    existing = scheduler.get_job(_LLM_TAGGING_JOB_ID)
+    if not enabled:
+        if existing is not None:
+            scheduler.remove_job(_LLM_TAGGING_JOB_ID)
+            logger.info("llm tagging: disabled")
+        return
+    trigger = IntervalTrigger(
+        seconds=LLM_TAGGING_INTERVAL_SECONDS, jitter=LLM_TAGGING_INTERVAL_JITTER
+    )
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_llm_tagging, trigger=trigger, id=_LLM_TAGGING_JOB_ID,
+            name="LLM tagging", max_instances=1, coalesce=True, misfire_grace_time=120,
+        )
+        logger.info("llm tagging: enabled, ticking every ~%ds", LLM_TAGGING_INTERVAL_SECONDS)
+    else:
+        scheduler.reschedule_job(_LLM_TAGGING_JOB_ID, trigger=trigger)

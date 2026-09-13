@@ -54,7 +54,7 @@ import type {
 } from '../types/wishlist'
 import type { ScanJobStatus } from '../types/scan'
 import type { SystemStatus } from '../types/system'
-import type { BackupSettings, NightlySettings } from '../types/jobs'
+import type { BackupSettings, LlmTaggingStatus, NightlySettings } from '../types/jobs'
 
 class ApiError extends Error {
   status: number
@@ -370,6 +370,13 @@ export const api = {
   getAutoGet: () => request<{ enabled: boolean }>('/acquire/autoget'),
   setAutoGet: (enabled: boolean) =>
     request<{ enabled: boolean }>('/acquire/autoget', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  getLlmTagging: () => request<LlmTaggingStatus>('/library/llm-tagging'),
+  setLlmTagging: (enabled: boolean) =>
+    request<LlmTaggingStatus>('/library/llm-tagging', {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),

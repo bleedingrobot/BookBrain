@@ -14,3 +14,10 @@ export interface NightlySettings {
 }
 
 export type BackupSettings = NightlySettings
+
+export interface LlmTaggingStatus {
+  enabled: boolean
+  configured: boolean
+  full_done: number
+  full_pending: number
+}

@@ -58,3 +58,10 @@ OPENBOOKS_AUTOGET_ENABLED = "openbooks_autoget_enabled"
 # and only regenerated on demand, like the nightly job_runs trail. Carries
 # its own generated_at.
 REIDENT_REPORT_JSON = "reident_report_json"
+
+# prompts/38 — when on, an in-process job spends one Ollama call per tick
+# (one excerpt pass, or one map/reduce step of a full-text pass) tagging the
+# next organised book still missing meta/descriptions — only inside allowed
+# time windows, and only while Ollama is reachable. Off by default; also
+# needs `ollama_host` configured (config.py) to do anything.
+LLM_TAGGING_ENABLED = "llm_tagging_enabled"

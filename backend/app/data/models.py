@@ -161,6 +161,22 @@ class Book(Base):
     embedding_hash: Mapped[str | None] = mapped_column(String)
     embedding_model: Mapped[str | None] = mapped_column(String)
 
+    # prompts/38 — local Ollama tagging + descriptions (llm_tagging_service),
+    # read from the book's actual text rather than a provider or the model's
+    # memorised knowledge. Kept separate from hardcover_json (which is fully
+    # replaced on every Hardcover refresh) and from `description` (still the
+    # one field the viewer reads) until James has compared enough books to
+    # trust one process and decides to promote it.
+    #   {"excerpt": {...}, "full": {...}}, each shaped as one of:
+    #     - not attempted: key absent
+    #     - in progress (full only): {status: "mapping"|"reducing",
+    #       chunksTotal, chunksDone, chunkResults: [...]}
+    #     - done: {ageRating, genres, moods, themes, representation,
+    #       contentWarnings, confidenceNotes, shortDescription, longSummary,
+    #       generatedAt}
+    #     - failed: {error, failedAt} — retried after a backoff window
+    llm_tags_json: Mapped[dict | None] = mapped_column(JSON)
+
     author: Mapped["Author | None"] = relationship(back_populates="books")
     series: Mapped["Series | None"] = relationship(back_populates="books")
     identifiers: Mapped[list["Identifier"]] = relationship(back_populates="book")

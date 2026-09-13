@@ -115,6 +115,21 @@ class Settings(BaseSettings):
     # ones are trashed (recoverable) after each new upload.
     backup_retention: int = 7
 
+    # A local Ollama instance (typically on a separate, only-sometimes-on
+    # gaming PC, reached over Tailscale) for the slow-drip LLM-tagging
+    # background job (llm_tagging_service) — genres/moods/themes/content
+    # warnings/descriptions read from a book's actual text. Never used by the
+    # main identification pipeline. Empty host = the feature can't run even
+    # if LLM_TAGGING_ENABLED is on. See prompts/38-llm-tagging.md.
+    ollama_host: str = ""
+    ollama_model: str = "qwen3:14b"
+    # Context window requested per call (Ollama's `options.num_ctx`). Text is
+    # chunked/sampled to fit under this minus prompt overhead — raise it if
+    # the gaming PC's VRAM allows a bigger window, which also means fewer,
+    # bigger chunks per book.
+    ollama_num_ctx: int = 8192
+    ollama_timeout_seconds: float = 120.0
+
 
 @lru_cache
 def get_settings() -> Settings:

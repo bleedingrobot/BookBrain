@@ -54,6 +54,12 @@ export function Settings() {
     onSuccess: (data) => queryClient.setQueryData(['nightly-settings'], data),
   })
 
+  const llmTagging = useQuery({ queryKey: ['llm-tagging'], queryFn: api.getLlmTagging })
+  const updateLlmTagging = useMutation({
+    mutationFn: (enabled: boolean) => api.setLlmTagging(enabled),
+    onSuccess: (data) => queryClient.setQueryData(['llm-tagging'], data),
+  })
+
   const runBackup = useMutation({
     mutationFn: api.createBackup,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backups'] }),
@@ -470,6 +476,39 @@ export function Settings() {
               ) : (
                 'Has not run yet.'
               )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="font-medium">LLM tagging (Ollama)</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Reads each organised book's full text on a local Ollama instance and derives genres,
+          moods, themes, content warnings, and two descriptions (a spoiler-free blurb and a full
+          summary). One chunk of one book per tick, only overnight or weekdays 9am–3pm, only while
+          Ollama answers — never competing with you for the GPU. A big library takes a while.
+        </p>
+
+        {llmTagging.data && (
+          <div className="mt-3 space-y-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={llmTagging.data.enabled}
+                disabled={updateLlmTagging.isPending}
+                onChange={(e) => updateLlmTagging.mutate(e.target.checked)}
+              />
+              Run automatically
+              {llmTagging.data.enabled && !llmTagging.data.configured && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  · no OLLAMA_HOST configured, won't do anything
+                </span>
+              )}
+            </label>
+
+            <div className="text-xs text-neutral-400">
+              {llmTagging.data.full_done} tagged · {llmTagging.data.full_pending} remaining
             </div>
           </div>
         )}

@@ -136,6 +136,91 @@ def extract_cover(
         return None
 
 
+def extract_full_text_documents(
+    data: bytes,
+    *,
+    max_entry_bytes: int,
+    max_total_bytes: int,
+    max_entries: int,
+) -> list[str]:
+    """Plain text of every substantive spine document, in reading order —
+    raw material for LLM tagging (app.services.llm_tagging_service), which
+    chunks this for the full-text pass and samples opening/middle/ending
+    sections of it for the excerpt pass. Skips the same nav/frontmatter noise
+    as `_extract_text_snippet`, via the same safe-parsing path as `parse_epub`."""
+    reader = SafeZipReader(
+        data,
+        max_entry_bytes=max_entry_bytes,
+        max_total_bytes=max_total_bytes,
+        max_entries=max_entries,
+    )
+    opf_path = _find_opf_path(reader)
+    opf_root = _safe_xml_parse(reader.read(opf_path))
+    opf_dir = posixpath.dirname(opf_path)
+    return _spine_texts(reader, opf_root, opf_dir)
+
+
+def extract_full_text_documents_safely(
+    data: bytes,
+    *,
+    max_entry_bytes: int,
+    max_total_bytes: int,
+    max_entries: int,
+    timeout_seconds: int,
+) -> list[str]:
+    future = _executor.submit(
+        extract_full_text_documents,
+        data,
+        max_entry_bytes=max_entry_bytes,
+        max_total_bytes=max_total_bytes,
+        max_entries=max_entries,
+    )
+    try:
+        return future.result(timeout=timeout_seconds)
+    except FutureTimeoutError as exc:
+        raise EpubParseTimeoutError("EPUB parsing exceeded the time limit") from exc
+
+
+def _spine_texts(reader: SafeZipReader, opf_root, opf_dir: str) -> list[str]:
+    """Plain text of every substantive, non-skippable spine document, in
+    reading order. Independent of `_extract_text_snippet`'s own spine walk
+    (that one needs positional info against the *unfiltered* spine to find
+    "20% in"; this one just wants every real document) — small duplication,
+    same style as `extract_cover` re-deriving the OPF above."""
+    manifest_el = opf_root.find(f"{{{OPF_NS}}}manifest")
+    spine_el = opf_root.find(f"{{{OPF_NS}}}spine")
+    if manifest_el is None or spine_el is None:
+        return []
+
+    item_by_id = {
+        item.attrib["id"]: item
+        for item in manifest_el.findall(f"{{{OPF_NS}}}item")
+        if "id" in item.attrib and "href" in item.attrib
+    }
+
+    texts: list[str] = []
+    for itemref in spine_el.findall(f"{{{OPF_NS}}}itemref"):
+        item = item_by_id.get(itemref.attrib.get("idref", ""))
+        if item is None:
+            continue
+        path = (
+            posixpath.normpath(posixpath.join(opf_dir, item.attrib["href"]))
+            if opf_dir
+            else item.attrib["href"]
+        )
+        if not reader.exists(path):
+            continue
+        props = set(item.attrib.get("properties", "").split())
+        if bool(props & {"nav", "cover-image"}) or bool(
+            _FRONTMATTER_NAME_RE.search(posixpath.basename(path))
+        ):
+            continue
+        text = _strip_tags(reader.read(path))
+        if len(text) >= _MIN_SUBSTANTIVE_CHARS:
+            texts.append(text)
+    return texts
+
+
 def _cover_href_from_properties(items: list) -> str | None:
     for item in items:
         props = item.attrib.get("properties", "")
