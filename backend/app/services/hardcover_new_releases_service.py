@@ -39,33 +39,62 @@ from app.services.text_match import normalize_title
 logger = logging.getLogger(__name__)
 
 _KEEP = 12  # books stored per author
+_UPCOMING_KEEP = 5  # of which, reserved for announced-but-unreleased books —
+# see `upcoming_books` below for why they need a reserved slot at all.
 _FAR_FUTURE_YEARS = 3
 _PLACEHOLDER_TITLE = ("untitled",)
 _WINDOW_MONTHS = 4  # $since = today − this many months
 
-# One request, two roots (Hardcover allows ≤5 top-level queries/request):
+# One request, three roots (Hardcover allows ≤5 top-level queries/request):
 #
-#   books  — this author's canonical, non-compilation, non-partial works in
-#            the window or announced for the future. The
+#   books  — this author's already-released canonical, non-compilation,
+#            non-partial works in the window, ranked by popularity. The
 #            `contributions.author.name` filter is what resolves the author
 #            (the `authors { contributions(...) }` shape returns [] — validated
 #            live 2026-09-08). `canonical_id: {_is_null: true}` drops
 #            translations.
+#   upcoming_books — the same author/shape filter, but `release_date > today`
+#            and ordered by release date (soonest first) instead of
+#            `users_count`. A just-announced book has near-zero users_count,
+#            so ranking it against backlist popularity in one shared `books`
+#            list meant it almost never survived the per-author cap — this is
+#            why the "Coming soon" release strip was chronically empty
+#            (investigated 2026-09-13). Kept small since there's rarely more
+#            than a couple of real announcements per author.
 #   authors — the same-named author row(s), plus the `canonical` (dedup) and
 #            `alias` (pen name → real identity) hops, for prompts/28's person
 #            id. Ordered by book count so row 0 is the real one.
 _AUTHOR_INFO = """
-query BookBrainAuthorInfo($name: String!, $since: date!) {
+query BookBrainAuthorInfo($name: String!, $since: date!, $today: date!) {
   books(
     where: {
       contributions: {author: {name: {_eq: $name}}}
-      release_date: {_gte: $since}
+      release_date: {_gte: $since, _lte: $today}
       compilation: {_eq: false}
       is_partial_book: {_eq: false}
       canonical_id: {_is_null: true}
     }
     order_by: {users_count: desc}
     limit: 20
+  ) {
+    title
+    release_date
+    book_category_id
+    editions(where: {isbn_13: {_is_null: false}}, limit: 1, order_by: {users_count: desc}) {
+      isbn_13
+    }
+    cached_tags
+  }
+  upcoming_books: books(
+    where: {
+      contributions: {author: {name: {_eq: $name}}}
+      release_date: {_gt: $today}
+      compilation: {_eq: false}
+      is_partial_book: {_eq: false}
+      canonical_id: {_is_null: true}
+    }
+    order_by: {release_date: asc}
+    limit: 8
   ) {
     title
     release_date
@@ -274,27 +303,50 @@ async def fetch_trending(
     return out
 
 
+def _mapped_rows(rows: list | None) -> list[dict]:
+    out: list[dict] = []
+    for row in rows or []:
+        mapped = _map_book(row) if isinstance(row, dict) else None
+        if mapped is not None:
+            out.append(mapped)
+    return out
+
+
 async def _author_info(
     client: httpx.AsyncClient, token: str, bucket: _TokenBucket, name: str, since: date
 ) -> tuple[list[dict], tuple[int, str] | None]:
     data = await hardcover_graphql(
-        client, token, _AUTHOR_INFO, {"name": name, "since": since.isoformat()}, bucket
+        client,
+        token,
+        _AUTHOR_INFO,
+        {"name": name, "since": since.isoformat(), "today": date.today().isoformat()},
+        bucket,
     )
     if data is None:
         raise HardcoverUnavailable  # call failed — don't wipe existing data
+
     books: list[dict] = []
     seen: set[str] = set()
-    for row in data.get("books") or []:
-        mapped = _map_book(row) if isinstance(row, dict) else None
-        if mapped is None:
-            continue
+
+    # Reserved slots first: on popularity alone, an announced-but-unreleased
+    # book would almost never survive the shared cap against already-shelved
+    # backlist titles below.
+    for mapped in _mapped_rows(data.get("upcoming_books"))[:_UPCOMING_KEEP]:
         key = normalize_title(mapped["title"])
         if key in seen:
             continue
         seen.add(key)
         books.append(mapped)
+
+    for mapped in _mapped_rows(data.get("books")):
         if len(books) >= _KEEP:
             break
+        key = normalize_title(mapped["title"])
+        if key in seen:
+            continue
+        seen.add(key)
+        books.append(mapped)
+
     return books, resolve_person_id(data.get("authors"), name)
 
 

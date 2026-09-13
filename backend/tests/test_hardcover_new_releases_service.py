@@ -54,13 +54,23 @@ def _route(
     status: int = 200,
     global_books: list[dict] | None = None,
     authors: list[dict] | None = None,
+    upcoming_books: list[dict] | None = None,
 ):
     def handler(request: httpx.Request) -> httpx.Response:
         q = json.loads(request.content)["query"]
         if "AuthorInfo" in q:
             if status != 200:
                 return httpx.Response(status, json={})
-            return httpx.Response(200, json={"data": {"books": books, "authors": authors or []}})
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "books": books,
+                        "upcoming_books": upcoming_books or [],
+                        "authors": authors or [],
+                    }
+                },
+            )
         if "GlobalAnticipated" in q:
             return httpx.Response(200, json={"data": {"books": global_books or []}})
         return httpx.Response(200, json={"data": {}})
@@ -197,6 +207,23 @@ async def test_stores_recent_and_future_books_per_author(db_session) -> None:
     assert titles == ["Onyx Storm", "Threshing Day"]
     assert author.hardcover_json["books"][0]["genres"] == ["Fantasy", "Romance"]
     assert author.hardcover_synced_at is not None
+
+
+@respx.mock
+async def test_announced_books_survive_a_popular_backlist(db_session) -> None:
+    # A dozen already-released, heavily-shelved backlist titles fill the
+    # `books` root's popularity ranking entirely — without a reserved
+    # `upcoming_books` root, the announced sequel below would never make the
+    # per-author cap (this was the "Coming soon" strip's chronic emptiness).
+    await _seed_author(db_session, "Prolific Author")
+    backlist = [_book(f"Backlist {i}", _iso(-30)) for i in range(12)]
+    _route(backlist, upcoming_books=[_book("The Announced Sequel", _iso(90))])
+
+    await refresh_new_releases(db_session)
+
+    author = (await db_session.execute(_select("Prolific Author"))).scalar_one()
+    titles = [b["title"] for b in author.hardcover_json["books"]]
+    assert "The Announced Sequel" in titles
 
 
 @respx.mock
