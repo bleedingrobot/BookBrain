@@ -2,10 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.core.config import get_settings
 from app.data.models import Book, File, FileStatus
 from app.services.llm_tagging_service import (
     _in_allowed_window,
     _is_pending,
+    _local_now,
     chunk_documents,
     select_work_item,
     validate_chunk_result,
@@ -39,6 +41,25 @@ def _file_for(book: Book) -> File:
 )
 def test_in_allowed_window(iso: str, expected: bool) -> None:
     assert _in_allowed_window(datetime.fromisoformat(iso)) is expected
+
+
+def test_local_now_uses_configured_timezone_not_server_clock(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_tagging_timezone", "Pacific/Auckland")
+    now = _local_now(settings)
+    # Auckland is UTC+12/+13 — never the same wall-clock hour as UTC itself,
+    # which is exactly the bug this guards against (the server runs on UTC).
+    assert now.utcoffset() is not None
+    assert now.utcoffset().total_seconds() != 0
+
+
+def test_local_now_falls_back_to_utc_for_an_unknown_timezone(monkeypatch, caplog) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_tagging_timezone", "Not/A_Real_Zone")
+    with caplog.at_level("WARNING"):
+        now = _local_now(settings)
+    assert now.utcoffset().total_seconds() == 0
+    assert "Not/A_Real_Zone" in caplog.text
 
 
 # --------------------------------------------------------------------------

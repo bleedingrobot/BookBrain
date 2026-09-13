@@ -31,6 +31,7 @@ harmless leftover data, just nothing new writes it any more.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -53,9 +54,12 @@ logger = logging.getLogger(__name__)
 # tick — malformed output or a bad extraction usually isn't transient.
 _RETRY_BACKOFF = timedelta(hours=24)
 
-# Allowed windows, machine-local time (matches the rest of the scheduler):
-# anytime overnight, plus weekday office hours — never evenings/weekends,
-# when the gaming PC is presumably in actual use.
+# Allowed windows are in James's own local time (`settings.llm_tagging_timezone`),
+# NOT the server's system clock — this box runs on UTC, which is 12 hours off
+# from his actual timezone, so comparing against `datetime.now()` server-side
+# would get every window exactly backwards (his evening reads as his workday
+# and vice versa). Anytime overnight, plus weekday office hours — never
+# evenings/weekends, when the gaming PC is presumably in actual use.
 _OVERNIGHT_START_HOUR = 23  # 11pm
 _OVERNIGHT_END_HOUR = 8  # 8am, any day
 _WORKDAY_START_HOUR = 9  # 9am
@@ -101,6 +105,21 @@ def _in_allowed_window(now: datetime) -> bool:
     if hour >= _OVERNIGHT_START_HOUR or hour < _OVERNIGHT_END_HOUR:
         return True
     return now.weekday() < 5 and _WORKDAY_START_HOUR <= hour < _WORKDAY_END_HOUR
+
+
+def _local_now(settings: Settings) -> datetime:
+    """Wall-clock time in `settings.llm_tagging_timezone`, not the server's
+    own — see the module-level note above `_OVERNIGHT_START_HOUR`. Falls
+    back to UTC (logged once per bad tick, harmlessly conservative) if the
+    configured zone name doesn't exist."""
+    try:
+        return datetime.now(ZoneInfo(settings.llm_tagging_timezone))
+    except ZoneInfoNotFoundError:
+        logger.warning(
+            "llm tagging: unknown llm_tagging_timezone %r, falling back to UTC",
+            settings.llm_tagging_timezone,
+        )
+        return datetime.now(UTC)
 
 
 def chunk_documents(docs: list[str], *, target_chars: int) -> list[str]:
@@ -353,7 +372,7 @@ async def tick() -> dict:
             return {"skipped": "disabled"}
 
     now = datetime.now(UTC)
-    if not _in_allowed_window(datetime.now()):  # local wall-clock time, not UTC
+    if not _in_allowed_window(_local_now(settings)):
         return {"skipped": "outside allowed window"}
 
     client = OllamaClient(

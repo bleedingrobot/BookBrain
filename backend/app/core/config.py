@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     # bigger chunks per book.
     ollama_num_ctx: int = 8192
     ollama_timeout_seconds: float = 120.0
+    # The allowed-window check (overnight / weekday 9am-3pm) needs to know
+    # James's actual local time — this server runs on UTC, so comparing
+    # against the machine's own clock silently gets every window backwards.
+    # An IANA zone name (handles DST automatically; a fixed offset wouldn't).
+    llm_tagging_timezone: str = "Pacific/Auckland"
 
 
 @lru_cache
