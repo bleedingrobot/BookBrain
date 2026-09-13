@@ -52,7 +52,14 @@ def _load() -> tuple:
 
         model_path = hf_hub_download(_HF_REPO, _ONNX_FILE)
         tok_path = hf_hub_download(_HF_REPO, "tokenizer.json")
-        _session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        # The default CPU arena allocator over-allocates (doubling strategy off
+        # peak usage) and never shrinks — for a model this tiny it costs far
+        # more RSS than it saves in alloc overhead, so run arena-free with a
+        # capped thread pool instead of spreading across every core.
+        opts = ort.SessionOptions()
+        opts.enable_cpu_mem_arena = False
+        opts.intra_op_num_threads = 1
+        _session = ort.InferenceSession(model_path, sess_options=opts, providers=["CPUExecutionProvider"])
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(max_length=_MAX_TOKENS)
         tok.enable_padding()
