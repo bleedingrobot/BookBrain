@@ -424,17 +424,37 @@ mis-identification guards). The rest of that session's ideas, for later:
   - Kobo reading-stats round-trip — `KoboReader.sqlite` on the device has
     reading position + time-spent; pull it back on the nightly job for real
     "finished" detection and a year-end "reading wrapped".
-  - **Explore Piper for read-aloud** — `lib/tts.ts` currently drives the
-    browser's built-in Web Speech API (`speechSynthesis`), which sounds
-    pretty robotic and has spotty/inconsistent voice availability across
-    browsers and devices. [Piper](https://github.com/OHF-Voice/piper1-gpl)
-    is a fast local neural TTS (used by Home Assistant) with much more
-    natural voices. Worth investigating as a replacement or opt-in
-    alternative: it'd need to run somewhere (backend-side synthesis
-    streamed to the viewer, since it's not a browser API) rather than
-    in-browser like today, so this is a bigger shape change than a
-    drop-in swap — needs a design pass on where synthesis happens and
-    how audio gets to the reader before committing to it.
+  - **Replace read-aloud's voice with Piper.** `lib/tts.ts` currently drives
+    the browser's built-in Web Speech API (`speechSynthesis`) — robotic, and
+    voice availability is inconsistent across browsers/devices. James: not
+    worth using as-is. Spiked 2026-09-13: installed
+    [Piper](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0, the neural TTS
+    Home Assistant uses) in a scratch venv, `en_US-lessac-medium` voice
+    (63 MB), synthesized a sample paragraph — clearly more natural than the
+    browser voice (sample sent to James for a listen). CPU-only on this
+    server: 17.3s of audio in 2.9s wall time (~6x real-time, incl. model
+    load), so streaming as you read is comfortably feasible. Not a drop-in
+    swap since Piper isn't a browser API — shape of the work:
+    - New Piper HTTP server process, managed the same way
+      `openbooks_process_service` manages the OpenBooks child process
+      today (own systemd unit or backend-managed subprocess).
+    - A backend endpoint that takes one block's text and streams back
+      WAV/PCM, called per-block from the viewer instead of
+      `speechSynthesis.speak()`.
+    - `lib/tts.ts` keeps its existing block-by-block SSML→text pipeline,
+      page-turn/highlight logic (`tts.setMark('0')`) unchanged — only the
+      "speak this text" leaf swaps from `SpeechSynthesisUtterance` to
+      fetch-and-play audio.
+    - GPL-3.0 isn't a concern run this way (separate process called over
+      HTTP, not linked into BookBrain's own code) — same reasoning as
+      OpenBooks.
+    - Real tradeoff: today's TTS is 100% client-side (free, per-device,
+      no server load); Piper moves that synthesis work onto this
+      server. Fine for single-family use, worth knowing.
+    - Open question before building: pick a voice (only tried
+      `lessac-medium` so far) and decide whether it fully replaces the
+      Web Speech API or is offered as an opt-in setting alongside it.
+    **Not started — plan only, no code yet.**
 - **Observability + safety net.**
   - **AI cost ledger** — batch-11 added *estimates*; there's no record of
     *actual* spend. Wrap `AnthropicIdentificationClient` to log every call with
