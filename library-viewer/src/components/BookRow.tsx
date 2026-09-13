@@ -134,11 +134,21 @@ function ReadersAlsoLiked({
       <ul className="mt-1.5 divide-y divide-neutral-100 dark:divide-neutral-800/60">
         {ordered.map((rec, i) => {
           const key = `${rec.title}|${rec.author ?? ''}`
-          const owned = libraryMatch(rec, allRows) != null
+          // prompts/39 — a content-recs entry already knows its own Drive
+          // file id, an exact match with no isbn/title fuzziness needed.
+          const owned = rec.driveFileId
+            ? allRows.some((r) => r.id === rec.driveFileId)
+            : libraryMatch(rec, allRows) != null
           const st = owned ? 'owned' : state[key]
           return (
             <li key={i} className="flex items-center gap-2.5 py-1.5">
-              <Cover token={token} driveId={`rec-${key}`} isbn={rec.isbn13} title={rec.title} author={rec.author} />
+              <Cover
+                token={token}
+                driveId={rec.driveFileId ?? `rec-${key}`}
+                isbn={rec.isbn13}
+                title={rec.title}
+                author={rec.author}
+              />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-300">
                   {rec.title}
@@ -146,6 +156,11 @@ function ReadersAlsoLiked({
                 <div className="truncate text-xs text-neutral-500">
                   {rec.author ?? 'Unknown author'}
                 </div>
+                {rec.sharedTags && rec.sharedTags.length > 0 && (
+                  <div className="truncate text-[11px] text-neutral-400">
+                    because you both have: {rec.sharedTags.join(', ')}
+                  </div>
+                )}
               </div>
               {st === 'owned' ? (
                 <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">

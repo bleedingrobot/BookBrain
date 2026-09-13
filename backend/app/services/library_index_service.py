@@ -87,7 +87,7 @@ _META_KEYS = (
 # viewer only fetches "readers also liked" data when a book is actually
 # expanded.
 RECS_FILENAME = "bookbrain-recommendations.json"
-RECS_VERSION = 1
+RECS_VERSION = 2  # v2 blends in content_recs_service's locally-computed recs (prompts/39)
 _RECS_PER_BOOK = 12
 _JSON_MIME = "application/json"
 
@@ -358,32 +358,64 @@ def _write_index(provider: DriveProvider, library_folder_id: str, payload: dict)
 
 async def build_recommendations_payload(session: AsyncSession) -> dict:
     """`bookbrain-recommendations.json` — "readers also liked" per organised
-    file, from Book.hardcover_json (prompts/25 Phase 3 / hardcover_recs_service).
-    Keyed by drive_file_id so the viewer joins it to the row it already has."""
+    file, blending two sources: Book.hardcover_json (prompts/25 Phase 3,
+    external — books you don't necessarily own yet) and Book.content_recs_json
+    (prompts/39, internal — tag-similar books already in your own library,
+    from content_recs_service). Keyed by drive_file_id so the viewer joins it
+    to the row it already has."""
     files = (
         (
             await session.execute(
                 select(File)
                 .where(File.status == FileStatus.organised, File.book_id.is_not(None))
-                .options(selectinload(File.book))
+                .options(selectinload(File.book).selectinload(Book.author))
             )
         )
         .scalars()
         .all()
     )
+    file_by_book_id = {f.book_id: f for f in files}
 
     books: dict[str, list[dict]] = {}
     for f in files:
-        hc = f.book.hardcover_json if f.book and isinstance(f.book.hardcover_json, dict) else None
-        similar = (hc or {}).get("similar") or []
-        own_title = _plain_text(f.book.canonical_title) if f.book else None
-        recs = [
-            {"title": r["title"], "author": r.get("author"), "isbn13": r.get("isbn13")}
-            for r in similar
-            if isinstance(r, dict)
-            and isinstance(r.get("title"), str)
-            and (not own_title or r["title"].strip().lower() != own_title.strip().lower())
-        ][:_RECS_PER_BOOK]
+        book = f.book
+        if book is None:
+            continue
+        own_norm = normalize_title(book.canonical_title)
+        seen_titles: set[str] = set()
+        recs: list[dict] = []
+
+        hc = book.hardcover_json if isinstance(book.hardcover_json, dict) else None
+        for r in (hc or {}).get("similar") or []:
+            if not (isinstance(r, dict) and isinstance(r.get("title"), str)):
+                continue
+            norm = normalize_title(r["title"])
+            if not norm or norm == own_norm or norm in seen_titles:
+                continue
+            seen_titles.add(norm)
+            recs.append({"title": r["title"], "author": r.get("author"), "isbn13": r.get("isbn13")})
+
+        content = book.content_recs_json if isinstance(book.content_recs_json, dict) else None
+        for entry in (content or {}).get("similar") or []:
+            target_file = file_by_book_id.get(entry.get("bookId")) if isinstance(entry, dict) else None
+            if target_file is None or target_file.book is None:
+                continue
+            target = target_file.book
+            norm = normalize_title(target.canonical_title)
+            if not norm or norm == own_norm or norm in seen_titles:
+                continue
+            seen_titles.add(norm)
+            recs.append(
+                {
+                    "title": target.canonical_title,
+                    "author": target.author.name if target.author else None,
+                    "isbn13": None,
+                    "driveFileId": target_file.drive_file_id,
+                    "sharedTags": entry.get("sharedTags") or [],
+                }
+            )
+
+        recs = recs[:_RECS_PER_BOOK]
         if recs:
             books[f.drive_file_id] = recs
 

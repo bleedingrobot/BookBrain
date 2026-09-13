@@ -20,6 +20,7 @@ from app.schemas.recently_organized import RecentlyOrganizedResponse
 from app.schemas.scan import ScanJobStatus
 from app.services import (
     backup_service,
+    content_recs_service,
     embedding_service,
     hardcover_new_releases_service,
     hardcover_recs_service,
@@ -175,6 +176,16 @@ async def refresh_book_recs(
     if stale_days is not None:
         kwargs["stale_after_days"] = max(0, stale_days)
     return await hardcover_recs_service.refresh_book_recs(db, **kwargs)
+
+
+@router.post("/content-recs/refresh")
+async def refresh_content_recs(db: AsyncSession = Depends(get_db)) -> dict:
+    """prompts/39 — recompute every organised, tagged book's locally-derived
+    "similar books" from Book.llm_tags_json (no Hardcover token needed).
+    Always a full recompute — content-similarity is relational, so there's
+    no meaningful per-book staleness cursor. Then POST /library/recommendations
+    to write the (blended) sidecar."""
+    return await content_recs_service.refresh_content_recs(db)
 
 
 @router.post("/new-releases/refresh")

@@ -177,6 +177,15 @@ class Book(Base):
     #     - failed: {error, failedAt} — retried after a backoff window
     llm_tags_json: Mapped[dict | None] = mapped_column(JSON)
 
+    # prompts/39 — locally-computed tag-similarity "similar books"
+    # (content_recs_service), from books' own llm_tags_json.full — a
+    # relational computation (one book's tags can change another's list),
+    # so content_recs_synced_at is an observability timestamp, not a
+    # staleness filter; every run recomputes the whole thing.
+    #   {"similar": [{bookId, sharedTags, score}], "generatedAt"}
+    content_recs_json: Mapped[dict | None] = mapped_column(JSON)
+    content_recs_synced_at: Mapped[datetime | None] = mapped_column()
+
     author: Mapped["Author | None"] = relationship(back_populates="books")
     series: Mapped["Series | None"] = relationship(back_populates="books")
     identifiers: Mapped[list["Identifier"]] = relationship(back_populates="book")

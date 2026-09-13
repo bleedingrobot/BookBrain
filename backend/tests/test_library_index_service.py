@@ -404,10 +404,57 @@ async def test_build_recommendations_payload(db_session) -> None:
 
     payload = await build_recommendations_payload(db_session)
 
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     # self-reference dropped, only the file that has recs is present
     assert list(payload["books"]) == ["drive-will"]
     assert [r["title"] for r in payload["books"]["drive-will"]] == ["Red Rising", "The Poppy War"]
+
+
+async def test_build_recommendations_payload_blends_content_recs(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    scion = (await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))).scalar_one()
+    will.hardcover_json = {
+        "similar": [{"title": "Red Rising", "author": "Pierce Brown", "isbn13": None}]
+    }
+    will.content_recs_json = {
+        "similar": [
+            {"bookId": scion.id, "sharedTags": ["Fantasy", "dark"], "score": 0.9},
+            {"bookId": will.id, "sharedTags": ["should be dropped: self"], "score": 1.0},
+            {"bookId": 999999, "sharedTags": ["dangling reference"], "score": 0.5},
+        ]
+    }
+    await db_session.commit()
+
+    payload = await build_recommendations_payload(db_session)
+
+    recs = payload["books"]["drive-will"]
+    assert [r["title"] for r in recs] == ["Red Rising", "Scion"]
+    scion_rec = recs[1]
+    assert scion_rec["driveFileId"] == "drive-scion"
+    assert scion_rec["sharedTags"] == ["Fantasy", "dark"]
+    assert scion_rec["isbn13"] is None
+
+
+async def test_build_recommendations_payload_dedupes_across_both_sources(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    scion = (await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))).scalar_one()
+    will.hardcover_json = {"similar": [{"title": "Scion", "author": "James Islington", "isbn13": None}]}
+    will.content_recs_json = {"similar": [{"bookId": scion.id, "sharedTags": ["Fantasy"], "score": 0.9}]}
+    await db_session.commit()
+
+    payload = await build_recommendations_payload(db_session)
+
+    # Hardcover's plain-text "Scion" entry wins (inserted first); the
+    # content-derived duplicate of the same book is dropped, not appended twice.
+    recs = payload["books"]["drive-will"]
+    assert [r["title"] for r in recs] == ["Scion"]
+    assert "sharedTags" not in recs[0]
 
 
 async def test_build_new_releases_payload_excludes_owned_and_wishlisted(db_session) -> None:

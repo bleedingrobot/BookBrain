@@ -56,6 +56,13 @@ def test_embed_input_assembles_and_drops_missing_parts() -> None:
     assert embed_input("T", "A", None, "  ") == "T. A"  # whitespace blurb dropped
 
 
+def test_embed_input_appends_tags_as_one_segment() -> None:
+    assert embed_input("T", "A", None, "blurb", tags=["Fantasy", "tense"]) == (
+        "T. A. blurb. Fantasy, tense"
+    )
+    assert embed_input("T", None, None, None, tags=[]) == "T"  # empty tags dropped
+
+
 async def test_refresh_is_incremental(db_session) -> None:
     await _seed_book(db_session, "A", "Auth A", desc="about a lighthouse")
     await _seed_book(db_session, "B", "Auth B", desc="about a spaceship")
@@ -114,6 +121,49 @@ async def test_epub_description_is_used_when_book_has_none(db_session) -> None:
 
     await refresh_embeddings(db_session, embed_fn=_spy)
     assert "epub blurb about robots" in captured[0]
+
+
+async def test_refresh_pulls_llm_tags_and_short_description(db_session) -> None:
+    book = await _seed_book(db_session, "A", "Auth", desc=None, drive_id="d-A")
+    book.llm_tags_json = {
+        "full": {
+            "status": "done",
+            "genres": ["Fantasy"],
+            "moods": ["tense"],
+            "representation": ["gay protagonist"],
+            "themes": ["revenge"],  # excluded — not passed as a tag
+            "shortDescription": "A grounded blurb from the local LLM.",
+        }
+    }
+    await db_session.commit()
+
+    captured: list[str] = []
+
+    def _spy(texts):
+        captured.extend(texts)
+        return _fake_embed(texts)
+
+    await refresh_embeddings(db_session, embed_fn=_spy)
+    text = captured[0]
+    assert "A grounded blurb from the local LLM." in text
+    assert "Fantasy" in text and "tense" in text and "gay protagonist" in text
+    assert "revenge" not in text  # themes excluded
+
+
+async def test_refresh_prefers_real_description_over_llm_short_description(db_session) -> None:
+    book = await _seed_book(db_session, "A", "Auth", desc="the real blurb")
+    book.llm_tags_json = {"full": {"status": "done", "shortDescription": "the llm blurb"}}
+    await db_session.commit()
+
+    captured: list[str] = []
+
+    def _spy(texts):
+        captured.extend(texts)
+        return _fake_embed(texts)
+
+    await refresh_embeddings(db_session, embed_fn=_spy)
+    assert "the real blurb" in captured[0]
+    assert "the llm blurb" not in captured[0]
 
 
 async def test_build_embeddings_payload_roundtrips(db_session) -> None:

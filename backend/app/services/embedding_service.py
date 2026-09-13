@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.data.models import Book, File, FileStatus, MetadataSource
-from app.services.library_index_service import _plain_text
+from app.services.library_index_service import _llm_tags, _plain_text
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +83,22 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     return out
 
 
-def embed_input(title: str, author: str | None, series: str | None, blurb: str | None) -> str:
+def embed_input(
+    title: str,
+    author: str | None,
+    series: str | None,
+    blurb: str | None,
+    tags: list[str] | None = None,
+) -> str:
     """What we actually embed — title/author/series always present so a book
     with no blurb still ranks on its own name; mirrors the index's own
-    `book.description or epub_description` fallback (passed in as `blurb`)."""
+    `book.description or epub_description` fallback (passed in as `blurb`).
+
+    prompts/39 — `tags` (genres/moods/representation from the local-LLM
+    full-text pass, when done) adds dense conceptual signal cheaply. Themes
+    are deliberately excluded here (same as content_recs_service): the LLM
+    rephrases the same idea differently almost every time, so they'd just
+    add noise to a fixed-length embedded string rather than a real signal."""
     parts = [title.strip()]
     if author:
         parts.append(author.strip())
@@ -95,6 +107,8 @@ def embed_input(title: str, author: str | None, series: str | None, blurb: str |
     text = _plain_text(blurb)
     if text:
         parts.append(text)
+    if tags:
+        parts.append(", ".join(tags))
     return ". ".join(parts)
 
 
@@ -139,11 +153,18 @@ async def refresh_embeddings(
     pending: list[tuple[Book, str, str]] = []
     unchanged = 0
     for f, book in files:
+        llm_tags = _llm_tags(book.llm_tags_json)
+        tags = [
+            *llm_tags.get("genres", []),
+            *llm_tags.get("moods", []),
+            *llm_tags.get("representation", []),
+        ]
         text = embed_input(
             book.canonical_title,
             book.author.name if book.author else None,
             book.series.name if book.series else None,
-            book.description or epub_desc.get(f.id),
+            book.description or epub_desc.get(f.id) or llm_tags.get("shortDescription"),
+            tags=tags,
         )
         h = _hash(text)
         if book.embedding is not None and book.embedding_hash == h and book.embedding_model == MODEL_ID:

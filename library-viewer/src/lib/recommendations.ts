@@ -11,6 +11,13 @@ export interface RecBook {
   title: string
   author: string | null
   isbn13: string | null
+  // prompts/39 — present only for content_recs_service-derived entries
+  // (tag-similar books already in this library, not Hardcover's external
+  // "readers also liked"). `driveFileId` is an exact link — prefer it over
+  // isbn/title matching when present. `sharedTags` powers the "because you
+  // both have: …" explainer.
+  driveFileId?: string
+  sharedTags?: string[]
 }
 
 export type Recommendations = Record<string, RecBook[]> // keyed by drive file id
@@ -36,6 +43,10 @@ export function normaliseRecs(raw: RawFile): Recommendations {
         title: r.title,
         author: r.author ?? null,
         isbn13: typeof r.isbn13 === 'string' ? r.isbn13 : null,
+        driveFileId: typeof r.driveFileId === 'string' ? r.driveFileId : undefined,
+        sharedTags: Array.isArray(r.sharedTags)
+          ? r.sharedTags.filter((t): t is string => typeof t === 'string')
+          : undefined,
       }))
     if (clean.length > 0) out[id] = clean
   }

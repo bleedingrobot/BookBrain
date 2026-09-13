@@ -25,6 +25,28 @@ describe('normaliseRecs', () => {
       { title: 'The Poppy War', author: null, isbn13: null },
     ])
   })
+
+  it('keeps driveFileId + sharedTags when present, drops junk sharedTags entries', () => {
+    const out = normaliseRecs({
+      books: {
+        a: [
+          {
+            title: 'Scion',
+            driveFileId: 'drive-scion',
+            sharedTags: ['Fantasy', 5 as unknown as string, 'dark'],
+          },
+        ],
+      },
+    })
+    expect(out.a[0].driveFileId).toBe('drive-scion')
+    expect(out.a[0].sharedTags).toEqual(['Fantasy', 'dark'])
+  })
+
+  it('leaves driveFileId/sharedTags undefined when absent', () => {
+    const out = normaliseRecs({ books: { a: [{ title: 'Dune' }] } })
+    expect(out.a[0].driveFileId).toBeUndefined()
+    expect(out.a[0].sharedTags).toBeUndefined()
+  })
 })
 
 function jsonResponse(body: unknown, ok = true): Response {

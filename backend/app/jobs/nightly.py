@@ -48,6 +48,7 @@ from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.services import (
     backup_service,
+    content_recs_service,
     embedding_service,
     hardcover_new_releases_service,
     hardcover_recs_service,
@@ -225,10 +226,6 @@ async def run_nightly(
                 async with async_session_factory() as session:
                     hr = await hardcover_recs_service.refresh_book_recs(session)
                 steps.append(f"hardcover recs: {hr}")
-                rec_count = await regenerate_recommendations(creds, library_folder_id)
-                steps.append(
-                    f"recs file: {rec_count} books" if rec_count is not None else "recs file: skipped"
-                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: hardcover recs refresh failed")
                 steps.append(f"hardcover recs: FAILED — {exc}")
@@ -276,6 +273,28 @@ async def run_nightly(
             except Exception as exc:  # noqa: BLE001
                 logger.exception("nightly: lists refresh failed")
                 steps.append(f"lists: FAILED — {exc}")
+        # prompts/39 — locally-computed tag-similarity "similar books"
+        # (content_recs_service). Pure local compute, no Hardcover token
+        # needed, so unconditional. Then (re)write the combined recs sidecar
+        # unconditionally too — previously `regenerate_recommendations` only
+        # ran inside the token-gated block above, so without a Hardcover
+        # token the sidecar never got rewritten at all and content recs
+        # would compute but never reach the viewer.
+        try:
+            async with async_session_factory() as session:
+                cr = await content_recs_service.refresh_content_recs(session)
+            steps.append(f"content recs: {cr}")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("nightly: content recs refresh failed")
+            steps.append(f"content recs: FAILED — {exc}")
+        try:
+            rec_count = await regenerate_recommendations(creds, library_folder_id)
+            steps.append(
+                f"recs file: {rec_count} books" if rec_count is not None else "recs file: skipped"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("nightly: recommendations file refresh failed")
+            steps.append(f"recs file: FAILED — {exc}")
         # prompts/32 — the SFF news feeds → bookbrain-news.json. No token
         # needed; best-effort per feed, never fails the run.
         try:
