@@ -1096,20 +1096,20 @@ export default function App() {
       {!lib.loading && (
         <>
           <RecentMarquee
-            books={recentBooks}
+            books={settings?.showRecentlyAdded === false ? [] : recentBooks}
             token={token}
             onPick={jumpToRecent}
             onOpenFullscreen={() => setStripsFullscreen(true)}
           />
           <ReleaseMarquee
             label="New for you"
-            items={recentReleaseFeed}
+            items={settings?.showNewForYou === false ? [] : recentReleaseFeed}
             onPick={setReleaseCardItem}
             onOpenFullscreen={() => setStripsFullscreen(true)}
           />
           <ReleaseMarquee
             label="Coming soon"
-            items={upcomingReleaseFeed}
+            items={settings?.showComingSoon === false ? [] : upcomingReleaseFeed}
             minCards={1}
             onPick={setReleaseCardItem}
             onOpenFullscreen={() => setStripsFullscreen(true)}
@@ -1143,7 +1143,7 @@ export default function App() {
           <div className="flex min-h-full flex-col items-center justify-center gap-8 px-2 py-12">
             <div className="w-full max-w-5xl space-y-8">
               <RecentMarquee
-                books={recentBooks}
+                books={settings?.showRecentlyAdded === false ? [] : recentBooks}
                 token={token}
                 fullscreen
                 onPick={(id) => {
@@ -1153,7 +1153,7 @@ export default function App() {
               />
               <ReleaseMarquee
                 label="New for you"
-                items={recentReleaseFeed}
+                items={settings?.showNewForYou === false ? [] : recentReleaseFeed}
                 fullscreen
                 onPick={(item) => {
                   setStripsFullscreen(false)
@@ -1162,7 +1162,7 @@ export default function App() {
               />
               <ReleaseMarquee
                 label="Coming soon"
-                items={upcomingReleaseFeed}
+                items={settings?.showComingSoon === false ? [] : upcomingReleaseFeed}
                 minCards={1}
                 fullscreen
                 onPick={(item) => {

@@ -7,6 +7,9 @@ const KOBO_DEVICES_KEY = 'bookbrain.koboDevices'
 const SHOW_GLOBAL_RELEASES_KEY = 'bookbrain.showGlobalReleases'
 const SHOW_TRENDING_KEY = 'bookbrain.showTrending'
 const SHOW_NEWS_KEY = 'bookbrain.showNews' // default ON — stores 'false' only when hidden
+const SHOW_RECENTLY_ADDED_KEY = 'bookbrain.showRecentlyAdded' // default ON — stores 'false' only when hidden
+const SHOW_NEW_FOR_YOU_KEY = 'bookbrain.showNewForYou' // default ON — stores 'false' only when hidden
+const SHOW_COMING_SOON_KEY = 'bookbrain.showComingSoon' // default ON — stores 'false' only when hidden
 
 export interface KoboDevice {
   label: string
@@ -32,6 +35,15 @@ export interface ViewerSettings {
   // prompts/32 — the "From around the SFF world" news section. On by default;
   // browser-local, not Drive-synced.
   showNews?: boolean
+  // The "Recently added" cover strip. On by default; browser-local, not
+  // Drive-synced.
+  showRecentlyAdded?: boolean
+  // The "New for you" release strip. On by default; browser-local, not
+  // Drive-synced.
+  showNewForYou?: boolean
+  // The "Coming soon" release strip. On by default; browser-local, not
+  // Drive-synced.
+  showComingSoon?: boolean
 }
 
 export type PartialSettings = Partial<ViewerSettings>
@@ -69,6 +81,9 @@ export function loadPartialSettings(): PartialSettings {
     showGlobalReleases: localStorage.getItem(SHOW_GLOBAL_RELEASES_KEY) === 'true',
     showTrending: localStorage.getItem(SHOW_TRENDING_KEY) === 'true',
     showNews: localStorage.getItem(SHOW_NEWS_KEY) !== 'false',
+    showRecentlyAdded: localStorage.getItem(SHOW_RECENTLY_ADDED_KEY) !== 'false',
+    showNewForYou: localStorage.getItem(SHOW_NEW_FOR_YOU_KEY) !== 'false',
+    showComingSoon: localStorage.getItem(SHOW_COMING_SOON_KEY) !== 'false',
   }
 }
 
@@ -96,6 +111,12 @@ export function saveSettings(settings: ViewerSettings): void {
   // default-on: only persist the opt-out
   if (settings.showNews === false) localStorage.setItem(SHOW_NEWS_KEY, 'false')
   else localStorage.removeItem(SHOW_NEWS_KEY)
+  if (settings.showRecentlyAdded === false) localStorage.setItem(SHOW_RECENTLY_ADDED_KEY, 'false')
+  else localStorage.removeItem(SHOW_RECENTLY_ADDED_KEY)
+  if (settings.showNewForYou === false) localStorage.setItem(SHOW_NEW_FOR_YOU_KEY, 'false')
+  else localStorage.removeItem(SHOW_NEW_FOR_YOU_KEY)
+  if (settings.showComingSoon === false) localStorage.setItem(SHOW_COMING_SOON_KEY, 'false')
+  else localStorage.removeItem(SHOW_COMING_SOON_KEY)
 }
 
 export function clearSettings(): void {
@@ -106,5 +127,8 @@ export function clearSettings(): void {
   localStorage.removeItem(SHOW_GLOBAL_RELEASES_KEY)
   localStorage.removeItem(SHOW_TRENDING_KEY)
   localStorage.removeItem(SHOW_NEWS_KEY)
+  localStorage.removeItem(SHOW_RECENTLY_ADDED_KEY)
+  localStorage.removeItem(SHOW_NEW_FOR_YOU_KEY)
+  localStorage.removeItem(SHOW_COMING_SOON_KEY)
   localStorage.removeItem('bookbrain.readOnly') // orphan from the removed guest mode
 }

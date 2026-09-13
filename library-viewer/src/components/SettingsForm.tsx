@@ -16,6 +16,9 @@ export function SettingsForm({
   const [showGlobalReleases, setShowGlobalReleases] = useState(initial?.showGlobalReleases ?? false)
   const [showTrending, setShowTrending] = useState(initial?.showTrending ?? false)
   const [showNews, setShowNews] = useState(initial?.showNews ?? true)
+  const [showRecentlyAdded, setShowRecentlyAdded] = useState(initial?.showRecentlyAdded ?? true)
+  const [showNewForYou, setShowNewForYou] = useState(initial?.showNewForYou ?? true)
+  const [showComingSoon, setShowComingSoon] = useState(initial?.showComingSoon ?? true)
 
   function updateDevice(index: number, patch: Partial<KoboDevice>) {
     setKoboDevices((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
@@ -52,6 +55,9 @@ export function SettingsForm({
               showGlobalReleases,
               showTrending,
               showNews,
+              showRecentlyAdded,
+              showNewForYou,
+              showComingSoon,
             })
           }
         }}
@@ -125,35 +131,85 @@ export function SettingsForm({
           </span>
         </div>
 
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-brand-600"
-            checked={showGlobalReleases}
-            onChange={(e) => setShowGlobalReleases(e.target.checked)}
-          />
-          <span className="text-sm">
-            Show a "Most anticipated" strip
-            <span className="mt-0.5 block text-xs text-neutral-400">
-              Hardcover's most-wanted upcoming books overall — not just your authors and series.
-            </span>
-          </span>
-        </label>
+        <div>
+          <span className="text-sm font-medium">Scrolling strips</span>
+          <div className="mt-1.5 space-y-3">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={showRecentlyAdded}
+                onChange={(e) => setShowRecentlyAdded(e.target.checked)}
+              />
+              <span className="text-sm">
+                Show "Recently added"
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  Covers for the books organized into your library most recently.
+                </span>
+              </span>
+            </label>
 
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-brand-600"
-            checked={showTrending}
-            onChange={(e) => setShowTrending(e.target.checked)}
-          />
-          <span className="text-sm">
-            Show a "Trending on Hardcover" strip
-            <span className="mt-0.5 block text-xs text-neutral-400">
-              What the Hardcover community is reading right now.
-            </span>
-          </span>
-        </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={showNewForYou}
+                onChange={(e) => setShowNewForYou(e.target.checked)}
+              />
+              <span className="text-sm">
+                Show "New for you"
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  New releases from series and authors already in your library.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={showComingSoon}
+                onChange={(e) => setShowComingSoon(e.target.checked)}
+              />
+              <span className="text-sm">
+                Show "Coming soon"
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  Announced but unreleased books from your series and authors.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={showGlobalReleases}
+                onChange={(e) => setShowGlobalReleases(e.target.checked)}
+              />
+              <span className="text-sm">
+                Show a "Most anticipated" strip
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  Hardcover's most-wanted upcoming books overall — not just your authors and series.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={showTrending}
+                onChange={(e) => setShowTrending(e.target.checked)}
+              />
+              <span className="text-sm">
+                Show a "Trending on Hardcover" strip
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  What the Hardcover community is reading right now.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
 
         <label className="flex items-start gap-2">
           <input
