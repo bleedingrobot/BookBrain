@@ -58,9 +58,10 @@ _RETRY_BACKOFF = timedelta(hours=24)
 # NOT the server's system clock — this box runs on UTC, which is 12 hours off
 # from his actual timezone, so comparing against `datetime.now()` server-side
 # would get every window exactly backwards (his evening reads as his workday
-# and vice versa). Anytime overnight, plus weekday office hours — never
-# evenings/weekends, when the gaming PC is presumably in actual use.
-_OVERNIGHT_START_HOUR = 23  # 11pm
+# and vice versa). From 9pm through to 8am every night, plus weekday office
+# hours — never daytime weekends, and never 8am-9pm on a weekday outside the
+# office-hours slot, when the gaming PC is presumably in actual use.
+_OVERNIGHT_START_HOUR = 21  # 9pm
 _OVERNIGHT_END_HOUR = 8  # 8am, any day
 _WORKDAY_START_HOUR = 9  # 9am
 _WORKDAY_END_HOUR = 15  # 3pm, Mon-Fri only

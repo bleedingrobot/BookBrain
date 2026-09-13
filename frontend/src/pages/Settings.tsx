@@ -486,7 +486,7 @@ export function Settings() {
         <p className="mt-1 text-sm text-neutral-500">
           Reads each organised book's full text on a local Ollama instance and derives genres,
           moods, themes, content warnings, and two descriptions (a spoiler-free blurb and a full
-          summary). One chunk of one book per tick, only overnight or weekdays 9am–3pm, only while
+          summary). One chunk of one book per tick, only 9pm–8am or weekdays 9am–3pm, only while
           Ollama answers — never competing with you for the GPU. A big library takes a while.
         </p>
 

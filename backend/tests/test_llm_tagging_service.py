@@ -32,11 +32,13 @@ def _file_for(book: Book) -> File:
     [
         ("2026-09-14T02:00:00", True),  # Monday 2am - overnight
         ("2026-09-14T23:30:00", True),  # Monday 11:30pm - overnight
+        ("2026-09-14T21:00:00", True),  # Monday 9pm exactly - evening window opens
+        ("2026-09-14T20:59:00", False),  # Monday 8:59pm - just before evening window
         ("2026-09-14T10:00:00", True),  # Monday 10am - workday window
         ("2026-09-14T08:00:00", False),  # Monday 8am - just before window
         ("2026-09-14T15:00:00", False),  # Monday 3pm - just after window
-        ("2026-09-19T10:00:00", False),  # Saturday 10am - weekend, not overnight
-        ("2026-09-19T23:30:00", True),  # Saturday 11:30pm - overnight is always allowed
+        ("2026-09-19T10:00:00", False),  # Saturday 10am - weekend daytime, not evening
+        ("2026-09-19T21:30:00", True),  # Saturday 9:30pm - evening is always allowed
     ],
 )
 def test_in_allowed_window(iso: str, expected: bool) -> None:

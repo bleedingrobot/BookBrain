@@ -28,8 +28,9 @@ before either is trusted:
   all chunk summaries into the same schema as the excerpt pass.
 
 Deliberately a slow drip: **one unit of work per tick**, only inside
-allowed windows (anytime overnight, weekdays 9am-3pm), only while Ollama
-answers — never competing with James for the GPU. No batching, no rush.
+allowed windows (9pm through 8am every night, plus weekdays 9am-3pm — see
+the 2026-09-13 update below), only while Ollama answers — never competing
+with James for the GPU. No batching, no rush.
 
 ## Why not fold this into `hardcover_json.meta`
 
@@ -117,6 +118,23 @@ the priority logic that ran it across the whole library before any book's
 full pass could start) was removed; `tick()` now goes straight to advancing
 a book's full-text map-reduce. Already-stored `llm_tags_json.excerpt` data
 from before this change is harmless leftover, just nothing new writes it.
+
+## Update — 2026-09-13, timezone bug + window widened to include evenings
+
+James noticed the job wasn't running at 9:05pm his time. Root cause: the
+allowed-window check compared against the server's own clock, and this
+server runs on UTC — 12 hours off James's actual timezone (Pacific/Auckland),
+so every window was exactly backwards (his evening read as his workday and
+vice versa). Fixed by converting to a new `settings.llm_tagging_timezone`
+setting explicitly (`app.core.config`), never the machine's own local time
+— see the comment above `_OVERNIGHT_START_HOUR` in `llm_tagging_service.py`.
+
+Separately, once the clock was actually correct, James decided he wanted
+evenings included too (not just overnight + weekday daytime, per the
+original plan's "leave the machine alone" evenings/weekends stance). The
+allowed window is now **9pm through 8am every night**, plus weekdays
+9am-3pm — `_OVERNIGHT_START_HOUR` moved from 23 to 21. Weekends outside
+9pm-8am are still excluded.
 
 ## Not done here (deliberately)
 
