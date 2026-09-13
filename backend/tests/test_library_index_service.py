@@ -153,7 +153,7 @@ async def test_build_index_payload_only_organised_files(db_session) -> None:
     await _seed(db_session)
     payload = await build_index_payload(db_session)
 
-    assert payload["version"] == 8
+    assert payload["version"] == 9
     assert payload["count"] == 2
     assert set(payload["books"]) == {"drive-will", "drive-scion"}
 
@@ -257,6 +257,43 @@ async def test_build_index_payload_includes_hardcover_meta(db_session) -> None:
         "listsCount": 3223,
     }
     assert "meta" not in payload["books"]["drive-scion"]  # empty meta omitted
+
+
+async def test_build_index_payload_includes_llm_tags_only_when_done(db_session) -> None:
+    await _seed(db_session)
+    will = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "The Will of the Many"))
+    ).scalar_one()
+    will.llm_tags_json = {
+        "full": {
+            "status": "done",
+            "ageRating": "Teen",
+            "genres": ["Fantasy"],
+            "moods": ["tense"],
+            "themes": ["power"],
+            "representation": [],
+            "contentWarnings": ["violence"],
+            "confidenceNotes": "confident",
+            "shortDescription": "A spoiler-free blurb.",
+            "longSummary": "A longer summary.",
+            "generatedAt": "2026-09-13T00:00:00+00:00",
+        }
+    }
+    scion = (
+        await db_session.execute(select(Book).where(Book.canonical_title == "Scion"))
+    ).scalar_one()
+    scion.llm_tags_json = {
+        "full": {"status": "mapping", "chunksDone": 3, "chunksTotal": 10, "chunkResults": []}
+    }
+    await db_session.commit()
+
+    payload = await build_index_payload(db_session)
+
+    llm_tags = payload["books"]["drive-will"]["llmTags"]
+    assert llm_tags["ageRating"] == "Teen"
+    assert llm_tags["shortDescription"] == "A spoiler-free blurb."
+    assert "representation" not in llm_tags  # empty list omitted
+    assert "llmTags" not in payload["books"]["drive-scion"]  # still in progress
 
 
 async def test_build_index_payload_includes_smart_collection_membership(db_session) -> None:

@@ -27,6 +27,7 @@ describe('normalise', () => {
       addedAt: '2026-01-01',
       isbn: '123',
       meta: null,
+      llmTags: null,
     })
   })
 
@@ -64,6 +65,43 @@ describe('normalise', () => {
       audioHours: null,
     })
     expect(out.entries.bad.meta).toBeNull()
+  })
+
+  it('parses per-book llmTags, coercing bad fields, and requires a shortDescription', () => {
+    const out = normalise({
+      books: {
+        full: {
+          title: 'Full',
+          llmTags: {
+            ageRating: 'Teen',
+            genres: ['Fantasy', 5 as unknown as string],
+            moods: ['tense'],
+            themes: ['identity'],
+            representation: [],
+            contentWarnings: ['violence'],
+            confidenceNotes: 'confident',
+            shortDescription: 'A spoiler-free blurb.',
+            longSummary: 'A longer summary with the ending.',
+            generatedAt: '2026-09-13T00:00:00+00:00',
+          },
+        },
+        noBlurb: { title: 'No Blurb', llmTags: { genres: ['Fantasy'] } },
+      },
+    })
+    expect(out.entries.full.llmTags).toEqual({
+      ageRating: 'Teen',
+      genres: ['Fantasy'],
+      moods: ['tense'],
+      themes: ['identity'],
+      representation: [],
+      contentWarnings: ['violence'],
+      confidenceNotes: 'confident',
+      shortDescription: 'A spoiler-free blurb.',
+      longSummary: 'A longer summary with the ending.',
+      generatedAt: '2026-09-13T00:00:00+00:00',
+    })
+    // No shortDescription — nothing sensible to showcase, so null.
+    expect(out.entries.noBlurb.llmTags).toBeNull()
   })
 
   it('drops entries with no title and coerces missing fields to null', () => {

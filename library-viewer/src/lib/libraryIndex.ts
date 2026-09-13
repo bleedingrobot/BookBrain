@@ -30,6 +30,24 @@ export interface IndexMeta {
   audioHours: number | null
 }
 
+// bookbrain-index.json v9 — the local-LLM full-text catalogue entry
+// (prompts/38), only ever present once a book's map-reduce pass has
+// actually finished. `shortDescription` is spoiler-free by design;
+// `longSummary` is not — the viewer should gate it behind an explicit
+// reveal rather than showing it up front.
+export interface LlmTags {
+  ageRating: string | null
+  genres: string[]
+  moods: string[]
+  themes: string[]
+  representation: string[]
+  contentWarnings: string[]
+  confidenceNotes: string | null
+  shortDescription: string | null
+  longSummary: string | null
+  generatedAt: string | null
+}
+
 export interface IndexEntry {
   title: string
   author: string | null
@@ -39,6 +57,7 @@ export interface IndexEntry {
   addedAt: string | null
   isbn: string | null
   meta: IndexMeta | null
+  llmTags: LlmTags | null
 }
 
 // bookbrain-index.json v3: Hardcover's canonical view of a series (prompts/25
@@ -97,7 +116,13 @@ interface CachedIndex {
 export interface RawIndexFile {
   version?: number
   coversFolder?: string | null
-  books?: Record<string, Omit<Partial<IndexEntry>, 'meta'> & { meta?: Partial<IndexMeta> | null }>
+  books?: Record<
+    string,
+    Omit<Partial<IndexEntry>, 'meta' | 'llmTags'> & {
+      meta?: Partial<IndexMeta> | null
+      llmTags?: Partial<LlmTags> | null
+    }
+  >
   series?: Record<string, Partial<SeriesCatalog>>
   collections?: Record<string, Partial<CollectionEntry>>
 }
@@ -132,6 +157,28 @@ function normaliseMeta(raw: Partial<IndexMeta> | null | undefined): IndexMeta | 
     meta.published == null &&
     meta.audioHours == null
   return empty ? null : meta
+}
+
+function normaliseLlmTags(raw: Partial<LlmTags> | null | undefined): LlmTags | null {
+  if (!raw || typeof raw !== 'object') return null
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+  const tags: LlmTags = {
+    ageRating: str(raw.ageRating),
+    genres: strings(raw.genres),
+    moods: strings(raw.moods),
+    themes: strings(raw.themes),
+    representation: strings(raw.representation),
+    contentWarnings: strings(raw.contentWarnings),
+    confidenceNotes: str(raw.confidenceNotes),
+    shortDescription: str(raw.shortDescription),
+    longSummary: str(raw.longSummary),
+    generatedAt: str(raw.generatedAt),
+  }
+  // The one field the showcase actually requires — nothing sensible to show
+  // without at least a blurb.
+  return tags.shortDescription ? tags : null
 }
 
 function normaliseSeries(raw: RawIndexFile['series']): Record<string, SeriesCatalog> {
@@ -189,6 +236,7 @@ export function normalise(raw: RawIndexFile): LibraryIndex {
       addedAt: entry.addedAt ?? null,
       isbn: typeof entry.isbn === 'string' ? entry.isbn : null,
       meta: normaliseMeta(entry.meta),
+      llmTags: normaliseLlmTags(entry.llmTags),
     }
   }
   return {

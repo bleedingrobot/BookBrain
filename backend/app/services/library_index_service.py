@@ -44,8 +44,26 @@ INDEX_FILENAME = "bookbrain-index.json"
 # viewer (prompts/31 Part A); v7 adds `listsCount` (E1) + `published` /
 # `audioHours` (Part H); v8 adds the top-level `collections` map — admin-
 # defined smart shelves (app.services.collection_rules), pre-resolved here
-# since the viewer has no backend of its own to query them live.
-INDEX_VERSION = 8
+# since the viewer has no backend of its own to query them live; v9 adds
+# per-book `llmTags` (prompts/38) for books whose full-text pass is done.
+INDEX_VERSION = 9
+
+# Book.llm_tags_json.full, once its map-reduce pass reaches "done" — the
+# local-LLM-derived catalogue entry (prompts/38), surfaced for the viewer's
+# "featured book" showcase. Absent entirely for a book still in progress or
+# never attempted; `generatedAt` lets the viewer show its age.
+_LLM_TAGS_KEYS = (
+    "ageRating",
+    "genres",
+    "moods",
+    "themes",
+    "representation",
+    "contentWarnings",
+    "confidenceNotes",
+    "shortDescription",
+    "longSummary",
+    "generatedAt",
+)
 
 # Per-book Hardcover metadata surfaced to the viewer as badges + a genre
 # facet. `description` stays out — the viewer already gets a blurb from the
@@ -169,6 +187,21 @@ def _book_meta(hardcover_json: object) -> dict:
     return out
 
 
+def _llm_tags(llm_tags_json: object) -> dict:
+    """`Book.llm_tags_json.full`, only once it's actually finished — a book
+    still mapping/reducing, or one that failed, has nothing worth showing."""
+    full = llm_tags_json.get("full") if isinstance(llm_tags_json, dict) else None
+    if not isinstance(full, dict) or full.get("status") != "done":
+        return {}
+    out: dict = {}
+    for key in _LLM_TAGS_KEYS:
+        value = full.get(key)
+        if value in (None, "", []):
+            continue
+        out[key] = value
+    return out
+
+
 async def build_index_payload(session: AsyncSession) -> dict:
     files = (
         (
@@ -234,6 +267,9 @@ async def build_index_payload(session: AsyncSession) -> dict:
         meta = _book_meta(book.hardcover_json)
         if meta:
             entry["meta"] = meta
+        llm_tags = _llm_tags(book.llm_tags_json)
+        if llm_tags:
+            entry["llmTags"] = llm_tags
         books[f.drive_file_id] = entry
 
     # prompts/25 Phase 2 — Hardcover's canonical membership for each series in

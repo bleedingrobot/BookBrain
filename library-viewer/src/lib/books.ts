@@ -1,5 +1,5 @@
 import type { DriveFile } from './drive'
-import type { IndexMeta, LibraryIndex } from './libraryIndex'
+import type { IndexMeta, LibraryIndex, LlmTags } from './libraryIndex'
 import { parseFilename } from './parseFilename'
 import type { Reading, ReadingEntry } from './reading'
 import type { SentMap } from './sentTracker'
@@ -18,6 +18,9 @@ export interface BookRow {
   addedAt: string | null
   isbn: string | null
   meta: IndexMeta | null
+  // prompts/38 — the local-LLM full-text catalogue entry, once its pass has
+  // actually finished. null for the vast majority of books for a while yet.
+  llmTags: LlmTags | null
   // prompts/30 — the owner's Hardcover reading status/rating, when the
   // reading sidecar has an entry for this book.
   reading: ReadingEntry | null
@@ -64,6 +67,7 @@ export function buildRows(
       addedAt: meta?.addedAt ?? null,
       isbn: meta?.isbn ?? null,
       meta: meta?.meta ?? null,
+      llmTags: meta?.llmTags ?? null,
       reading: reading?.books[file.id] ?? null,
     }
   })

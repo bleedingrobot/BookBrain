@@ -26,6 +26,7 @@ function row(over: Partial<BookRow> = {}): BookRow {
     addedAt: null,
     isbn: null,
     meta: null,
+    llmTags: null,
     reading: null,
     ...over,
   }
@@ -63,6 +64,7 @@ describe('buildRows', () => {
             published: null,
             audioHours: null,
           },
+          llmTags: null,
         },
       },
     }

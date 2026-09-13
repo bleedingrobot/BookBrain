@@ -8,25 +8,28 @@ type State =
   | { kind: 'googlebooks'; url: string }
   | { kind: 'none' }
 
-// A ~34×50 book-cover thumbnail. Resolves lazily: nothing loads until the
-// row scrolls near the viewport, then it tries the local Drive thumbnail,
-// falls back to Open Library by ISBN, then Google Books (by ISBN if Open
-// Library's image 404s, or by title+author when there's no ISBN at all),
-// then a placeholder. `title` is only needed for that last, ISBN-less tier —
-// omit it and the chain just skips straight to the placeholder once Open
-// Library (or the lack of an ISBN) comes up empty.
+// A ~34×50 book-cover thumbnail (or ~150×220 with `size="lg"`, for a single
+// featured book rather than a dense list). Resolves lazily: nothing loads
+// until the row scrolls near the viewport, then it tries the local Drive
+// thumbnail, falls back to Open Library by ISBN, then Google Books (by ISBN
+// if Open Library's image 404s, or by title+author when there's no ISBN at
+// all), then a placeholder. `title` is only needed for that last, ISBN-less
+// tier — omit it and the chain just skips straight to the placeholder once
+// Open Library (or the lack of an ISBN) comes up empty.
 export function Cover({
   token,
   driveId,
   isbn,
   title,
   author,
+  size = 'sm',
 }: {
   token: string
   driveId: string
   isbn: string | null
   title?: string
   author?: string | null
+  size?: 'sm' | 'lg'
 }) {
   const [state, setState] = useState<State>({ kind: 'idle' })
   const ref = useRef<HTMLSpanElement>(null)
@@ -75,10 +78,16 @@ export function Cover({
     }
   }, [token, driveId, isbn, tryGoogleBooks])
 
+  const large = size === 'lg'
+
   return (
     <span
       ref={ref}
-      className="flex h-[50px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-200/70 text-neutral-400 dark:bg-neutral-800"
+      className={
+        large
+          ? 'flex h-[220px] w-[150px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-200/70 text-neutral-400 shadow-lg ring-1 ring-black/5 dark:bg-neutral-800 dark:ring-white/10'
+          : 'flex h-[50px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-200/70 text-neutral-400 dark:bg-neutral-800'
+      }
     >
       {(state.kind === 'local' || state.kind === 'openlib' || state.kind === 'googlebooks') && (
         <img
@@ -96,7 +105,13 @@ export function Cover({
         />
       )}
       {(state.kind === 'idle' || state.kind === 'none') && (
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg
+          viewBox="0 0 24 24"
+          className={large ? 'h-12 w-12' : 'h-4 w-4'}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Z" />
         </svg>
       )}

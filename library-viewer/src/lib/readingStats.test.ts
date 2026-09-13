@@ -16,6 +16,7 @@ function row(id: string, over: Partial<BookRow> = {}): BookRow {
     addedAt: null,
     isbn: null,
     meta: null,
+    llmTags: null,
     reading: null,
     ...over,
   }

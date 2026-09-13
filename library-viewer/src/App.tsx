@@ -16,6 +16,7 @@ import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
 import { ReleaseMarquee } from './components/ReleaseMarquee'
 import { SettingsForm } from './components/SettingsForm'
+import { ShowcaseSection } from './components/ShowcaseSection'
 import { SetupChecklist } from './components/SetupChecklist'
 import { WhoAmI } from './components/WhoAmI'
 import { WishlistScreen } from './components/WishlistScreen'
@@ -1436,6 +1437,10 @@ export default function App() {
           onRequestBook={requestBook}
           onRequestRelease={requestRelease}
         />
+      )}
+
+      {!lib.loading && token && (
+        <ShowcaseSection rows={allRows} token={token} onOpenBook={jumpToRecent} />
       )}
     </div>
   )
