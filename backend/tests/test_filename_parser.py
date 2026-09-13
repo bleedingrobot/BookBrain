@@ -82,6 +82,16 @@ def test_site_tags_are_stripped() -> None:
     assert g.author == "William Gibson"
 
 
+def test_format_tag_is_stripped_and_does_not_swallow_the_author() -> None:
+    # "(EPUB)" glued onto the author with no separator used to fail the
+    # plausible-author check ("(" isn't uppercase), dropping the author
+    # entirely and pushing confidence below the usability threshold.
+    g = parse_book_filename("The Unnamed Way - Ian W Sainsbury (EPUB).epub")
+    assert g.title == "The Unnamed Way"
+    assert g.author == "Ian W Sainsbury"
+    assert g.usable
+
+
 def test_empty_and_junk_names_do_not_raise() -> None:
     assert parse_book_filename("").title is None
     assert parse_book_filename(".epub").title is None

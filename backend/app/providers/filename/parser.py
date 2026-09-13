@@ -45,7 +45,8 @@ _SITE_TAG_RE = re.compile(
             readli\.net|bookfi(?:\.\w+)?|b-ok(?:\.\w+)?|
             oceanofpdf(?:\.\w+)?|pdfdrive|epubify|
             the\s+eye|myanonamouse|mam|
-            retail|e?arc|proper|dedrm|calibre
+            retail|e?arc|proper|dedrm|calibre|
+            epub|kepub|kpub|mobi|azw3?|prc|fb2|djvu|pdf|txt|rtf|lit|cbz|cbr
         )
         [^\)\]\}]*[\)\]\}]""",
     re.IGNORECASE | re.VERBOSE,
