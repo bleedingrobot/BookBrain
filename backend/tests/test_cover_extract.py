@@ -1,10 +1,12 @@
 import io
 import zipfile
 
+import httpx
+import respx
 from PIL import Image
 
 from app.providers.epub.parser import extract_cover
-from app.services.cover_service import _thumbnail
+from app.services.cover_service import _ITUNES_SEARCH_URL, _itunes_cover, _thumbnail
 
 _LIMITS = {"max_entry_bytes": 10_000_000, "max_total_bytes": 50_000_000, "max_entries": 1000}
 
@@ -132,6 +134,94 @@ def test_make_one_writes_a_nocover_marker_when_there_is_no_cover() -> None:
     p = _FakeCoverProvider(epub)
     assert _make_one(p, "covers-folder", "drive-2", "book.epub") == ("nocover", None)
     assert p.uploaded == [("drive-2.nocover", 0)]
+
+
+@respx.mock
+def test_itunes_cover_accepts_a_close_title_match() -> None:
+    respx.get(_ITUNES_SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "trackName": "Dune",
+                        "artworkUrl100": "https://example.com/art/100x100bb.jpg",
+                    }
+                ]
+            },
+        )
+    )
+    respx.get("https://example.com/art/5000x5000bb.jpg").mock(
+        return_value=httpx.Response(200, content=_png())
+    )
+    raw = _itunes_cover("Dune", "Frank Herbert")
+    assert raw is not None
+    assert Image.open(io.BytesIO(raw)).size == (600, 900)
+
+
+@respx.mock
+def test_itunes_cover_rejects_a_weak_title_match() -> None:
+    respx.get(_ITUNES_SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "trackName": "Some Completely Unrelated Book",
+                        "artworkUrl100": "https://example.com/art/100x100bb.jpg",
+                    }
+                ]
+            },
+        )
+    )
+    assert _itunes_cover("Dune", "Frank Herbert") is None
+
+
+@respx.mock
+def test_itunes_cover_none_on_http_error() -> None:
+    respx.get(_ITUNES_SEARCH_URL).mock(return_value=httpx.Response(500))
+    assert _itunes_cover("Dune", "Frank Herbert") is None
+
+
+@respx.mock
+def test_make_one_falls_back_to_itunes_when_the_epub_has_no_cover() -> None:
+    from app.services.cover_service import _make_one
+
+    epub = _epub(_OPF_NOCOVER, {"OEBPS/c1.xhtml": b"x"})
+    p = _FakeCoverProvider(epub)
+    respx.get(_ITUNES_SEARCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "trackName": "Dune",
+                        "artworkUrl100": "https://example.com/art/100x100bb.jpg",
+                    }
+                ]
+            },
+        )
+    )
+    respx.get("https://example.com/art/5000x5000bb.jpg").mock(
+        return_value=httpx.Response(200, content=_png())
+    )
+    status, phash = _make_one(p, "covers-folder", "drive-4", "book.epub", "Dune", "Frank Herbert")
+    assert status == "done"
+    assert len(phash) == 16
+    assert p.uploaded == [("drive-4.jpg", p.uploaded[0][1])]
+
+
+@respx.mock
+def test_make_one_still_marks_nocover_when_itunes_has_no_match() -> None:
+    from app.services.cover_service import _make_one
+
+    epub = _epub(_OPF_NOCOVER, {"OEBPS/c1.xhtml": b"x"})
+    p = _FakeCoverProvider(epub)
+    respx.get(_ITUNES_SEARCH_URL).mock(return_value=httpx.Response(200, json={"results": []}))
+    status, phash = _make_one(p, "covers-folder", "drive-5", "book.epub", "Dune", "Frank Herbert")
+    assert status == "nocover"
+    assert phash is None
+    assert p.uploaded == [("drive-5.nocover", 0)]
 
 
 def test_make_one_pulls_first_page_as_cover_for_a_cbz() -> None:

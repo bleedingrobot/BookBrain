@@ -2,7 +2,12 @@
 a `covers/` folder inside the Drive library root, named `<driveFileId>.jpg`.
 The static library-viewer lists that folder once and shows the thumbnails
 inline. Purely additive — a missing `covers/` folder just means the viewer
-falls back to an Open Library cover (by ISBN) or a placeholder."""
+falls back to an Open Library cover (by ISBN) or a placeholder.
+
+When an EPUB has no embedded cover at all, a free keyless fallback is tried
+first: Apple's public iTunes Search API carries ebook artwork for most trade
+titles. Only accepted when the top hit's title is a close match to the
+book's — an unrelated cover is worse than none, and this runs unattended."""
 
 import asyncio
 import io
@@ -10,6 +15,7 @@ import logging
 import uuid
 from collections.abc import Callable
 
+import httpx
 import imagehash
 from google.oauth2.credentials import Credentials
 from PIL import Image
@@ -17,12 +23,13 @@ from sqlalchemy import case, select, update
 
 from app.core.config import get_settings
 from app.data.db import async_session_factory
-from app.data.models import File, FileStatus
+from app.data.models import Author, Book, File, FileStatus
 from app.providers.comic.archive import extract_comic_cover, is_comic_archive
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
 from app.providers.epub.parser import extract_cover
 from app.schemas.covers import CoverJobState, CoverJobStatus
+from app.services.text_match import title_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +38,14 @@ _COVER_MAX_PX = 320
 _COVER_MIME = "image/jpeg"
 _COVER_CONCURRENCY = 4
 _NO_COVER_EXT = ".nocover"  # 0-byte marker: this EPUB has no extractable cover
+
+_ITUNES_SEARCH_URL = "https://itunes.apple.com/search"
+_ITUNES_RESULT_LIMIT = 5
+# difflib ratio on the strict title comparator: "Mistborn: The Final Empire"
+# vs "...The Well of Ascension" (same series, different book) scores ~0.6, so
+# the bar sits well above that.
+_ITUNES_MATCH_THRESHOLD = 0.8
+_ITUNES_ARTWORK_SIZE = "5000x5000bb"
 
 
 def _thumbnail(raw: bytes) -> tuple[bytes, str] | None:
@@ -62,6 +77,45 @@ def _phash_of_jpg(raw: bytes) -> str | None:
         return None
 
 
+def _itunes_cover(title: str, author: str | None) -> bytes | None:
+    """Best-effort keyless cover fallback via Apple's iTunes Search API.
+    Its ebook results normally carry only a 100x100 thumbnail URL, but
+    swapping the size token in that URL for `5000x5000bb` returns the
+    full-resolution artwork with no extra request. Returns None on any
+    failure or when no result's title is a confident match."""
+    term = f"{title} {author}" if author else title
+    try:
+        resp = httpx.get(
+            _ITUNES_SEARCH_URL,
+            params={"term": term, "country": "gb", "entity": "ebook", "limit": _ITUNES_RESULT_LIMIT},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+    except (httpx.HTTPError, ValueError):
+        return None
+
+    best_url: str | None = None
+    best_score = 0.0
+    for r in results:
+        track, artwork = r.get("trackName"), r.get("artworkUrl100")
+        if not track or not artwork:
+            continue
+        score = title_similarity(track, title)
+        if score > best_score:
+            best_url, best_score = artwork, score
+    if best_url is None or best_score < _ITUNES_MATCH_THRESHOLD:
+        return None
+
+    full_url = best_url.replace("100x100bb", _ITUNES_ARTWORK_SIZE)
+    try:
+        img_resp = httpx.get(full_url, timeout=15.0)
+        img_resp.raise_for_status()
+        return img_resp.content
+    except httpx.HTTPError:
+        return None
+
+
 def _ensure_covers_folder(provider: DriveProvider, library_folder_id: str) -> str:
     existing = next(
         (f for f in provider.list_folders(library_folder_id) if f["name"] == COVERS_FOLDER_NAME),
@@ -73,7 +127,12 @@ def _ensure_covers_folder(provider: DriveProvider, library_folder_id: str) -> st
 
 
 def _make_one(
-    provider: DriveProvider, covers_folder_id: str, drive_file_id: str, filename: str
+    provider: DriveProvider,
+    covers_folder_id: str,
+    drive_file_id: str,
+    filename: str,
+    title: str | None = None,
+    author: str | None = None,
 ) -> tuple[str, str | None]:
     """(status, cover_phash) — status is "done" or "nocover"; phash is the
     thumbnail's perceptual hash for a "done" cover, None otherwise. Runs in a
@@ -89,6 +148,10 @@ def _make_one(
         max_entries=settings.epub_max_entries,
     )
     thumb = _thumbnail(cover_raw) if cover_raw is not None else None
+    if thumb is None and title:
+        itunes_raw = _itunes_cover(title, author)
+        if itunes_raw is not None:
+            thumb = _thumbnail(itunes_raw)
     if thumb is None:
         # Leave a marker so this EPUB isn't re-downloaded on every run just
         # to rediscover it has no usable cover.
@@ -146,13 +209,20 @@ async def regenerate_covers(
         async with async_session_factory() as session:
             rows = (
                 await session.execute(
-                    select(File.drive_file_id, File.filename, File.cover_phash).where(
-                        File.status == FileStatus.organised, File.book_id.is_not(None)
+                    select(
+                        File.drive_file_id,
+                        File.filename,
+                        File.cover_phash,
+                        Book.canonical_title,
+                        Author.name,
                     )
+                    .join(Book, Book.id == File.book_id)
+                    .outerjoin(Author, Author.id == Book.author_id)
+                    .where(File.status == FileStatus.organised, File.book_id.is_not(None))
                 )
             ).all()
 
-        missing = [(r[0], r[1]) for r in rows if r[0] not in handled]
+        missing = [(r[0], r[1], r[3], r[4]) for r in rows if r[0] not in handled]
         # Covers that exist but predate the cover_phash column — re-hash from
         # the thumbnail already in Drive, no book download.
         rehash = [r[0] for r in rows if r[2] is None and r[0] in jpg_ids]
@@ -166,15 +236,15 @@ async def regenerate_covers(
         sem = asyncio.Semaphore(_COVER_CONCURRENCY)
         hashed: dict[str, str] = {}
 
-        async def run(entry: tuple[str, str]) -> None:
-            drive_id, filename = entry
+        async def run(entry: tuple[str, str, str, str | None]) -> None:
+            drive_id, filename, title, author = entry
             async with sem:
                 # Fresh provider per file — httplib2 isn't safe to share
                 # across the threads asyncio.to_thread hands work to.
                 provider = DriveProvider(build_drive_service(creds))
                 try:
                     status, phash = await asyncio.to_thread(
-                        _make_one, provider, covers_folder_id, drive_id, filename
+                        _make_one, provider, covers_folder_id, drive_id, filename, title, author
                     )
                     counts[status] += 1
                     if phash is not None:
