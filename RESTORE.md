@@ -7,12 +7,22 @@ The last 7 are kept. Each is a gzipped SQLite database plus a portable SQL dump.
 
 ## The easy way — the restore script
 
-**Stop the BookBrain backend first** (close its window; kill any stray
-`uvicorn --reload` workers). The script refuses to run while anything has the
+**Stop the BookBrain backend first** — on the server: `sudo systemctl stop
+bookbrain.service`; on a dev machine: close its window / kill any stray
+`uvicorn --reload` workers. The script refuses to run while anything has the
 database open.
 
 Then, from `backend/`:
 
+On Linux/macOS (the production server):
+```
+.venv/bin/python -m app.jobs.restore --list        # see what's available
+.venv/bin/python -m app.jobs.restore --latest      # restore the newest
+.venv/bin/python -m app.jobs.restore --date 2026-09-07
+.venv/bin/python -m app.jobs.restore               # interactive picker
+```
+
+On Windows:
 ```
 .venv\Scripts\python -m app.jobs.restore --list        # see what's available
 .venv\Scripts\python -m app.jobs.restore --latest      # restore the newest
@@ -20,7 +30,8 @@ Then, from `backend/`:
 .venv\Scripts\python -m app.jobs.restore               # interactive picker
 ```
 
-or double-click **`backend/scripts/restore-backup.bat`**.
+or double-click **`backend/scripts/restore-backup.bat`** (Windows only —
+there's no Linux equivalent wrapper; run the module directly as above).
 
 The script:
 
@@ -34,8 +45,9 @@ The script:
    itself undoable,
 5. puts the backup in place and runs a final integrity check.
 
-Then start the backend. If the OAuth token in the restored database is stale,
-reconnect Google in Settings.
+Then start the backend (`sudo systemctl start bookbrain.service` on the
+server). If the OAuth token in the restored database is stale, reconnect
+Google in Settings.
 
 ## The manual way
 
