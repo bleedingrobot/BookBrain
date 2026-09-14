@@ -100,7 +100,14 @@ ago() {
     local ts=$1
     [ -z "$ts" ] || [ "$ts" = "null" ] && { echo "n/a"; return; }
     local then now diff
-    then=$(date -d "$ts" +%s 2>/dev/null) || { echo "n/a"; return; }
+    # The backend stores/serialises most timestamps as naive UTC (no "Z" or
+    # offset) — `date -d` treats a naive string as *local* time, which was a
+    # harmless coincidence while the box ran on UTC. Now that it's on
+    # Pacific/Auckland (2026-09-15), that silently added a 12h skew to every
+    # "Xh ago" on the dashboard. `-u` forces naive input to parse as UTC
+    # (timestamps that already carry an explicit offset, e.g. "+00:00",
+    # parse the same either way, so this is safe for both formats).
+    then=$(date -u -d "$ts" +%s 2>/dev/null) || { echo "n/a"; return; }
     now=$(date +%s)
     diff=$(( now - then ))
     (( diff < 0 )) && diff=0
