@@ -116,6 +116,9 @@ HIT_PCT="n/a"
 ORG_24H="?"; ORG_7D="?"
 SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""
 TAG_ENABLED="?"; TAG_DONE="?"; TAG_PENDING="?"
+TAG_CUR_TITLE=""; TAG_CUR_AUTHOR=""; TAG_CUR_STATUS=""; TAG_CUR_DONE=0; TAG_CUR_TOTAL=0
+TAG_RECENT_JSON="[]"
+TAG_ERR_TITLE=""; TAG_ERR_AUTHOR=""; TAG_ERR_MSG=""; TAG_ERR_AT=""
 SPARK_LINE=""
 SSH_LINE="none"; CLAUDE_COUNT=0; CLAUDE_DURS=""; VSCODE_WINDOWS=0; ACTIVITY_LINE="n/a"
 
@@ -248,6 +251,20 @@ while true; do
             TAG_ENABLED=$(echo "$TAGGING" | jq -r 'if .enabled and .configured then "RUNNING" elif .enabled then "pending" else "off" end' 2>/dev/null)
             TAG_DONE=$(echo "$TAGGING" | jq -r '.full_done // "?"' 2>/dev/null)
             TAG_PENDING=$(echo "$TAGGING" | jq -r '.full_pending // "?"' 2>/dev/null)
+
+            TAG_CUR_TITLE=$(echo "$TAGGING" | jq -r '.current.title // ""' 2>/dev/null)
+            TAG_CUR_AUTHOR=$(echo "$TAGGING" | jq -r '.current.author // ""' 2>/dev/null)
+            TAG_CUR_STATUS=$(echo "$TAGGING" | jq -r '.current.status // ""' 2>/dev/null)
+            TAG_CUR_DONE=$(echo "$TAGGING" | jq -r '.current.chunks_done // 0' 2>/dev/null)
+            TAG_CUR_TOTAL=$(echo "$TAGGING" | jq -r '.current.chunks_total // 0' 2>/dev/null)
+
+            TAG_RECENT_JSON=$(echo "$TAGGING" | jq -c '.recent // []' 2>/dev/null)
+            [ -z "$TAG_RECENT_JSON" ] && TAG_RECENT_JSON="[]"
+
+            TAG_ERR_TITLE=$(echo "$TAGGING" | jq -r '.last_error.title // ""' 2>/dev/null)
+            TAG_ERR_AUTHOR=$(echo "$TAGGING" | jq -r '.last_error.author // ""' 2>/dev/null)
+            TAG_ERR_MSG=$(echo "$TAGGING" | jq -r '.last_error.error // ""' 2>/dev/null)
+            TAG_ERR_AT=$(echo "$TAGGING" | jq -r '.last_error.failed_at // ""' 2>/dev/null)
         fi
 
         RECENT7=$(curl -s -m 5 "$API/api/library/recently-organized?since=168" 2>/dev/null)
@@ -308,6 +325,24 @@ while true; do
         "$ORG_24H" "$ORG_7D" "$CYAN" "${SPARK_LINE:-(warming up)}" "$RESET"
     printf "  LLM tagging: %s%-18s%s tagged: %-6s remaining: %-6s\n" \
         "$(status_color "$TAG_ENABLED")" "$TAG_ENABLED" "$RESET" "$TAG_DONE" "$TAG_PENDING"
+    if [ -n "$TAG_CUR_TITLE" ]; then
+        tag_cur_pct=0
+        (( TAG_CUR_TOTAL > 0 )) && tag_cur_pct=$(( 100 * TAG_CUR_DONE / TAG_CUR_TOTAL ))
+        printf "    now %s: %s%.42s%s%s  %s chunk %s/%s %s\n" \
+            "$TAG_CUR_STATUS" "$CYAN" "$TAG_CUR_TITLE" "$RESET" \
+            "${TAG_CUR_AUTHOR:+ by ${TAG_CUR_AUTHOR:0:22}}" \
+            "$(bar "$tag_cur_pct" 20)" "$TAG_CUR_DONE" "$TAG_CUR_TOTAL"
+    fi
+    if [ -n "$TAG_ERR_MSG" ]; then
+        printf "    %slast tagging error%s: %.60s (%s%s, %s)\n" \
+            "$RED" "$RESET" "$TAG_ERR_MSG" "$TAG_ERR_TITLE" "${TAG_ERR_AUTHOR:+ by $TAG_ERR_AUTHOR}" "$(ago "$TAG_ERR_AT")"
+    fi
+    if [ "$(echo "$TAG_RECENT_JSON" | jq 'length' 2>/dev/null)" != "0" ]; then
+        echo "$TAG_RECENT_JSON" | jq -r '.[:3][] | [.generated_at, .title, (.author // ""), (.genres // [] | join(", "))] | @tsv' 2>/dev/null |
+        while IFS=$'\t' read -r ts title author genres; do
+            printf "    %-8s %-32s %-18s %s%-30s%s\n" "$(ago "$ts")" "${title:0:32}" "${author:0:18}" "$DIM" "${genres:0:30}" "$RESET"
+        done
+    fi
     echo
     echo "  ${BOLD}Acquisition queue${RESET} (OpenBooks) -- refreshed every ${SLOW_EVERY}x${FAST_REFRESH}s"
     printf "  %s  total %s\n" "$(segbar "$Q_APPROVED" "$Q_PENDING" "$Q_UNSEARCHED" "$Q_NOMATCH" 60)" "$Q_TOTAL"

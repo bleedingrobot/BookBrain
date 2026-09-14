@@ -329,9 +329,11 @@ async def _run_full_step(client: OllamaClient, book: Book, data: bytes, settings
 
 
 async def get_progress() -> dict:
-    """Cheap DB-only counts for the admin status endpoint — no Ollama/Drive
-    calls. "pending" here means "would be picked up on a future tick"
-    (never attempted, or failed and past its retry backoff)."""
+    """Cheap DB-only counts (plus a little detail: the book in flight, the
+    last few completed, the most recent failure) for the admin status
+    endpoint — no Ollama/Drive calls. "pending" here means "would be picked
+    up on a future tick" (never attempted, or failed and past its retry
+    backoff)."""
     now = datetime.now(UTC)
     async with async_session_factory() as session:
         rows = (
@@ -340,7 +342,7 @@ async def get_progress() -> dict:
                     select(File)
                     .join(Book, File.book_id == Book.id)
                     .where(File.status == FileStatus.organised)
-                    .options(selectinload(File.book))
+                    .options(selectinload(File.book).selectinload(Book.author))
                 )
             )
             .scalars()
@@ -348,13 +350,59 @@ async def get_progress() -> dict:
         )
 
     counts = {"full_done": 0, "full_pending": 0}
+    current: dict | None = None
+    recent: list[dict] = []
+    last_error: dict | None = None
     for file in rows:
-        full = (file.book.llm_tags_json or {}).get("full")
-        if full and full.get("status") == "done":
+        book = file.book
+        full = (book.llm_tags_json or {}).get("full")
+        status = full.get("status") if full else None
+        author = book.author.name if book.author else None
+
+        if status == "done":
             counts["full_done"] += 1
-        elif (full and full.get("status") in ("mapping", "reducing")) or _is_pending(full, now):
+            recent.append(
+                {
+                    "title": book.canonical_title,
+                    "author": author,
+                    "generated_at": full.get("generatedAt"),
+                    "genres": full.get("genres") or [],
+                }
+            )
+            continue
+
+        if status in ("mapping", "reducing"):
             counts["full_pending"] += 1
-    return counts
+            current = {
+                "title": book.canonical_title,
+                "author": author,
+                "status": status,
+                "chunks_done": full.get("chunksDone", 0),
+                "chunks_total": full.get("chunksTotal", 0),
+            }
+            continue
+
+        if _is_pending(full, now):
+            counts["full_pending"] += 1
+            error = full.get("error") if full else None
+            if error:
+                failed_at = full.get("failedAt")
+                if last_error is None or (failed_at or "") > (last_error["failed_at"] or ""):
+                    last_error = {
+                        "title": book.canonical_title,
+                        "author": author,
+                        "error": error,
+                        "failed_at": failed_at,
+                    }
+
+    recent.sort(key=lambda r: r["generated_at"] or "", reverse=True)
+    return {
+        "full_done": counts["full_done"],
+        "full_pending": counts["full_pending"],
+        "current": current,
+        "recent": recent[:5],
+        "last_error": last_error,
+    }
 
 
 async def tick() -> dict:
