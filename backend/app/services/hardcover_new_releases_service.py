@@ -413,12 +413,16 @@ async def refresh_new_releases(
                 stopped_early = True
                 break
             except HardcoverUnavailable:
+                # Nothing was assigned before this raised, so there's
+                # nothing to roll back — and session.rollback() would expire
+                # every other author already loaded in `authors`, crashing
+                # the next iteration's plain `author.name` read with
+                # MissingGreenlet (no await context to reload it in). Seen
+                # live 2026-09-14.
                 counts["failed"] += 1
-                await session.rollback()
             except Exception:  # noqa: BLE001 — one bad author must not stop the run
                 logger.exception("hardcover new releases failed for %r", author.name)
                 counts["failed"] += 1
-                await session.rollback()
             finally:
                 try:
                     await session.commit()

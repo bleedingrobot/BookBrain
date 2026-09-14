@@ -297,13 +297,16 @@ async def refresh_book_recs(
                 break
             except HardcoverUnavailable:
                 # Transient call failure — leave this book's existing data
-                # alone rather than storing an empty/truncated list.
+                # alone rather than storing an empty/truncated list. Nothing
+                # was assigned before this raised, so there's nothing to roll
+                # back — and session.rollback() would expire every other
+                # book already loaded in `books`, crashing the next
+                # iteration's plain `book.id` read with MissingGreenlet
+                # (no await context to reload it in). Seen live 2026-09-14.
                 counts["failed"] += 1
-                await session.rollback()
             except Exception:  # noqa: BLE001 — one bad book must not stop the run
                 logger.exception("hardcover recs failed for book %s", book.id)
                 counts["failed"] += 1
-                await session.rollback()
             finally:
                 # Commit per book, not once at the end — each iteration does
                 # ~2 slow HTTP calls, so a single transaction would hold the
