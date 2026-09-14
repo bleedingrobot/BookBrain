@@ -463,7 +463,16 @@ async def tick() -> dict:
 
         try:
             provider = DriveProvider(build_drive_service(creds))
-            data = await asyncio.to_thread(provider.download_file, file.drive_file_id)
+            # drive/client.py's httplib2 timeout only bounds a single idle
+            # recv() — a chunked response trickling a few bytes just under
+            # that window forever defeats it. Caught live 2026-09-14: this
+            # call hung for 3+ hours, wedging this tick (and every later one,
+            # behind max_instances=1) forever. wait_for can't kill the
+            # underlying thread (it runs to completion harmlessly in the
+            # background), but it stops the *await* from hanging forever.
+            data = await asyncio.wait_for(
+                asyncio.to_thread(provider.download_file, file.drive_file_id), timeout=90.0
+            )
         except Exception as exc:  # noqa: BLE001 — a Drive hiccup, try again next tick
             logger.exception("llm tagging: download failed for book %s", book.id)
             return {"error": f"download failed: {exc}"}

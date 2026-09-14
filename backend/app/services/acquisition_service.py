@@ -58,6 +58,15 @@ _MAX_ALTERNATIVES = 6
 _MAX_REQUESTS_PER_RUN = 40  # safety cap; each search costs ~11s of rate-limit wait
 _SEARCH_SPACING_SECONDS = 11.0  # OpenBooks enforces >=10s between searches server-side
 
+# drive/client.py's httplib2 timeout only bounds a single idle recv() — a
+# chunked response that keeps trickling a few bytes just under that window
+# forever defeats it. Caught live 2026-09-14: a _read_wishlist() download
+# hung for 3+ hours reading a chunked response, silently stalling every
+# autoget tick and the /requests endpoint behind it. asyncio.wait_for can't
+# kill the underlying thread (it keeps running to completion, harmlessly,
+# in the background), but it stops the *await* from hanging forever.
+_DRIVE_IO_TIMEOUT = 90.0
+
 
 # --------------------------------------------------------------------------
 # scoring
@@ -331,9 +340,17 @@ async def _gather_targets(provider: DriveProvider, library_folder_id: str) -> li
         _read_json_file,
     )
 
-    wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
-    reading = await asyncio.to_thread(_read_json_file, provider, library_folder_id, READING_FILENAME)
-    lists = await asyncio.to_thread(_read_json_file, provider, library_folder_id, LISTS_FILENAME)
+    wl = await asyncio.wait_for(
+        asyncio.to_thread(_read_wishlist, provider, library_folder_id), timeout=_DRIVE_IO_TIMEOUT
+    )
+    reading = await asyncio.wait_for(
+        asyncio.to_thread(_read_json_file, provider, library_folder_id, READING_FILENAME),
+        timeout=_DRIVE_IO_TIMEOUT,
+    )
+    lists = await asyncio.wait_for(
+        asyncio.to_thread(_read_json_file, provider, library_folder_id, LISTS_FILENAME),
+        timeout=_DRIVE_IO_TIMEOUT,
+    )
 
     async with async_session_factory() as session:
         owned = {
@@ -772,7 +789,9 @@ async def _rerank_existing(session: AsyncSession) -> int:
 
 
 async def list_requests(provider: DriveProvider, library_folder_id: str) -> list[RequestView]:
-    wl = await asyncio.to_thread(_read_wishlist, provider, library_folder_id)
+    wl = await asyncio.wait_for(
+        asyncio.to_thread(_read_wishlist, provider, library_folder_id), timeout=_DRIVE_IO_TIMEOUT
+    )
     by_id = {i["id"]: i for i in wl.items if i.get("id")}
 
     async with async_session_factory() as session:
