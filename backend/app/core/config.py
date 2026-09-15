@@ -116,7 +116,16 @@ class Settings(BaseSettings):
     # surfaced in the family library-viewer. No local process to manage
     # (stateless HTTP scraping), unlike OpenBooks.
     annas_archive_enabled: bool = False
-    annas_archive_base_url: str = "https://annas-archive.org"
+    # These mirror domains rotate/go dead often — annas-archive.org itself
+    # stopped resolving entirely as of 2026-09-16. .gl was confirmed live
+    # (DDoS-Guard protected — exactly what ANNAS_ARCHIVE_FLARESOLVERR_URL is
+    # for) as of the same date; check for a current one if this goes stale.
+    annas_archive_base_url: str = "https://annas-archive.gl"
+    # Optional bot-protection fallback — a FlareSolverr sidecar (see
+    # backend/tools/run-flaresolverr.sh). Empty = direct-httpx-only, the
+    # original behavior, unchanged. Set to e.g. "http://127.0.0.1:8191/v1"
+    # once the container is running.
+    annas_archive_flaresolverr_url: str = ""
 
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older

@@ -2,16 +2,21 @@
 
 No official public search API — results come from scraping the search page's
 HTML, and a download is a chain: search result -> detail page (`/md5/<hash>`)
--> a list of mirror links, tried in order. Some mirrors sit behind a
-Cloudflare challenge; this provider does NOT attempt to bypass Cloudflare
-(no browser automation) — a blocked mirror is just skipped in favour of the
-next one, and only once every mirror has failed does download() raise.
+-> a list of mirror links, tried in order.
+
+Search and detail pages, and some download mirrors, can sit behind a
+Cloudflare or DDoS-Guard challenge. A direct httpx request is always tried
+first (cheap, works for an unprotected mirror); if that's blocked and a
+FlareSolverr sidecar is configured (ANNAS_ARCHIVE_FLARESOLVERR_URL — see
+backend/tools/run-flaresolverr.sh), the page is solved through it instead.
+Without FlareSolverr configured, a blocked page is skipped exactly like
+before — this provider never requires it.
 
 Same failure philosophy as the metadata providers (Google Books, Hardcover):
-search() degrades quietly (httpx errors / no results -> []), never raises.
-download() is allowed to raise AcquisitionUnavailable once every option is
-exhausted — that's actionable for whoever clicked "Get this" (try the next
-alternative), unlike a routine single-mirror hiccup during search.
+search() degrades quietly (any failure -> []), never raises. download() is
+allowed to raise AcquisitionUnavailable once every option is exhausted —
+that's actionable for whoever clicked "Get this" (try the next alternative),
+unlike a routine single-mirror hiccup during search.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ import os
 import re
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -31,24 +37,37 @@ from bs4 import BeautifulSoup
 from app.core.config import get_settings
 from app.providers.acquisition.base import AcquisitionProvider
 from app.providers.acquisition.exceptions import AcquisitionUnavailable
+from app.providers.acquisition.flaresolverr import FlareSolverrClient, looks_like_challenge_page
 from app.providers.acquisition.types import AcquisitionResult
 
 logger = logging.getLogger(__name__)
 
 _MIN_REQUEST_INTERVAL = 3.5  # seconds — politeness floor toward a scraped site with no formal API
 
-# Markers of a Cloudflare interstitial rather than the file itself — skip
-# quietly and try the next mirror instead of treating it as a hard error.
-_CLOUDFLARE_MARKERS = ("cf-browser-verification", "cf_chl_", "Just a moment...", "cloudflare")
+
+@dataclass
+class _Page:
+    html: str
+    cookies: dict[str, str]
+    user_agent: str | None
 
 
 class AnnasArchiveProvider(AcquisitionProvider):
     name = "annas_archive"
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        flaresolverr: FlareSolverrClient | None = None,
+    ) -> None:
         self._client = client or httpx.AsyncClient(timeout=15.0, follow_redirects=True)
         self._rate_lock = asyncio.Lock()
         self._last_request: float = 0.0
+        if flaresolverr is not None:
+            self._flaresolverr = flaresolverr
+        else:
+            url = get_settings().annas_archive_flaresolverr_url
+            self._flaresolverr = FlareSolverrClient(url) if url else None
 
     def is_enabled(self) -> bool:
         return get_settings().annas_archive_enabled
@@ -63,15 +82,38 @@ class AnnasArchiveProvider(AcquisitionProvider):
             finally:
                 self._last_request = time.monotonic()
 
+    async def _fetch_page(
+        self, url: str, *, params: dict | None = None, session: str | None = None
+    ) -> _Page | None:
+        """Direct httpx first; falls back to FlareSolverr (if configured) when
+        the direct response is an error or looks like an unsolved challenge.
+        None if both fail, or if blocked with no FlareSolverr configured."""
+        response: httpx.Response | None = None
+        try:
+            response = await self._throttled_get(url, params=params)
+        except httpx.HTTPError as exc:
+            logger.warning("annas_archive: request to %s failed: %s", url, exc)
+
+        if (
+            response is not None
+            and response.status_code < 400
+            and not looks_like_challenge_page(response.text, response.status_code)
+        ):
+            return _Page(html=response.text, cookies={}, user_agent=None)
+
+        if self._flaresolverr is None:
+            return None
+        solved = await self._flaresolverr.solve(url, session=session)
+        if solved is None:
+            return None
+        return _Page(html=solved.html, cookies=solved.cookies, user_agent=solved.user_agent)
+
     async def search(self, query: str) -> list[AcquisitionResult]:
         base = get_settings().annas_archive_base_url.rstrip("/")
-        try:
-            response = await self._throttled_get(f"{base}/search", params={"q": query, "ext": "epub"})
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.warning("annas_archive: search failed for %r: %s", query, exc)
+        page = await self._fetch_page(f"{base}/search", params={"q": query, "ext": "epub"})
+        if page is None:
             return []
-        return self._parse_search_results(response.text, base)
+        return self._parse_search_results(page.html, base)
 
     def _parse_search_results(self, html: str, base: str) -> list[AcquisitionResult]:
         soup = BeautifulSoup(html, "html.parser")
@@ -119,23 +161,29 @@ class AnnasArchiveProvider(AcquisitionProvider):
     async def download(self, handle: str) -> Path:
         base = get_settings().annas_archive_base_url.rstrip("/")
         detail_url = f"{base}/{handle.lstrip('/')}"
+
+        session_id = await self._flaresolverr.create_session() if self._flaresolverr else None
         try:
-            response = await self._throttled_get(detail_url)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise AcquisitionUnavailable(f"couldn't load the Anna's Archive detail page: {exc}") from exc
+            page = await self._fetch_page(detail_url, session=session_id)
+            if page is None:
+                raise AcquisitionUnavailable(
+                    f"couldn't load the Anna's Archive detail page (blocked, and no bypass available): {detail_url}"
+                )
 
-        for mirror_url in self._mirror_links(response.text, base):
-            data = await self._try_mirror(mirror_url)
-            if data is not None:
-                fd, tmp_path = tempfile.mkstemp(suffix=".epub", prefix="annas_archive_")
-                os.close(fd)
-                Path(tmp_path).write_bytes(data)
-                return Path(tmp_path)
+            for mirror_url in self._mirror_links(page.html, base):
+                data = await self._try_mirror(mirror_url, cookies=page.cookies, user_agent=page.user_agent)
+                if data is not None:
+                    fd, tmp_path = tempfile.mkstemp(suffix=".epub", prefix="annas_archive_")
+                    os.close(fd)
+                    Path(tmp_path).write_bytes(data)
+                    return Path(tmp_path)
 
-        raise AcquisitionUnavailable(
-            "no usable mirror — all links failed or are Cloudflare-protected"
-        )
+            raise AcquisitionUnavailable(
+                "no usable mirror — all links failed or are Cloudflare/DDoS-Guard-protected"
+            )
+        finally:
+            if self._flaresolverr is not None and session_id:
+                await self._flaresolverr.destroy_session(session_id)
 
     def _mirror_links(self, html: str, base: str) -> list[str]:
         soup = BeautifulSoup(html, "html.parser")
@@ -146,15 +194,28 @@ class AnnasArchiveProvider(AcquisitionProvider):
                 links.append(urljoin(base + "/", href))
         return links
 
-    async def _try_mirror(self, url: str) -> bytes | None:
+    async def _try_mirror(
+        self, url: str, *, cookies: dict[str, str] | None = None, user_agent: str | None = None
+    ) -> bytes | None:
+        # Replay whatever cookies/UA solved the detail page — the documented
+        # FlareSolverr pattern: it can't proxy binary content itself, so a
+        # solved challenge's cookies are handed to a plain httpx request
+        # instead. A mismatched User-Agent invalidates the cookie, so both
+        # travel together or not at all. Built as a raw Cookie header, not
+        # httpx's per-request `cookies=` kwarg — that's deprecated in favour
+        # of setting cookies on the client instance, which would leak this
+        # one-off cookie jar into every other request the shared client makes.
+        headers: dict[str, str] = {}
+        if user_agent:
+            headers["User-Agent"] = user_agent
+        if cookies:
+            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
         try:
-            response = await self._throttled_get(url)
+            response = await self._throttled_get(url, headers=headers or None)
         except httpx.HTTPError:
             return None
-        if response.status_code == 403 or any(
-            marker.lower() in response.text.lower() for marker in _CLOUDFLARE_MARKERS
-        ):
-            logger.debug("annas_archive: mirror %s looks Cloudflare-protected, skipping", url)
+        if looks_like_challenge_page(response.text, response.status_code):
+            logger.debug("annas_archive: mirror %s looks challenge-protected, skipping", url)
             return None
         if response.status_code != 200 or not response.content:
             return None

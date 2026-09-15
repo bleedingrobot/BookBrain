@@ -45,6 +45,10 @@ def _configure_test_settings(monkeypatch):
     monkeypatch.setattr(
         settings, "google_oauth_redirect_uri", "http://localhost:8000/api/auth/callback"
     )
+    # Never let the real backend/.env's live FlareSolverr sidecar URL leak
+    # into a test — tests that want it opt in explicitly by constructing
+    # AnnasArchiveProvider(flaresolverr=...) directly.
+    monkeypatch.setattr(settings, "annas_archive_flaresolverr_url", "")
 
 
 @pytest.fixture
