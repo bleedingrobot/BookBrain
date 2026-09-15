@@ -6,6 +6,7 @@ system (same idiom as the metadata-provider stack)."""
 from app.core.config import get_settings
 from app.providers.acquisition.annas_archive import AnnasArchiveProvider
 from app.providers.acquisition.base import AcquisitionProvider
+from app.providers.acquisition.libgen import LibgenProvider
 from app.providers.acquisition.openbooks import OpenBooksProvider
 
 
@@ -14,4 +15,6 @@ def default_acquisition_providers() -> list[AcquisitionProvider]:
     providers: list[AcquisitionProvider] = [OpenBooksProvider()]
     if settings.annas_archive_enabled:
         providers.append(AnnasArchiveProvider())
+    if settings.libgen_enabled:
+        providers.append(LibgenProvider())
     return [p for p in providers if p.is_enabled()]

@@ -138,6 +138,7 @@ async def get_status() -> AcquireStatus:
             AcquireProviderStatus(
                 name="annas_archive", enabled="annas_archive" in names, requires_process=False
             ),
+            AcquireProviderStatus(name="libgen", enabled="libgen" in names, requires_process=False),
         ],
     )
 

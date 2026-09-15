@@ -127,6 +127,20 @@ class Settings(BaseSettings):
     # once the container is running.
     annas_archive_flaresolverr_url: str = ""
 
+    # Libgen — a third AcquisitionProvider (providers/acquisition/), same
+    # trust boundary as OpenBooks/Anna's Archive: admin-only, off unless
+    # LIBGEN_ENABLED=true, never surfaced in the family library-viewer.
+    libgen_enabled: bool = False
+    # Comma-separated, tried in order — individual mirrors rot faster than
+    # the domain family as a whole, so unlike annas_archive_base_url this is
+    # a list, not a single URL. All five confirmed live and directly
+    # scrapable (no Cloudflare/DDoS-Guard challenge) as of 2026-09-16;
+    # libgen.is/.st resolved but timed out from this network the same day.
+    # Check for a current set if this goes stale.
+    libgen_base_urls: str = (
+        "https://libgen.li,https://libgen.vg,https://libgen.bz,https://libgen.gl,https://libgen.la"
+    )
+
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older
     # ones are trashed (recoverable) after each new upload.
