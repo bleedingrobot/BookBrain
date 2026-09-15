@@ -137,6 +137,24 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   `OPENBOOKS_ENABLED=true`. Admin-only, never in the family viewer.
   Browser-verified (screenshot): server strip + search + results table. Inbox
   upload path is unit-tested (needs Drive creds to run live).
+- [`40-piper-tts.md`](40-piper-tts.md) — replace the reader's browser-voice
+  read-aloud (`lib/tts.ts` / Web Speech API) with Piper (local neural TTS).
+  James: full replacement, not an opt-in alongside the browser voice.
+  Surfaces a real open question before any code: the static library-viewer
+  has no live path to the backend, so a live per-block Piper call (the
+  ROADMAP spike's sketch) only works for a reader who can reach the home
+  server — deliberately left open whether to build that or pre-synthesize
+  audio as a Drive sidecar instead (matches every other backend→viewer
+  feature's existing pattern). **Not started.**
+- [`41-calibre-web-automated-review.md`](41-calibre-web-automated-review.md)
+  — read-only deep dive into `crocodilestick/Calibre-Web-Automated`'s
+  actual code (not just its README) to find anything worth borrowing for
+  BookBrain — Kobo/e-reader sync, its built-in Google Drive integration,
+  duplicate detection, metadata providers, EPUB repair, OPDS, and more.
+  Explicitly scoped away from Shelfmark/the book-downloader (already
+  investigated and built natively). Produces `CWA-REVIEW-<date>.md` +
+  follow-up numbered prompts for anything worth pursuing, GPL-3.0 license
+  consequence flagged per recommendation. **Not started.**
 
 ## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
 
