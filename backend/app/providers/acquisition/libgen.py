@@ -213,7 +213,7 @@ class LibgenProvider(AcquisitionProvider):
             if get_url is None:
                 continue
 
-            data = await self._try_download(get_url)
+            data = await self._try_download(get_url, referer=ads_url)
             if data is not None:
                 # Generic suffix: unlike Anna's Archive (epub-only search),
                 # Libgen legitimately returns pdf/mobi/cbz/fb2 too, and the
@@ -242,9 +242,15 @@ class LibgenProvider(AcquisitionProvider):
             return url
         return None
 
-    async def _try_download(self, url: str) -> bytes | None:
+    async def _try_download(self, url: str, *, referer: str) -> bytes | None:
+        # Confirmed live 2026-09-16: booksdl.lc (the CDN behind get.php on at
+        # least libgen.li) never sends a byte of response without a Referer
+        # pointing back at the book's ads.php page — the request just hangs
+        # until the client read-timeout fires. A plain browser visiting
+        # ads.php then clicking GET would send this for free; a bare httpx
+        # request needs it set explicitly.
         try:
-            response = await self._throttled_get(url)
+            response = await self._throttled_get(url, headers={"Referer": referer})
         except httpx.HTTPError:
             return None
         if response.status_code != 200 or len(response.content) < _MIN_VALID_FILE_SIZE:
