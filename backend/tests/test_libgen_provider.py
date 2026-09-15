@@ -15,11 +15,15 @@ DECOY_MD5 = "deadbeefdeadbeefdeadbeefdeadbeef"
 
 # A full (9-cell) row and a compact (5-cell) row, modeled on real libgen.li
 # search-result markup — including a decoy md5-shaped string in the Title
-# cell (e.g. a cover-image URL) that the parser must not pick up.
+# cell (e.g. a cover-image URL) the parser must not pick up, and the
+# view/favorite/read-count badge spans real rows carry (live-confirmed
+# 2026-09-16 to otherwise leak into the title as e.g. "b l 508418 f 467902").
 SEARCH_HTML = f"""
 <table id="tablelibgen"><thead><tr><th>header</th></tr></thead><tbody>
 <tr>
-<td><a href="/cover/{DECOY_MD5}.jpg"></a><a href="edition.php?id=1">The Final Empire</a></td>
+<td><a href="/cover/{DECOY_MD5}.jpg"></a><a href="edition.php?id=1">The Final Empire</a>
+<nobr><span class="badge badge-primary">b</span> <span class="badge badge-secondary">l 508418</span></nobr>
+</td>
 <td><a href="author.php?id=1">Brandon Sanderson(Author)</a></td>
 <td>Publisher</td>
 <td>2006</td>

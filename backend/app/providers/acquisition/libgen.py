@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 
 _MIN_REQUEST_INTERVAL = 3.5  # seconds — same politeness floor as Anna's Archive
 
+# Live-confirmed necessary 2026-09-16: at least one mirror (libgen.li) routes
+# httpx's default "python-httpx/x.x" User-Agent to a stub "Welcome to nginx!"
+# placeholder page instead of the real site (a reverse-proxy vhost rule, not
+# a Cloudflare/DDoS-Guard challenge — no bypass infra needed, just a normal
+# browser-shaped UA).
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+)
+
 _RESULTS_TABLE_ID = "tablelibgen"
 
 # Files under this size on a "successful" download are almost certainly an
@@ -73,7 +83,9 @@ class LibgenProvider(AcquisitionProvider):
     name = "libgen"
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self._client = client or httpx.AsyncClient(timeout=15.0, follow_redirects=True)
+        self._client = client or httpx.AsyncClient(
+            timeout=15.0, follow_redirects=True, headers={"User-Agent": _USER_AGENT}
+        )
         self._rate_lock = asyncio.Lock()
         self._last_request: float = 0.0
 
@@ -136,7 +148,7 @@ class LibgenProvider(AcquisitionProvider):
                 continue
             md5 = md5_match.group(1).lower()
 
-            title = self._cell_text(cells[0])
+            title = self._title_text(cells[0])
             if not title:
                 continue
             fmt = self._cell_text(cells[-2]).lower() or "epub"
@@ -159,6 +171,23 @@ class LibgenProvider(AcquisitionProvider):
     @staticmethod
     def _cell_text(cell: Tag) -> str:
         return re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip()
+
+    @classmethod
+    def _title_text(cls, cell: Tag) -> str:
+        """Title cell text with the view/favorite/read-count badges dropped.
+
+        The real Title cell nests a series link, the edition title, an ISBN
+        list, and — only for this cell — a run of ``<span class="badge...">``
+        counters (e.g. "b l 508418 f 467902 r 103801") that carry no title
+        signal and would otherwise get glued onto the end of every title.
+        Everything else is left in place: noisy, but still book-identifying
+        text, and downstream matching (acquisition_service's fuzzy
+        title_similarity) already tolerates a verbose haystack — same
+        rationale AnnasArchiveProvider uses for its own imperfect titles.
+        """
+        for badge in cell.select('span[class*="badge"]'):
+            badge.decompose()
+        return cls._cell_text(cell)
 
     async def download(self, handle: str) -> Path:
         md5 = handle.lower()
