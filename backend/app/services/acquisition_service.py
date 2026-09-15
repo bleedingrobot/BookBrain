@@ -1153,8 +1153,14 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     for r in rows:
         by_key.setdefault(_owned_key(r.request_title, r.request_author), r)
 
+    # Never-tried targets always go first (in target order); only once none of
+    # those remain do we fall back to a due retry — and among retries, the one
+    # that's waited longest since its last attempt goes first, so a book that
+    # just failed sinks to the back of the queue instead of cutting back in
+    # line ahead of books that haven't been tried at all yet.
     item: dict | None = None
     existing: AcquisitionCandidate | None = None
+    due_retries: list[tuple[datetime, dict, AcquisitionCandidate]] = []
     for t in targets:
         row = by_id.get(t["request_id"]) or by_key.get(_owned_key(t["title"], t["author"]))
         if row is None:
@@ -1164,8 +1170,10 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
             continue
         last = _aware(row.resolved_at) or _aware(row.updated_at)
         if last is None or now - last >= _target_backoff(row):
-            item, existing = t, row
-            break
+            due_retries.append((last or datetime.min.replace(tzinfo=UTC), t, row))
+    if item is None and due_retries:
+        due_retries.sort(key=lambda x: x[0])
+        _, item, existing = due_retries[0]
     if item is None:
         # Everything acquired or cooling down — use the idle tick to clear any
         # downloads still sitting in the inbox.
