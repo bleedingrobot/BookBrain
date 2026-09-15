@@ -76,6 +76,16 @@ segbar() {
 
 hr() { printf '%s' "$DIM"; printf '%.0s-' $(seq 1 "${1:-100}"); printf '%s\n' "$RESET"; }
 
+provider_label() {  # provider_label <raw provider id> -> short display name
+    case "$1" in
+        openbooks) echo "OpenBooks" ;;
+        annas_archive) echo "Anna's Archive" ;;
+        libgen) echo "LibGen" ;;
+        "" | unknown) echo "unknown" ;;
+        *) echo "$1" ;;
+    esac
+}
+
 dur() {
     # dur <seconds> -> "45m" / "3h12m"
     local s=$1
@@ -124,7 +134,7 @@ TICK=0
 Q_UNSEARCHED=0; Q_PENDING=0; Q_APPROVED=0; Q_NOMATCH=0; Q_FAILED=0; Q_TOTAL=0
 HIT_PCT="n/a"
 ORG_24H="?"; ORG_7D="?"
-SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""
+SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""; SOURCE_JSON="[]"
 TAG_ENABLED="?"; TAG_DONE="?"; TAG_PENDING="?"
 TAG_CUR_TITLE=""; TAG_CUR_AUTHOR=""; TAG_CUR_STATUS=""; TAG_CUR_DONE=0; TAG_CUR_TOTAL=0
 TAG_RECENT_JSON="[]"
@@ -255,6 +265,13 @@ while true; do
                 | sort_by(.resolved_at) | reverse | .[:5]' 2>/dev/null)
             [ -z "$GOT_JSON" ] && GOT_JSON="[]"
             LAST_GOT_AT=$(echo "$GOT_JSON" | jq -r '.[0].resolved_at // empty' 2>/dev/null)
+            # Where got books actually came from -- openbooks / annas_archive /
+            # libgen -- counted across every approved request, not just the
+            # last 5, so a rarely-used provider still shows up.
+            SOURCE_JSON=$(echo "$REQ" | jq -c '
+                [.[] | select(.status == "approved") | (.candidate.provider // "unknown")]
+                | group_by(.) | map({provider: .[0], count: length}) | sort_by(-.count)' 2>/dev/null)
+            [ -z "$SOURCE_JSON" ] && SOURCE_JSON="[]"
         fi
         TAGGING=$(curl -s -m 3 "$API/api/library/llm-tagging" 2>/dev/null)
         if [ -n "$TAGGING" ]; then
@@ -367,6 +384,7 @@ while true; do
         --arg last_got_at "$LAST_GOT_AT" \
         --argjson searched_recent "$SEARCHED_JSON" \
         --argjson got_recent "$GOT_JSON" \
+        --argjson sources "$SOURCE_JSON" \
         --argjson recently_organized "$(printf '%s' "$RECENT" | jq -c '.organized // []' 2>/dev/null || echo '[]')" \
         --arg nightly_status "$NIGHTLY_STATUS" \
         --arg nightly_finished_at "$NIGHTLY_FINISHED" \
@@ -396,7 +414,8 @@ while true; do
                 queue: {
                     unsearched: $q_unsearched, pending: $q_pending, approved: $q_approved,
                     no_match: $q_nomatch, failed: $q_failed, total: $q_total, hit_pct: $hit_pct,
-                    last_got_at: $last_got_at, searched_recent: $searched_recent, got_recent: $got_recent
+                    last_got_at: $last_got_at, searched_recent: $searched_recent, got_recent: $got_recent,
+                    sources: $sources
                 },
                 recently_organized: $recently_organized,
                 nightly: {status: $nightly_status, finished_at: $nightly_finished_at, summary: $nightly_summary}
@@ -448,7 +467,7 @@ while true; do
         done
     fi
     echo
-    echo "  ${BOLD}Acquisition queue${RESET} (OpenBooks) -- refreshed every ${SLOW_EVERY}x${FAST_REFRESH}s"
+    echo "  ${BOLD}Acquisition queue${RESET} -- refreshed every ${SLOW_EVERY}x${FAST_REFRESH}s"
     printf "  %s  total %s\n" "$(segbar "$Q_APPROVED" "$Q_PENDING" "$Q_UNSEARCHED" "$Q_NOMATCH" 60)" "$Q_TOTAL"
     printf "  %s# got %-6s%s %s+ queued %-6s%s %s- not searched %-6s%s %s. no match %-6s%s   %sfailed: %-4s%s   hit rate: %s\n" \
         "$GREEN" "$Q_APPROVED" "$RESET" "$YELLOW" "$Q_PENDING" "$RESET" "$DIM" "$Q_UNSEARCHED" "$RESET" \
@@ -457,6 +476,17 @@ while true; do
         echo "  Last book downloaded via auto-get: $(ago "$LAST_GOT_AT")"
     else
         echo "  Last book downloaded via auto-get: n/a"
+    fi
+    if [ "$(echo "$SOURCE_JSON" | jq 'length' 2>/dev/null)" != "0" ]; then
+        src_total=$(echo "$SOURCE_JSON" | jq '[.[].count] | add' 2>/dev/null)
+        printf "  Sources (all-time gets): "
+        echo "$SOURCE_JSON" | jq -r '.[] | [.provider, .count] | @tsv' 2>/dev/null |
+        while IFS=$'\t' read -r provider count; do
+            pct=0
+            (( src_total > 0 )) && pct=$(( 100 * count / src_total ))
+            printf "%s%s %s (%s%%)%s  " "$CYAN" "$(provider_label "$provider")" "$count" "$pct" "$RESET"
+        done
+        printf "\n"
     fi
     echo
     echo "  ${BOLD}Last 5 searched${RESET}"
@@ -473,9 +503,9 @@ while true; do
     echo "  ${BOLD}Last 5 got${RESET}"
     hr
     if [ "$(echo "$GOT_JSON" | jq 'length' 2>/dev/null)" != "0" ]; then
-        echo "$GOT_JSON" | jq -r '.[] | [.resolved_at, .title, (.author // ""), (.candidate.server // "")] | @tsv' 2>/dev/null |
-        while IFS=$'\t' read -r ts title author server; do
-            printf "  %-8s %s%-42s%s %-22s %s\n" "$(ago "$ts")" "$GREEN" "${title:0:42}" "$RESET" "${author:0:22}" "$server"
+        echo "$GOT_JSON" | jq -r '.[] | [.resolved_at, .title, (.author // ""), (.candidate.server // ""), (.candidate.provider // "unknown")] | @tsv' 2>/dev/null |
+        while IFS=$'\t' read -r ts title author server provider; do
+            printf "  %-8s %s%-42s%s %-22s %-14s %s%s%s\n" "$(ago "$ts")" "$GREEN" "${title:0:42}" "$RESET" "${author:0:22}" "$server" "$DIM" "$(provider_label "$provider")" "$RESET"
         done
     else
         echo "  nothing downloaded yet"

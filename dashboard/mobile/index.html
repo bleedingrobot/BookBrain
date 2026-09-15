@@ -205,7 +205,7 @@
 </div>
 
 <div class="card">
-  <h2>Acquisition queue (OpenBooks)</h2>
+  <h2>Acquisition queue</h2>
   <div class="queue-bar" id="queue-bar"></div>
   <div class="legend">
     <span><i class="swatch" style="background:var(--green)"></i><b id="q-approved">--</b> got</span>
@@ -216,6 +216,12 @@
   <div class="row"><span class="label">Failed</span><span class="value" id="q-failed">--</span></div>
   <div class="row"><span class="label">Hit rate</span><span class="value" id="q-hitrate">--</span></div>
   <div class="row"><span class="label">Last downloaded</span><span class="value" id="q-lastgot">--</span></div>
+</div>
+
+<div class="card">
+  <h2>Sources</h2>
+  <div class="queue-bar" id="sources-bar"></div>
+  <ul class="list" id="sources-list"><li class="empty">loading&hellip;</li></ul>
 </div>
 
 <div class="card">
@@ -246,6 +252,11 @@ function pillClass(status) {
   if (['pending', 'no_match', 'degraded', 'n/a', 'off'].includes(s)) return 'pill-yellow';
   return 'pill-dim';
 }
+
+const PROVIDER_LABELS = { openbooks: 'OpenBooks', annas_archive: "Anna's Archive", libgen: 'LibGen' };
+const PROVIDER_COLORS = { openbooks: 'var(--cyan)', annas_archive: 'var(--green)', libgen: 'var(--yellow)' };
+function providerLabel(p) { return PROVIDER_LABELS[p] || p || 'unknown'; }
+function providerColor(p) { return PROVIDER_COLORS[p] || 'var(--dim)'; }
 
 function gaugeClass(pct) {
   if (pct >= 85) return 'g-red';
@@ -377,8 +388,24 @@ async function refresh() {
   $('q-hitrate').textContent = q.hit_pct || 'n/a';
   $('q-lastgot').textContent = q.last_got_at ? ago(q.last_got_at) : 'n/a';
 
+  const sourcesTotal = (q.sources || []).reduce((sum, s) => sum + s.count, 0);
+  const sourcesBar = $('sources-bar');
+  sourcesBar.innerHTML = '';
+  for (const s of (q.sources || [])) {
+    const span = document.createElement('span');
+    span.style.width = (sourcesTotal ? (100 * s.count / sourcesTotal) : 0) + '%';
+    span.style.background = providerColor(s.provider);
+    sourcesBar.appendChild(span);
+  }
+  renderList('sources-list', q.sources, 'no downloads yet', s => {
+    const pct = sourcesTotal ? Math.round(100 * s.count / sourcesTotal) : 0;
+    const el = document.createElement('li');
+    el.innerHTML = `<div class="title"><span class="t"><i class="swatch" style="background:${providerColor(s.provider)}"></i>${esc(providerLabel(s.provider))}</span></div><div class="meta">${s.count} (${pct}%)</div>`;
+    return el;
+  });
+
   renderList('got-list', q.got_recent, 'nothing downloaded yet', it =>
-    li(esc(it.title), esc(it.author), ago(it.resolved_at)));
+    li(esc(it.title), esc(it.author), `${providerLabel(it.candidate && it.candidate.provider)} &middot; ${ago(it.resolved_at)}`));
 
   renderList('organized-list', bb.recently_organized, 'nothing organized in the last 24h', it => {
     const series = it.series ? ` (${it.series}${it.series_number != null ? ' #' + Math.trunc(it.series_number) : ''})` : '';
