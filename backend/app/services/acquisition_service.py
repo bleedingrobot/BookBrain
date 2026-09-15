@@ -410,43 +410,51 @@ async def gather_acquisition_targets(provider: DriveProvider, library_folder_id:
     return targets
 
 
+async def _safe_search(
+    p: AcquisitionProvider, query: str, dead: set[str]
+) -> list[AcquisitionResult]:
+    """Search one provider, retrying once after its own rate-limit cooldown.
+    `AcquisitionUnavailable` adds the provider's name to `dead` (mutated in
+    place — shared across concurrent callers, safe because every read/write
+    of it happens with no `await` in between) and returns []; any other
+    `AcquisitionError` is logged and also returns []. Never raises."""
+    try:
+        return await p.search(query)
+    except AcquisitionRateLimited as exc:
+        await asyncio.sleep(exc.wait_seconds + 1)
+        try:
+            return await p.search(query)
+        except AcquisitionUnavailable:
+            dead.add(p.name)
+            return []
+        except AcquisitionError:
+            return []
+    except AcquisitionUnavailable:
+        dead.add(p.name)
+        return []
+    except AcquisitionError as exc:
+        logger.warning("acquire: %s search failed for %r: %s", p.name, query, exc)
+        return []
+
+
 async def _search_all_providers(
     providers: list[AcquisitionProvider], item: dict
 ) -> tuple[list[AcquisitionResult], set[str]]:
     """Fan out one query to every enabled provider concurrently (mirrors
     CandidateService._query_all's asyncio.gather fan-out for metadata
     providers) — but unlike a metadata provider, an acquisition provider IS
-    allowed to raise (OpenBooks needs 429/503 distinguished), so each call is
-    individually try/excepted rather than using return_exceptions=True.
+    allowed to raise (OpenBooks needs 429/503 distinguished), so each call
+    goes through _safe_search rather than asyncio.gather's
+    return_exceptions=True.
 
     Returns (merged results, names of providers that raised
-    AcquisitionUnavailable this call) — a caller running a batch of these
-    (refresh_candidates) uses the second part to stop bothering a dead
-    provider for the rest of the run, without letting it take down providers
-    that are still healthy."""
+    AcquisitionUnavailable this call) — used by autoget_tick, which searches
+    one book per tick against every provider at once (there's no "different
+    book instead" option within a single tick, unlike refresh_candidates'
+    per-provider workers below)."""
     query = _request_query(item)
     dead: set[str] = set()
-
-    async def _one(p: AcquisitionProvider) -> list[AcquisitionResult]:
-        try:
-            return await p.search(query)
-        except AcquisitionRateLimited as exc:
-            await asyncio.sleep(exc.wait_seconds + 1)
-            try:
-                return await p.search(query)
-            except AcquisitionUnavailable:
-                dead.add(p.name)
-                return []
-            except AcquisitionError:
-                return []
-        except AcquisitionUnavailable:
-            dead.add(p.name)
-            return []
-        except AcquisitionError as exc:
-            logger.warning("acquire: %s search failed for %r: %s", p.name, query, exc)
-            return []
-
-    results_per_provider = await asyncio.gather(*(_one(p) for p in providers))
+    results_per_provider = await asyncio.gather(*(_safe_search(p, query, dead) for p in providers))
     return [r for rs in results_per_provider for r in rs], dead
 
 
@@ -558,31 +566,65 @@ async def refresh_candidates(
         job.total = len(todo)
 
     providers = default_acquisition_providers()
-    dead_providers: set[str] = set()
 
-    searched = with_candidates = 0
-    for idx, item in enumerate(todo):
-        if idx > 0:
-            await asyncio.sleep(_SEARCH_SPACING_SECONDS)
-        live_providers = [p for p in providers if p.name not in dead_providers]
-        if not live_providers:
-            logger.warning("acquire: every acquisition provider is unavailable, stopping refresh early")
+    # Each provider gets its own worker walking the whole `todo` list
+    # independently and in parallel, instead of every provider searching the
+    # same book together before anyone moves to the next one — so a fast,
+    # self-throttling scraper (Libgen/Anna's Archive) races ahead and claims
+    # the easy books while a slower source (OpenBooks, paced by its own
+    # >=10s-between-searches server-side limit) spends its scarce search
+    # budget on books nobody's found yet, instead of redundantly re-checking
+    # ones that are already resolved. `resolved`/`searched_ids`/
+    # `with_candidates`/`dead` are shared across workers with no lock: every
+    # read-then-write of them happens with no `await` in between, and
+    # asyncio's single-threaded cooperative scheduling makes that atomic
+    # already — don't "fix" that into a lock later.
+    resolved: set[str] = set()
+    searched_ids: set[str] = set()
+    dead: set[str] = set()
+    with_candidates = 0
+    db_lock = asyncio.Lock()  # serializes writes only; searches stay parallel
+
+    async def _worker(p: AcquisitionProvider) -> None:
+        nonlocal with_candidates
+        first = True
+        for item in todo:
+            if item["request_id"] in resolved:
+                continue
+            if p.name == "openbooks" and not first:
+                await asyncio.sleep(_SEARCH_SPACING_SECONDS)
+            first = False
+
+            results = await _safe_search(p, _request_query(item), dead)
+            ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
+            async with db_lock, async_session_factory() as session:
+                # preserve_existing=True: another provider's worker may have
+                # already written a real hit for this item moments ago (both
+                # can pass the `resolved` check above before either finishes
+                # searching) — an empty result here must never stomp that.
+                hit = await _upsert(session, item, ranked, preserve_existing=True)
+                await session.commit()
+
+            searched_ids.add(item["request_id"])
+            if hit:
+                resolved.add(item["request_id"])
+                with_candidates += 1
             if job is not None:
-                job.detail = "every acquisition provider is unavailable"
-            break
-        results, newly_dead = await _search_all_providers(live_providers, item)
-        dead_providers |= newly_dead
-        searched += 1
-        ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
-        async with async_session_factory() as session:
-            hit = await _upsert(session, item, ranked)
-            await session.commit()
-        if hit:
-            with_candidates += 1
-        if job is not None:
-            job.searched = searched
-            job.with_candidates = with_candidates
+                job.searched = len(searched_ids)
+                job.with_candidates = with_candidates
 
+            if p.name in dead:
+                return  # this item's own upsert still happened; no more for this worker
+
+    if todo:
+        await asyncio.gather(*(_worker(p) for p in providers))
+
+    if providers and dead.issuperset(p.name for p in providers):
+        logger.warning("acquire: every acquisition provider is unavailable, stopping refresh early")
+        if job is not None:
+            job.detail = "every acquisition provider is unavailable"
+
+    searched = len(searched_ids)
     left = max(0, outstanding - searched)
     result = {
         "targets": len(targets),

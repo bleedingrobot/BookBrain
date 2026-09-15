@@ -1,5 +1,6 @@
 import asyncio
 import datetime as _dt
+import time
 
 import pytest
 from sqlalchemy import select
@@ -245,6 +246,159 @@ async def test_refresh_aborts_early_once_every_provider_is_dead(db_session, monk
     # The first item's search proves it's dead; the second is never attempted.
     assert only_provider.calls == 1
     assert result["searched"] == 1
+
+
+# --- per-provider workers: different books, not the same one -----------
+
+
+class _QueryAwareProvider:
+    """AcquisitionProvider stub whose search() result depends on the query
+    (matched by a substring of the title), for tests where different
+    providers need to find different books. `forbidden` titles make the stub
+    fail loudly if it's ever asked to search them — used to prove a slower
+    provider skips a book a faster one already resolved. `delay` models a
+    provider that's genuinely slower (like OpenBooks vs. a plain-HTTP
+    scraper) so tests don't depend on incidental asyncio scheduling order."""
+
+    def __init__(self, name, hits, *, forbidden=frozenset(), delay: float = 0.0):
+        self.name = name
+        self._hits = hits
+        self._forbidden = forbidden
+        self._delay = delay
+        self.calls: list[str] = []
+
+    def is_enabled(self):
+        return True
+
+    async def search(self, query):
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        self.calls.append(query)
+        for marker in self._forbidden:
+            assert marker not in query, f"{self.name} should never have searched {query!r}"
+        for marker, results in self._hits.items():
+            if marker in query:
+                return results
+        return []
+
+    async def download(self, handle):  # pragma: no cover - unused in these tests
+        raise NotImplementedError
+
+
+async def test_refresh_skips_a_book_another_provider_already_resolved(db_session, monkeypatch):
+    items = [
+        {"id": "r1", "title": "Book One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Book Two", "author": "B", "status": "wanted"},
+        {"id": "r3", "title": "Book Three", "author": "C", "status": "wanted"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    fast = _QueryAwareProvider(
+        "fast",
+        hits={
+            "Book One": [_book("Book One", "A", full="fast-1")],
+            "Book Two": [_book("Book Two", "B", full="fast-2")],
+        },
+    )
+    # slow's very first check (Book One) races fast's very first item before
+    # either has written anything — both workers start from an empty
+    # `resolved` set, so slow may or may not also touch Book One; that
+    # single-item race is an accepted, harmless edge case (preserve_existing
+    # protects the DB either way — see acquisition_service.py's
+    # refresh_candidates). By Book Two, fast has had a full 50ms head start
+    # (its own two DB writes complete well within that), so slow must find
+    # it already resolved and skip it — that's the real guarantee this test
+    # is for. Book Three, which fast misses, must still reach slow.
+    slow = _QueryAwareProvider(
+        "slow",
+        hits={"Book Three": [_book("Book Three", "C", full="slow-3")]},
+        forbidden={"Book Two"},
+        delay=0.05,
+    )
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [fast, slow])
+
+    job = svc.RefreshJob(job_id="test")
+    result = await svc.refresh_candidates(object(), "libfolder", job=job)
+
+    assert result["withCandidates"] == 3
+    assert job.total == 3
+    assert job.searched == 3
+    assert job.with_candidates == 3
+
+    rows = {
+        r.request_id: r.candidate_full
+        for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()
+    }
+    assert rows == {"r1": "fast-1", "r2": "fast-2", "r3": "slow-3"}
+    assert "Book Two B" not in slow.calls  # the real guarantee: skipped once resolved
+    assert "Book Three C" in slow.calls  # still tried: fast never found this one
+
+
+async def test_refresh_spaces_out_openbooks_consecutive_searches(db_session, monkeypatch):
+    monkeypatch.setattr(svc, "_SEARCH_SPACING_SECONDS", 0.05)
+    items = [
+        {"id": "r1", "title": "Book One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Book Two", "author": "B", "status": "wanted"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+    provider = _QueryAwareProvider("openbooks", hits={})
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [provider])
+
+    start = time.monotonic()
+    await svc.refresh_candidates(object(), "libfolder")
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.05  # spaced between openbooks' own 2 consecutive searches
+
+
+async def test_refresh_does_not_space_out_a_non_openbooks_providers_searches(db_session, monkeypatch):
+    # Deliberately large: if this spacing were wrongly applied to a
+    # self-throttling scraper too, the run would take at least this long.
+    monkeypatch.setattr(svc, "_SEARCH_SPACING_SECONDS", 0.5)
+    items = [
+        {"id": "r1", "title": "Book One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Book Two", "author": "B", "status": "wanted"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+    provider = _QueryAwareProvider("libgen", hits={})
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [provider])
+
+    start = time.monotonic()
+    await svc.refresh_candidates(object(), "libfolder")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.5
+
+
+async def test_refresh_dead_provider_stops_only_its_own_worker(db_session, monkeypatch):
+    from app.providers.acquisition.exceptions import AcquisitionUnavailable
+
+    items = [
+        {"id": "r1", "title": "Book One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Book Two", "author": "B", "status": "wanted"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    dead = _StaticProvider("dead_source", raises=AcquisitionUnavailable("down"))
+    healthy = _QueryAwareProvider(
+        "healthy_source",
+        hits={
+            "Book One": [_book("Book One", "A", full="h-1")],
+            "Book Two": [_book("Book Two", "B", full="h-2")],
+        },
+    )
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [dead, healthy])
+
+    result = await svc.refresh_candidates(object(), "libfolder")
+
+    assert dead.calls == 1  # its own worker stopped after the first item
+    assert result["withCandidates"] == 2  # the healthy provider still got through both books
+
+    rows = {
+        r.request_id: r.candidate_full
+        for r in (await db_session.execute(select(AcquisitionCandidate))).scalars()
+    }
+    assert rows == {"r1": "h-1", "r2": "h-2"}
 
 
 # --- approve / skip / reset -------------------------------------------
