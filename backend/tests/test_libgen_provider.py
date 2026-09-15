@@ -34,14 +34,14 @@ SEARCH_HTML = f"""
 <td>2006</td>
 <td>English</td>
 <td>544</td>
-<td><a href="/file.php?id=1">3&nbsp;MB</a></td>
+<td><a href="/file.php?id=1">300&nbsp;kB</a></td>
 <td>epub</td>
 <td><a href="/ads.php?md5={MD5_FULL}">1</a></td>
 </tr>
 <tr>
 <td><a href="edition.php?id=1">The Final Empire</a></td>
 <td>544</td>
-<td>2&nbsp;MB</td>
+<td>500&nbsp;kB</td>
 <td>epub</td>
 <td><a href="/ads.php?md5={MD5_COMPACT}">Libgen</a></td>
 </tr>
@@ -99,15 +99,56 @@ async def test_search_parses_full_and_compact_rows() -> None:
     assert full.title == "The Final Empire"
     assert full.author == "Brandon Sanderson(Author)"
     assert full.format == "epub"
-    assert full.size == "3 MB"
+    assert full.size == "300 kB"
     assert full.provider == "libgen"
     assert full.server is None
 
     compact = results[1]
     assert compact.title == "The Final Empire"
     assert compact.format == "epub"
-    assert compact.size == "2 MB"
+    assert compact.size == "500 kB"
     assert compact.author == ""
+
+
+@respx.mock
+async def test_search_drops_rows_over_the_1mib_download_cap() -> None:
+    md5_oversized = "1" * 32
+    html = f"""
+    <table id="tablelibgen"><thead><tr><th>header</th></tr></thead><tbody>
+    <tr>
+    <td><a href="edition.php?id=1">Too Big To Actually Download</a></td>
+    <td>999</td>
+    <td>9&nbsp;MB</td>
+    <td>epub</td>
+    <td><a href="/ads.php?md5={md5_oversized}">Libgen</a></td>
+    </tr>
+    <tr>
+    <td><a href="edition.php?id=1">Just Under The Cap</a></td>
+    <td>999</td>
+    <td>1000&nbsp;kB</td>
+    <td>epub</td>
+    <td><a href="/ads.php?md5={MD5_COMPACT}">Libgen</a></td>
+    </tr>
+    <tr>
+    <td><a href="edition.php?id=1">Unparseable Size Kept</a></td>
+    <td>999</td>
+    <td>N/A</td>
+    <td>epub</td>
+    <td><a href="/ads.php?md5={MD5_FULL}">Libgen</a></td>
+    </tr>
+    </tbody></table>
+    """
+    respx.get(f"{MIRROR_A}/index.php").mock(return_value=httpx.Response(200, text=html))
+
+    async with httpx.AsyncClient() as client:
+        provider = LibgenProvider(client=client)
+        results = await provider.search("anything")
+
+    # The 9 MB row is dropped (over the 1 MiB download cap, so OpenBooks gets
+    # a shot at it instead) while the under-cap and unparseable-size rows
+    # both survive — an unparseable size fails open rather than getting lost.
+    assert md5_oversized not in {r.full for r in results}
+    assert {r.full for r in results} == {MD5_COMPACT, MD5_FULL}
 
 
 @respx.mock

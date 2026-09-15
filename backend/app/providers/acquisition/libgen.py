@@ -58,6 +58,15 @@ _RESULTS_TABLE_ID = "tablelibgen"
 # error/interstitial page rather than a book — same threshold Shelfmark uses.
 _MIN_VALID_FILE_SIZE = 10 * 1024
 
+# Confirmed live 2026-09-16: the get.php CDN behind these mirrors throttles
+# anonymous downloads to ~20-25 KB/s and resets the connection around 1 MiB,
+# so anything bigger reliably fails or truncates. Rather than let a hit here
+# eat OpenBooks' turn and then fail anyway, oversized rows are dropped from
+# search results — OpenBooks (no such ceiling) picks the book up instead.
+_MAX_DOWNLOADABLE_BYTES = 1024 * 1024
+
+_SIZE_UNITS = {"b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3}
+
 # Patterns for the keyed GET link on an ads.php page. Ported from Shelfmark's
 # proven pattern list (release_sources/libgen/scraper.py) — the "GET" button
 # markup varies slightly across mirror flavors, so several patterns are
@@ -161,6 +170,9 @@ class LibgenProvider(AcquisitionProvider):
             if not title:
                 continue
             size = self._cell_text(cells[-3])
+            size_bytes = self._parse_size_bytes(size)
+            if size_bytes is not None and size_bytes > _MAX_DOWNLOADABLE_BYTES:
+                continue
             author = self._cell_text(cells[1]) if len(cells) >= 9 else ""
 
             results.append(
@@ -179,6 +191,19 @@ class LibgenProvider(AcquisitionProvider):
     @staticmethod
     def _cell_text(cell: Tag) -> str:
         return re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip()
+
+    @staticmethod
+    def _parse_size_bytes(size_text: str) -> float | None:
+        """None on anything unrecognized — a size we can't parse is kept
+        rather than dropped, since the point is filtering out known-bad
+        oversized rows, not second-guessing every format quirk."""
+        match = re.match(r"^([\d.,]+)\s*([kmg]?b)$", size_text.strip(), re.IGNORECASE)
+        if not match:
+            return None
+        try:
+            return float(match.group(1).replace(",", "")) * _SIZE_UNITS[match.group(2).lower()]
+        except (ValueError, KeyError):
+            return None
 
     @classmethod
     def _title_text(cls, cell: Tag) -> str:
