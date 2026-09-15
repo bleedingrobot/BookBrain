@@ -148,10 +148,18 @@ class LibgenProvider(AcquisitionProvider):
                 continue
             md5 = md5_match.group(1).lower()
 
+            fmt = self._cell_text(cells[-2]).lower() or "epub"
+            if fmt != "epub":
+                # EPUB only, by design — same rule acquisition_service.py
+                # enforces for candidate matching, and what AnnasArchiveProvider
+                # gets for free via its search's own ext=epub query param.
+                # Libgen's search has no server-side format filter, so unlike
+                # Anna's Archive this is applied client-side after parsing.
+                continue
+
             title = self._title_text(cells[0])
             if not title:
                 continue
-            fmt = self._cell_text(cells[-2]).lower() or "epub"
             size = self._cell_text(cells[-3])
             author = self._cell_text(cells[1]) if len(cells) >= 9 else ""
 

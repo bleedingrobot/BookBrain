@@ -11,13 +11,18 @@ MIRROR_B = "https://libgen.vg"
 
 MD5_FULL = "ac1017fff36d3cb3187e7ac2f292f94e"
 MD5_COMPACT = "8bf185829be54de61f4d48cce50ca872"
+MD5_NON_EPUB = "5ec12251557d60bf9f9c21aeb952eca4"
 DECOY_MD5 = "deadbeefdeadbeefdeadbeefdeadbeef"
 
-# A full (9-cell) row and a compact (5-cell) row, modeled on real libgen.li
-# search-result markup — including a decoy md5-shaped string in the Title
-# cell (e.g. a cover-image URL) the parser must not pick up, and the
-# view/favorite/read-count badge spans real rows carry (live-confirmed
-# 2026-09-16 to otherwise leak into the title as e.g. "b l 508418 f 467902").
+# A full (9-cell) epub row, a compact (5-cell) epub row, and a full non-epub
+# (pdf) row, modeled on real libgen.li search-result markup — including a
+# decoy md5-shaped string in the Title cell (e.g. a cover-image URL) the
+# parser must not pick up, and the view/favorite/read-count badge spans real
+# rows carry (live-confirmed 2026-09-16 to otherwise leak into the title as
+# e.g. "b l 508418 f 467902"). James only wants epubs (matches
+# acquisition_service.py's own "EPUB only, by design" rule and how
+# AnnasArchiveProvider filters its search to ext=epub), so the pdf row here
+# exists to prove non-epub formats get dropped.
 SEARCH_HTML = f"""
 <table id="tablelibgen"><thead><tr><th>header</th></tr></thead><tbody>
 <tr>
@@ -30,15 +35,26 @@ SEARCH_HTML = f"""
 <td>English</td>
 <td>544</td>
 <td><a href="/file.php?id=1">3&nbsp;MB</a></td>
-<td>pdf</td>
+<td>epub</td>
 <td><a href="/ads.php?md5={MD5_FULL}">1</a></td>
 </tr>
 <tr>
 <td><a href="edition.php?id=1">The Final Empire</a></td>
 <td>544</td>
 <td>2&nbsp;MB</td>
-<td>fb2</td>
+<td>epub</td>
 <td><a href="/ads.php?md5={MD5_COMPACT}">Libgen</a></td>
+</tr>
+<tr>
+<td><a href="edition.php?id=1">The Final Empire</a></td>
+<td><a href="author.php?id=1">Brandon Sanderson(Author)</a></td>
+<td>Publisher</td>
+<td>2006</td>
+<td>English</td>
+<td>544</td>
+<td><a href="/file.php?id=1">5&nbsp;MB</a></td>
+<td>pdf</td>
+<td><a href="/ads.php?md5={MD5_NON_EPUB}">1</a></td>
 </tr>
 </tbody></table>
 """
@@ -76,21 +92,34 @@ async def test_search_parses_full_and_compact_rows() -> None:
         provider = LibgenProvider(client=client)
         results = await provider.search("the final empire")
 
+    # The pdf row (MD5_NON_EPUB) is dropped — James only wants epubs.
     assert [r.full for r in results] == [MD5_FULL, MD5_COMPACT]
 
     full = results[0]
     assert full.title == "The Final Empire"
     assert full.author == "Brandon Sanderson(Author)"
-    assert full.format == "pdf"
+    assert full.format == "epub"
     assert full.size == "3 MB"
     assert full.provider == "libgen"
     assert full.server is None
 
     compact = results[1]
     assert compact.title == "The Final Empire"
-    assert compact.format == "fb2"
+    assert compact.format == "epub"
     assert compact.size == "2 MB"
     assert compact.author == ""
+
+
+@respx.mock
+async def test_search_drops_non_epub_formats() -> None:
+    respx.get(f"{MIRROR_A}/index.php").mock(return_value=httpx.Response(200, text=SEARCH_HTML))
+
+    async with httpx.AsyncClient() as client:
+        provider = LibgenProvider(client=client)
+        results = await provider.search("anything")
+
+    assert MD5_NON_EPUB not in {r.full for r in results}
+    assert all(r.format == "epub" for r in results)
 
 
 @respx.mock
