@@ -7,6 +7,9 @@ export TERM=${TERM:-linux}
 FAST_REFRESH=30
 SLOW_EVERY=2    # 2 * 30s = 60s
 API="http://localhost:8000"
+STATUS_DIR="/opt/bookbrain/dashboard/mobile"
+STATUS_FILE="$STATUS_DIR/status.json"
+mkdir -p "$STATUS_DIR"
 
 # ANSI colors -- tty1's default Linux console font handles the basic 16 fine.
 RESET=$'\033[0m'
@@ -305,6 +308,100 @@ while true; do
         fi
     fi
     TICK=$(( TICK + 1 ))
+
+    # --- Write a JSON snapshot for the mobile web dashboard (ttyd only
+    # mirrors this tty, it can't reflow the fixed-width layout for a phone
+    # screen -- the mobile page polls this file instead). Written atomically
+    # so the web server never serves a half-written file.
+    jq -n \
+        --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg host "$(hostname)" \
+        --arg now "$NOW" \
+        --arg uptime "$UPTIME" \
+        --arg load "$LOAD" \
+        --argjson nproc "$NPROC" \
+        --arg lan_ip "${LAN_IP:-n/a}" \
+        --arg ts_ip "${TS_IP:-n/a}" \
+        --argjson cpu_pct "$CPU_PCT" \
+        --argjson mem_pct "$MEM_PCT" \
+        --arg mem_used_gb "$MEM_USED_GB" \
+        --arg mem_total_gb "$MEM_TOTAL_GB" \
+        --argjson disk_pct "$DISK_PCT_NUM" \
+        --arg disk_used "$DISK_USED" \
+        --arg disk_size "$DISK_SIZE" \
+        --arg ssh_line "$SSH_LINE" \
+        --argjson vscode_windows "${VSCODE_WINDOWS:-0}" \
+        --argjson claude_count "${CLAUDE_COUNT:-0}" \
+        --arg claude_durs "$CLAUDE_DURS" \
+        --arg activity_line "$ACTIVITY_LINE" \
+        --arg bb_state "$BB_STATE" \
+        --arg api_health "${HEALTH_OK:-unreachable}" \
+        --arg book_count "$BOOK_COUNT" \
+        --arg review_n "$REVIEW_N" \
+        --arg inbox_n "$INBOX_N" \
+        --arg dup_n "$DUP_N" \
+        --arg localscan_n "$LOCALSCAN_N" \
+        --arg org_24h "$ORG_24H" \
+        --arg org_7d "$ORG_7D" \
+        --arg spark_line "$SPARK_LINE" \
+        --arg tag_enabled "$TAG_ENABLED" \
+        --arg tag_done "$TAG_DONE" \
+        --arg tag_pending "$TAG_PENDING" \
+        --arg tag_cur_title "$TAG_CUR_TITLE" \
+        --arg tag_cur_author "$TAG_CUR_AUTHOR" \
+        --arg tag_cur_status "$TAG_CUR_STATUS" \
+        --argjson tag_cur_done "${TAG_CUR_DONE:-0}" \
+        --argjson tag_cur_total "${TAG_CUR_TOTAL:-0}" \
+        --argjson tag_recent "$TAG_RECENT_JSON" \
+        --arg tag_err_title "$TAG_ERR_TITLE" \
+        --arg tag_err_author "$TAG_ERR_AUTHOR" \
+        --arg tag_err_msg "$TAG_ERR_MSG" \
+        --arg tag_err_at "$TAG_ERR_AT" \
+        --argjson q_unsearched "$Q_UNSEARCHED" \
+        --argjson q_pending "$Q_PENDING" \
+        --argjson q_approved "$Q_APPROVED" \
+        --argjson q_nomatch "$Q_NOMATCH" \
+        --argjson q_failed "$Q_FAILED" \
+        --argjson q_total "$Q_TOTAL" \
+        --arg hit_pct "$HIT_PCT" \
+        --arg last_got_at "$LAST_GOT_AT" \
+        --argjson searched_recent "$SEARCHED_JSON" \
+        --argjson got_recent "$GOT_JSON" \
+        --argjson recently_organized "$(printf '%s' "$RECENT" | jq -c '.organized // []' 2>/dev/null || echo '[]')" \
+        --arg nightly_status "$NIGHTLY_STATUS" \
+        --arg nightly_finished_at "$NIGHTLY_FINISHED" \
+        --arg nightly_summary "$NIGHTLY_SUMMARY" \
+        '{
+            generated_at: $generated_at, host: $host, now: $now, uptime: $uptime,
+            load: $load, nproc: $nproc, lan_ip: $lan_ip, ts_ip: $ts_ip,
+            cpu_pct: $cpu_pct, mem_pct: $mem_pct, mem_used_gb: $mem_used_gb, mem_total_gb: $mem_total_gb,
+            disk_pct: $disk_pct, disk_used: $disk_used, disk_size: $disk_size,
+            ssh_line: $ssh_line, vscode_windows: $vscode_windows,
+            claude_count: $claude_count, claude_durs: $claude_durs, activity_line: $activity_line,
+            bookbrain: {
+                service_state: $bb_state, api_health: $api_health, book_count: $book_count,
+                reviews: $review_n, inbox: $inbox_n, duplicates: $dup_n, local_scan: $localscan_n,
+                organized_24h: $org_24h, organized_7d: $org_7d, spark_line: $spark_line,
+                tagging: {
+                    enabled: $tag_enabled, done: $tag_done, pending: $tag_pending,
+                    current: (if $tag_cur_title != "" then
+                        {title: $tag_cur_title, author: $tag_cur_author, status: $tag_cur_status,
+                         chunks_done: $tag_cur_done, chunks_total: $tag_cur_total}
+                        else null end),
+                    recent: $tag_recent,
+                    last_error: (if $tag_err_msg != "" then
+                        {title: $tag_err_title, author: $tag_err_author, message: $tag_err_msg, at: $tag_err_at}
+                        else null end)
+                },
+                queue: {
+                    unsearched: $q_unsearched, pending: $q_pending, approved: $q_approved,
+                    no_match: $q_nomatch, failed: $q_failed, total: $q_total, hit_pct: $hit_pct,
+                    last_got_at: $last_got_at, searched_recent: $searched_recent, got_recent: $got_recent
+                },
+                recently_organized: $recently_organized,
+                nightly: {status: $nightly_status, finished_at: $nightly_finished_at, summary: $nightly_summary}
+            }
+        }' > "$STATUS_FILE.tmp" 2>/dev/null && mv "$STATUS_FILE.tmp" "$STATUS_FILE"
 
     clear
     echo "  ${BOLD}${CYAN}$(hostname)${RESET}  --  server dashboard  --  $NOW"

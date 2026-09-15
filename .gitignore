@@ -30,6 +30,9 @@ backend/*.db.before-restore
 node_modules/
 dist/
 
+# Dashboard runtime
+dashboard/mobile/status.json
+
 # Editors / OS
 .vscode/
 .DS_Store
