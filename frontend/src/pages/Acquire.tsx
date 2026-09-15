@@ -8,8 +8,14 @@ type RowState = { status: 'idle' | 'working' | 'done' | 'error'; message?: strin
 
 const PREFERRED_FORMATS = ['epub', 'kepub', 'mobi', 'azw3', 'cbz', 'cbr']
 
+// Source is only worth showing once there's more than one to distinguish —
+// OpenBooks stays implicit, matching today's single-source behaviour.
+function providerLabel(provider: string): string | null {
+  return provider === 'openbooks' ? null : provider.replace(/_/g, ' ')
+}
+
 function candidateLine(c: RequestCandidate): string {
-  return [c.title || c.full, c.size, c.server].filter(Boolean).join(' · ')
+  return [c.title || c.full, c.size, c.server, providerLabel(c.provider)].filter(Boolean).join(' · ')
 }
 
 function RequestRow({ req }: { req: OpenRequest }) {
@@ -347,7 +353,7 @@ export function Acquire() {
       const ext = book.format ? `.${book.format.toLowerCase()}` : ''
       const base = `${book.author} - ${book.title}`.replace(/\s+/g, ' ').trim()
       const filename = base.toLowerCase().endsWith(ext) ? base : `${base}${ext}`
-      return api.acquireDownload(book.full, filename)
+      return api.acquireDownload(book.full, filename, book.provider)
     },
     onMutate: (book) => setRow(book.full, { status: 'working' }),
     onSuccess: (res, book) =>
@@ -401,14 +407,18 @@ export function Acquire() {
       <div className="mx-auto max-w-2xl p-6">
         <h1 className="text-xl font-semibold">Find a Book</h1>
         <p className="mt-3 text-sm text-neutral-500">
-          The OpenBooks integration is turned off. To try it, set{' '}
+          No acquisition source is turned on. To try OpenBooks, set{' '}
           <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">OPENBOOKS_ENABLED=true</code>{' '}
           in <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">backend/.env</code> and
-          restart the backend — then a Start button here launches the OpenBooks server for you.
+          restart the backend — then a Start button here launches the OpenBooks server for you. Anna's
+          Archive needs only <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">ANNAS_ARCHIVE_ENABLED=true</code>
+          , no process to start.
         </p>
       </div>
     )
   }
+
+  const showServerControl = status.data.providers.some((p) => p.requires_process && p.enabled)
 
   const searchError =
     search.error instanceof ApiError ? search.error.message : search.isError ? 'Search failed.' : null
@@ -417,15 +427,15 @@ export function Acquire() {
     <div className="mx-auto max-w-4xl p-6">
       <h1 className="text-xl font-semibold">Find a Book</h1>
       <p className="mt-1 text-sm text-neutral-500">
-        Experimental. Searches OpenBooks (IRC) for a title, downloads the one you pick, and drops it
-        into the Book Dump — the normal scan &amp; identify pipeline takes it from there. Check the{' '}
+        Experimental. Searches every enabled source for a title, downloads the one you pick, and drops
+        it into the Book Dump — the normal scan &amp; identify pipeline takes it from there. Check the{' '}
         <Link to="/inbox" className="underline">
           Inbox
         </Link>{' '}
         after.
       </p>
 
-      <ServerControl />
+      {showServerControl && <ServerControl />}
       <OpenRequests />
 
       <h2 className="mt-6 text-sm font-medium">Search for anything</h2>
@@ -447,9 +457,7 @@ export function Acquire() {
       </div>
 
       {search.isPending && (
-        <p className="mt-3 text-sm text-neutral-500">
-          Waiting for IRC results — this usually takes 10–30s.
-        </p>
+        <p className="mt-3 text-sm text-neutral-500">Searching — this can take up to 30s.</p>
       )}
       {searchError && <p className="mt-3 text-sm text-red-600">{searchError}</p>}
       {search.data && search.data.message && (
@@ -490,6 +498,7 @@ export function Acquire() {
                 <th className="px-2 py-1 font-normal">Format</th>
                 <th className="px-2 py-1 font-normal">Size</th>
                 <th className="px-2 py-1 font-normal">Server</th>
+                <th className="px-2 py-1 font-normal">Source</th>
                 <th className="px-2 py-1 font-normal"></th>
               </tr>
             </thead>
@@ -503,6 +512,7 @@ export function Acquire() {
                     <td className="px-2 py-1.5 text-neutral-500">{book.format || '—'}</td>
                     <td className="px-2 py-1.5 text-neutral-500">{book.size || '—'}</td>
                     <td className="px-2 py-1.5 text-neutral-400">{book.server}</td>
+                    <td className="px-2 py-1.5 text-neutral-400">{providerLabel(book.provider) ?? 'openbooks'}</td>
                     <td className="px-2 py-1.5 text-right">
                       {rs.status === 'done' ? (
                         <span className="text-xs text-emerald-600">✓ {rs.message}</span>

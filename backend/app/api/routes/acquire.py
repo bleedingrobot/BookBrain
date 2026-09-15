@@ -10,11 +10,18 @@ from app.jobs.scheduler import sync_autoget_schedule
 from app.api.deps import require_drive_provider
 from app.data.db import get_db
 from app.data.repositories.settings_repository import SettingsRepository
+from app.providers.acquisition.base import AcquisitionProvider
+from app.providers.acquisition.exceptions import (
+    AcquisitionError,
+    AcquisitionRateLimited,
+    AcquisitionUnavailable,
+)
 from app.providers.drive.provider import DriveProvider
 from app.schemas.acquire import (
     AcquireBook,
     AcquireDownloadRequest,
     AcquireDownloadResponse,
+    AcquireProviderStatus,
     AcquireSearchRequest,
     AcquireSearchResponse,
     AcquireStatus,
@@ -31,30 +38,26 @@ from app.services import (
     openbooks_process_service,
     openbooks_service,
 )
+from app.services.acquisition_providers import default_acquisition_providers
 from app.services.drive_service import DriveService
 from app.services.openbooks_process_service import OpenBooksProcessError
-from app.services.openbooks_service import (
-    OpenBooksError,
-    OpenBooksRateLimited,
-    OpenBooksUnavailable,
-)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/acquire", tags=["acquire"])
 
 
-def _openbooks_http_error(exc: Exception) -> HTTPException:
-    """Map an OpenBooks failure to an HTTP status. A catch-all so a stray
-    exception in the WS client is a clean 502, never a 500."""
-    if isinstance(exc, OpenBooksRateLimited):
+def _acquisition_http_error(exc: Exception) -> HTTPException:
+    """Map an acquisition-provider failure to an HTTP status. A catch-all so
+    a stray exception in a provider is a clean 502, never a 500."""
+    if isinstance(exc, AcquisitionRateLimited):
         return HTTPException(status_code=429, detail=str(exc))
-    if isinstance(exc, OpenBooksUnavailable):
+    if isinstance(exc, AcquisitionUnavailable):
         return HTTPException(status_code=503, detail=str(exc))
-    if isinstance(exc, OpenBooksError):
+    if isinstance(exc, AcquisitionError):
         return HTTPException(status_code=502, detail=str(exc))
-    logger.exception("acquire: unexpected error talking to OpenBooks")
-    return HTTPException(status_code=502, detail="OpenBooks request failed unexpectedly — see server logs")
+    logger.exception("acquire: unexpected error talking to an acquisition provider")
+    return HTTPException(status_code=502, detail="acquisition request failed unexpectedly — see server logs")
 
 
 async def _require_folders(db: AsyncSession) -> tuple[str, str]:
@@ -69,7 +72,20 @@ async def _require_folders(db: AsyncSession) -> tuple[str, str]:
     return inbox.folder_id, library.folder_id
 
 
-def _require_enabled() -> None:
+def _require_enabled() -> list[AcquisitionProvider]:
+    providers = default_acquisition_providers()
+    if not providers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "no acquisition source is enabled (set OPENBOOKS_ENABLED=true and run "
+                "tools/run-openbooks.ps1, and/or ANNAS_ARCHIVE_ENABLED=true)"
+            ),
+        )
+    return providers
+
+
+def _require_openbooks_enabled() -> None:
     if not openbooks_service.is_enabled():
         raise HTTPException(
             status_code=400,
@@ -77,20 +93,64 @@ def _require_enabled() -> None:
         )
 
 
+async def _search_all(providers: list[AcquisitionProvider], query: str) -> AcquireSearchResponse:
+    """Fan out one free-text query to every enabled provider — a route-level
+    equivalent of acquisition_service._search_all_providers, which is shaped
+    around a wishlist item dict rather than a raw query string."""
+
+    async def _one(p: AcquisitionProvider):
+        try:
+            return await p.search(query), None
+        except AcquisitionRateLimited as exc:
+            await asyncio.sleep(exc.wait_seconds + 1)
+            try:
+                return await p.search(query), None
+            except AcquisitionError as exc2:
+                return [], exc2
+        except AcquisitionError as exc:
+            logger.warning("acquire: %s search failed for %r: %s", p.name, query, exc)
+            return [], exc
+
+    outcomes = await asyncio.gather(*(_one(p) for p in providers))
+    results = [r for rs, _err in outcomes for r in rs]
+    # A message only when every provider came back empty/erroring — otherwise
+    # a partial failure is silent (the results that did come back speak for
+    # themselves), matching the "degrade quietly" philosophy elsewhere.
+    message = None
+    if not results:
+        errors = [str(err) for _rs, err in outcomes if err is not None]
+        message = "; ".join(errors) if errors else "No results found"
+    return AcquireSearchResponse(
+        results=[AcquireBook(**vars(b)) for b in results],
+        parse_errors=0,
+        message=message,
+    )
+
+
 @router.get("/status", response_model=AcquireStatus)
 async def get_status() -> AcquireStatus:
-    return AcquireStatus(enabled=openbooks_service.is_enabled())
+    providers = default_acquisition_providers()
+    names = {p.name for p in providers}
+    return AcquireStatus(
+        enabled=bool(providers),
+        providers=[
+            AcquireProviderStatus(name="openbooks", enabled="openbooks" in names, requires_process=True),
+            AcquireProviderStatus(
+                name="annas_archive", enabled="annas_archive" in names, requires_process=False
+            ),
+        ],
+    )
 
 
 @router.get("/server", response_model=OpenBooksServerStatus)
 async def server_status() -> OpenBooksServerStatus:
-    _require_enabled()
+    _require_openbooks_enabled()
     return OpenBooksServerStatus(**await asyncio.to_thread(openbooks_process_service.status))
 
 
 @router.post("/server/start", response_model=OpenBooksServerStatus)
 async def server_start() -> OpenBooksServerStatus:
-    _require_enabled()
+    _require_openbooks_enabled()
     try:
         state = await asyncio.to_thread(openbooks_process_service.start)
     except OpenBooksProcessError as exc:
@@ -100,7 +160,7 @@ async def server_start() -> OpenBooksServerStatus:
 
 @router.post("/server/stop", response_model=OpenBooksServerStatus)
 async def server_stop() -> OpenBooksServerStatus:
-    _require_enabled()
+    _require_openbooks_enabled()
     try:
         state = await asyncio.to_thread(openbooks_process_service.stop)
     except OpenBooksProcessError as exc:
@@ -110,16 +170,8 @@ async def server_stop() -> OpenBooksServerStatus:
 
 @router.post("/search", response_model=AcquireSearchResponse)
 async def search(body: AcquireSearchRequest) -> AcquireSearchResponse:
-    _require_enabled()
-    try:
-        outcome = await openbooks_service.search(body.query)
-    except Exception as exc:
-        raise _openbooks_http_error(exc) from exc
-    return AcquireSearchResponse(
-        results=[AcquireBook(**vars(b)) for b in outcome.results],
-        parse_errors=outcome.parse_errors,
-        message=outcome.message,
-    )
+    providers = _require_enabled()
+    return await _search_all(providers, body.query)
 
 
 @router.post("/download", response_model=AcquireDownloadResponse)
@@ -128,16 +180,19 @@ async def download(
     db: AsyncSession = Depends(get_db),
     provider: DriveProvider = Depends(require_drive_provider),
 ) -> AcquireDownloadResponse:
-    _require_enabled()
+    providers = {p.name: p for p in _require_enabled()}
+    acquisition_provider = providers.get(body.provider or "openbooks")
+    if acquisition_provider is None:
+        raise HTTPException(status_code=400, detail=f"'{body.provider}' isn't an enabled acquisition source")
     inbox = await DriveService.get_inbox_folder_config(SettingsRepository(db))
     if inbox is None:
         raise HTTPException(status_code=400, detail="no inbox folder configured yet")
     try:
         result = await acquire_service.acquire_to_inbox(
-            body.full, body.filename, provider, inbox.folder_id
+            acquisition_provider, body.full, body.filename, provider, inbox.folder_id
         )
     except Exception as exc:
-        raise _openbooks_http_error(exc) from exc
+        raise _acquisition_http_error(exc) from exc
     return AcquireDownloadResponse(**result)
 
 
@@ -178,9 +233,9 @@ async def refresh_requests(
     db: AsyncSession = Depends(get_db),
     provider: DriveProvider = Depends(require_drive_provider),
 ) -> RequestRefreshJob:
-    """Search OpenBooks for up to `limit` un-searched targets (wishlist +
-    Hardcover want-to-read + list candidates), ~11s apiece. Click again / let
-    the nightly run to work through the rest."""
+    """Search every enabled acquisition source for up to `limit` un-searched
+    targets (wishlist + Hardcover want-to-read + list candidates), ~11s
+    apiece. Click again / let the nightly run to work through the rest."""
     _require_enabled()
     _, library_folder_id = await _require_folders(db)
     job = acquisition_service.new_refresh_job()
@@ -216,7 +271,7 @@ async def approve_request(
             request_id, body.full, provider, inbox_folder_id, library_folder_id
         )
     except Exception as exc:
-        raise _openbooks_http_error(exc) from exc
+        raise _acquisition_http_error(exc) from exc
     return AcquireDownloadResponse(**result)
 
 
@@ -225,7 +280,7 @@ async def skip_request(request_id: str) -> None:
     _require_enabled()
     try:
         await acquisition_service.skip_request(request_id)
-    except OpenBooksError as exc:
+    except AcquisitionError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
@@ -237,7 +292,7 @@ async def reset_request(request_id: str) -> None:
 
 @router.get("/autoget", response_model=AutoGetSettings)
 async def get_autoget(db: AsyncSession = Depends(get_db)) -> AutoGetSettings:
-    _require_enabled()
+    _require_openbooks_enabled()
     v = await SettingsRepository(db).get(OPENBOOKS_AUTOGET_ENABLED)
     return AutoGetSettings(enabled=v == "true")
 
@@ -247,8 +302,9 @@ async def set_autoget(
     body: AutoGetSettings, request: Request, db: AsyncSession = Depends(get_db)
 ) -> AutoGetSettings:
     """When on, a background job downloads one confident 'Books to get'
-    candidate per minute while nothing else is running."""
-    _require_enabled()
+    candidate per minute while nothing else is running. Still OpenBooks-only
+    — see acquisition_service.autoget_tick's own gating."""
+    _require_openbooks_enabled()
     await SettingsRepository(db).set(OPENBOOKS_AUTOGET_ENABLED, "true" if body.enabled else "false")
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:

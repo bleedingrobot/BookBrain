@@ -110,6 +110,14 @@ class Settings(BaseSettings):
     # Book" page has a Start/Stop button that launches it with this.
     openbooks_binary: str = ""
 
+    # Anna's Archive — a second AcquisitionProvider (providers/acquisition/),
+    # searched/downloaded alongside OpenBooks. Same trust boundary as
+    # OpenBooks: admin-only, off unless ANNAS_ARCHIVE_ENABLED=true, never
+    # surfaced in the family library-viewer. No local process to manage
+    # (stateless HTTP scraping), unlike OpenBooks.
+    annas_archive_enabled: bool = False
+    annas_archive_base_url: str = "https://annas-archive.org"
+
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older
     # ones are trashed (recoverable) after each new upload.

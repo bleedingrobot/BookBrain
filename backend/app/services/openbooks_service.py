@@ -37,6 +37,12 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketExce
 from websockets.protocol import State
 
 from app.core.config import get_settings
+from app.providers.acquisition.exceptions import (
+    AcquisitionError,
+    AcquisitionRateLimited,
+    AcquisitionUnavailable,
+)
+from app.providers.acquisition.types import AcquisitionResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,41 +67,44 @@ _SEARCH_TIMEOUT = 90.0
 _DOWNLOAD_TIMEOUT = 75.0
 
 
-class OpenBooksError(RuntimeError):
+class OpenBooksError(AcquisitionError):
     """Base for every OpenBooks failure surfaced to a route."""
 
 
-class OpenBooksUnavailable(OpenBooksError):
+class OpenBooksUnavailable(OpenBooksError, AcquisitionUnavailable):
     """OpenBooks isn't reachable, refused the connection, or couldn't join IRC."""
 
 
-class OpenBooksRateLimited(OpenBooksError):
+class OpenBooksRateLimited(OpenBooksError, AcquisitionRateLimited):
     """The server's own search cooldown (>=10s between searches) is active."""
 
     def __init__(self, wait_seconds: float) -> None:
-        super().__init__(f"OpenBooks is rate-limiting searches; try again in {wait_seconds:.0f}s")
+        # Not super().__init__(): OpenBooksRateLimited's MRO also passes
+        # through AcquisitionRateLimited, whose own __init__(wait_seconds)
+        # would otherwise swallow this formatted string as its wait_seconds
+        # arg. Go straight to the message-taking base instead.
+        RuntimeError.__init__(
+            self, f"OpenBooks is rate-limiting searches; try again in {wait_seconds:.0f}s"
+        )
         self.wait_seconds = wait_seconds
 
 
-@dataclass(frozen=True)
-class BookResult:
-    server: str
-    author: str
-    title: str
-    format: str
-    size: str
-    full: str  # the raw "!server filename" IRC command; pass back verbatim to download()
+# Back-compat alias: this used to be OpenBooks' own dataclass. It's now the
+# shared AcquisitionProvider DTO (providers/acquisition/types.py) — kept
+# under this name so existing imports (incl. tests) don't need to change.
+BookResult = AcquisitionResult
 
-    @classmethod
-    def from_raw(cls, raw: dict) -> "BookResult":
-        return cls(
-            server=str(raw.get("server") or ""),
-            author=str(raw.get("author") or ""),
-            title=str(raw.get("title") or ""),
-            format=str(raw.get("format") or ""),
-            size=str(raw.get("size") or ""),
-            full=str(raw.get("full") or ""),
-        )
+
+def _book_result_from_raw(raw: dict) -> BookResult:
+    return BookResult(
+        server=str(raw.get("server") or ""),
+        author=str(raw.get("author") or ""),
+        title=str(raw.get("title") or ""),
+        format=str(raw.get("format") or ""),
+        size=str(raw.get("size") or ""),
+        full=str(raw.get("full") or ""),
+        provider="openbooks",
+    )
 
 
 @dataclass
@@ -226,7 +235,7 @@ class _OpenBooksClient:
             if mtype == _RATELIMIT:
                 raise OpenBooksRateLimited(_parse_wait_seconds(msg.get("detail", "")))
             if mtype == _SEARCH:
-                books = [BookResult.from_raw(b) for b in (msg.get("books") or [])]
+                books = [_book_result_from_raw(b) for b in (msg.get("books") or [])]
                 return SearchOutcome(results=books, parse_errors=len(msg.get("errors") or []))
             if mtype == _STATUS and msg.get("appearance") == _DANGER:
                 # "No results found for the query."

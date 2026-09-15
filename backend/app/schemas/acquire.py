@@ -1,8 +1,15 @@
 from pydantic import BaseModel
 
 
+class AcquireProviderStatus(BaseModel):
+    name: str
+    enabled: bool
+    requires_process: bool  # true only for OpenBooks — has a child process to start/stop
+
+
 class AcquireStatus(BaseModel):
     enabled: bool
+    providers: list[AcquireProviderStatus] = []
 
 
 class OpenBooksServerStatus(BaseModel):
@@ -17,12 +24,13 @@ class AcquireSearchRequest(BaseModel):
 
 
 class AcquireBook(BaseModel):
-    server: str
+    server: str | None = None
     author: str
     title: str
     format: str
     size: str
     full: str
+    provider: str = "openbooks"
 
 
 class AcquireSearchResponse(BaseModel):
@@ -34,6 +42,7 @@ class AcquireSearchResponse(BaseModel):
 class AcquireDownloadRequest(BaseModel):
     full: str
     filename: str | None = None
+    provider: str = "openbooks"
 
 
 class AcquireDownloadResponse(BaseModel):
@@ -50,6 +59,7 @@ class RequestCandidate(BaseModel):
     size: str | None = None
     server: str | None = None
     score: float | None = None
+    provider: str = "openbooks"
 
 
 class OpenRequest(BaseModel):

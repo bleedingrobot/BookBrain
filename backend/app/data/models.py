@@ -436,6 +436,14 @@ class LocalFile(Base):
         Enum(LocalFileStatus), nullable=False, default=LocalFileStatus.pending
     )
     discovered_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Best wishlist/want-to-read/list target this file's filename matched
+    # against (acquisition_service.gather_acquisition_targets + score_candidate),
+    # populated by local_scan_service.match_against_wishlist. Null until a
+    # scan has run a match pass, or if nothing scored above the flag threshold.
+    matched_request_id: Mapped[str | None] = mapped_column(String)
+    matched_title: Mapped[str | None] = mapped_column(String)
+    matched_author: Mapped[str | None] = mapped_column(String)
+    matched_score: Mapped[float | None] = mapped_column(Float)
 
 
 class DismissedReidentFlag(Base):
@@ -520,6 +528,10 @@ class AcquisitionCandidate(Base):
     candidate_format: Mapped[str | None] = mapped_column(String)
     candidate_size: Mapped[str | None] = mapped_column(String)
     candidate_server: Mapped[str | None] = mapped_column(String)
+    # Which AcquisitionProvider supplied the current best pick — "openbooks",
+    # "annas_archive", etc. Existing rows predate multi-provider support and
+    # backfill to "openbooks" (the only source before this column existed).
+    candidate_provider: Mapped[str] = mapped_column(String, nullable=False, server_default="openbooks")
     score: Mapped[float | None] = mapped_column(Float)
     # Other plausible EPUBs, best first: [{full,title,author,format,size,server,score}].
     alternatives_json: Mapped[list | None] = mapped_column(JSON)

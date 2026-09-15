@@ -55,7 +55,7 @@ def _patch_pipeline(monkeypatch, *, scan=None, covers=None, index=812, backup_ra
     async def fake_index(creds, library_folder_id):
         return index
 
-    async def fake_pull(creds, inbox_folder_id):
+    async def fake_pull(creds, inbox_folder_id, library_folder_id):
         return "torrents: 0 copied, 0 failed"
 
     async def fake_backup(creds, library_folder_id, **kwargs):
@@ -109,14 +109,14 @@ async def test_run_nightly_backup_failure_does_not_abort_the_run(monkeypatch):
 async def test_pull_local_folder_noops_on_empty_folder(db_session, monkeypatch, tmp_path):
     settings = nightly.get_settings()
     monkeypatch.setattr(settings, "torrents_watch_folder", str(tmp_path))
-    assert await nightly._pull_local_folder(object(), "inbox-1") is None
+    assert await nightly._pull_local_folder(object(), "inbox-1", "lib-1") is None
 
 
 async def test_run_nightly_pulls_local_folder_when_enabled(monkeypatch):
     _patch_pipeline(monkeypatch)
     called = {}
 
-    async def fake_pull(creds, inbox_folder_id):
+    async def fake_pull(creds, inbox_folder_id, library_folder_id):
         called["hit"] = inbox_folder_id
         return "torrents: 2 copied, 0 failed"
 

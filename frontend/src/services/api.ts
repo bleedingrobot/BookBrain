@@ -346,10 +346,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ query }),
     }),
-  acquireDownload: (full: string, filename: string) =>
+  acquireDownload: (full: string, filename: string, provider = 'openbooks') =>
     request<AcquireDownloadResponse>('/acquire/download', {
       method: 'POST',
-      body: JSON.stringify({ full, filename }),
+      body: JSON.stringify({ full, filename, provider }),
     }),
 
   acquireSuggestions: () => request<AcquireSuggestions>('/acquire/suggestions'),

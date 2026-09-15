@@ -36,6 +36,11 @@ dependencies = [
     "tokenizers>=0.20",
     "huggingface-hub>=0.25",
     "numpy>=1.26",
+    # AcquisitionProvider — Anna's Archive has no official search API, so
+    # results come from scraping its search/detail HTML. Used with the
+    # stdlib "html.parser" backend only (no lxml/html5lib) — pure Python,
+    # no C-extension dependency, unlike a browser-automation approach.
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]

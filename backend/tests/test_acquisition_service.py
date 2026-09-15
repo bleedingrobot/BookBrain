@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from app.data.models import AcquisitionCandidate, AcquisitionStatus
+from app.providers.acquisition.openbooks import OpenBooksProvider
 from app.services import acquisition_service as svc
 from app.services.acquisition_service import _Wishlist, score_candidate
 from app.services.openbooks_service import BookResult, SearchOutcome
@@ -21,6 +22,12 @@ def _route_db(db_session, monkeypatch):
 
     monkeypatch.setattr(svc, "async_session_factory", lambda: _CM())
     monkeypatch.setattr(svc, "_SEARCH_SPACING_SECONDS", 0)
+    # Deterministic regardless of the real .env's OPENBOOKS_ENABLED — tests
+    # that want OpenBooks-flavoured search results monkeypatch
+    # svc.openbooks_service.search directly (OpenBooksProvider().search()
+    # delegates straight through to it); tests that want full control over
+    # search results monkeypatch svc._search_all_providers instead.
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [OpenBooksProvider()])
 
 
 def _book(title, author, fmt="epub", full=None, server="Bsk", size="1.2MB"):
@@ -132,7 +139,7 @@ async def test_refresh_pulls_from_all_three_sources_and_respects_limit(db_sessio
     async def fake_gather(p, f):
         return targets
 
-    monkeypatch.setattr(svc, "_gather_targets", fake_gather)
+    monkeypatch.setattr(svc, "gather_acquisition_targets", fake_gather)
 
     async def fake_search(query):
         return SearchOutcome(results=[_book(query.rsplit(" ", 1)[0], "Whoever")])
@@ -177,6 +184,69 @@ async def test_refresh_skips_already_approved_unchanged_request(db_session, monk
     assert called is False
 
 
+# --- multi-provider fan-out ---------------------------------------------
+
+
+class _StaticProvider:
+    """A minimal AcquisitionProvider stub for fan-out tests — always returns
+    the same fixed result list (or raises), regardless of the query."""
+
+    def __init__(self, name: str, *, results=None, raises=None):
+        self.name = name
+        self._results = results or []
+        self._raises = raises
+        self.calls = 0
+
+    def is_enabled(self):
+        return True
+
+    async def search(self, query):
+        self.calls += 1
+        if self._raises is not None:
+            raise self._raises
+        return self._results
+
+    async def download(self, handle):  # pragma: no cover - unused in these tests
+        raise NotImplementedError
+
+
+async def test_refresh_one_dead_provider_does_not_drop_a_healthy_ones_results(db_session, monkeypatch):
+    from app.providers.acquisition.exceptions import AcquisitionUnavailable
+
+    items = [{"id": "r1", "title": "The Dispossessed", "author": "Ursula K Le Guin", "status": "wanted"}]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    dead = _StaticProvider("dead_source", raises=AcquisitionUnavailable("down"))
+    healthy = _StaticProvider(
+        "healthy_source", results=[_book("The Dispossessed", "Ursula K Le Guin", full="!x.epub")]
+    )
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [dead, healthy])
+
+    result = await svc.refresh_candidates(object(), "libfolder")
+    assert result["withCandidates"] == 1
+
+    row = (await db_session.execute(select(AcquisitionCandidate))).scalar_one()
+    assert row.candidate_full == "!x.epub"
+
+
+async def test_refresh_aborts_early_once_every_provider_is_dead(db_session, monkeypatch):
+    from app.providers.acquisition.exceptions import AcquisitionUnavailable
+
+    items = [
+        {"id": "r1", "title": "Book One", "author": "A", "status": "wanted"},
+        {"id": "r2", "title": "Book Two", "author": "B", "status": "wanted"},
+    ]
+    monkeypatch.setattr(svc, "_read_wishlist", lambda p, f: _wishlist(items))
+
+    only_provider = _StaticProvider("only_source", raises=AcquisitionUnavailable("down"))
+    monkeypatch.setattr(svc, "default_acquisition_providers", lambda: [only_provider])
+
+    result = await svc.refresh_candidates(object(), "libfolder")
+    # The first item's search proves it's dead; the second is never attempted.
+    assert only_provider.calls == 1
+    assert result["searched"] == 1
+
+
 # --- approve / skip / reset -------------------------------------------
 
 
@@ -197,7 +267,7 @@ async def test_approve_downloads_and_marks_sourced(db_session, monkeypatch):
 
     seen = {}
 
-    async def fake_acquire(full, filename, provider, inbox):
+    async def fake_acquire(acquisition_provider, full, filename, drive_provider, inbox):
         seen["full"] = full
         seen["filename"] = filename
         return {"filename": filename, "drive_file_id": "d1", "size_bytes": 123}
@@ -205,7 +275,7 @@ async def test_approve_downloads_and_marks_sourced(db_session, monkeypatch):
     monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
     marked = {}
     monkeypatch.setattr(
-        svc, "_mark_wishlist_sourced", lambda p, f, rid: marked.setdefault("rid", rid) or True
+        svc, "mark_wishlist_sourced", lambda p, f, rid: marked.setdefault("rid", rid) or True
     )
 
     result = await svc.approve_request("r1", None, object(), "inbox", "lib")
@@ -234,12 +304,12 @@ async def test_approve_with_alternative_full(db_session, monkeypatch):
 
     seen = {}
 
-    async def fake_acquire(full, filename, provider, inbox):
+    async def fake_acquire(acquisition_provider, full, filename, drive_provider, inbox):
         seen["full"] = full
         return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
 
     monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
-    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+    monkeypatch.setattr(svc, "mark_wishlist_sourced", lambda *a: True)
 
     await svc.approve_request("r1", "!Ook alt.epub", object(), "inbox", "lib")
     assert seen["full"] == "!Ook alt.epub"
@@ -259,21 +329,21 @@ async def test_approve_refreshes_a_stale_top_pick_before_downloading(db_session,
 
     searched = []
 
-    async def fake_search_one(item):
+    async def fake_search_all(providers, item):
         searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
-                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     seen = {}
 
-    async def fake_acquire(full, filename, provider, inbox):
+    async def fake_acquire(acquisition_provider, full, filename, drive_provider, inbox):
         seen["full"] = full
         return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
 
     monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
-    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+    monkeypatch.setattr(svc, "mark_wishlist_sourced", lambda *a: True)
 
     await svc.approve_request("r1", None, object(), "inbox", "lib")
     assert searched == ["Departure"]  # re-searched because the top-pick row was stale
@@ -291,16 +361,16 @@ async def test_approve_does_not_refresh_an_explicitly_chosen_alternative(db_sess
     row.updated_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(hours=5)
     await db_session.commit()
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("an explicitly picked alternative must not trigger a re-search")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
 
-    async def fake_acquire(full, filename, provider, inbox):
+    async def fake_acquire(acquisition_provider, full, filename, drive_provider, inbox):
         return {"filename": filename, "drive_file_id": "d1", "size_bytes": 1}
 
     monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
-    monkeypatch.setattr(svc, "_mark_wishlist_sourced", lambda *a: True)
+    monkeypatch.setattr(svc, "mark_wishlist_sourced", lambda *a: True)
 
     await svc.approve_request("r1", "!Ook alt.epub", object(), "inbox", "lib")
 
@@ -623,7 +693,7 @@ def _autoget_idle(monkeypatch):
         return list(_Targets.items)
 
     _Targets.items = []
-    monkeypatch.setattr(svc, "_gather_targets", _fake_gather)
+    monkeypatch.setattr(svc, "gather_acquisition_targets", _fake_gather)
 
     return {"Provider": _Provider, "ScanSvc": _ScanSvc, "Targets": _Targets}
 
@@ -648,12 +718,12 @@ async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeyp
 
     searched = []
 
-    async def fake_search_one(item):
+    async def fake_search_all(providers, item):
         searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
-                      full="!Bsk A G Riddle - Departure.epub")]
+                      full="!Bsk A G Riddle - Departure.epub")], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     got = {}
 
@@ -678,10 +748,10 @@ async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure")]
     monkeypatch.setattr(svc.openbooks_service, "is_busy", lambda: True)
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("must not search when busy")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
     out = await svc.autoget_tick()
     assert out == {"skipped": "busy"}
 
@@ -703,10 +773,10 @@ async def test_autoget_respects_the_backoff_window(db_session, monkeypatch, _aut
     row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=10)
     await db_session.commit()
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("inside the 30-min backoff - must not re-search")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
     out = await svc.autoget_tick()
     assert out["skipped"] == "all caught up or cooling down"
 
@@ -726,11 +796,11 @@ async def test_autoget_re_searches_a_stale_row_once_the_backoff_elapses(db_sessi
     row.updated_at = old - _dt.timedelta(minutes=90)   # search stale → re-search, not reuse
     await db_session.commit()
 
-    async def fake_search_one(item):
+    async def fake_search_all(providers, item):
         return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
-                      full="!Oatmeal A G Riddle - Departure (retail).epub")]
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     got = {}
 
@@ -758,10 +828,10 @@ async def test_autoget_reuses_a_recent_search_instead_of_re_searching(db_session
     row.resolved_at = _dt.datetime.now(_dt.UTC).replace(tzinfo=None) - _dt.timedelta(minutes=40)
     await db_session.commit()  # updated_at ~ now → search is fresh
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("search is fresh — should reuse the stored command")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
 
     got = {}
 
@@ -780,10 +850,10 @@ async def test_autoget_search_budget_caps_fresh_searches(db_session, monkeypatch
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
     monkeypatch.setattr(svc, "_recent_search_times", [svc.time.monotonic()] * svc._SEARCH_BUDGET_PER_HOUR)
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("budget spent — must not search")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
     out = await svc.autoget_tick()
     assert out["skipped"].startswith("search budget spent")
 
@@ -801,10 +871,10 @@ async def test_autoget_long_backoff_for_a_stubborn_book(db_session, monkeypatch,
     row.resolved_at = old - _dt.timedelta(hours=2)
     await db_session.commit()
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("stubborn book still inside the 6h backoff")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
     out = await svc.autoget_tick()
     assert out["skipped"] == "all caught up or cooling down"
 
@@ -812,10 +882,10 @@ async def test_autoget_long_backoff_for_a_stubborn_book(db_session, monkeypatch,
 async def test_autoget_marks_no_match_when_search_is_empty(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Obscure Pamphlet", request_id="wl-obs")]
 
-    async def empty_search(item):
-        return []
+    async def empty_search(providers, item):
+        return [], set()
 
-    monkeypatch.setattr(svc, "_search_one", empty_search)
+    monkeypatch.setattr(svc, "_search_all_providers", empty_search)
 
     async def no_approve(*a):
         raise AssertionError("nothing to download")
@@ -844,10 +914,10 @@ async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_ses
     row.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
     await db_session.commit()
 
-    async def empty_search(item):
-        return []
+    async def empty_search(providers, item):
+        return [], set()
 
-    monkeypatch.setattr(svc, "_search_one", empty_search)
+    monkeypatch.setattr(svc, "_search_all_providers", empty_search)
     out = await svc.autoget_tick()
     assert out["skipped"].startswith("re-search found nothing")
     row = (await db_session.execute(
@@ -860,21 +930,21 @@ async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_ses
 async def test_autoget_one_download_attempt_per_tick(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
 
-    async def fake_search_one(item):
+    async def fake_search_all(providers, item):
         return [
             _book("Departure", "A G Riddle", server="Bsk", size="700KB",
                   full="!Bsk A G Riddle - Departure.epub"),
             _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
                   full="!Oatmeal A G Riddle - Departure.epub"),
-        ]
+        ], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     calls = []
 
     async def fake_approve(request_id, full, provider, inbox, library):
         calls.append(full)
-        raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+        raise svc.AcquisitionError("OpenBooks didn't deliver the file within 75s")
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
@@ -888,23 +958,23 @@ async def test_autoget_rotates_the_pick_after_a_failed_download(db_session, monk
 
     searches = []
 
-    async def fake_search_one(item):
+    async def fake_search_all(providers, item):
         searches.append(1)
         return [
             _book("Departure", "A G Riddle", server="Bsk", size="700KB",
                   full="!Bsk A G Riddle - Departure.epub"),
             _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
                   full="!Oatmeal A G Riddle - Departure.epub"),
-        ]
+        ], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     calls = []
 
     async def fake_approve(request_id, full, provider, inbox, library):
         calls.append(full)
         if len(calls) == 1:
-            raise svc.OpenBooksError("OpenBooks didn't deliver the file within 75s")
+            raise svc.AcquisitionError("OpenBooks didn't deliver the file within 75s")
         return {"filename": "d.epub"}
 
     monkeypatch.setattr(svc, "approve_request", fake_approve)
@@ -952,10 +1022,10 @@ async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypa
     _autoget_idle["Provider"].inbox_count = 20
     _autoget_idle["Targets"].items = [_target("Departure")]
 
-    async def no_search(item):
+    async def no_search(providers, item):
         raise AssertionError("should scan, not search, when the inbox is full")
 
-    monkeypatch.setattr(svc, "_search_one", no_search)
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
 
     out = await svc.autoget_tick()
     await asyncio.sleep(0.02)
@@ -979,10 +1049,10 @@ async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypa
     stale.updated_at = old - _dt.timedelta(minutes=90)  # stale → re-search
     await db_session.commit()
 
-    async def fake_search_one(item):
-        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")]
+    async def fake_search_all(providers, item):
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")], set()
 
-    monkeypatch.setattr(svc, "_search_one", fake_search_one)
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
     async def fake_approve(request_id, full, provider, inbox, library):
         return {"filename": "d.epub"}

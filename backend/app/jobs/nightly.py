@@ -42,7 +42,7 @@ from google.oauth2.credentials import Credentials
 
 from app.core.config import get_settings
 from app.data.db import async_session_factory
-from app.data.models import JobRunStatus
+from app.data.models import JobRunStatus, LocalFileStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
@@ -105,7 +105,9 @@ class NightlyResult:
     steps: list[str] = field(default_factory=list)
 
 
-async def _pull_local_folder(creds: Credentials, inbox_folder_id: str) -> str | None:
+async def _pull_local_folder(
+    creds: Credentials, inbox_folder_id: str, library_folder_id: str | None
+) -> str | None:
     """Copy anything new in the watched Torrents folder into the Drive inbox
     so the scan below picks it up. Best-effort — a failure here (folder gone,
     a locked file) must not stop the rest of the run."""
@@ -118,8 +120,21 @@ async def _pull_local_folder(creds: Credentials, inbox_folder_id: str) -> str | 
             if not pending:
                 return None
             provider = DriveProvider(build_drive_service(creds))
+            # Best-effort, ROADMAP.md "close the acquisition loop" — matches
+            # against the wishlist before the copy step so a strong match can
+            # auto-flow straight to the inbox when TORRENTS_AUTOMATCH_ENABLED
+            # is on; skipped entirely if there's no library folder to read
+            # the wishlist sidecars from yet.
+            if library_folder_id:
+                try:
+                    await local_scan_service.match_against_wishlist(
+                        session, pending, provider, inbox_folder_id, library_folder_id
+                    )
+                except Exception:
+                    logger.exception("nightly: torrents wishlist auto-match failed")
             result = await local_scan_service.copy_to_drive(
-                session, [row.id for row in pending], provider, inbox_folder_id
+                session, [row.id for row in pending if row.status == LocalFileStatus.pending],
+                provider, inbox_folder_id,
             )
         return f"torrents: {result['copied']} copied, {result['failed']} failed"
     except Exception:
@@ -188,7 +203,7 @@ async def run_nightly(
     steps: list[str] = []
 
     if pull_local_folder:
-        pulled = await _pull_local_folder(creds, inbox_folder_id)
+        pulled = await _pull_local_folder(creds, inbox_folder_id, library_folder_id)
         if pulled:
             steps.append(pulled)
 

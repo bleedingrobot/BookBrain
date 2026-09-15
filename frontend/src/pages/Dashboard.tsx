@@ -492,7 +492,16 @@ export function Dashboard() {
                         checked={selectedTorrents.has(f.id)}
                         onChange={() => toggleTorrentSelected(f.id)}
                       />
-                      <span className="min-w-0 flex-1 truncate">{f.filename}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{f.filename}</span>
+                        {f.matched_title && (
+                          <span className="block truncate text-xs text-emerald-600">
+                            ≈ {f.matched_title}
+                            {f.matched_author ? ` by ${f.matched_author}` : ''}
+                            {f.matched_score != null ? ` (${Math.round(f.matched_score * 100)}% match)` : ''}
+                          </span>
+                        )}
+                      </span>
                       <span className="shrink-0 text-xs text-neutral-400">{formatBytes(f.size_bytes)}</span>
                     </li>
                   ))}

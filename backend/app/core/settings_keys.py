@@ -59,6 +59,13 @@ OPENBOOKS_AUTOGET_ENABLED = "openbooks_autoget_enabled"
 # its own generated_at.
 REIDENT_REPORT_JSON = "reident_report_json"
 
+# When on, a file landing in the torrents watch folder that scores a strong
+# match (>= acquisition_service._STRONG_SCORE) against an open wishlist /
+# want-to-read / list target is uploaded to the inbox automatically instead
+# of waiting for a manual copy. Off by default — a weaker match still gets
+# flagged (LocalFile.matched_*) but always waits for a human either way.
+TORRENTS_AUTOMATCH_ENABLED = "torrents_automatch_enabled"
+
 # prompts/38 — when on, an in-process job spends one Ollama call per tick
 # (one excerpt pass, or one map/reduce step of a full-text pass) tagging the
 # next organised book still missing meta/descriptions — only inside allowed

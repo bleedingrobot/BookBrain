@@ -1,5 +1,12 @@
+export interface AcquireProviderStatus {
+  name: string
+  enabled: boolean
+  requires_process: boolean
+}
+
 export interface AcquireStatus {
   enabled: boolean
+  providers: AcquireProviderStatus[]
 }
 
 export interface OpenBooksServerStatus {
@@ -10,12 +17,13 @@ export interface OpenBooksServerStatus {
 }
 
 export interface AcquireBook {
-  server: string
+  server: string | null
   author: string
   title: string
   format: string
   size: string
   full: string
+  provider: string
 }
 
 export interface AcquireSearchResponse {
@@ -38,6 +46,7 @@ export interface RequestCandidate {
   size: string | null
   server: string | null
   score: number | null
+  provider: string
 }
 
 export interface OpenRequest {

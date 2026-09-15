@@ -43,9 +43,17 @@ from app.data.models import (
     File,
     FileStatus,
 )
+from app.providers.acquisition.base import AcquisitionProvider
+from app.providers.acquisition.exceptions import (
+    AcquisitionError,
+    AcquisitionRateLimited,
+    AcquisitionUnavailable,
+)
+from app.providers.acquisition.types import AcquisitionResult
 from app.providers.drive.provider import DriveProvider
 from app.services import acquire_service, openbooks_service
-from app.services.openbooks_service import BookResult, OpenBooksError, OpenBooksRateLimited
+from app.services.acquisition_providers import default_acquisition_providers
+from app.services.openbooks_service import BookResult
 from app.services.text_match import normalize, normalize_person_name, normalize_title, title_similarity
 
 logger = logging.getLogger(__name__)
@@ -228,6 +236,7 @@ def _cand_dict(score: float, b: BookResult) -> dict:
         "size": b.size,
         "server": b.server,
         "score": score,
+        "provider": b.provider,
     }
 
 
@@ -255,7 +264,7 @@ def _read_wishlist(provider: DriveProvider, library_folder_id: str) -> _Wishlist
     return _Wishlist(file_id=found["id"], raw=raw, items=items)
 
 
-def _mark_wishlist_sourced(provider: DriveProvider, library_folder_id: str, request_id: str) -> bool:
+def mark_wishlist_sourced(provider: DriveProvider, library_folder_id: str, request_id: str) -> bool:
     """Best-effort read-modify-write: flip one item to ``sourced``. Plain
     last-writer-wins (the viewer writes this file too); a lost update just
     means the household doesn't see the status move until reconcile."""
@@ -329,7 +338,7 @@ def _book_key(title: str | None, author: str | None, isbn13: str | None) -> str:
     return f"{normalize_title(title)}|{normalize_person_name(author)}"
 
 
-async def _gather_targets(provider: DriveProvider, library_folder_id: str) -> list[dict]:
+async def gather_acquisition_targets(provider: DriveProvider, library_folder_id: str) -> list[dict]:
     """Every book BookBrain should try to get, from all three sources:
     unfilled wishlist requests, the owner's un-owned Hardcover want-to-read,
     and curated-list candidates. Deduped by book (ISBN, else title+author);
@@ -401,14 +410,44 @@ async def _gather_targets(provider: DriveProvider, library_folder_id: str) -> li
     return targets
 
 
-async def _search_one(item: dict) -> list[BookResult]:
+async def _search_all_providers(
+    providers: list[AcquisitionProvider], item: dict
+) -> tuple[list[AcquisitionResult], set[str]]:
+    """Fan out one query to every enabled provider concurrently (mirrors
+    CandidateService._query_all's asyncio.gather fan-out for metadata
+    providers) — but unlike a metadata provider, an acquisition provider IS
+    allowed to raise (OpenBooks needs 429/503 distinguished), so each call is
+    individually try/excepted rather than using return_exceptions=True.
+
+    Returns (merged results, names of providers that raised
+    AcquisitionUnavailable this call) — a caller running a batch of these
+    (refresh_candidates) uses the second part to stop bothering a dead
+    provider for the rest of the run, without letting it take down providers
+    that are still healthy."""
     query = _request_query(item)
-    try:
-        outcome = await openbooks_service.search(query)
-    except OpenBooksRateLimited as exc:
-        await asyncio.sleep(exc.wait_seconds + 1)
-        outcome = await openbooks_service.search(query)
-    return outcome.results
+    dead: set[str] = set()
+
+    async def _one(p: AcquisitionProvider) -> list[AcquisitionResult]:
+        try:
+            return await p.search(query)
+        except AcquisitionRateLimited as exc:
+            await asyncio.sleep(exc.wait_seconds + 1)
+            try:
+                return await p.search(query)
+            except AcquisitionUnavailable:
+                dead.add(p.name)
+                return []
+            except AcquisitionError:
+                return []
+        except AcquisitionUnavailable:
+            dead.add(p.name)
+            return []
+        except AcquisitionError as exc:
+            logger.warning("acquire: %s search failed for %r: %s", p.name, query, exc)
+            return []
+
+    results_per_provider = await asyncio.gather(*(_one(p) for p in providers))
+    return [r for rs in results_per_provider for r in rs], dead
 
 
 async def _upsert(
@@ -447,6 +486,7 @@ async def _upsert(
         row.candidate_format = best.format
         row.candidate_size = best.size
         row.candidate_server = best.server
+        row.candidate_provider = best.provider
         row.score = best_score
         row.alternatives_json = [_cand_dict(s, b) for s, b in ranked[1 : 1 + _MAX_ALTERNATIVES]]
         return True
@@ -485,7 +525,7 @@ async def refresh_candidates(
     searched yet or whose title/author changed, and (re)populate their
     candidate rows. `limit` caps how many are searched this run — the rest
     wait for the next click / the nightly."""
-    targets = await _gather_targets(provider, library_folder_id)
+    targets = await gather_acquisition_targets(provider, library_folder_id)
 
     async with async_session_factory() as session:
         await _dedupe_candidates(session)
@@ -517,17 +557,21 @@ async def refresh_candidates(
     if job is not None:
         job.total = len(todo)
 
+    providers = default_acquisition_providers()
+    dead_providers: set[str] = set()
+
     searched = with_candidates = 0
     for idx, item in enumerate(todo):
         if idx > 0:
             await asyncio.sleep(_SEARCH_SPACING_SECONDS)
-        try:
-            results = await _search_one(item)
-        except OpenBooksError as exc:
-            logger.warning("acquire: search failed for %r: %s", _request_query(item), exc)
+        live_providers = [p for p in providers if p.name not in dead_providers]
+        if not live_providers:
+            logger.warning("acquire: every acquisition provider is unavailable, stopping refresh early")
             if job is not None:
-                job.detail = f"search failed: {exc}"
+                job.detail = "every acquisition provider is unavailable"
             break
+        results, newly_dead = await _search_all_providers(live_providers, item)
+        dead_providers |= newly_dead
         searched += 1
         ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
         async with async_session_factory() as session:
@@ -676,8 +720,8 @@ _DEDUPE_STATUS_RANK = {
 }
 _DEDUPE_CARRY_FIELDS = (
     "status", "candidate_full", "candidate_title", "candidate_author",
-    "candidate_format", "candidate_size", "candidate_server", "score",
-    "alternatives_json", "message", "resolved_at",
+    "candidate_format", "candidate_size", "candidate_server", "candidate_provider",
+    "score", "alternatives_json", "message", "resolved_at",
 )
 
 
@@ -721,24 +765,29 @@ def _row_candidates(row: AcquisitionCandidate) -> list[BookResult]:
     if row.candidate_full:
         out.append(
             BookResult(
-                server=row.candidate_server or "",
+                server=row.candidate_server or None,
                 author=row.candidate_author or "",
                 title=row.candidate_title or "",
                 format=row.candidate_format or "epub",
                 size=row.candidate_size or "",
                 full=row.candidate_full,
+                # candidate_provider predates rows created before this column
+                # existed — backfilled to "openbooks" by the migration, so
+                # this default matches for anything even older than that.
+                provider=row.candidate_provider or "openbooks",
             )
         )
     for a in row.alternatives_json or []:
         if isinstance(a, dict) and a.get("full"):
             out.append(
                 BookResult(
-                    server=a.get("server") or "",
+                    server=a.get("server") or None,
                     author=a.get("author") or "",
                     title=a.get("title") or "",
                     format=a.get("format") or "epub",
                     size=a.get("size") or "",
                     full=a["full"],
+                    provider=a.get("provider") or "openbooks",
                 )
             )
     return out
@@ -834,6 +883,7 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
                 "size": row.candidate_size,
                 "server": row.candidate_server,
                 "score": row.score,
+                "provider": row.candidate_provider or "openbooks",
             }
             if row.candidate_full
             else None
@@ -895,10 +945,21 @@ def _filename_for(full: str, title: str | None, author: str | None) -> str:
     return name.strip()
 
 
+def _resolve_provider(name: str, providers: list[AcquisitionProvider]) -> AcquisitionProvider:
+    for p in providers:
+        if p.name == name:
+            return p
+    # A candidate row can outlive its provider being disabled (e.g. someone
+    # flips ANNAS_ARCHIVE_ENABLED off with a still-pending Anna's Archive
+    # pick sitting in the queue) — surface that as an actionable error rather
+    # than a confusing "no such provider" crash.
+    raise AcquisitionError(f"the '{name}' acquisition source is no longer enabled")
+
+
 async def approve_request(
     request_id: str,
     full_override: str | None,
-    provider: DriveProvider,
+    drive_provider: DriveProvider,
     inbox_folder_id: str,
     library_folder_id: str,
 ) -> dict:
@@ -933,9 +994,10 @@ async def approve_request(
             try:
                 async with async_session_factory() as session:
                     demerits = await _server_demerits(session)
-                ranked = _rank(item["title"], item.get("author"), await _search_one(item), demerits=demerits)
-            except OpenBooksError as exc:
-                raise OpenBooksError(f"couldn't refresh the search before downloading: {exc}") from exc
+                results, _dead = await _search_all_providers(default_acquisition_providers(), item)
+                ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
+            except AcquisitionError as exc:
+                raise AcquisitionError(f"couldn't refresh the search before downloading: {exc}") from exc
             async with async_session_factory() as session:
                 await _upsert(session, item, ranked, preserve_existing=True)
                 await session.commit()
@@ -947,20 +1009,24 @@ async def approve_request(
             )
         ).scalar_one_or_none()
         if row is None:
-            raise OpenBooksError("no candidate for that request — search open requests first")
+            raise AcquisitionError("no candidate for that request — search open requests first")
 
         full = full_override or row.candidate_full
         if not full:
-            raise OpenBooksError("no download command for that request")
+            raise AcquisitionError("no download command for that request")
 
         alt = next((a for a in (row.alternatives_json or []) if a.get("full") == full), None)
         title = alt["title"] if alt else row.candidate_title
         author = alt["author"] if alt else row.candidate_author
+        provider_name = (alt.get("provider") if alt else row.candidate_provider) or "openbooks"
         filename = _filename_for(full, title, author)
 
+        acquisition_provider = _resolve_provider(provider_name, default_acquisition_providers())
         try:
-            result = await acquire_service.acquire_to_inbox(full, filename, provider, inbox_folder_id)
-        except OpenBooksError as exc:
+            result = await acquire_service.acquire_to_inbox(
+                acquisition_provider, full, filename, drive_provider, inbox_folder_id
+            )
+        except AcquisitionError as exc:
             row.status = AcquisitionStatus.failed
             row.message = str(exc)
             row.resolved_at = datetime.now(UTC)  # so auto-get won't re-hit it straight away
@@ -971,12 +1037,13 @@ async def approve_request(
         row.candidate_full = full
         row.candidate_title = title
         row.candidate_author = author
+        row.candidate_provider = provider_name
         row.message = None
         row.resolved_at = datetime.now(UTC)
         await session.commit()
 
     try:
-        await asyncio.to_thread(_mark_wishlist_sourced, provider, library_folder_id, request_id)
+        await asyncio.to_thread(mark_wishlist_sourced, drive_provider, library_folder_id, request_id)
     except Exception:  # noqa: BLE001
         logger.exception("acquire: couldn't mark wishlist item %s sourced", request_id)
 
@@ -991,7 +1058,7 @@ async def _set_status(request_id: str, status: AcquisitionStatus) -> None:
             )
         ).scalar_one_or_none()
         if row is None:
-            raise OpenBooksError("no candidate for that request")
+            raise AcquisitionError("no candidate for that request")
         row.status = status
         row.resolved_at = datetime.now(UTC)
         await session.commit()
@@ -1136,7 +1203,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
         return _kick_scan(f"inbox at {len(inbox_files)} files")
 
-    targets = await _gather_targets(provider, library.folder_id)
+    targets = await gather_acquisition_targets(provider, library.folder_id)
     if not targets:
         # Nothing to acquire — if downloads are sitting unscanned, clear them.
         if inbox_files:
@@ -1185,7 +1252,7 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     existing_id = existing.id if existing is not None else None
 
     # In one pass: re-key a row that this book already has under a different id
-    # (want-to-read / list vs the wishlist id `_gather_targets` prefers), decide
+    # (want-to-read / list vs the wishlist id `gather_acquisition_targets` prefers), decide
     # whether its last search is still fresh enough to reuse, and (if so) grab
     # its stored candidates.
     reuse_cands: list[BookResult] = []
@@ -1213,19 +1280,13 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
     else:
         if not _search_budget_left():
             return {"skipped": "search budget spent this hour — steady pace", "title": title}
-        try:
-            results = await _search_one(item)
-        except OpenBooksError as exc:
-            logger.warning("acquire: auto-get search failed for %r: %s", title, exc)
-            _note_search()
-            # A search that errors out (bot busy/offline, timeout) still needs to
-            # touch the row so _target_backoff() has a timestamp to work from —
-            # otherwise there's no backoff at all and the next tick just retries
-            # the same stuck target immediately, forever.
-            async with async_session_factory() as session:
-                await _upsert(session, item, [], preserve_existing=True)
-                await session.commit()
-            return {"skipped": "search failed", "error": str(exc)}
+        # _search_all_providers never raises — a provider that's down just
+        # contributes nothing (already logged there). An all-empty result
+        # flows into the same "no ranked candidates" handling below as a
+        # search that genuinely found nothing, and still touches the row via
+        # _upsert(preserve_existing=True) so _target_backoff() has a
+        # timestamp — otherwise a stuck target would retry every tick forever.
+        results, _dead = await _search_all_providers(default_acquisition_providers(), item)
         _note_search()
         ranked = _rank(title, item.get("author"), results, demerits=demerits)
         async with async_session_factory() as session:
