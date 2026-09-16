@@ -89,6 +89,8 @@ async def match_against_wishlist(
     drive_provider: DriveProvider,
     inbox_folder_id: str,
     library_folder_id: str,
+    *,
+    auto_resolve: bool = False,
 ) -> None:
     """ROADMAP.md "close the acquisition loop": guess a filename's
     title/author (parse_book_filename — the same deterministic parser
@@ -98,7 +100,19 @@ async def match_against_wishlist(
     implementation. A strong match populates `matched_*` for the UI to show
     next to the file; it's only auto-uploaded to the inbox when
     TORRENTS_AUTOMATCH_ENABLED is on — otherwise every match, however
-    strong, still waits for a human to hit "copy"."""
+    strong, still waits for a human to hit "copy".
+
+    `auto_resolve=True` (torrent_service.py's torrent_incoming_folder scan
+    only) bypasses that toggle: TORRENTS_AUTOMATCH_ENABLED's manual-approval
+    semantics were written for the older, human-fed torrents_watch_folder
+    workflow, and don't apply to the fully-automated Librarr subsystem, which
+    already auto-uploads every file in its own folder regardless of match
+    (see local_scan_tick's unconditional copy_to_drive below). Without this,
+    a torrent's AcquisitionCandidate row never leaves `fetching` — even
+    though the file did get copied and organized via that same unconditional
+    path — permanently occupying one of `_MAX_CONCURRENT_TORRENTS`' 3 slots
+    and eventually wedging the whole submit_tick (confirmed live 2026-09-16:
+    3 real completions stuck this way, torrent submissions fully stopped)."""
     if not rows:
         return
 
@@ -143,7 +157,7 @@ async def match_against_wishlist(
         row.matched_score = best_score
 
         if (
-            automatch_on
+            (automatch_on or auto_resolve)
             and row.status == LocalFileStatus.pending
             and best_score >= acquisition_service._STRONG_SCORE
         ):

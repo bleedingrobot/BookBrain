@@ -559,7 +559,7 @@ async def local_scan_tick(trigger: str = "scheduler") -> dict:
                 return {"pending": 0, "junk_removed": removed}
             provider = DriveProvider(build_drive_service(creds))
             await local_scan_service.match_against_wishlist(
-                session, pending, provider, inbox.folder_id, library.folder_id
+                session, pending, provider, inbox.folder_id, library.folder_id, auto_resolve=True
             )
             result = await local_scan_service.copy_to_drive(
                 session,

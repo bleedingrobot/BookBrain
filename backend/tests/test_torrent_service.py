@@ -728,7 +728,7 @@ async def test_local_scan_tick_runs_the_existing_handoff_pipeline(db_session, mo
         calls["scan"] += 1
         return [LocalFile(id=1, path="/x/y.epub", filename="y.epub", size_bytes=100, status=LocalFileStatus.pending)]
 
-    async def fake_match(session, rows, provider, inbox_id, library_id):
+    async def fake_match(session, rows, provider, inbox_id, library_id, *, auto_resolve=False):
         calls["match"] += 1
 
     async def fake_copy(session, file_ids, provider, inbox_id):
