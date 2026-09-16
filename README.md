@@ -96,9 +96,12 @@ as a systemd service instead of a manual `uvicorn --reload` window:
 Common commands:
 
 ```
-sudo systemctl status bookbrain.service      # is it up?
-sudo systemctl restart bookbrain.service     # restart
-sudo journalctl -u bookbrain.service -f      # live logs (Ctrl+C to stop watching)
+sudo systemctl status bookbrain.service             # is it up?
+sudo systemctl restart bookbrain.service            # restart
+sudo journalctl -u bookbrain.service -f             # live logs (Ctrl+C to stop watching)
+
+sudo systemctl status bookbrain-dashboard.service   # tty1 / mobile status page
+sudo systemctl restart bookbrain-dashboard.service  # restart (picks up dashboard.sh edits)
 ```
 
 **Updating to the latest code** — nothing pulls or rebuilds automatically;
@@ -113,6 +116,13 @@ sudo systemctl restart bookbrain.service
 
 If `backend/pyproject.toml` picked up a new dependency, also run
 `.venv/bin/pip install -e ".[dev]"` from `backend/` before restarting.
+
+If only `dashboard/` changed (`dashboard.sh` and/or `dashboard/mobile/index.html`
+— no backend/frontend touched), `git pull` plus
+`sudo systemctl restart bookbrain-dashboard.service` is enough; the mobile
+page (served straight from `dashboard/mobile/`) picks up HTML/JS edits on
+its next browser refresh with no restart needed, but the shell script itself
+needs the restart to start writing the new `status.json` shape.
 
 ## Status
 
