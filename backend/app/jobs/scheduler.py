@@ -96,11 +96,24 @@ async def _run_scheduled_backup() -> None:
     await run_backup_job(trigger="scheduler")
 
 
+def _log_tick_skip(cycle: str, result: dict) -> None:
+    """A tick's "skipped" outcomes (busy, no confident match, budget spent,
+    etc.) previously vanished entirely — no exception, no log, so a cycle
+    silently going quiet for hours (busy stuck true, or similar) looked
+    identical to "just having a run of bad luck." Log every skip at INFO so
+    the actual reason is directly visible in the journal instead of having
+    to be inferred from the absence of other log lines."""
+    reason = result.get("skipped")
+    if reason is not None:
+        logger.info("%s: tick skipped (%s)", cycle, reason)
+
+
 async def _run_scheduled_autoget() -> None:
     from app.services import acquisition_service
 
     try:
-        await acquisition_service.autoget_tick(trigger="scheduler")
+        result = await acquisition_service.autoget_tick(trigger="scheduler")
+        _log_tick_skip("openbooks auto-get", result)
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("openbooks auto-get tick failed")
 
@@ -109,7 +122,8 @@ async def _run_scheduled_libgen_autoget() -> None:
     from app.services import acquisition_service
 
     try:
-        await acquisition_service.libgen_autoget_tick(trigger="scheduler")
+        result = await acquisition_service.libgen_autoget_tick(trigger="scheduler")
+        _log_tick_skip("libgen auto-get", result)
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("libgen auto-get tick failed")
 
@@ -118,7 +132,8 @@ async def _run_scheduled_torrent_submit() -> None:
     from app.services import torrent_service
 
     try:
-        await torrent_service.submit_tick(trigger="scheduler")
+        result = await torrent_service.submit_tick(trigger="scheduler")
+        _log_tick_skip("torrent submit", result)
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("torrent submit tick failed")
 
