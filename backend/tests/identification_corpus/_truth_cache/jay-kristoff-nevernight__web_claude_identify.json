@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_identify",
+  "title": "Nevernight",
+  "author": "Jay Kristoff",
+  "series": "The Nevernight Chronicle",
+  "series_number": 1.0,
+  "url": "https://www.amazon.com/Nevernight-Chronicle-Book-1-ebook/dp/B017RC8CEE",
+  "note": "conf=0.98; The EPUB ISBN 9781466885035 matches the Kindle/ebook edition of Nevernight (St. Martin's/Thomas Dunne), listed as \"Book 1 of 3: The Nevernight Chronicle\". Subtitle on the print edition is \"Book One of the Nevernight Chronicle\"; canonical title is simply Nevernight. Series continues with Godsgrave (2) and Darkdawn (3)."
+}

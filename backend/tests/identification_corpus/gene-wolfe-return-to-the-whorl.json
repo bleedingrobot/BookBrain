@@ -1,0 +1,107 @@
+{
+  "id": "gene-wolfe-return-to-the-whorl",
+  "case_tags": [
+    "messy-language-metadata"
+  ],
+  "notes": "messy-language-metadata; stored: Gene Wolfe / Return to the Whorl / series=The Book of the Short Sun #3.0 (model=deterministic, conf=80)",
+  "source": {
+    "file_id": 1856,
+    "drive_file_id": "1yxa0Pc2G63Q1X6kxe4-hvLPZFpGoxG7p",
+    "filename": "Return to the Whorl - Gene Wolfe.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 80
+  },
+  "filename": "Return to the Whorl - Gene Wolfe.epub",
+  "evidence": {
+    "title": "Return to the Whorl",
+    "authors": [
+      "Gene Wolfe"
+    ],
+    "language": "UND",
+    "description": "EDITORIAL REVIEW:\n\nGene Wolfe''s \"Return to the Whorl\" is the third volume, after\"On Blue's Waters\" and \"In Green's Jungles\", of his ambitious SF trilogy The Book of the Short Sun . . . It is again narrated by Horn, who has embarked on a quest in search of the heroic leader Patera Silk. Horn has traveled from his home on the planet Blue, reached the mysterious planet Green, and visited the great starship, the Whorl and even, somehow, the distant planet Urth. But Horn's identity has become ambiguous, a complex question embedded in the story, whose telling is itself complex, shifting from place to place, present to past. Perhaps Horn and Silk are now one being. *Return to the Whorl* brings Wolfe's major new fiction, The Book of the Short Sun, to a strange and seductive climax.",
+    "isbn10": null,
+    "isbn13": "9780312873646",
+    "series": "The Book of the Short Sun",
+    "series_number": 3.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Return to the Whorl",
+      "authors": [
+        "Gene Wolfe"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9780312873646",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Return to the Whorl",
+    "author": "Gene Wolfe",
+    "series": "The Book of the Short Sun",
+    "series_number": 3.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": "The Book of the Short Sun",
+      "series_number": 3.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q131381214",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": "The Book of the Short Sun",
+      "series_number": 3.0,
+      "url": "https://www.goodreads.com/book/show/618260.Return_to_the_Whorl",
+      "note": "conf=0.97; Third and final volume of Gene Wolfe's Book of the Short Sun trilogy, following On Blue's Waters and In Green's Jungles. ISBN 9780312873646 corresponds to the Tor hardcover edition (2001). The trilogy sits within the wider \"Solar Cycle\" (New Sun/Long Sun/Short Sun), but the tight sub-series is The Book of the Short Sun, #3."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Return to the Whorl",
+      "author": "Gene Wolfe",
+      "series": "The Book of the Short Sun",
+      "series_number": 3.0,
+      "url": "https://www.barnesandnoble.com/w/return-to-the-whorl-gene-wolfe/1100356784",
+      "note": "conf=0.97; Title, author and ISBN check out (Tor, ISBN 0312873646/9780312873646, 2002 paperback). The proposed series=None is refuted: publisher copy describes it as \"the third volume, after On Blue's Waters and In Green's Jungles, of his ambitious SF trilogy The Book of the Short Sun,\" and B&N lists it as Book of the Short Sun Series #3. The tighter sub-series (Short Sun trilogy) is given rather than the broader \"Solar Cycle\"/Book of the New Sun universe."
+    }
+  ],
+  "truth_disagreements": []
+}

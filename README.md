@@ -5,7 +5,14 @@ Auto-organizing Google Drive EPUB library manager. See [SPEC.md](SPEC.md) for th
 ## Layout
 
 - `backend/` — FastAPI + SQLAlchemy + Alembic (async), layered `api/ → services/ → providers/ → data/`
-- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4
+- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4 (local admin UI)
+- `library-viewer/` — React + Vite + Tailwind, the family-facing browser. Reads the
+  `bookbrain-index.json` sidecar + covers straight from Drive (no backend). Deployed
+  to GitHub Pages on push to `main`. Includes an in-browser EPUB reader built on a
+  **vendored** copy of [foliate-js](https://github.com/johnfactotum/foliate-js)
+  (`src/vendor/foliate/`, EPUB path only, no npm dependency — see its `VERSION`).
+  Reader typography/theme and per-book reading position live in `localStorage`;
+  opened books are cached in IndexedDB for offline reading.
 
 ## Backend
 
@@ -22,6 +29,31 @@ uvicorn app.main:app --reload
 ```
 
 Runs at `http://localhost:8000`. Tests: `pytest`.
+
+Dependencies (including APScheduler, added for the nightly run) are declared in
+`pyproject.toml` — `pip install -e ".[dev]"` installs them. After pulling changes,
+re-run that and `alembic upgrade head`.
+
+### Nightly unattended run
+
+Settings → **Nightly run** turns on a once-a-night pass that does the whole
+pipeline with no one watching: pull the Torrents folder, scan the Book Dump,
+auto-organize everything above the confidence threshold, then refresh covers and
+the library index. It never resolves a review or clears a duplicate — uncertain
+books still wait in the queue.
+
+Two layers run the same job (`app/jobs/nightly.py::run_nightly`):
+
+- **In-process** — an APScheduler job in the FastAPI lifespan. Fires only if the
+  server is up at the chosen hour. Toggling the setting re-arms it live.
+- **Standalone** — `python -m app.jobs.nightly`, no HTTP layer, exits non-zero on
+  failure, logs to `backend/nightly-runs.log`. For when the machine's usually not
+  running the server overnight: double-click `backend/scripts/register-nightly-task.bat`
+  once to install a Windows Scheduled Task (2am by default; pass an hour to match
+  the in-app setting). `unregister-nightly-task.bat` removes it.
+
+A dead Google token makes either layer log "reconnect Google in Settings" and stop
+cleanly. The Dashboard shows the last run's result.
 
 ### Google OAuth setup (needed for Milestone 2+)
 
@@ -42,7 +74,45 @@ npm install
 npm run dev
 ```
 
-Runs at `http://localhost:5173`, proxies `/api` to `http://localhost:8000`.
+Runs at `http://localhost:5173`, proxies `/api` to `http://localhost:8000`. In
+production this isn't run separately at all — see below.
+
+## Running in production (systemd)
+
+On a persistent Linux box (this is how it's currently deployed) BookBrain runs
+as a systemd service instead of a manual `uvicorn --reload` window:
+
+- **`bookbrain.service`** — the backend
+  (`uvicorn app.main:app --host 0.0.0.0 --port 8000`, `Restart=always`), also
+  responsible for the OpenBooks acquire helper child process. Because it's
+  always running, the nightly job's in-process APScheduler layer is what
+  actually fires — the Windows Scheduled Task fallback above isn't needed on
+  a box like this. It also serves the **built admin frontend** (`frontend/dist`,
+  from `npm run build`) directly, so there's one permanent URL instead of a
+  locally-launched `npm run dev` server.
+- **`bookbrain-dashboard.service`** — an optional status readout on the
+  server's own console (tty1); unrelated to the app itself.
+
+Common commands:
+
+```
+sudo systemctl status bookbrain.service      # is it up?
+sudo systemctl restart bookbrain.service     # restart
+sudo journalctl -u bookbrain.service -f      # live logs (Ctrl+C to stop watching)
+```
+
+**Updating to the latest code** — nothing pulls or rebuilds automatically;
+do this after every push you want live, from the repo root:
+
+```
+git pull
+cd backend && .venv/bin/python -m alembic upgrade head
+cd ../frontend && npm run build      # only matters if frontend/ changed; harmless otherwise
+sudo systemctl restart bookbrain.service
+```
+
+If `backend/pyproject.toml` picked up a new dependency, also run
+`.venv/bin/pip install -e ".[dev]"` from `backend/` before restarting.
 
 ## Status
 

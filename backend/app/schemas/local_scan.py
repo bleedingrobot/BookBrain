@@ -6,6 +6,9 @@ class LocalFileSummary(BaseModel):
     filename: str
     path: str
     size_bytes: int
+    matched_title: str | None = None
+    matched_author: str | None = None
+    matched_score: float | None = None
 
 
 class FileIdsRequest(BaseModel):

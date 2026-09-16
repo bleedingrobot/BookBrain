@@ -8,16 +8,33 @@ venv/
 
 # Backend runtime
 backend/.env
+backend/nightly-runs.log*
+backend/backup-runs.log*
+backend/uvicorn-dev*.log*
 backend/*.db
 backend/*.db-journal
 backend/*.db-shm
 backend/*.db-wal
 backend/*.db.bak-*
+backend/*.db.pre-restore-*
+backend/*.db.before-restore
+
+# Stray DB created if a script/service is ever run from the repo root
+# instead of backend/ (database_url is the relative "./epub_librarian.db")
+/epub_librarian.db
+/epub_librarian.db-journal
+/epub_librarian.db-shm
+/epub_librarian.db-wal
 
 # Node / frontend
 node_modules/
 dist/
 
+# Dashboard runtime
+dashboard/mobile/status.json
+
 # Editors / OS
 .vscode/
 .DS_Store
+backend/tests/identification_corpus/ANSWER-KEY-REVIEW.md
+backend/logs/

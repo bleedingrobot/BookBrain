@@ -1,0 +1,113 @@
+{
+  "id": "dean-koontz-the-face-of-fear",
+  "case_tags": [
+    "clean-control"
+  ],
+  "notes": "clean-control; stored: Dean Koontz / The Face of Fear / series=None #None (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 557,
+    "drive_file_id": "1DNWERaqPnYR-uEkNO8qlUoGf89QdDskx",
+    "filename": "The Face Of Fear - Dean R. Koontz.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "The Face Of Fear - Dean R. Koontz.epub",
+  "evidence": {
+    "title": "The Face of Fear",
+    "authors": [
+      "Dean Koontz"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": "9781440620614",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "."
+  },
+  "candidates": [
+    {
+      "title": "The Face of Fear",
+      "authors": [
+        "Dean Koontz"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Face of Fear",
+    "author": "Dean Koontz",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 96,
+    "reasoning_summary": "Filename, EPUB title, and author metadata all agree on 'The Face of Fear' by Dean Koontz (originally published as by 'Brian Coffey'/Dean R. Koontz), and the Open Library candidate confirms the same title/author. Standalone novel with no series.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Face of Fear",
+    "author": "Dean Koontz",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q7733032",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Face_of_Fear_(novel)",
+      "note": "conf=0.95; 1977 suspense/horror novel, originally published under Koontz's pseudonym Brian Coffey (Bobbs-Merrill, ISBN 0-672-52312-4); later reissued under Dean Koontz's own name. ISBN 9781440620614 (144062061X) corresponds to a Kindle edition of this work per Goodreads editions list. Standalone: protagonist Graham Harris appears in no other novel, and the only Koontz-as-Coffey series (Mike Tucker: Blood Risk, Surrounded, The Wall of Masks) does not include this title."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Face of Fear",
+      "author": "Dean Koontz",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/The_Face_of_Fear_(novel)",
+      "note": "conf=0.96; Verified standalone suspense novel first published 1977 by Bobbs-Merrill under Koontz's pseudonym \"Brian Coffey\" (ISBN 0-672-52312-4); later reissued under his own name. The EPUB ISBN 9781440620614 matches the Berkley/Penguin Kindle-EPUB reissue (dated May 15, 1989 in OverDrive/Goodreads records), confirming the same work. Plot: clairvoyant Graham Harris helps NYPD hunt a killer known as \"The Butcher.\" Fantastic Fiction and Wikipedia list no series affiliation; it is not part of the Brian Coffey \"Mike Tucker\" trilogy (Blood Risk / Surrounded / Wall of Masks). Author field kept as Dean Koontz (canonical modern attribution); title confirmed with no subtitle beyond the original hardcover's \"A Novel of Suspense\" tagline. Proposed identification was correct on all fields."
+    }
+  ],
+  "truth_disagreements": []
+}

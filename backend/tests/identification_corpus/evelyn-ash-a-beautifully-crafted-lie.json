@@ -1,0 +1,86 @@
+{
+  "id": "evelyn-ash-a-beautifully-crafted-lie",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Evelyn Ash / A Beautifully Crafted Lie / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2397,
+    "drive_file_id": "1tF56gQ7FAL_2pP0p4pc3qoO821ovz17M",
+    "filename": "A Beautifully Crafted Lie - Evelyn Ash.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "A Beautifully Crafted Lie - Evelyn Ash.epub",
+  "evidence": {
+    "title": "A Beautifully Crafted Lie",
+    "authors": [
+      "Ash",
+      "Evelyn"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "c0"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "A Beautifully Crafted Lie",
+    "author": "Evelyn Ash",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 55,
+    "reasoning_summary": "The only evidence available is the filename and EPUB metadata, which agree: title \"A Beautifully Crafted Lie\" by Evelyn Ash. No ISBN, no series info, and the first-chapter/copyright text is empty (\"c0\"), so nothing corroborates or contradicts. No metadata provider candidates were returned, meaning the identification rests entirely on unverified embedded metadata (possibly a self-published or obscure title). Flagging for human review due to lack of external confirmation.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "A Beautifully Crafted Lie",
+    "author": "Evelyn Ash",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "weak",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "A Beautifully Crafted Lie",
+      "author": "Ash",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "A Beautifully Crafted Lie",
+      "author": "Evelyn Ash",
+      "series": "A Beautifully Crafted Lie",
+      "series_number": 1.0,
+      "url": "https://www.netgalley.com/catalog/book/798048",
+      "note": "conf=0.72; Debut dark romantasy by South African author Evelyn Ash (Raven Court Publishing, ISBNs 9781049207117 pbk / 9781049215082 / 9781049207124 ebook; listed pub date 26 Aug 2026). Protagonist Bryndis Ashglo of Bouldermore; fae/witch-reaping plot. Confirmed as Book 1, not a standalone: NetGalley's listing explicitly reads \"Book 1 of A Beautifully Crafted Lie\" and romance.io numbers it \"#1 A Beautifully Crafted Lie\"; Goodreads reviews mention a cliffhanger and a forthcoming next instalment. Caveat: the series appears to share its name with this first book, and no separately branded series title (nor a sequel title) was found in the sources located, so the series NAME is the least certain element here — the series position (#1) is solid."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "A Beautifully Crafted Lie",
+      "author": "Evelyn Ash",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.amazon.com/Beautifully-Crafted-Lie-Evelyn-Ash/dp/1049207114",
+      "note": "conf=0.82; Dark/gothic romantasy (Bryndis Ashglo, Prince Odhran) by Evelyn Ash, Raven Court Publishing, pub. 26 Aug 2026, ISBN 9781049207117 (also 9781049215082 edition). EPUB author metadata \"Ash\" expanded to full name Evelyn Ash. No series name or number is attached to this title on Amazon, Goodreads, B&N, or Fable; reviews mention a forthcoming \"next instalment\" but no verifiable published series name exists, so series is reported as null."
+    }
+  ],
+  "truth_disagreements": []
+}

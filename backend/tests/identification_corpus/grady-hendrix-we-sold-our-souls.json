@@ -1,0 +1,104 @@
+{
+  "id": "grady-hendrix-we-sold-our-souls",
+  "case_tags": [
+    "clean-control"
+  ],
+  "notes": "clean-control; stored: Grady Hendrix / We Sold Our Souls / series=None #None (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 1789,
+    "drive_file_id": "1d9ZFRUwaTzEv0xbZagPEqZGPX9JxsdTf",
+    "filename": "We Sold Our Souls by Grady Hendrix.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "We Sold Our Souls by Grady Hendrix.epub",
+  "evidence": {
+    "title": "We Sold Our Souls",
+    "authors": [
+      "Grady Hendrix"
+    ],
+    "language": "en-US",
+    "description": "<div><b><i>In this hard-rocking, spine-tingling supernatural thriller, the washed-up guitarist of a '90s heavy metal band embarks on an epic road trip across America and deep into the web of a sinister conspiracy.</i></b><p>\n\nGrady Hendrix, horror writer and author of Paperbacks from Hell and My Best Friend's Exorcism, is back with his most electrifying novel yet. In the 1990s, heavy metal band Durt Wurk was poised for breakout success - but then lead singer Terry Hunt embarked on a solo career and rocketed to stardom as Koffin, leaving his fellow bandmates to rot in obscurity. </p><p>\n\nTwo decades later, former guitarist Kris Pulaski works as the night manager of a Best Western - she's tired, broke, and unhappy. Everything changes when a shocking act of violence turns her life upside down, and she begins to suspect that Terry sabotaged more than just the band. </p><p>\n\nKris hits the road, hoping to reunite with the rest of her bandmates and confront the man who ruined her life. It's a journey that will take her from the Pennsylvania rust belt to a celebrity rehab center to a music festival from hell. A furious power ballad about never giving up, even in the face of overwhelming odds, We Sold Our Souls is an epic journey into the heart of a conspiracy-crazed, pill-popping, paranoid country that seems to have lost its very soul...where only a lone girl with a guitar can save us all.</p></div>",
+    "isbn10": null,
+    "isbn13": "9781683690214",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover, We Sold Our Souls: A Novel"
+  },
+  "candidates": [
+    {
+      "title": "We sold our souls",
+      "authors": [
+        "Grady Hendrix"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "We Sold Our Souls",
+    "author": "Grady Hendrix",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 97,
+    "reasoning_summary": "Filename, EPUB metadata, ISBN (9781683690214, Quirk Books edition), and copyright-page text all agree on 'We Sold Our Souls: A Novel' by Grady Hendrix; Open Library candidate confirms title and author. Standalone novel, no series.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "We Sold Our Souls",
+    "author": "Grady Hendrix",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "We Sold Our Souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "We sold our souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "We Sold Our Souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.amazon.com/We-Sold-Our-Souls-Novel-ebook/dp/B078LRC6GP",
+      "note": "conf=0.95; ISBN 9781683690214 matches the Kindle/ebook edition of \"We Sold Our Souls: A Novel\" by Grady Hendrix, published by Quirk Books, September 18, 2018. The \"A Novel\" is a subtitle, not part of the canonical title. No series affiliation appears on Goodreads editions listing, publisher, or retailer pages — Hendrix's horror novels (Horrorstör, My Best Friend's Exorcism, The Southern Book Club's Guide to Slaying Vampires, The Final Girl Support Group) are all standalones. Nominated for the 2018 Shirley Jackson Award and a 2019 Locus Award finalist."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "We Sold Our Souls",
+      "author": "Grady Hendrix",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.amazon.com/We-Sold-Our-Souls-Novel-ebook/dp/B078LRC6GP",
+      "note": "conf=0.96; ISBN 9781683690214 matches the Quirk Books ebook edition (Sept 18, 2018) of We Sold Our Souls by Grady Hendrix. Canonical title is \"We Sold Our Souls\"; \"A Novel\" is a retail subtitle. Verified as a genuine standalone — no series listing on Goodreads editions page or any retail edition; Hendrix's horror novels are unconnected standalones. Proposed fields were all null, so title/author added and series correctly remains null."
+    }
+  ],
+  "truth_disagreements": []
+}

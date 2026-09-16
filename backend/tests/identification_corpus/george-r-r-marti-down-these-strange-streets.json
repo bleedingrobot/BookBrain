@@ -1,0 +1,94 @@
+{
+  "id": "george-r-r-marti-down-these-strange-streets",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: George R. R. Martin and Gardner Dozois (editors) / Down These Strange Streets / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 736,
+    "drive_file_id": "10-WCcT2qsf0Y2U5V_aoyDN-dwncQZLgz",
+    "filename": "George R R Martin & Gardner Dozois (eds.) - Down These Strange Streets (v5.0) (epub).epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "George R R Martin & Gardner Dozois (eds.) - Down These Strange Streets (v5.0) (epub).epub",
+  "evidence": {
+    "title": "Down These Strange Streets",
+    "authors": [
+      "George R. R. Martin and Gardner Dozois"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "."
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Down These Strange Streets",
+    "author": "George R. R. Martin and Gardner Dozois (editors)",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 92,
+    "reasoning_summary": "Filename and EPUB metadata agree: \"Down These Strange Streets,\" an urban fantasy/mystery anthology edited by George R. R. Martin and Gardner Dozois (Ace, 2011). No ISBN or provider candidates available, but the title/editor combination is unambiguous and well-known. Not part of a numbered series (a companion volume to other Martin/Dozois anthologies, but standalone).",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Down These Strange Streets",
+    "author": "George R. R. Martin and Gardner Dozois (editors)",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "weak",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Down These Strange Streets",
+      "author": "George R. R. Martin and Gardner Dozois",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Down These Strange Streets",
+      "author": null,
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q18352483",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Down These Strange Streets",
+      "author": "George R. R. Martin and Gardner Dozois (editors)",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/Down_These_Strange_Streets",
+      "note": "conf=0.92; Urban fantasy/mystery anthology edited by George R. R. Martin and Gardner Dozois, published by Ace Books on October 4, 2011 (ISBN 0441020747). It is a standalone, unnumbered anthology — not part of a numbered series. It belongs only to the loose, unnumbered set of Martin/Dozois co-edited anthologies (Warriors, Songs of Love and Death, Dangerous Women, Rogues, Old Mars, Old Venus), which no source numbers as a sequence. Individual stories inside belong to authors' own series (e.g., Sookie Stackhouse universe, Nightside, Lord John Grey), but the book itself does not."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Down These Strange Streets",
+      "author": "George R. R. Martin and Gardner Dozois (editors)",
+      "series": null,
+      "series_number": null,
+      "url": "https://en.wikipedia.org/wiki/Down_These_Strange_Streets",
+      "note": "conf=0.93; Verified: an urban-fantasy/mystery anthology edited by George R. R. Martin and Gardner Dozois, published by Ace Books on October 4, 2011 (hardcover, ISBN 0441020747). Corrected the empty author field — the editors are the credited \"authors\" (contents are by Charlaine Harris, Patricia Briggs, Diana Gabaldon, Joe R. Lansdale, Simon R. Green, Steven Saylor, etc.). Series stays null: it is a standalone anthology. It is often grouped informally with other Martin/Dozois themed anthologies (Warriors, Songs of the Dying Earth, Dangerous Women, Rogues, Old Mars, Old Venus), but that is a loose editorial grouping, not a numbered published series, and no publisher or bibliographic source (Wikipedia, Penguin Random House, ISFDB listings) assigns it a series position. Individual stories belong to other authors' series (Sookie Stackhouse universe, Lord John Grey, Kitty Norville), but the book itself does not."
+    }
+  ],
+  "truth_disagreements": []
+}

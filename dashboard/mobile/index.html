@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BookBrain</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --cyan: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  }
+  h1 {
+    font-size: 17px;
+    margin: 4px 0 2px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  h1 .host { color: var(--cyan); font-weight: 700; }
+  h1 .clock { color: var(--dim); font-weight: 400; font-size: 12px; white-space: nowrap; }
+  .stale { color: var(--red); }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .card h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--dim);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+  }
+  .row .label { color: var(--dim); font-size: 13px; }
+  .row .value { font-weight: 600; text-align: right; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .metric { text-align: center; }
+  .metric .n { font-size: 22px; font-weight: 700; }
+  .metric .l { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  .bar {
+    height: 7px;
+    border-radius: 4px;
+    background: #21262d;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .bar > i { display: block; height: 100%; border-radius: 4px; }
+  .g-green { background: var(--green); }
+  .g-yellow { background: var(--yellow); }
+  .g-red { background: var(--red); }
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .pill-green { background: rgba(63,185,80,.15); color: var(--green); }
+  .pill-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .pill-red { background: rgba(248,81,73,.15); color: var(--red); }
+  .pill-dim { background: rgba(139,148,158,.15); color: var(--dim); }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+  .stats-grid .n { font-size: 19px; font-weight: 700; }
+  .stats-grid .l { color: var(--dim); font-size: 10.5px; }
+  .queue-bar { display: flex; height: 14px; border-radius: 5px; overflow: hidden; margin: 6px 0 8px; background: #21262d; }
+  .queue-bar span { height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; color: var(--dim); }
+  .legend b { font-weight: 700; }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  ul.list { list-style: none; margin: 6px 0 0; padding: 0; }
+  ul.list li {
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  ul.list li:first-child { border-top: none; }
+  ul.list .title { flex: 1; min-width: 0; }
+  ul.list .title .t { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ul.list .title .a { display: block; color: var(--dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ul.list .meta { text-align: right; flex-shrink: 0; font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+  .spark { font-size: 18px; letter-spacing: 1px; color: var(--cyan); }
+  .empty { color: var(--dim); font-size: 13px; padding: 4px 0; }
+  .tabs { display: flex; gap: 6px; margin: 2px 0 12px; }
+  .tabs a {
+    flex: 1; text-align: center; padding: 7px 0; border-radius: 8px;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--dim); font-size: 12px; text-decoration: none;
+  }
+  .tabs a.active { color: var(--text); border-color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <a href="/" class="active">Mobile</a>
+  <a href="/term">Terminal</a>
+</div>
+
+<h1><span class="host" id="host">--</span><span class="clock" id="clock">loading&hellip;</span></h1>
+<div class="sub" id="sub">&nbsp;</div>
+
+<div class="card">
+  <h2>System</h2>
+  <div class="metrics">
+    <div class="metric">
+      <div class="n" id="cpu-n">--%</div>
+      <div class="l">CPU</div>
+      <div class="bar"><i id="cpu-bar"></i></div>
+    </div>
+    <div class="metric">
+      <div class="n" id="mem-n">--%</div>
+      <div class="l">Memory</div>
+      <div class="bar"><i id="mem-bar"></i></div>
+    </div>
+    <div class="metric">
+      <div class="n" id="disk-n">--%</div>
+      <div class="l">Disk</div>
+      <div class="bar"><i id="disk-bar"></i></div>
+    </div>
+  </div>
+  <div class="row"><span class="label">Uptime</span><span class="value" id="uptime">--</span></div>
+  <div class="row"><span class="label">Load avg</span><span class="value" id="load">--</span></div>
+  <div class="row"><span class="label">Memory</span><span class="value" id="mem-detail">--</span></div>
+  <div class="row"><span class="label">Disk</span><span class="value" id="disk-detail">--</span></div>
+</div>
+
+<div class="card">
+  <h2>Connected &amp; working</h2>
+  <div class="row"><span class="label">SSH</span><span class="value" id="ssh">--</span></div>
+  <div class="row"><span class="label">VS Code windows</span><span class="value" id="vscode">--</span></div>
+  <div class="row"><span class="label">Claude Code</span><span class="value" id="claude">--</span></div>
+  <div class="row"><span class="label">Last activity</span><span class="value" id="activity">--</span></div>
+</div>
+
+<div class="card">
+  <h2>BookBrain</h2>
+  <div class="row">
+    <span class="label">Service</span>
+    <span class="value"><span class="pill" id="bb-service">--</span></span>
+  </div>
+  <div class="row">
+    <span class="label">API</span>
+    <span class="value"><span class="pill" id="bb-health">--</span></span>
+  </div>
+  <div class="stats-grid" style="margin-top:10px">
+    <div><div class="n" id="s-books">--</div><div class="l">books</div></div>
+    <div><div class="n" id="s-reviews">--</div><div class="l">reviews</div></div>
+    <div><div class="n" id="s-inbox">--</div><div class="l">inbox</div></div>
+    <div><div class="n" id="s-dups">--</div><div class="l">duplicates</div></div>
+    <div><div class="n" id="s-scan">--</div><div class="l">local scan</div></div>
+    <div><div class="n" id="s-org24">--</div><div class="l">organized 24h</div></div>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <span class="label">7 days (<span id="org7">--</span>)</span>
+    <span class="value spark" id="sparkline">--</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>LLM tagging</h2>
+  <div class="row">
+    <span class="label">Status</span>
+    <span class="value"><span class="pill" id="tag-status">--</span></span>
+  </div>
+  <div class="row"><span class="label">Tagged / remaining</span><span class="value" id="tag-progress">--</span></div>
+  <div id="tag-current" class="row" style="display:none">
+    <span class="label" id="tag-current-label">--</span>
+    <span class="value" id="tag-current-pct">--</span>
+  </div>
+  <div id="tag-error" class="row" style="display:none">
+    <span class="label" style="color:var(--red)">Last error</span>
+    <span class="value" id="tag-error-msg" style="text-align:right;font-weight:400;color:var(--red)">--</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Acquisition queue</h2>
+  <div class="queue-bar" id="queue-bar"></div>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--green)"></i><b id="q-approved">--</b> got</span>
+    <span><i class="swatch" style="background:var(--yellow)"></i><b id="q-pending">--</b> queued</span>
+    <span><i class="swatch" style="background:var(--dim)"></i><b id="q-unsearched">--</b> not searched</span>
+    <span><i class="swatch" style="background:var(--red)"></i><b id="q-nomatch">--</b> no match</span>
+  </div>
+  <div class="row"><span class="label">Failed</span><span class="value" id="q-failed">--</span></div>
+  <div class="row"><span class="label">Hit rate</span><span class="value" id="q-hitrate">--</span></div>
+  <div class="row"><span class="label">Last downloaded</span><span class="value" id="q-lastgot">--</span></div>
+</div>
+
+<div class="card">
+  <h2>Sources</h2>
+  <div class="queue-bar" id="sources-bar"></div>
+  <ul class="list" id="sources-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
+<div class="card">
+  <h2>Last got</h2>
+  <ul class="list" id="got-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
+<div class="card">
+  <h2>Recently organized</h2>
+  <ul class="list" id="organized-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
+<div class="card">
+  <h2>Nightly job</h2>
+  <div class="row">
+    <span class="label" id="nightly-finished">--</span>
+    <span class="value"><span class="pill" id="nightly-status">--</span></span>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function pillClass(status) {
+  const s = (status || '').toLowerCase();
+  if (['running', 'ok', 'success', 'approved'].includes(s)) return 'pill-green';
+  if (['down', 'failed', 'unreachable'].includes(s)) return 'pill-red';
+  if (['pending', 'no_match', 'degraded', 'n/a', 'off'].includes(s)) return 'pill-yellow';
+  return 'pill-dim';
+}
+
+const PROVIDER_LABELS = { openbooks: 'OpenBooks', annas_archive: "Anna's Archive", libgen: 'LibGen' };
+const PROVIDER_COLORS = { openbooks: 'var(--cyan)', annas_archive: 'var(--green)', libgen: 'var(--yellow)' };
+function providerLabel(p) { return PROVIDER_LABELS[p] || p || 'unknown'; }
+function providerColor(p) { return PROVIDER_COLORS[p] || 'var(--dim)'; }
+
+function gaugeClass(pct) {
+  if (pct >= 85) return 'g-red';
+  if (pct >= 60) return 'g-yellow';
+  return 'g-green';
+}
+
+function ago(iso) {
+  if (!iso) return 'n/a';
+  const then = Date.parse(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
+  if (isNaN(then)) return 'n/a';
+  const diff = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+function setPill(id, text) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'pill ' + pillClass(text);
+}
+
+function renderList(id, items, empty, fn) {
+  const el = $(id);
+  el.innerHTML = '';
+  if (!items || !items.length) {
+    el.innerHTML = `<li class="empty">${empty}</li>`;
+    return;
+  }
+  for (const it of items) el.appendChild(fn(it));
+}
+
+function li(titleHtml, authorText, metaHtml) {
+  const el = document.createElement('li');
+  el.innerHTML = `<div class="title"><span class="t">${titleHtml}</span><span class="a">${authorText || ''}</span></div><div class="meta">${metaHtml}</div>`;
+  return el;
+}
+
+function esc(s) {
+  return (s ?? '').toString().replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+let lastGeneratedAt = null;
+
+async function refresh() {
+  let d;
+  try {
+    const res = await fetch('/status.json', { cache: 'no-store' });
+    d = await res.json();
+  } catch (e) {
+    $('sub').innerHTML = '<span class="stale">Can\'t reach the server &mdash; retrying&hellip;</span>';
+    return;
+  }
+
+  lastGeneratedAt = d.generated_at;
+  $('host').textContent = d.host;
+  $('clock').textContent = d.now;
+  $('sub').textContent = `updated ${ago(d.generated_at)}`;
+
+  $('cpu-n').textContent = d.cpu_pct + '%';
+  $('cpu-bar').style.width = d.cpu_pct + '%';
+  $('cpu-bar').className = gaugeClass(d.cpu_pct);
+  $('mem-n').textContent = d.mem_pct + '%';
+  $('mem-bar').style.width = d.mem_pct + '%';
+  $('mem-bar').className = gaugeClass(d.mem_pct);
+  $('disk-n').textContent = d.disk_pct + '%';
+  $('disk-bar').style.width = d.disk_pct + '%';
+  $('disk-bar').className = gaugeClass(d.disk_pct);
+
+  $('uptime').textContent = d.uptime || 'n/a';
+  $('load').textContent = d.load || 'n/a';
+  $('mem-detail').textContent = `${d.mem_used_gb}G / ${d.mem_total_gb}G`;
+  $('disk-detail').textContent = `${d.disk_used} / ${d.disk_size}`;
+
+  $('ssh').textContent = d.ssh_line || 'none';
+  $('vscode').textContent = d.vscode_windows;
+  $('claude').textContent = d.claude_count ? `${d.claude_count} running${d.claude_durs ? ' (' + d.claude_durs + ')' : ''}` : '0';
+  $('activity').textContent = d.activity_line || 'n/a';
+
+  const bb = d.bookbrain || {};
+  setPill('bb-service', bb.service_state);
+  setPill('bb-health', bb.api_health);
+  $('s-books').textContent = bb.book_count ?? '?';
+  $('s-reviews').textContent = bb.reviews ?? '?';
+  $('s-inbox').textContent = bb.inbox ?? '?';
+  $('s-dups').textContent = bb.duplicates ?? '?';
+  $('s-scan').textContent = bb.local_scan ?? '?';
+  $('s-org24').textContent = bb.organized_24h ?? '?';
+  $('org7').textContent = bb.organized_7d ?? '?';
+  $('sparkline').textContent = bb.spark_line || '--';
+
+  const tag = bb.tagging || {};
+  setPill('tag-status', tag.enabled);
+  $('tag-progress').textContent = `${tag.done ?? '?'} / ${tag.pending ?? '?'}`;
+  if (tag.current) {
+    $('tag-current').style.display = 'flex';
+    const pct = tag.current.chunks_total ? Math.round(100 * tag.current.chunks_done / tag.current.chunks_total) : 0;
+    $('tag-current-label').textContent = `${tag.current.status}: ${tag.current.title}${tag.current.author ? ' by ' + tag.current.author : ''}`;
+    $('tag-current-pct').textContent = `${tag.current.chunks_done}/${tag.current.chunks_total} (${pct}%)`;
+  } else {
+    $('tag-current').style.display = 'none';
+  }
+  if (tag.last_error) {
+    $('tag-error').style.display = 'flex';
+    $('tag-error-msg').textContent = `${tag.last_error.message} (${tag.last_error.title}, ${ago(tag.last_error.at)})`;
+  } else {
+    $('tag-error').style.display = 'none';
+  }
+
+  const q = bb.queue || {};
+  const qtotal = (q.approved||0) + (q.pending||0) + (q.unsearched||0) + (q.no_match||0);
+  const qbar = $('queue-bar');
+  qbar.innerHTML = '';
+  const segs = [['approved','var(--green)'], ['pending','var(--yellow)'], ['unsearched','var(--dim)'], ['no_match','var(--red)']];
+  for (const [key, color] of segs) {
+    const v = q[key] || 0;
+    if (!v) continue;
+    const span = document.createElement('span');
+    span.style.width = (qtotal ? (100 * v / qtotal) : 0) + '%';
+    span.style.background = color;
+    qbar.appendChild(span);
+  }
+  $('q-approved').textContent = q.approved ?? 0;
+  $('q-pending').textContent = q.pending ?? 0;
+  $('q-unsearched').textContent = q.unsearched ?? 0;
+  $('q-nomatch').textContent = q.no_match ?? 0;
+  $('q-failed').textContent = q.failed ?? 0;
+  $('q-hitrate').textContent = q.hit_pct || 'n/a';
+  $('q-lastgot').textContent = q.last_got_at ? ago(q.last_got_at) : 'n/a';
+
+  const sourcesTotal = (q.sources || []).reduce((sum, s) => sum + s.count, 0);
+  const sourcesBar = $('sources-bar');
+  sourcesBar.innerHTML = '';
+  for (const s of (q.sources || [])) {
+    const span = document.createElement('span');
+    span.style.width = (sourcesTotal ? (100 * s.count / sourcesTotal) : 0) + '%';
+    span.style.background = providerColor(s.provider);
+    sourcesBar.appendChild(span);
+  }
+  renderList('sources-list', q.sources, 'no downloads yet', s => {
+    const pct = sourcesTotal ? Math.round(100 * s.count / sourcesTotal) : 0;
+    const el = document.createElement('li');
+    el.innerHTML = `<div class="title"><span class="t"><i class="swatch" style="background:${providerColor(s.provider)}"></i>${esc(providerLabel(s.provider))}</span></div><div class="meta">${s.count} (${pct}%)</div>`;
+    return el;
+  });
+
+  renderList('got-list', q.got_recent, 'nothing downloaded yet', it =>
+    li(esc(it.title), esc(it.author), `${providerLabel(it.candidate && it.candidate.provider)} &middot; ${ago(it.resolved_at)}`));
+
+  renderList('organized-list', bb.recently_organized, 'nothing organized in the last 24h', it => {
+    const series = it.series ? ` (${it.series}${it.series_number != null ? ' #' + Math.trunc(it.series_number) : ''})` : '';
+    const conf = it.confidence != null ? it.confidence + '%' : '?';
+    return li(esc(it.title) + series, esc(it.author), `${ago(it.organized_at)} &middot; ${conf}`);
+  });
+
+  const nightly = bb.nightly || {};
+  setPill('nightly-status', nightly.status);
+  $('nightly-finished').textContent = `Last run finished ${ago(nightly.finished_at)}`;
+}
+
+refresh();
+setInterval(refresh, 15000);
+
+// If the tab is hidden for a while (phone locked) and comes back, refresh immediately.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>

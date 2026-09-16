@@ -1,8 +1,14 @@
+import pytest
+
 from app.providers.ai.anthropic_client import AIIdentificationError
-from app.providers.ai.types import AIIdentificationResult, AISeriesResult
+from app.providers.ai.types import AIAuditResult, AIIdentificationResult, AISeriesResult
 from app.providers.epub.parser import EpubEvidence
 from app.providers.metadata.types import MetadataCandidate
-from app.services.identification_service import IdentificationService
+from app.services.identification_service import (
+    IdentificationService,
+    _build_prompt,
+    should_ground,
+)
 
 
 class _FakeAIClient:
@@ -14,16 +20,29 @@ class _FakeAIClient:
         raises: bool = False,
         series_result: AISeriesResult | None = None,
         series_raises: bool = False,
+        audit_result=None,
+        audit_raises: bool = False,
     ) -> None:
         self._result = result
         self._raises = raises
         self._series_result = series_result or AISeriesResult(series=None, series_number=None)
         self._series_raises = series_raises
+        self._audit_result = audit_result
+        self._audit_raises = audit_raises
         self.prompts: list[str] = []
+        self.ground_flags: list[bool] = []
         self.series_calls: list[tuple[str, str | None]] = []
+        self.audit_prompts: list[str] = []
 
-    async def identify(self, prompt: str):
+    async def audit_book_identity(self, prompt: str):
+        self.audit_prompts.append(prompt)
+        if self._audit_raises:
+            raise AIIdentificationError("simulated verify failure")
+        return self._audit_result
+
+    async def identify(self, prompt: str, *, ground: bool = False):
         self.prompts.append(prompt)
+        self.ground_flags.append(ground)
         if self._raises:
             raise AIIdentificationError("simulated failure")
         return self._result, {"stop_reason": "tool_use"}
@@ -134,6 +153,41 @@ async def test_fast_path_not_taken_when_isbn_mismatched() -> None:
     assert len(fake_client.prompts) == 1
 
 
+async def test_wrong_isbn_with_a_subtitle_collision_falls_through_to_ai() -> None:
+    # prompts/15 Stage F: a wrong-but-valid ISBN resolves to a different book in
+    # the same series. titles_match passes (it strips after the colon); the
+    # edit-distance check does not, so the AI path runs.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Mistborn: The Final Empire", author="Brandon Sanderson",
+            series="Mistborn", series_number=1, ai_confidence=85,
+            reasoning_summary="text analysis", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Mistborn: The Well of Ascension",
+            authors=["Brandon Sanderson"],
+            isbn13="9780765316882",
+            source="google_books",
+        )
+    ]
+
+    result = await service.identify(
+        filename="mistborn1.epub",
+        evidence=_evidence(
+            title="Mistborn: The Final Empire",
+            authors=["Brandon Sanderson"],
+            isbn13="9780765316882",
+        ),
+        candidates=candidates,
+    )
+
+    assert result.model == "fake-model"  # not "deterministic"
+    assert len(fake_client.prompts) == 1
+
+
 async def test_ai_path_used_when_no_isbn_match() -> None:
     fake_client = _FakeAIClient(
         result=AIIdentificationResult(
@@ -182,6 +236,224 @@ async def test_computed_confidence_not_ai_reported_confidence_drives_review_flag
     assert result.needs_human_review is True
 
 
+async def test_fast_path_invented_series_drops_below_review_bar() -> None:
+    # ISBN + provider + EPUB all agree on title/author, but the only reason
+    # this book has a series is the fast-path series lookup guessed one that
+    # no source mentions. That must pull the computed score under 85.
+    fake_client = _FakeAIClient(
+        series_result=AISeriesResult(series="The Invented Hierarchy", series_number=2)
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="a"
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub", evidence=_evidence(), candidates=candidates
+    )
+
+    assert result.series == "The Invented Hierarchy"
+    assert result.computed_confidence < 85
+    assert result.needs_human_review is True
+    assert result.raw_response["confidence_breakdown"]["conflicts"][
+        "uncorroborated_series"
+    ] == -15
+
+
+async def test_fast_path_series_from_provider_is_not_penalized() -> None:
+    fake_client = _FakeAIClient()
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Dune", authors=["Frank Herbert"], isbn13="9780441172719",
+            series="Dune Chronicles", series_number=1, source="a",
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub", evidence=_evidence(), candidates=candidates
+    )
+
+    assert result.series == "Dune Chronicles"
+    conflicts = result.raw_response["confidence_breakdown"]["conflicts"]
+    assert "uncorroborated_series" not in conflicts
+
+
+async def test_placeholder_epub_title_skips_the_fast_path() -> None:
+    # prompts/15 Stage E: ISBN + provider + EPUB "agree", but the EPUB title is
+    # "Unknown" — the AI path must run to recover the real title.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=88, reasoning_summary="recovered", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="Unknown", authors=["Frank Herbert"], isbn13="9780441172719", source="a"
+        )
+    ]
+
+    result = await service.identify(
+        filename="dune.epub",
+        evidence=_evidence(title="Unknown"),
+        candidates=candidates,
+    )
+
+    assert result.model == "fake-model"
+    assert len(fake_client.prompts) == 1
+    assert result.title == "Dune"
+
+
+async def test_placeholder_resolved_metadata_forces_review() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Calibre", author="Unknown", series=None, series_number=None,
+            ai_confidence=90, reasoning_summary="could not identify", needs_human_review=True,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="junk.epub", evidence=_evidence(), candidates=[]
+    )
+
+    assert result.raw_response["confidence_breakdown"]["conflicts"]["placeholder_metadata"] == -30
+    assert result.needs_human_review is True
+
+
+async def test_ai_path_series_corroborated_by_a_provider_is_not_penalized() -> None:
+    # prompts/15 Stage B: providers now return series, so an AI-supplied series
+    # that a provider candidate also carries no longer takes the
+    # uncorroborated-series penalty.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="The Final Empire",
+            author="Brandon Sanderson",
+            series="Mistborn",
+            series_number=1,
+            ai_confidence=88,
+            reasoning_summary="matched",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+    candidates = [
+        MetadataCandidate(
+            title="The Final Empire",
+            authors=["Brandon Sanderson"],
+            series="Mistborn",
+            series_number=1,
+            source="open_library",
+        )
+    ]
+
+    result = await service.identify(
+        filename="the-final-empire.epub",
+        evidence=_evidence(title="The Final Empire", authors=["Brandon Sanderson"], isbn13=None),
+        candidates=candidates,
+    )
+
+    conflicts = result.raw_response["confidence_breakdown"]["conflicts"]
+    assert "uncorroborated_series" not in conflicts
+    assert "series_disagreement" not in conflicts
+
+
+async def test_filename_parse_corroborates_the_identification() -> None:
+    # prompts/15 Stage C: a rich tracker filename that agrees with the AI's
+    # answer earns the filename_matches_title component, and the structured
+    # parse is shown to the model.
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="The Final Empire",
+            author="Brandon Sanderson",
+            series="Mistborn",
+            series_number=1,
+            ai_confidence=80,
+            reasoning_summary="matched",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="Sanderson, Brandon - Mistborn 01 - The Final Empire (2006).epub",
+        evidence=_evidence(title="The Final Empire", authors=["Brandon Sanderson"], isbn13=None),
+        candidates=[],
+    )
+
+    assert result.raw_response["confidence_breakdown"]["components"]["filename_matches_title"] == 5
+    assert "Structured parse of the filename" in fake_client.prompts[0]
+    assert "Mistborn" in fake_client.prompts[0]
+    assert result.raw_response["filename_guess"].startswith("title='The Final Empire'")
+
+
+async def test_wrong_filename_parse_does_not_corroborate() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="Brandon Sanderson - The Way of Kings.epub",
+        evidence=_evidence(title=None, isbn13=None),
+        candidates=[],
+    )
+
+    assert result.raw_response["confidence_breakdown"]["components"]["filename_matches_title"] == 0
+
+
+async def test_junk_series_number_is_clamped_series_name_kept() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Command Decision",
+            author="J. Daniel Layfield",
+            series="Alexis Carew",
+            series_number=301,
+            ai_confidence=80,
+            reasoning_summary="#301 is almost certainly a Calibre placeholder.",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="carew.epub", evidence=_evidence(isbn13=None, title=None), candidates=[]
+    )
+
+    assert result.series == "Alexis Carew"
+    assert result.series_number is None
+    assert result.raw_response["series_number_clamped"] == 301
+
+
+async def test_fractional_series_number_survives_the_clamp() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Snuff",
+            author="Terry Pratchett",
+            series="Discworld",
+            series_number=39.5,
+            ai_confidence=80,
+            reasoning_summary="novella between volumes",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    result = await service.identify(
+        filename="snuff.epub", evidence=_evidence(isbn13=None, title=None), candidates=[]
+    )
+
+    assert result.series_number == 39.5
+    assert "series_number_clamped" not in result.raw_response
+
+
 async def test_ai_failure_falls_back_to_low_confidence_result() -> None:
     fake_client = _FakeAIClient(raises=True)
     service = IdentificationService(ai_client=fake_client)
@@ -191,6 +463,266 @@ async def test_ai_failure_falls_back_to_low_confidence_result() -> None:
     assert result.model == "unavailable"
     assert result.needs_human_review is True
     assert "simulated failure" in result.reasoning_summary
+
+
+def _standalone_correction() -> list[dict]:
+    return [
+        {
+            "proposed": {
+                "title": "Scion",
+                "author": "James Islington",
+                "series": "The Hierarchy",
+                "series_number": 2,
+            },
+            "corrected": {
+                "title": "Scion",
+                "author": "James Islington",
+                "series": None,
+                "series_number": None,
+            },
+        }
+    ]
+
+
+def test_build_prompt_includes_stage_d_evidence() -> None:
+    ev = _evidence(
+        description="A soldier seeks revenge across a galactic empire.",
+        publisher="Orbit Books",
+        pub_date="2013-10-01",
+        subjects=["Science Fiction", "Space Opera"],
+        all_isbns=["9780316246620", "031624662X"],
+    )
+    prompt = _build_prompt("x.epub", ev, [])
+
+    assert "EPUB description: A soldier seeks revenge" in prompt
+    assert "EPUB publisher: Orbit Books" in prompt
+    assert "EPUB publication date: 2013-10-01" in prompt
+    assert "EPUB subjects/genre: Science Fiction, Space Opera" in prompt
+    assert "All ISBNs found in the EPUB: 9780316246620, 031624662X" in prompt
+
+
+def test_build_prompt_byte_identical_without_corrections() -> None:
+    evidence = _evidence()
+    baseline = _build_prompt("dune.epub", evidence, [])
+    assert _build_prompt("dune.epub", evidence, [], None) == baseline
+    assert _build_prompt("dune.epub", evidence, [], []) == baseline
+
+
+def test_build_prompt_renders_a_standalone_correction() -> None:
+    prompt = _build_prompt("scion.epub", _evidence(), [], _standalone_correction())
+
+    assert "Corrections a human has previously made" in prompt
+    assert 'You said: "Scion" by James Islington, series "The Hierarchy" #2' in prompt
+    assert "Corrected to: standalone, no series" in prompt
+
+
+def test_build_prompt_correction_only_shows_changed_fields() -> None:
+    corrections = [
+        {
+            "proposed": {
+                "title": "The Wrong Title",
+                "author": "A. Author",
+                "series": "Some Series",
+                "series_number": 4,
+            },
+            "corrected": {
+                "title": "The Right Title",
+                "author": "A. Author",
+                "series": "Some Series",
+                "series_number": 4,
+            },
+        }
+    ]
+
+    prompt = _build_prompt("x.epub", _evidence(), [], corrections)
+
+    assert 'Corrected to: title "The Right Title"' in prompt
+    assert "Some Series" not in prompt.split("Corrected to:")[1]
+
+
+async def test_identify_feeds_corrections_into_the_prompt() -> None:
+    fake_client = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Scion",
+            author="James Islington",
+            series=None,
+            series_number=None,
+            ai_confidence=70,
+            reasoning_summary="standalone",
+            needs_human_review=False,
+        )
+    )
+    service = IdentificationService(ai_client=fake_client)
+
+    await service.identify(
+        filename="scion.epub",
+        evidence=_evidence(isbn13=None, title="Scion"),
+        candidates=[],
+        corrections=_standalone_correction(),
+    )
+
+    assert "standalone, no series" in fake_client.prompts[0]
+
+
+def _candidate(**overrides) -> MetadataCandidate:
+    defaults = dict(title="Dune", authors=["Frank Herbert"], isbn13="9780441172719", source="gb")
+    defaults.update(overrides)
+    return MetadataCandidate(**defaults)
+
+
+import datetime as _dt
+
+_THIS_YEAR = _dt.date.today().year
+
+
+def test_should_ground_only_on_a_recent_year_signal() -> None:
+    # Thin / conflicting / ISBN-less provider evidence does NOT ground — that's
+    # money spent on books the model already knows. Only a recent-year signal
+    # (the post-cutoff "invented series" risk) does.
+    assert not should_ground(filename="dune.epub", evidence=_evidence(), candidates=[])
+    assert not should_ground(
+        filename="x.epub",
+        evidence=_evidence(isbn13=None),
+        candidates=[_candidate(title="Dune"), _candidate(title="Children of Dune", source="ol")],
+    )
+
+
+def test_should_ground_on_a_recent_filename_year() -> None:
+    assert should_ground(
+        filename=f"Some New Book ({_THIS_YEAR}).epub",
+        evidence=_evidence(),
+        candidates=[],
+    )
+
+
+def test_should_ground_on_a_recent_provider_pub_date() -> None:
+    assert should_ground(
+        filename="some-new-book.epub",
+        evidence=_evidence(),
+        candidates=[_candidate(first_published=f"{_THIS_YEAR}-03-01")],
+    )
+
+
+def test_should_ground_ignores_an_old_year() -> None:
+    assert not should_ground(
+        filename="Dune (1965).epub", evidence=_evidence(), candidates=[]
+    )
+
+
+def test_should_ground_disabled_by_settings(monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_WEB_SEARCH_ENABLED", "false")
+    try:
+        assert not should_ground(
+            filename=f"New Book ({_THIS_YEAR}).epub", evidence=_evidence(), candidates=[]
+        )
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_ai_path_grounds_only_for_a_recent_book() -> None:
+    def _client() -> _FakeAIClient:
+        return _FakeAIClient(
+            result=AIIdentificationResult(
+                title="Dune", author="Frank Herbert", series=None, series_number=None,
+                ai_confidence=80, reasoning_summary="x", needs_human_review=False,
+            )
+        )
+
+    old = _client()
+    await IdentificationService(ai_client=old).identify(
+        filename="dune.epub", evidence=_evidence(), candidates=[]
+    )
+    assert old.ground_flags == [False]
+
+    recent = _client()
+    await IdentificationService(ai_client=recent).identify(
+        filename=f"Brand New ({_THIS_YEAR}).epub", evidence=_evidence(), candidates=[]
+    )
+    assert recent.ground_flags == [True]
+
+
+@pytest.fixture
+def _verify_on(monkeypatch):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_VERIFY_ENABLED", "true")
+    yield
+    get_settings.cache_clear()
+
+
+def _midband_setup(audit_result=None, audit_raises=False):
+    # ISBN present but the candidate has none -> fast path skipped, AI path
+    # lands at computed_confidence 80 (in the [70, 95) verification band).
+    fake = _FakeAIClient(
+        result=AIIdentificationResult(
+            title="Dune", author="Frank Herbert", series=None, series_number=None,
+            ai_confidence=75, reasoning_summary="text analysis", needs_human_review=False,
+        ),
+        audit_result=audit_result,
+        audit_raises=audit_raises,
+    )
+    service = IdentificationService(ai_client=fake)
+    candidates = [MetadataCandidate(title="Dune", authors=["Frank Herbert"], source="a")]
+    return fake, service, candidates
+
+
+def _audit(verdict, **kw) -> AIAuditResult:
+    base = dict(
+        verdict=verdict, series_is_real=True, corrected_title=None, corrected_author=None,
+        corrected_series=None, corrected_series_number=None, explanation="checked",
+    )
+    base.update(kw)
+    return AIAuditResult(**base)
+
+
+async def test_verification_off_by_default_makes_no_extra_call() -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("stored_is_correct"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert fake.audit_prompts == []
+    assert 70 <= result.computed_confidence < 95  # confirms the band, so the fixture is valid
+
+
+async def test_verification_agree_lifts_confidence(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("stored_is_correct"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert len(fake.audit_prompts) == 1
+    assert result.computed_confidence == 90  # 80 + 10
+    assert result.needs_human_review is False
+    assert result.raw_response["verification"]["verdict"] == "stored_is_correct"
+
+
+async def test_verification_disagree_takes_correction_and_forces_review(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(
+        audit_result=_audit(
+            "stored_is_wrong", corrected_title="Dune Messiah", corrected_series=None,
+            explanation="This is actually the second book.",
+        )
+    )
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+
+    assert result.title == "Dune Messiah"
+    assert result.series is None
+    assert result.needs_human_review is True
+    assert "Verification disagreed" in result.reasoning_summary
+
+
+async def test_verification_uncertain_forces_review(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_result=_audit("uncertain"))
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert result.needs_human_review is True
+    assert result.title == "Dune"  # original kept
+
+
+async def test_verification_failure_keeps_the_original(_verify_on) -> None:
+    fake, service, candidates = _midband_setup(audit_raises=True)
+    result = await service.identify(filename="dune.epub", evidence=_evidence(), candidates=candidates)
+    assert result.title == "Dune"
+    assert "verification" not in result.raw_response
 
 
 async def test_evidence_hash_is_stable_for_identical_input() -> None:

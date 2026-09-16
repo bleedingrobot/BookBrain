@@ -16,3 +16,4 @@ class OperationSummary(BaseModel):
     reason: str | None
     status: str
     dry_run: bool
+    undoable: bool

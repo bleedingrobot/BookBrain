@@ -1,0 +1,96 @@
+{
+  "id": "j-k-rowling-harry-potter-og-f-niksordenen",
+  "case_tags": [
+    "foreign-edition"
+  ],
+  "notes": "foreign-edition; stored: J. K. Rowling / Harry Potter og Føniksordenen / series=Harry Potter #5.0 (model=claude-opus-5, conf=60)",
+  "source": {
+    "file_id": 2125,
+    "drive_file_id": "1juHoGn3XQ-LKi19Za8ZWBgylTrQH5L0x",
+    "filename": "Harry Potter og Foniksordenen - J. K. Rowling.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 60
+  },
+  "filename": "Harry Potter og Foniksordenen - J. K. Rowling.epub",
+  "evidence": {
+    "title": "Harry Potter og Føniksordenen",
+    "authors": [
+      "J. K. Rowling"
+    ],
+    "language": "no",
+    "description": "<p><i>«Mye kan tyde på at du enkelte ganger, når du er mest avslappet og sårbar&#8212;i søvne, for eksempel&#8212;deler hans tanker og følelser. Rektor mener det er utilrådelig å la dette fortsette.Han vil jeg skal lære deg å stenge sinnet ditt for Mørkets herre.»</i><p>Det er mørke tider i vente for Galtvort. Etter desperantenes angrep på fetteren Dudleif, vet Harry Potter at Voldemort vil gjøre alt for å finne ham. Det er mange som avviser tilbakekomsten til Mørkets herre, men Harry er ikke alene: en hemmelig orden samles på Grimoldsplassen for å bekjempe de mørke kreftene. Harry må la professor Slur lære ham hvordan han kan beskytte seg selv mot to Voldemorts grusomme angrep på tankene hans. Men de blir sterkere for hver dag som går, og tiden løper ut for Harry...",
+    "isbn10": null,
+    "isbn13": "9781781101766",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Harry Potter og Føniksordenen"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Harry Potter og Føniksordenen",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 5,
+    "ai_confidence": 96,
+    "reasoning_summary": "Filename, EPUB title and first-page text all agree: the Norwegian (language code 'no') edition of 'Harry Potter og Føniksordenen' (Harry Potter and the Order of the Phoenix), book 5 of the Harry Potter series by J. K. Rowling. The ISBN 9781781101766 belongs to a Pottermore digital Harry Potter edition, consistent with this. No provider candidates were returned, but the internal evidence is unambiguous.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Harry Potter og Føniksordenen",
+    "author": "J. K. Rowling",
+    "series": "Harry Potter",
+    "series_number": 5.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Harry Potter og Føniksordenen",
+      "author": "J. K. Rowling",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Harry Potter and the Order of the Phoenix",
+      "author": null,
+      "series": null,
+      "series_number": 5.0,
+      "url": "https://www.wikidata.org/wiki/Q80817",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Harry Potter og Føniksordenen",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 5.0,
+      "url": "https://nextory.com/no/book/harry-potter-og-fniksordenen-1711268",
+      "note": "conf=0.98; Norwegian (bokmål) translation of \"Harry Potter and the Order of the Phoenix\" by Torstein Bugge Høverstad, Pottermore Publishing ebook. ISBN 9781781101766 verified as the ebook edition (23 Aug 2016). Retailer listing explicitly states \"Volum 5 i Harry Potter\". Note: Danish title would be \"Fønixordenen\"; the \"Føniksordenen\" spelling confirms Norwegian."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Harry Potter og Føniksordenen",
+      "author": "J. K. Rowling",
+      "series": "Harry Potter",
+      "series_number": 5.0,
+      "url": "https://us.amazon.com/Harry-Potter-og-F%C3%B8niksordenen-Norwegian-ebook/dp/B01JZORKQI",
+      "note": "conf=0.97; The proposed identification left every field null; all are now filled in. ISBN 9781781101766 resolves to the Norwegian (bokmål) ebook edition of Harry Potter and the Order of the Phoenix, published by Pottermore Publishing in 2016, translated by Torstein Bugge Høverstad. Ark.no lists the original title as \"Harry Potter and the order of the Phoenix\" and the series as Harry Potter (within the wider Harry Potter universe); the tight sub-series is simply \"Harry Potter\", where this is volume 5. Title kept in the Norwegian form matching the EPUB metadata and the published edition; author metadata \"J. K. Rowling\" is correct."
+    }
+  ],
+  "truth_disagreements": [
+    "title: chose 'Harry Potter og Føniksordenen', wikidata said 'Harry Potter and the Order of the Phoenix'"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "id": "j-r-mathews-portal-to-nova-roma-omnibus-book",
+  "case_tags": [
+    "omnibus"
+  ],
+  "notes": "omnibus; stored: J.R. Mathews / Portal to Nova Roma: Omnibus: Books 1-3 / series=Portal to Nova Roma #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 798,
+    "drive_file_id": "1XEBUADRGzDlow6QmT_6T0H23yPugR0eb",
+    "filename": "Portal to Nova Roma_ Omnibus_ Books 1-3.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Portal to Nova Roma_ Omnibus_ Books 1-3.epub",
+  "evidence": {
+    "title": "Portal to Nova Roma: Omnibus: Books 1-3",
+    "authors": [
+      "J.R. Mathews"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Portal to Nova Roma: Omnibus: Books 1-3",
+    "author": "J.R. Mathews",
+    "series": "Portal to Nova Roma",
+    "series_number": null,
+    "ai_confidence": 62,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"Portal to Nova Roma: Omnibus: Books 1-3\" by J.R. Mathews. No ISBN and no third-party metadata candidates were found to confirm; the copyright/first-chapter text contained only cover CSS, providing no additional evidence. Title indicates an omnibus collecting books 1-3 of the \"Portal to Nova Roma\" series, so no single series number applies. Identification rests solely on self-reported EPUB metadata, so external verification is advisable.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Portal to Nova Roma: Omnibus, Books 1-3",
+    "author": "J.R. Mathews",
+    "series": "Portal to Nova Roma",
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Portal to Nova Roma: Omnibus: Books 1-3",
+      "author": "J.R. Mathews",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Portal to Nova Roma: Omnibus: Books 1-3",
+      "author": "J.R. Mathews",
+      "series": "Portal to Nova Roma",
+      "series_number": null,
+      "url": "https://us.amazon.com/Portal-Nova-Roma-Omnibus-Books-ebook/dp/B0GSGG3G7T",
+      "note": "conf=0.94; Amazon listing confirms this is an omnibus edition collecting the first three books of the \"Portal to Nova Roma\" LitRPG/system-apocalypse series by J.R. Mathews. LibraryThing lists the series entries (Portal to Nova Roma, ...: Venice, ...: The Rhine, ...: Paris). As a collected omnibus spanning volumes 1-3, it has no single series number."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Portal to Nova Roma: Omnibus, Books 1-3",
+      "author": "J.R. Mathews",
+      "series": "Portal to Nova Roma",
+      "series_number": null,
+      "url": "https://us.amazon.com/Portal-Nova-Roma-Omnibus-Books-ebook/dp/B0GSGG3G7T",
+      "note": "conf=0.93; The proposed record was entirely blank, so all fields are supplied/corrected. \"Portal to Nova Roma\" is a genuine LitRPG/GameLit series by J.R. Mathews (Goodreads series 341865; LibraryThing series 338029), comprising Portal to Nova Roma (#1), Venice (#2), The Rhine (#3), Paris (#4). This file is the collected omnibus edition of the first three volumes (Kindle ASIN B0GSGG3G7T; Audible B0GTBSPR6J), described on Amazon as containing the first three books in the series. Because it is a boxed set spanning volumes 1-3 rather than a single numbered entry, series_number is null. Author name confirmed as J.R. Mathews, matching EPUB metadata; no ISBN found for the ebook edition."
+    }
+  ],
+  "truth_disagreements": []
+}

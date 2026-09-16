@@ -1,13 +1,19 @@
-import mimetypes
+import logging
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.settings_keys import TORRENTS_AUTOMATCH_ENABLED
 from app.data.models import LocalFile, LocalFileStatus
+from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.convert.calibre import is_convertible
 from app.providers.drive.classify import is_supported_ebook
 from app.providers.drive.provider import DriveProvider
+from app.providers.filename.parser import parse_book_filename
+from app.services import acquisition_service, inbox_upload_service
+
+logger = logging.getLogger(__name__)
 
 
 def _is_watchable(filename: str) -> bool:
@@ -16,7 +22,7 @@ def _is_watchable(filename: str) -> bool:
 
 async def scan_local_folder(session: AsyncSession, root: str) -> list[LocalFile]:
     """Walks `root` recursively, recording every not-yet-seen .epub/.kpub/
-    .mobi/.rtf file as a pending LocalFile row (keyed by absolute path, so a
+    .cbz/.cbr/.mobi/.rtf/.txt file as a pending LocalFile row (keyed by absolute path, so a
     re-scan never re-offers the same file twice). Returns every row still
     pending — both newly discovered this pass and anything left over from
     an earlier scan the user hasn't copied or dismissed yet."""
@@ -57,16 +63,107 @@ async def copy_to_drive(
         if row is None or row.status != LocalFileStatus.pending:
             continue
         try:
-            data = Path(row.path).read_bytes()
-            mime_type = mimetypes.guess_type(row.filename)[0] or "application/octet-stream"
-            provider.upload_new_file(name=row.filename, data=data, parent_id=inbox_folder_id, mime_type=mime_type)
+            await inbox_upload_service.upload_local_file_to_inbox(
+                Path(row.path), row.filename, provider, inbox_folder_id
+            )
         except Exception:
+            # Broad on purpose — the validation step (AcquisitionError) and
+            # the Drive upload itself (arbitrary provider/API errors) both
+            # land here. Never delete row.path either way — it's the user's
+            # own torrents-folder file, not a scratch temp download; a
+            # rejected/failed file just stays pending so it can be inspected
+            # or retried.
             failed += 1
             continue
         row.status = LocalFileStatus.copied
         copied += 1
     await session.commit()
     return {"copied": copied, "failed": failed}
+
+
+async def match_against_wishlist(
+    session: AsyncSession,
+    rows: list[LocalFile],
+    drive_provider: DriveProvider,
+    inbox_folder_id: str,
+    library_folder_id: str,
+) -> None:
+    """ROADMAP.md "close the acquisition loop": guess a filename's
+    title/author (parse_book_filename — the same deterministic parser
+    identification already uses) and score it against the open wishlist /
+    want-to-read / list targets, reusing acquisition_service's own matching
+    (gather_acquisition_targets + score_candidate) rather than a second
+    implementation. A strong match populates `matched_*` for the UI to show
+    next to the file; it's only auto-uploaded to the inbox when
+    TORRENTS_AUTOMATCH_ENABLED is on — otherwise every match, however
+    strong, still waits for a human to hit "copy"."""
+    if not rows:
+        return
+
+    targets = await acquisition_service.gather_acquisition_targets(drive_provider, library_folder_id)
+    if not targets:
+        return
+
+    automatch_on = (await SettingsRepository(session).get(TORRENTS_AUTOMATCH_ENABLED)) == "true"
+
+    for row in rows:
+        guess = parse_book_filename(row.filename)
+        if not guess.usable or not guess.title:
+            continue
+
+        # A real size (not "N/A") avoids score_candidate's unknown-size
+        # penalty — this is an actual file already on disk, not a search
+        # result of uncertain provenance.
+        size = f"{row.size_bytes / 1_048_576:.2f}MB"
+
+        best_target = None
+        best_score = 0.0
+        for target in targets:
+            cand = acquisition_service.AcquisitionResult(
+                server=None,
+                author=guess.author or "",
+                title=guess.title,
+                format="epub",
+                size=size,
+                full=row.path,
+                provider="local",
+            )
+            score = acquisition_service.score_candidate(target["title"], target.get("author"), cand)
+            if score > best_score:
+                best_score, best_target = score, target
+
+        if best_target is None or best_score < acquisition_service._MIN_SCORE:
+            continue
+
+        row.matched_request_id = best_target["request_id"]
+        row.matched_title = best_target["title"]
+        row.matched_author = best_target.get("author")
+        row.matched_score = best_score
+
+        if (
+            automatch_on
+            and row.status == LocalFileStatus.pending
+            and best_score >= acquisition_service._STRONG_SCORE
+        ):
+            try:
+                await inbox_upload_service.upload_local_file_to_inbox(
+                    Path(row.path), row.filename, drive_provider, inbox_folder_id
+                )
+            except Exception:
+                logger.exception("local_scan: auto-match upload failed for %s", row.filename)
+                continue
+            row.status = LocalFileStatus.copied
+            if best_target["source"] == "wishlist":
+                try:
+                    await acquisition_service.mark_wishlist_sourced(
+                        drive_provider, library_folder_id, best_target["request_id"]
+                    )
+                except Exception:
+                    logger.exception(
+                        "local_scan: couldn't mark wishlist item %s sourced", best_target["request_id"]
+                    )
+
+    await session.commit()
 
 
 async def dismiss(session: AsyncSession, file_ids: list[int]) -> int:

@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Harry Potter og Mysteriekammeret",
+  "author": "J. K. Rowling",
+  "series": "Harry Potter",
+  "series_number": 2.0,
+  "url": "https://www.ark.no/produkt/boker/barneboker/harry-potter-og-mysteriekammeret-9781781107461",
+  "note": "conf=0.97; ISBN 9781781107461 resolves to the Norwegian (bokmål) ebook edition of Harry Potter and the Chamber of Secrets, published by Pottermore Publishing (release 23 Aug 2016), translated by Torstein Bugge Høverstad. OverDrive lists series \"Harry Potter\"; it is book 2 of the seven-volume series. Filename's \"Mysteriekammere\" is a typo; correct title per EPUB metadata and retailer listings is \"Harry Potter og Mysteriekammeret\". Proposed record had all fields null, so all were filled in/corrected."
+}

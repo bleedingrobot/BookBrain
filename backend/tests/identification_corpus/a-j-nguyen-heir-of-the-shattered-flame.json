@@ -1,0 +1,86 @@
+{
+  "id": "a-j-nguyen-heir-of-the-shattered-flame",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: A. J. Nguyen / Heir of the Shattered Flame / series=The Eye of the Beholder #3.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2615,
+    "drive_file_id": "1rflUWToGxHmIHjVgKwYQsGUMThTBSqR-",
+    "filename": "Heir of the Shattered Flame - A. J. Nguyen.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Heir of the Shattered Flame - A. J. Nguyen.epub",
+  "evidence": {
+    "title": "Heir of the Shattered Flame (The Eye of the Beholder Book 3)",
+    "authors": [
+      "Nguyen",
+      "A. J."
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "c6P9"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Heir of the Shattered Flame",
+    "author": "A. J. Nguyen",
+    "series": "The Eye of the Beholder",
+    "series_number": 3,
+    "ai_confidence": 70,
+    "reasoning_summary": "Filename and EPUB metadata agree on title 'Heir of the Shattered Flame' and author A. J. Nguyen. The EPUB title field includes the parenthetical series indicator '(The Eye of the Beholder Book 3)', giving series name and number even though the dedicated series field is empty. No metadata provider candidates were returned and the copyright-page text was garbage ('c6P9'), so no external corroboration exists — likely a self-published/obscure title. Identification rests entirely on internal file metadata, which is self-consistent.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Heir of the Shattered Flame",
+    "author": "A. J. Nguyen",
+    "series": "The Eye of the Beholder",
+    "series_number": 3.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "weak",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Heir of the Shattered Flame (The Eye of the Beholder Book 3)",
+      "author": "Nguyen",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Heir of the Shattered Flame",
+      "author": "A. J. Nguyen",
+      "series": "The Eye of the Beholder",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/amz-books/sdp/B0G5HX7L7R",
+      "note": "conf=0.92; Amazon series page (ASIN B0G5HX7L7R) shows \"The Eye of the Beholder\" as a 3-book Kindle series by A. J. Nguyen, with Heir of the Shattered Flame as the concluding volume; an ebook-distribution listing also lists the series as books 1-3 with this title third. Matches the EPUB metadata \"The Eye of the Beholder Book 3\". Note: distinct from the unrelated dystopian \"Eye of the Beholder\" series by another author. Author name given only as \"Nguyen\" in file metadata; full form is A. J. Nguyen."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Heir of the Shattered Flame",
+      "author": "A. J. Nguyen",
+      "series": "The Eye of the Beholder",
+      "series_number": 3.0,
+      "url": "https://www.amazon.com/dp/B0G5HX7L7R",
+      "note": "conf=0.93; Proposed identification is correct in all fields; no refutation found. \"The Eye of the Beholder\" is a genuine 3-book self-published romantasy series by A. J. Nguyen (Amazon series page ASIN B0G5HX7L7R states 3 books): Book 1 Daughter of the Broken Grove (Dec 2025), Book 2 Keeper of the Golden Veil, Book 3 Heir of the Shattered Flame. Author's full byline is A. J. Nguyen (EPUB metadata only had surname). Disambiguation: unrelated same-titled series exist (Sarah Tarkoff's Eye of the Beholder trilogy: Sinless/Fearless/Prophet); Nguyen also writes a separate \"The Cursed Heir\" series. No ISBN found (independently published, Kindle/Audible ASINs only)."
+    }
+  ],
+  "truth_disagreements": []
+}
