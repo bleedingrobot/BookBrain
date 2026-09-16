@@ -243,6 +243,34 @@
   </div>
 </div>
 
+<div class="card">
+  <h2>Torrent (Librarr)</h2>
+  <div class="row"><span class="label">Got / Failed</span><span class="value" id="tor-counts">--</span></div>
+  <div class="row"><span class="label">In flight</span><span class="value" id="tor-fetching">--</span></div>
+  <div class="sub" style="margin:10px 0 2px">Last searched</div>
+  <ul class="list" id="tor-searched-list"><li class="empty">loading&hellip;</li></ul>
+  <div class="sub" style="margin:10px 0 2px">Last got</div>
+  <ul class="list" id="tor-got-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
+<div class="card">
+  <h2>LibGen</h2>
+  <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="lg-counts">--</span></div>
+  <div class="sub" style="margin:10px 0 2px">Last searched</div>
+  <ul class="list" id="lg-searched-list"><li class="empty">loading&hellip;</li></ul>
+  <div class="sub" style="margin:10px 0 2px">Last got</div>
+  <ul class="list" id="lg-got-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
+<div class="card">
+  <h2>OpenBooks</h2>
+  <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="ob-counts">--</span></div>
+  <div class="sub" style="margin:10px 0 2px">Last searched</div>
+  <ul class="list" id="ob-searched-list"><li class="empty">loading&hellip;</li></ul>
+  <div class="sub" style="margin:10px 0 2px">Last got</div>
+  <ul class="list" id="ob-got-list"><li class="empty">loading&hellip;</li></ul>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 
@@ -408,7 +436,7 @@ async function refresh() {
   renderList('got-list', q.got_recent, 'nothing downloaded yet', it =>
     li(esc(it.title), esc(it.author), `${providerLabel(it.candidate && it.candidate.provider)} &middot; ${ago(it.resolved_at)}`));
 
-  renderList('organized-list', bb.recently_organized, 'nothing organized in the last 24h', it => {
+  renderList('organized-list', (bb.recently_organized || []).slice(0, 5), 'nothing organized in the last 24h', it => {
     const series = it.series ? ` (${it.series}${it.series_number != null ? ' #' + Math.trunc(it.series_number) : ''})` : '';
     const conf = it.confidence != null ? it.confidence + '%' : '?';
     return li(esc(it.title) + series, esc(it.author), `${ago(it.organized_at)} &middot; ${conf}`);
@@ -417,6 +445,23 @@ async function refresh() {
   const nightly = bb.nightly || {};
   setPill('nightly-status', nightly.status);
   $('nightly-finished').textContent = `Last run finished ${ago(nightly.finished_at)}`;
+
+  const providers = bb.providers || {};
+  renderProviderCard('tor', providers.torrent, { counts: p => `${p.got ?? 0} / ${p.failed ?? 0}`, fetching: true });
+  renderProviderCard('lg', providers.libgen, { counts: p => `${p.got ?? 0} / ${p.queued ?? 0} / ${p.failed ?? 0}` });
+  renderProviderCard('ob', providers.openbooks, { counts: p => `${p.got ?? 0} / ${p.queued ?? 0} / ${p.failed ?? 0}` });
+}
+
+function renderProviderCard(prefix, data, opts) {
+  data = data || {};
+  $(prefix + '-counts').textContent = opts.counts(data);
+  if (opts.fetching) {
+    $(prefix + '-fetching').textContent = data.fetching ?? 0;
+  }
+  renderList(prefix + '-searched-list', (data.searched_recent || []).slice(0, 3), 'nothing searched yet', it =>
+    li(esc(it.title), esc(it.author), `${esc(it.status)} &middot; ${ago(it.resolved_at)}`));
+  renderList(prefix + '-got-list', (data.got_recent || []).slice(0, 2), 'nothing downloaded yet', it =>
+    li(esc(it.title), esc(it.author), ago(it.resolved_at)));
 }
 
 refresh();

@@ -19,6 +19,7 @@ RED=$'\033[31m'
 GREEN=$'\033[32m'
 YELLOW=$'\033[33m'
 CYAN=$'\033[36m'
+MAGENTA=$'\033[35m'
 
 pct_color() {  # pct_color <0-100> -- a "high is bad" gauge (CPU/mem/disk)
     local p=$1
@@ -76,6 +77,18 @@ segbar() {
 
 hr() { printf '%s' "$DIM"; printf '%.0s-' $(seq 1 "${1:-100}"); printf '%s\n' "$RESET"; }
 
+# cline <width> <color> <text> -- <text> colored and padded/truncated to
+# exactly <width> visible columns (the padding is plain spaces added after
+# the color's reset, so it's never miscounted the way padding *inside* an
+# ANSI-colored string would be).
+cline() {
+    local width=$1 color=$2 text=$3
+    text=${text:0:width}
+    local padlen=$(( width - ${#text} ))
+    (( padlen < 0 )) && padlen=0
+    printf '%s%s%s%*s' "$color" "$text" "$RESET" "$padlen" ""
+}
+
 provider_label() {  # provider_label <raw provider id> -> short display name
     case "$1" in
         openbooks) echo "OpenBooks" ;;
@@ -93,6 +106,62 @@ dur() {
     if (( s < 3600 )); then printf '%dm' "$(( s/60 ))"
     else printf '%dh%02dm' "$(( s/3600 ))" "$(( (s%3600)/60 ))"
     fi
+}
+
+BOX_WIDTH=31
+
+# provider_box <key in $PROVIDERS_JSON> <label> <header-color> <output array name>
+# Builds one auto-get process's status panel (counts + last searched/got) as
+# an array of BOX_WIDTH-wide colored lines, so three of these can be printed
+# side by side -- see the "Acquisition processes" render section below.
+provider_box() {
+    local key=$1 label=$2 hcolor=$3
+    local -n out=$4
+    local got queued failed fetching
+    got=$(jq -r ".${key}.got // 0" <<< "$PROVIDERS_JSON")
+    queued=$(jq -r ".${key}.queued // 0" <<< "$PROVIDERS_JSON")
+    failed=$(jq -r ".${key}.failed // 0" <<< "$PROVIDERS_JSON")
+    fetching=$(jq -r ".${key}.fetching // 0" <<< "$PROVIDERS_JSON")
+
+    out=()
+    out+=("$(cline "$BOX_WIDTH" "${BOLD}${hcolor}" "$label")")
+    if [ "$key" = "torrent" ]; then
+        out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  fetching $fetching  failed $failed")")
+    else
+        out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  queued $queued  failed $failed")")
+    fi
+
+    # Each section pads to a fixed row count (rather than however many
+    # entries exist) so "last searched"/"last got" land on the same row
+    # across all three boxes -- the three-column render below relies on
+    # that to keep the grid looking like a grid instead of a ragged list.
+    out+=("$(cline "$BOX_WIDTH" "$DIM" "last searched")")
+    local tsv n=0
+    tsv=$(jq -r ".${key}.searched_recent[:3][]? | [.resolved_at, .status, .title] | @tsv" <<< "$PROVIDERS_JSON" 2>/dev/null)
+    if [ -n "$tsv" ]; then
+        while IFS=$'\t' read -r ts status title; do
+            out+=("$(cline "$BOX_WIDTH" "$(status_color "$status")" "  $(ago "$ts") $status ${title:0:18}")")
+            n=$(( n + 1 ))
+        done <<< "$tsv"
+    fi
+    while (( n < 3 )); do
+        out+=("$(cline "$BOX_WIDTH" "$DIM" "  --")")
+        n=$(( n + 1 ))
+    done
+
+    out+=("$(cline "$BOX_WIDTH" "$DIM" "last got")")
+    tsv=$(jq -r ".${key}.got_recent[:2][]? | [.resolved_at, .title] | @tsv" <<< "$PROVIDERS_JSON" 2>/dev/null)
+    n=0
+    if [ -n "$tsv" ]; then
+        while IFS=$'\t' read -r ts title; do
+            out+=("$(cline "$BOX_WIDTH" "$GREEN" "  $(ago "$ts") ${title:0:22}")")
+            n=$(( n + 1 ))
+        done <<< "$tsv"
+    fi
+    while (( n < 2 )); do
+        out+=("$(cline "$BOX_WIDTH" "$DIM" "  --")")
+        n=$(( n + 1 ))
+    done
 }
 
 resolve_peer() {
@@ -136,6 +205,8 @@ Q_UNSEARCHED=0; Q_PENDING=0; Q_APPROVED=0; Q_NOMATCH=0; Q_FAILED=0; Q_TOTAL=0
 HIT_PCT="n/a"
 ORG_24H="?"; ORG_7D="?"
 SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""; SOURCE_JSON="[]"
+PROVIDERS_JSON='{"openbooks":{},"libgen":{},"torrent":{}}'
+TORRENT_LINES=(); LIBGEN_LINES=(); OPENBOOKS_LINES=()
 TAG_ENABLED="?"; TAG_DONE="?"; TAG_PENDING="?"
 TAG_CUR_TITLE=""; TAG_CUR_AUTHOR=""; TAG_CUR_STATUS=""; TAG_CUR_DONE=0; TAG_CUR_TOTAL=0
 TAG_RECENT_JSON="[]"
@@ -282,6 +353,31 @@ while true; do
                 [.[] | select(.status == "approved") | (.candidate.provider // "unknown")]
                 | group_by(.) | map({provider: .[0], count: length}) | sort_by(-.count)' 2>/dev/null)
             [ -z "$SOURCE_JSON" ] && SOURCE_JSON="[]"
+
+            # Per-process view for the "Acquisition processes" panel below --
+            # one auto-get cycle's activity (torrent/libgen/openbooks), each
+            # attributed by the winning candidate's provider. A `no_match` row
+            # has no provider (its candidate fields get wiped), so it can't be
+            # attributed to whichever source(s) actually searched it -- only
+            # pending/approved/failed/fetching rows (which keep their
+            # candidate) show up here.
+            PROVIDERS_JSON=$(echo "$REQ" | jq -c '
+                def provstats(p):
+                    ([.[] | select((.candidate.provider // "") == p)]) as $rows
+                    | {
+                        queued: ([$rows[] | select(.status=="pending")] | length),
+                        fetching: ([$rows[] | select(.status=="fetching")] | length),
+                        got: ([$rows[] | select(.status=="approved")] | length),
+                        failed: ([$rows[] | select(.status=="failed")] | length),
+                        searched_recent: ([$rows[] | select(.resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5]),
+                        got_recent: ([$rows[] | select(.status=="approved" and .resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5])
+                    };
+                {openbooks: provstats("openbooks"), libgen: provstats("libgen"), torrent: provstats("torrent")}
+            ' 2>/dev/null)
+            [ -z "$PROVIDERS_JSON" ] && PROVIDERS_JSON='{"openbooks":{},"libgen":{},"torrent":{}}'
+            provider_box torrent "TORRENT" "$MAGENTA" TORRENT_LINES
+            provider_box libgen "LIBGEN" "$YELLOW" LIBGEN_LINES
+            provider_box openbooks "OPENBOOKS" "$CYAN" OPENBOOKS_LINES
         fi
         TAGGING=$(curl -s -m 3 "$API/api/library/llm-tagging" 2>/dev/null)
         if [ -n "$TAGGING" ]; then
@@ -395,7 +491,8 @@ while true; do
         --argjson searched_recent "$SEARCHED_JSON" \
         --argjson got_recent "$GOT_JSON" \
         --argjson sources "$SOURCE_JSON" \
-        --argjson recently_organized "$(printf '%s' "$RECENT" | jq -c '.organized // []' 2>/dev/null || echo '[]')" \
+        --argjson providers "$PROVIDERS_JSON" \
+        --argjson recently_organized "$(printf '%s' "$RECENT" | jq -c '(.organized // [])[:5]' 2>/dev/null || echo '[]')" \
         --arg nightly_status "$NIGHTLY_STATUS" \
         --arg nightly_finished_at "$NIGHTLY_FINISHED" \
         --arg nightly_summary "$NIGHTLY_SUMMARY" \
@@ -427,6 +524,7 @@ while true; do
                     last_got_at: $last_got_at, searched_recent: $searched_recent, got_recent: $got_recent,
                     sources: $sources
                 },
+                providers: $providers,
                 recently_organized: $recently_organized,
                 nightly: {status: $nightly_status, finished_at: $nightly_finished_at, summary: $nightly_summary}
             }
@@ -499,32 +597,21 @@ while true; do
         printf "\n"
     fi
     echo
-    echo "  ${BOLD}Last 5 searched${RESET}"
+    echo "  ${BOLD}Acquisition processes${RESET} -- one box per auto-get source"
     hr
-    if [ "$(echo "$SEARCHED_JSON" | jq 'length' 2>/dev/null)" != "0" ]; then
-        echo "$SEARCHED_JSON" | jq -r '.[] | [.resolved_at, .status, .title, (.author // "")] | @tsv' 2>/dev/null |
-        while IFS=$'\t' read -r ts status title author; do
-            printf "  %-8s %s%-10s%s %-42s %-22s\n" "$(ago "$ts")" "$(status_color "$status")" "$status" "$RESET" "${title:0:42}" "${author:0:22}"
-        done
-    else
-        echo "  nothing searched yet"
-    fi
+    box_lines=${#TORRENT_LINES[@]}
+    (( ${#LIBGEN_LINES[@]} > box_lines )) && box_lines=${#LIBGEN_LINES[@]}
+    (( ${#OPENBOOKS_LINES[@]} > box_lines )) && box_lines=${#OPENBOOKS_LINES[@]}
+    box_blank="$(cline "$BOX_WIDTH" "$RESET" "")"
+    for (( bi=0; bi<box_lines; bi++ )); do
+        printf "  %s  %s  %s\n" \
+            "${TORRENT_LINES[bi]:-$box_blank}" "${LIBGEN_LINES[bi]:-$box_blank}" "${OPENBOOKS_LINES[bi]:-$box_blank}"
+    done
     echo
-    echo "  ${BOLD}Last 5 got${RESET}"
-    hr
-    if [ "$(echo "$GOT_JSON" | jq 'length' 2>/dev/null)" != "0" ]; then
-        echo "$GOT_JSON" | jq -r '.[] | [.resolved_at, .title, (.author // ""), (.candidate.server // ""), (.candidate.provider // "unknown")] | @tsv' 2>/dev/null |
-        while IFS=$'\t' read -r ts title author server provider; do
-            printf "  %-8s %s%-42s%s %-22s %-14s %s%s%s\n" "$(ago "$ts")" "$GREEN" "${title:0:42}" "$RESET" "${author:0:22}" "$server" "$DIM" "$(provider_label "$provider")" "$RESET"
-        done
-    else
-        echo "  nothing downloaded yet"
-    fi
-    echo
-    echo "  ${BOLD}Recently organized${RESET}"
+    echo "  ${BOLD}Recently organized${RESET} -- last 5"
     hr
     if [ -n "$RECENT" ] && [ "$(echo "$RECENT" | jq '.organized | length' 2>/dev/null)" != "0" ]; then
-        echo "$RECENT" | jq -r '.organized[:6][] | [.organized_at, .title, .author, .series, .series_number, .confidence] | @tsv' 2>/dev/null |
+        echo "$RECENT" | jq -r '.organized[:5][] | [.organized_at, .title, .author, .series, .series_number, .confidence] | @tsv' 2>/dev/null |
         while IFS=$'\t' read -r ts title author series seriesnum conf; do
             when=$(ago "$ts")
             seriesbit=""
