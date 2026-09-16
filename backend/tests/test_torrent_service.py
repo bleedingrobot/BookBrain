@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 import respx
@@ -339,7 +341,7 @@ async def test_poll_tick_no_op_with_nothing_in_flight(db_session, monkeypatch):
 
     monkeypatch.setattr(svc, "get_settings", lambda: _Cfg())
     out = await svc.poll_tick()
-    assert out == {"polled": 0}
+    assert out == {"polled": 0, "released": 0}
 
 
 @respx.mock
@@ -358,7 +360,7 @@ async def test_poll_tick_updates_status_for_an_in_flight_request(db_session, mon
     )
 
     out = await svc.poll_tick()
-    assert out == {"polled": 1, "updated": 1, "failed": 0}
+    assert out == {"polled": 1, "updated": 1, "failed": 0, "released": 0}
 
     row = (
         await db_session.execute(select(LibrarrRequest).where(LibrarrRequest.request_id == "wl-dep"))
@@ -391,7 +393,7 @@ async def test_poll_tick_flips_the_candidate_back_to_failed(db_session, monkeypa
     )
 
     out = await svc.poll_tick()
-    assert out == {"polled": 1, "updated": 1, "failed": 1}
+    assert out == {"polled": 1, "updated": 1, "failed": 1, "released": 0}
 
     tracked = (
         await db_session.execute(select(LibrarrRequest).where(LibrarrRequest.request_id == "wl-dep"))
@@ -459,7 +461,90 @@ async def test_poll_tick_ignores_an_unrecognized_status(db_session, monkeypatch)
     )
 
     out = await svc.poll_tick()
-    assert out == {"polled": 1, "updated": 0, "failed": 0}
+    assert out == {"polled": 1, "updated": 0, "failed": 0, "released": 0}
+
+
+async def test_poll_tick_releases_a_candidate_stuck_fetching_past_the_timeout(db_session, monkeypatch):
+    """Regression guard for a real live finding 2026-09-16: Librarr reported
+    a request "completed" for a torrent stalled at 0 seeders that will never
+    deliver a file — with nothing left to poll (the tracked request already
+    resolved), the candidate would otherwise stay `fetching` forever. Uses
+    raw SQL to backdate updated_at, since AcquisitionCandidate.updated_at
+    has onupdate=func.now() and would otherwise reset itself the moment the
+    ORM flushes any other change to the row."""
+    from sqlalchemy import text
+
+    class _Cfg:
+        torrent_enabled = True
+        librarr_url = LIBRARR_URL
+        librarr_api_key = ""
+
+    monkeypatch.setattr(svc, "get_settings", lambda: _Cfg())
+
+    # The tracked request already resolved — nothing left in `in_flight`.
+    db_session.add(
+        LibrarrRequest(
+            request_id="wl-dep", librarr_request_id="req-1",
+            status=LibrarrRequestStatus.completed,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wl-dep", request_title="Departure",
+            status=AcquisitionStatus.fetching, candidate_provider="torrent",
+        )
+    )
+    await db_session.commit()
+
+    stale = datetime.now(UTC) - svc._FETCHING_STUCK_AFTER - timedelta(minutes=1)
+    await db_session.execute(
+        text("UPDATE acquisition_candidates SET updated_at = :ts WHERE request_id = 'wl-dep'"),
+        {"ts": stale},
+    )
+    await db_session.commit()
+
+    out = await svc.poll_tick()
+    assert out == {"polled": 0, "released": 1}
+
+    candidate = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+        )
+    ).scalar_one()
+    assert candidate.status == AcquisitionStatus.failed
+    assert "no usable file arrived in time" in candidate.message
+
+
+async def test_poll_tick_leaves_a_recently_fetching_candidate_alone(db_session, monkeypatch):
+    class _Cfg:
+        torrent_enabled = True
+        librarr_url = LIBRARR_URL
+        librarr_api_key = ""
+
+    monkeypatch.setattr(svc, "get_settings", lambda: _Cfg())
+    db_session.add(
+        LibrarrRequest(
+            request_id="wl-dep", librarr_request_id="req-1",
+            status=LibrarrRequestStatus.completed,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wl-dep", request_title="Departure",
+            status=AcquisitionStatus.fetching, candidate_provider="torrent",
+        )
+    )
+    await db_session.commit()
+
+    out = await svc.poll_tick()
+    assert out == {"polled": 0, "released": 0}
+
+    candidate = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+        )
+    ).scalar_one()
+    assert candidate.status == AcquisitionStatus.fetching  # left alone, well within the window
 
 
 # --- local_scan_tick -----------------------------------------------------

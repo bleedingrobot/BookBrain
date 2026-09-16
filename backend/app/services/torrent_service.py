@@ -50,7 +50,7 @@ Two independent ticks:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
@@ -82,6 +82,18 @@ _SEARCH_BUDGET_PER_HOUR = 20
 # replacement brake, not optional polish.
 _MAX_CONCURRENT_TORRENTS = 3
 _LIBRARR_TIMEOUT = 15.0
+# Live-confirmed 2026-09-16: Librarr can report a request "completed" for a
+# torrent that's actually stalled at 0 seeders and will never deliver a
+# file, and separately can match the wrong media type (an audiobook for an
+# ebook request) that our own format check would correctly reject once it
+# arrives — either way, nothing upstream ever un-sticks that book. Without
+# this, a `fetching` row is permanently excluded from every cycle's
+# due-retry consideration (by design, so nothing double-attempts a book
+# genuinely in flight) with no path back if Librarr's own "done" signal
+# turns out not to mean a usable file ever lands. Generous on purpose — long
+# enough that a slow but genuinely-progressing torrent isn't punished for
+# taking its time.
+_FETCHING_STUCK_AFTER = timedelta(hours=4)
 
 
 def _librarr_client() -> httpx.AsyncClient:
@@ -279,7 +291,11 @@ async def poll_tick(trigger: str = "scheduler") -> dict:
             ).scalars()
         )
     if not in_flight:
-        return {"polled": 0}
+        # Must still run — this is precisely the case where every tracked
+        # request has already resolved (e.g. Librarr said "completed") but
+        # the matching AcquisitionCandidate never got picked up by
+        # local_scan_tick and is stuck `fetching` with nothing left to poll.
+        return {"polled": 0, "released": await _release_stale_fetching()}
 
     updated = 0
     newly_failed = 0
@@ -346,7 +362,47 @@ async def poll_tick(trigger: str = "scheduler") -> dict:
                     tracked.librarr_request_id, tracked.request_id, failure_message,
                 )
 
-    return {"polled": len(in_flight), "updated": updated, "failed": newly_failed}
+    released = await _release_stale_fetching()
+    return {"polled": len(in_flight), "updated": updated, "failed": newly_failed, "released": released}
+
+
+async def _release_stale_fetching() -> int:
+    """Free any book that's been `fetching` for too long, regardless of what
+    its LibrarrRequest row says — Librarr reporting `completed` is not
+    proof a usable file will ever actually reach the handoff folder (see
+    `_FETCHING_STUCK_AFTER`'s comment). Returns the number released.
+
+    Filters in Python, not SQL — `_MAX_CONCURRENT_TORRENTS` caps how many
+    `fetching` rows can exist at once (a handful at most), so fetching them
+    all and comparing here avoids relying on SQLite comparing a timezone-
+    aware cutoff against its naturally-naive stored datetimes correctly
+    (the same naive/aware mismatch `acquisition_service._aware` exists to
+    paper over for every other backoff calculation in this codebase)."""
+    now = datetime.now(UTC)
+    async with async_session_factory() as session:
+        candidates = list(
+            (
+                await session.execute(
+                    select(AcquisitionCandidate).where(AcquisitionCandidate.status == AcquisitionStatus.fetching)
+                )
+            ).scalars()
+        )
+        stuck = [
+            row for row in candidates
+            if (updated := acquisition_service._aware(row.updated_at)) is not None
+            and now - updated >= _FETCHING_STUCK_AFTER
+        ]
+        for row in stuck:
+            logger.warning(
+                "torrent: %r stuck fetching for over %s with no file ever arriving — releasing",
+                row.request_title, _FETCHING_STUCK_AFTER,
+            )
+            row.status = AcquisitionStatus.failed
+            row.message = "torrent subsystem: no usable file arrived in time"
+            row.resolved_at = datetime.now(UTC)
+        if stuck:
+            await session.commit()
+    return len(stuck)
 
 
 async def local_scan_tick(trigger: str = "scheduler") -> dict:
