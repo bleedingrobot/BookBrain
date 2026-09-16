@@ -59,15 +59,19 @@ AUTOGET_INTERVAL_JITTER = 90
 # also means one being down/busy never blocks the other's turn.
 LIBGEN_AUTOGET_INTERVAL_SECONDS = 150
 LIBGEN_AUTOGET_INTERVAL_JITTER = 45
-# The torrent subsystem's three independent legs. Submitting is much slower
-# than the other two cycles' searches — each hit is a real download
+# The torrent subsystem's three independent legs. Submitting is still
+# slower than the other two cycles' searches — each hit is a real download
 # commitment (bandwidth, disk, a Librarr/qBittorrent slot), not a cheap HTTP
-# call. Polling and the local-scan handoff are both cheap, local-network-ish
-# calls (Librarr's own API; a directory walk + Drive upload), so they run
-# tight and independently of the submit toggle — see torrent_service.py's
-# module docstring for why.
-TORRENT_SUBMIT_INTERVAL_SECONDS = 900
-TORRENT_SUBMIT_INTERVAL_JITTER = 120
+# call — but James's own experience is that public-domain/small ebooks come
+# through fast, so 5 min (down from an initial 15) rather than something
+# tighter still; the 3-torrent concurrency cap (_MAX_CONCURRENT_TORRENTS in
+# torrent_service.py) is the real backstop against overlap regardless of
+# this interval. Polling and the local-scan handoff are both cheap, local-
+# network-ish calls (Librarr's own API; a directory walk + Drive upload), so
+# they run tight and independently of the submit toggle — see
+# torrent_service.py's module docstring for why.
+TORRENT_SUBMIT_INTERVAL_SECONDS = 300
+TORRENT_SUBMIT_INTERVAL_JITTER = 45
 TORRENT_POLL_INTERVAL_SECONDS = 60
 TORRENT_POLL_INTERVAL_JITTER = 10
 TORRENT_LOCAL_SCAN_INTERVAL_SECONDS = 120
