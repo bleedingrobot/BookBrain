@@ -240,7 +240,16 @@ while true; do
 
     # --- BookBrain: heavy call (7k+ row acquisition queue), every SLOW_EVERY ticks ---
     if (( TICK % SLOW_EVERY == 0 )); then
-        REQ=$(curl -s -m 5 "$API/api/acquire/requests" 2>/dev/null)
+        # Live-measured 2026-09-16: this call takes ~4.3s with a 7k-row
+        # wishlist (it does a live Drive API listing under the hood via
+        # gather_acquisition_targets, not just a DB read), right up against
+        # the old 5s timeout -- an intermittent miss here silently left
+        # Q_*/SOURCE_JSON/GOT_JSON on their stale previous values instead of
+        # refreshing, which is what made a just-approved source (e.g. a new
+        # Libgen download) flicker in and out on the mobile dashboard instead
+        # of showing up reliably. 20s gives real headroom as the wishlist
+        # grows further.
+        REQ=$(curl -s -m 20 "$API/api/acquire/requests" 2>/dev/null)
         if [ -n "$REQ" ]; then
             Q_UNSEARCHED=$(echo "$REQ" | jq '[.[] | select(.status=="unsearched")] | length' 2>/dev/null || echo 0)
             Q_PENDING=$(echo "$REQ" | jq '[.[] | select(.status=="pending")] | length' 2>/dev/null || echo 0)
