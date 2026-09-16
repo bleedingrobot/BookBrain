@@ -42,11 +42,10 @@ from app.data.db import async_session_factory
 from app.data.models import Book, File, FileStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.ai.ollama_client import OllamaBadResponse, OllamaClient, OllamaUnavailable
-from app.providers.drive.client import build_drive_service
-from app.providers.drive.provider import DriveProvider
 from app.providers.epub.errors import EpubParseError, EpubParseTimeoutError
 from app.providers.epub.parser import extract_full_text_documents_safely
 from app.services.auth_service import get_auth_service
+from app.services.llm_tagging_download import download_file_with_hard_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -462,16 +461,22 @@ async def tick() -> dict:
         book = file.book
 
         try:
-            provider = DriveProvider(build_drive_service(creds))
-            # drive/client.py's httplib2 timeout only bounds a single idle
-            # recv() — a chunked response trickling a few bytes just under
-            # that window forever defeats it. Caught live 2026-09-14: this
-            # call hung for 3+ hours, wedging this tick (and every later one,
-            # behind max_instances=1) forever. wait_for can't kill the
-            # underlying thread (it runs to completion harmlessly in the
-            # background), but it stops the *await* from hanging forever.
-            data = await asyncio.wait_for(
-                asyncio.to_thread(provider.download_file, file.drive_file_id), timeout=90.0
+            # A chunked response trickling a few bytes just under
+            # drive/client.py's idle-recv timeout can stall forever without
+            # tripping it. Caught live 2026-09-14 (3+ hours) and again
+            # 2026-09-17 (~5 hours): `asyncio.wait_for` around a plain
+            # `asyncio.to_thread` download can't actually save you here —
+            # once the worker thread is blocked inside a synchronous socket
+            # read, cancelling the *await* doesn't stop the thread, and
+            # wait_for wIll just sit there waiting for it to finish anyway.
+            # A subprocess can be SIGKILLed regardless of what syscall it's
+            # stuck in, so the real download now happens in one — see
+            # llm_tagging_download.py.
+            data = await asyncio.to_thread(
+                download_file_with_hard_timeout,
+                creds,
+                file.drive_file_id,
+                timeout_seconds=90.0,
             )
         except Exception as exc:  # noqa: BLE001 — a Drive hiccup, try again next tick
             logger.exception("llm tagging: download failed for book %s", book.id)
