@@ -781,7 +781,9 @@ async def test_release_deletes_the_dead_torrent_from_qbittorrent_and_cancels_it_
         return_value=httpx.Response(200, json={"success": True})
     )
     login_route = respx.post(f"{QB_URL}/api/v2/auth/login").mock(
-        return_value=httpx.Response(200, text="Ok.")
+        # 2026-09-17 live: a real instance answers 204 + empty body, not the
+        # classic 200 + "Ok." — what actually matters is the session cookie.
+        return_value=httpx.Response(204, headers={"set-cookie": "QBT_SID_8080=testsid; Path=/"})
     )
     delete_route = respx.post(f"{QB_URL}/api/v2/torrents/delete").mock(return_value=httpx.Response(200))
 

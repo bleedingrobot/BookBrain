@@ -291,11 +291,16 @@ async def _qbittorrent_delete_torrent(hash_: str) -> bool:
                 data={"username": settings.qbittorrent_username, "password": settings.qbittorrent_password},
             )
             login.raise_for_status()
-            if login.text.strip() != "Ok.":
-                logger.warning("torrent: qBittorrent login rejected: %s", login.text)
+            # A successful login's actual response body isn't a reliable
+            # signal across versions — confirmed live 2026-09-17: this
+            # instance answers 204 No Content with an empty body, not the
+            # classic 200 + "Ok." the WebAPI docs describe. The cookie jar
+            # getting a QBT_SID_* cookie at all is what actually means
+            # "authenticated" everywhere; httpx.AsyncClient keeps it and
+            # resends it automatically on the delete call below.
+            if not any(name.startswith("QBT_SID") for name in client.cookies):
+                logger.warning("torrent: qBittorrent login didn't set a session cookie (status %d)", login.status_code)
                 return False
-            # httpx.AsyncClient keeps the Set-Cookie SID from the login call
-            # in its own jar and resends it automatically here.
             resp = await client.post("/api/v2/torrents/delete", data={"hashes": hash_, "deleteFiles": "true"})
             resp.raise_for_status()
             return True
