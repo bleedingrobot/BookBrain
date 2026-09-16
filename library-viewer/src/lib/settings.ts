@@ -10,6 +10,10 @@ const SHOW_NEWS_KEY = 'bookbrain.showNews' // default ON — stores 'false' only
 const SHOW_RECENTLY_ADDED_KEY = 'bookbrain.showRecentlyAdded' // default ON — stores 'false' only when hidden
 const SHOW_NEW_FOR_YOU_KEY = 'bookbrain.showNewForYou' // default ON — stores 'false' only when hidden
 const SHOW_COMING_SOON_KEY = 'bookbrain.showComingSoon' // default ON — stores 'false' only when hidden
+const SHOW_CONTINUE_READING_KEY = 'bookbrain.showContinueReading' // default ON — stores 'false' only when hidden
+const SHOW_READ_NEXT_KEY = 'bookbrain.showReadNext' // default ON — stores 'false' only when hidden
+const SHOW_READING_GOAL_KEY = 'bookbrain.showReadingGoal' // default ON — stores 'false' only when hidden
+const SHOW_SHOWCASE_KEY = 'bookbrain.showShowcase' // default ON — stores 'false' only when hidden
 
 export interface KoboDevice {
   label: string
@@ -44,6 +48,17 @@ export interface ViewerSettings {
   // The "Coming soon" release strip. On by default; browser-local, not
   // Drive-synced.
   showComingSoon?: boolean
+  // The "Continue reading" strip. On by default; browser-local, not
+  // Drive-synced.
+  showContinueReading?: boolean
+  // The "Read next" strip. On by default; browser-local, not Drive-synced.
+  showReadNext?: boolean
+  // The reading-goal progress bar. On by default; browser-local, not
+  // Drive-synced.
+  showReadingGoal?: boolean
+  // The "Recommended for you" showcase at the bottom of the shelf. On by
+  // default; browser-local, not Drive-synced.
+  showShowcase?: boolean
 }
 
 export type PartialSettings = Partial<ViewerSettings>
@@ -84,6 +99,10 @@ export function loadPartialSettings(): PartialSettings {
     showRecentlyAdded: localStorage.getItem(SHOW_RECENTLY_ADDED_KEY) !== 'false',
     showNewForYou: localStorage.getItem(SHOW_NEW_FOR_YOU_KEY) !== 'false',
     showComingSoon: localStorage.getItem(SHOW_COMING_SOON_KEY) !== 'false',
+    showContinueReading: localStorage.getItem(SHOW_CONTINUE_READING_KEY) !== 'false',
+    showReadNext: localStorage.getItem(SHOW_READ_NEXT_KEY) !== 'false',
+    showReadingGoal: localStorage.getItem(SHOW_READING_GOAL_KEY) !== 'false',
+    showShowcase: localStorage.getItem(SHOW_SHOWCASE_KEY) !== 'false',
   }
 }
 
@@ -117,6 +136,14 @@ export function saveSettings(settings: ViewerSettings): void {
   else localStorage.removeItem(SHOW_NEW_FOR_YOU_KEY)
   if (settings.showComingSoon === false) localStorage.setItem(SHOW_COMING_SOON_KEY, 'false')
   else localStorage.removeItem(SHOW_COMING_SOON_KEY)
+  if (settings.showContinueReading === false) localStorage.setItem(SHOW_CONTINUE_READING_KEY, 'false')
+  else localStorage.removeItem(SHOW_CONTINUE_READING_KEY)
+  if (settings.showReadNext === false) localStorage.setItem(SHOW_READ_NEXT_KEY, 'false')
+  else localStorage.removeItem(SHOW_READ_NEXT_KEY)
+  if (settings.showReadingGoal === false) localStorage.setItem(SHOW_READING_GOAL_KEY, 'false')
+  else localStorage.removeItem(SHOW_READING_GOAL_KEY)
+  if (settings.showShowcase === false) localStorage.setItem(SHOW_SHOWCASE_KEY, 'false')
+  else localStorage.removeItem(SHOW_SHOWCASE_KEY)
 }
 
 export function clearSettings(): void {
@@ -130,5 +157,9 @@ export function clearSettings(): void {
   localStorage.removeItem(SHOW_RECENTLY_ADDED_KEY)
   localStorage.removeItem(SHOW_NEW_FOR_YOU_KEY)
   localStorage.removeItem(SHOW_COMING_SOON_KEY)
+  localStorage.removeItem(SHOW_CONTINUE_READING_KEY)
+  localStorage.removeItem(SHOW_READ_NEXT_KEY)
+  localStorage.removeItem(SHOW_READING_GOAL_KEY)
+  localStorage.removeItem(SHOW_SHOWCASE_KEY)
   localStorage.removeItem('bookbrain.readOnly') // orphan from the removed guest mode
 }

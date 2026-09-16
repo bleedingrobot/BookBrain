@@ -13,12 +13,6 @@ export function SettingsForm({
   const [googleClientId, setGoogleClientId] = useState(initial?.googleClientId ?? '')
   const [libraryFolderId, setLibraryFolderId] = useState(initial?.libraryFolderId ?? '')
   const [koboDevices, setKoboDevices] = useState<KoboDevice[]>(initial?.koboDevices ?? [])
-  const [showGlobalReleases, setShowGlobalReleases] = useState(initial?.showGlobalReleases ?? false)
-  const [showTrending, setShowTrending] = useState(initial?.showTrending ?? false)
-  const [showNews, setShowNews] = useState(initial?.showNews ?? true)
-  const [showRecentlyAdded, setShowRecentlyAdded] = useState(initial?.showRecentlyAdded ?? true)
-  const [showNewForYou, setShowNewForYou] = useState(initial?.showNewForYou ?? true)
-  const [showComingSoon, setShowComingSoon] = useState(initial?.showComingSoon ?? true)
 
   function updateDevice(index: number, patch: Partial<KoboDevice>) {
     setKoboDevices((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
@@ -52,12 +46,18 @@ export function SettingsForm({
               googleClientId: googleClientId.trim(),
               libraryFolderId: libraryFolderId.trim(),
               koboDevices: cleanDevices.length > 0 ? cleanDevices : undefined,
-              showGlobalReleases,
-              showTrending,
-              showNews,
-              showRecentlyAdded,
-              showNewForYou,
-              showComingSoon,
+              // Display prefs live in the sidebar now — pass them through
+              // unchanged so an account-only save doesn't reset them.
+              showGlobalReleases: initial?.showGlobalReleases,
+              showTrending: initial?.showTrending,
+              showNews: initial?.showNews,
+              showRecentlyAdded: initial?.showRecentlyAdded,
+              showNewForYou: initial?.showNewForYou,
+              showComingSoon: initial?.showComingSoon,
+              showContinueReading: initial?.showContinueReading,
+              showReadNext: initial?.showReadNext,
+              showReadingGoal: initial?.showReadingGoal,
+              showShowcase: initial?.showShowcase,
             })
           }
         }}
@@ -131,101 +131,10 @@ export function SettingsForm({
           </span>
         </div>
 
-        <div>
-          <span className="text-sm font-medium">Scrolling strips</span>
-          <div className="mt-1.5 space-y-3">
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-brand-600"
-                checked={showRecentlyAdded}
-                onChange={(e) => setShowRecentlyAdded(e.target.checked)}
-              />
-              <span className="text-sm">
-                Show "Recently added"
-                <span className="mt-0.5 block text-xs text-neutral-400">
-                  Covers for the books organized into your library most recently.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-brand-600"
-                checked={showNewForYou}
-                onChange={(e) => setShowNewForYou(e.target.checked)}
-              />
-              <span className="text-sm">
-                Show "New for you"
-                <span className="mt-0.5 block text-xs text-neutral-400">
-                  New releases from series and authors already in your library.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-brand-600"
-                checked={showComingSoon}
-                onChange={(e) => setShowComingSoon(e.target.checked)}
-              />
-              <span className="text-sm">
-                Show "Coming soon"
-                <span className="mt-0.5 block text-xs text-neutral-400">
-                  Announced but unreleased books from your series and authors.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-brand-600"
-                checked={showGlobalReleases}
-                onChange={(e) => setShowGlobalReleases(e.target.checked)}
-              />
-              <span className="text-sm">
-                Show a "Most anticipated" strip
-                <span className="mt-0.5 block text-xs text-neutral-400">
-                  Hardcover's most-wanted upcoming books overall — not just your authors and series.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-brand-600"
-                checked={showTrending}
-                onChange={(e) => setShowTrending(e.target.checked)}
-              />
-              <span className="text-sm">
-                Show a "Trending on Hardcover" strip
-                <span className="mt-0.5 block text-xs text-neutral-400">
-                  What the Hardcover community is reading right now.
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-brand-600"
-            checked={showNews}
-            onChange={(e) => setShowNews(e.target.checked)}
-          />
-          <span className="text-sm">
-            Show the SFF news section
-            <span className="mt-0.5 block text-xs text-neutral-400">
-              Latest headlines from Reactor, Locus, File 770, Book Riot and more, under the release
-              strips.
-            </span>
-          </span>
-        </label>
+        <p className="text-xs text-neutral-400">
+          Which sections show on your shelf (Recently added, New for you, News feed, etc.) is
+          controlled from the toggles in the sidebar, not here.
+        </p>
 
         <div className="flex items-center gap-3 pt-1">
           <button type="submit" className="btn btn-primary px-4 py-2 text-sm">

@@ -16,6 +16,8 @@ import { RecentMarquee } from './components/RecentMarquee'
 import { ReleaseCard } from './components/ReleaseCard'
 import { ReleaseMarquee } from './components/ReleaseMarquee'
 import { SettingsForm } from './components/SettingsForm'
+import { SettingsScreen } from './components/SettingsScreen'
+import { Sidebar } from './components/Sidebar'
 import { ShowcaseSection } from './components/ShowcaseSection'
 import { SetupChecklist } from './components/SetupChecklist'
 import { WhoAmI } from './components/WhoAmI'
@@ -135,10 +137,23 @@ export default function App() {
   const [showWishlist, setShowWishlist] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
   const [editingSettings, setEditingSettings] = useState(false)
+  const [showSettingsScreen, setShowSettingsScreen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [settings, setSettings] = useState<ViewerSettings | null>(
     () => consumeSharedSettings() ?? loadSettings(),
   )
   const [shareStatus, setShareStatus] = useState<string | null>(null)
+
+  // Sidebar "Display" toggles write straight through to settings — no
+  // separate draft/save step, unlike the account-fields form.
+  function toggleSetting(key: keyof ViewerSettings, value: boolean) {
+    setSettings((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, [key]: value }
+      saveSettings(next)
+      return next
+    })
+  }
 
   const lib = useLibrary(settings)
   const { token, files, index } = lib
@@ -1025,6 +1040,33 @@ export default function App() {
     )
   }
 
+  if (showSettingsScreen) {
+    return (
+      <SettingsScreen
+        busy={lib.syncing || lib.loading}
+        onRefresh={lib.refresh}
+        onRebuild={lib.rebuild}
+        offlineCount={offlineCount}
+        onClearDownloads={() => {
+          void clearBookCache().then(() => setOfflineCount(0))
+        }}
+        shareStatus={shareStatus}
+        onShare={handleShare}
+        onCopyLink={handleCopyLink}
+        onEditAccount={() => {
+          setShowSettingsScreen(false)
+          setEditingSettings(true)
+        }}
+        onShowSetup={() => {
+          setShowSettingsScreen(false)
+          setShowSetup(true)
+        }}
+        onForget={handleForget}
+        onBack={() => setShowSettingsScreen(false)}
+      />
+    )
+  }
+
   const filterChips: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'All' },
     ...koboDevices.map((d) => ({ key: `on:${d.folderId}` as FilterKey, label: `On ${d.label}` })),
@@ -1057,391 +1099,384 @@ export default function App() {
   const browsing = query.trim() !== '' || filter !== 'all' || showAll
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-10 sm:px-6">
-      <LibraryHeader
-        busy={lib.syncing || lib.loading}
+    <div className="lg:flex lg:items-start">
+      <Sidebar
+        settings={settings}
+        onToggle={toggleSetting}
         hasKobo={hasKobo}
-        onRefresh={lib.refresh}
-        onRebuild={lib.rebuild}
-        onShowDevices={() => setShowDevices(true)}
+        hasReading={Object.keys(reading.books).length > 0 || !!reading.goal}
+        hasPrompts={prompts.prompts.length > 0}
+        hasCollections={Object.keys(index.collections).length > 0}
+        onShowDashboard={() => setShowDashboardScreen(true)}
         onShowWishlist={() => setShowWishlist(true)}
         onShowActivity={() => setShowActivity(true)}
         onShowNews={() => setShowNewsScreen(true)}
-        onShowStats={
-          Object.keys(reading.books).length > 0 || reading.goal
-            ? () => setShowStats(true)
-            : undefined
-        }
-        onShowPrompts={
-          prompts.prompts.length > 0 ? () => setShowPromptsScreen(true) : undefined
-        }
-        onShowCollections={
-          Object.keys(index.collections).length > 0 ? () => setShowCollections(true) : undefined
-        }
-        onShowDashboard={() => setShowDashboardScreen(true)}
-        onShare={handleShare}
-        onCopyLink={handleCopyLink}
-        onEditSettings={() => setEditingSettings(true)}
-        onShowSetup={() => setShowSetup(true)}
-        onForget={handleForget}
-        offlineCount={offlineCount}
-        onClearDownloads={() => {
-          void clearBookCache().then(() => setOfflineCount(0))
-        }}
+        onShowStats={() => setShowStats(true)}
+        onShowPrompts={() => setShowPromptsScreen(true)}
+        onShowCollections={() => setShowCollections(true)}
+        onShowDevices={() => setShowDevices(true)}
+        onOpenSettings={() => setShowSettingsScreen(true)}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
       />
+      <div className="min-w-0 flex-1">
+        <div className="mx-auto max-w-2xl px-4 pb-10 sm:px-6">
+          <LibraryHeader busy={lib.syncing || lib.loading} onOpenDrawer={() => setDrawerOpen(true)} />
 
-      {!lib.loading && mergedReading.goal && (
-        <ReadingGoalBar goal={mergedReading.goal} onOpen={() => setShowStats(true)} />
-      )}
-
-      {!lib.loading && (
-        <>
-          <RecentMarquee
-            books={settings?.showRecentlyAdded === false ? [] : recentBooks}
-            token={token}
-            onPick={jumpToRecent}
-            onOpenFullscreen={() => setStripsFullscreen(true)}
-          />
-          <ReleaseMarquee
-            label="New for you"
-            items={settings?.showNewForYou === false ? [] : recentReleaseFeed}
-            onPick={setReleaseCardItem}
-            onOpenFullscreen={() => setStripsFullscreen(true)}
-          />
-          <ReleaseMarquee
-            label="Coming soon"
-            items={settings?.showComingSoon === false ? [] : upcomingReleaseFeed}
-            minCards={1}
-            onPick={setReleaseCardItem}
-            onOpenFullscreen={() => setStripsFullscreen(true)}
-          />
-          <ReleaseMarquee
-            label="Most anticipated"
-            items={globalReleaseFeed}
-            onPick={setReleaseCardItem}
-            onOpenFullscreen={() => setStripsFullscreen(true)}
-          />
-          <ReleaseMarquee
-            label="Trending on Hardcover"
-            items={trendingFeed}
-            onPick={setReleaseCardItem}
-            onOpenFullscreen={() => setStripsFullscreen(true)}
-          />
-          {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (
-            <button
-              type="button"
-              className="mb-3 -mt-1 text-[11px] text-neutral-400 hover:text-brand-600 dark:hover:text-brand-400"
-              onClick={() => setShowNewReleases(true)}
-            >
-              See all new &amp; upcoming →
-            </button>
+          {!lib.loading && settings?.showReadingGoal !== false && mergedReading.goal && (
+            <ReadingGoalBar goal={mergedReading.goal} onOpen={() => setShowStats(true)} />
           )}
-        </>
-      )}
 
-      {stripsFullscreen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-950/95 backdrop-blur">
-          <div className="flex min-h-full flex-col items-center justify-center gap-8 px-2 py-12">
-            <div className="w-full max-w-5xl space-y-8">
+          {!lib.loading && (
+            <>
               <RecentMarquee
                 books={settings?.showRecentlyAdded === false ? [] : recentBooks}
                 token={token}
-                fullscreen
-                onPick={(id) => {
-                  setStripsFullscreen(false)
-                  jumpToRecent(id)
-                }}
+                onPick={jumpToRecent}
+                onOpenFullscreen={() => setStripsFullscreen(true)}
               />
               <ReleaseMarquee
                 label="New for you"
                 items={settings?.showNewForYou === false ? [] : recentReleaseFeed}
-                fullscreen
-                onPick={(item) => {
-                  setStripsFullscreen(false)
-                  setReleaseCardItem(item)
-                }}
+                onPick={setReleaseCardItem}
+                onOpenFullscreen={() => setStripsFullscreen(true)}
               />
               <ReleaseMarquee
                 label="Coming soon"
                 items={settings?.showComingSoon === false ? [] : upcomingReleaseFeed}
                 minCards={1}
-                fullscreen
-                onPick={(item) => {
-                  setStripsFullscreen(false)
-                  setReleaseCardItem(item)
-                }}
+                onPick={setReleaseCardItem}
+                onOpenFullscreen={() => setStripsFullscreen(true)}
               />
               <ReleaseMarquee
                 label="Most anticipated"
                 items={globalReleaseFeed}
-                fullscreen
-                onPick={(item) => {
-                  setStripsFullscreen(false)
-                  setReleaseCardItem(item)
-                }}
+                onPick={setReleaseCardItem}
+                onOpenFullscreen={() => setStripsFullscreen(true)}
               />
               <ReleaseMarquee
                 label="Trending on Hardcover"
                 items={trendingFeed}
-                fullscreen
-                onPick={(item) => {
-                  setStripsFullscreen(false)
-                  setReleaseCardItem(item)
-                }}
+                onPick={setReleaseCardItem}
+                onOpenFullscreen={() => setStripsFullscreen(true)}
               />
+              {recentReleaseFeed.length + upcomingReleaseFeed.length > 0 && (
+                <button
+                  type="button"
+                  className="mb-3 -mt-1 text-[11px] text-neutral-400 hover:text-brand-600 dark:hover:text-brand-400"
+                  onClick={() => setShowNewReleases(true)}
+                >
+                  See all new &amp; upcoming →
+                </button>
+              )}
+            </>
+          )}
+
+          {stripsFullscreen && (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-950/95 backdrop-blur">
+              <div className="flex min-h-full flex-col items-center justify-center gap-8 px-2 py-12">
+                <div className="w-full max-w-5xl space-y-8">
+                  <RecentMarquee
+                    books={settings?.showRecentlyAdded === false ? [] : recentBooks}
+                    token={token}
+                    fullscreen
+                    onPick={(id) => {
+                      setStripsFullscreen(false)
+                      jumpToRecent(id)
+                    }}
+                  />
+                  <ReleaseMarquee
+                    label="New for you"
+                    items={settings?.showNewForYou === false ? [] : recentReleaseFeed}
+                    fullscreen
+                    onPick={(item) => {
+                      setStripsFullscreen(false)
+                      setReleaseCardItem(item)
+                    }}
+                  />
+                  <ReleaseMarquee
+                    label="Coming soon"
+                    items={settings?.showComingSoon === false ? [] : upcomingReleaseFeed}
+                    minCards={1}
+                    fullscreen
+                    onPick={(item) => {
+                      setStripsFullscreen(false)
+                      setReleaseCardItem(item)
+                    }}
+                  />
+                  <ReleaseMarquee
+                    label="Most anticipated"
+                    items={globalReleaseFeed}
+                    fullscreen
+                    onPick={(item) => {
+                      setStripsFullscreen(false)
+                      setReleaseCardItem(item)
+                    }}
+                  />
+                  <ReleaseMarquee
+                    label="Trending on Hardcover"
+                    items={trendingFeed}
+                    fullscreen
+                    onPick={(item) => {
+                      setStripsFullscreen(false)
+                      setReleaseCardItem(item)
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-neutral"
+                  onClick={() => setStripsFullscreen(false)}
+                >
+                  Close (Esc)
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-neutral"
-              onClick={() => setStripsFullscreen(false)}
-            >
-              Close (Esc)
-            </button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {releaseCardItem && (
-        <ReleaseCard
-          item={releaseCardItem}
-          onRequest={requestRelease}
-          onClose={() => setReleaseCardItem(null)}
-        />
-      )}
+          {releaseCardItem && (
+            <ReleaseCard
+              item={releaseCardItem}
+              onRequest={requestRelease}
+              onClose={() => setReleaseCardItem(null)}
+            />
+          )}
 
-      {!lib.loading && token && (
-        <ContinueReading
-          rows={allRows}
-          token={token}
-          tick={progressTick}
-          onRead={(id) => setReadingBookId(id)}
-        />
-      )}
+          {!lib.loading && token && settings?.showContinueReading !== false && (
+            <ContinueReading
+              rows={allRows}
+              token={token}
+              tick={progressTick}
+              onRead={(id) => setReadingBookId(id)}
+            />
+          )}
 
-      {!lib.loading && token && (
-        <ReadNext
-          items={readNext}
-          token={token}
-          onRead={(id) => setReadingBookId(id)}
-          onOpen={jumpToRecent}
-          onSnooze={snoozeReadNextCard}
-        />
-      )}
+          {!lib.loading && token && settings?.showReadNext !== false && (
+            <ReadNext
+              items={readNext}
+              token={token}
+              onRead={(id) => setReadingBookId(id)}
+              onOpen={jumpToRecent}
+              onSnooze={snoozeReadNextCard}
+            />
+          )}
 
-      {!lib.loading && settings?.showNews !== false && news.items.length > 0 && (
-        <NewsFeed
-          items={news.items}
-          dismissed={dismissedNews}
-          onDismiss={dismissNews}
-          onSeeAll={() => setShowNewsScreen(true)}
-        />
-      )}
+          {!lib.loading && settings?.showNews !== false && news.items.length > 0 && (
+            <NewsFeed
+              items={news.items}
+              dismissed={dismissedNews}
+              onDismiss={dismissNews}
+              onSeeAll={() => setShowNewsScreen(true)}
+            />
+          )}
 
-      {lib.sessionExpired && (
-        <div className="mb-2 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
-          <span className="flex-1">Your Google session expired.</span>
-          <button className="btn btn-primary btn-xs" onClick={lib.signIn}>
-            Reconnect
-          </button>
-        </div>
-      )}
-
-      <div className="sticky top-0 z-20 bg-neutral-50/95 py-2 backdrop-blur dark:bg-neutral-950/95">
-        {selected.size > 0 && (
-          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <span className="font-medium">{selected.size} selected</span>
-            <button className="btn btn-neutral" onClick={() => setSelected(new Set())}>
-              Clear
-            </button>
-            <span className="mx-1 hidden h-4 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
-            <button className="btn btn-primary" disabled={downloading} onClick={handleDownloadSelected}>
-              {downloading ? 'Downloading…' : `Download ${selected.size}`}
-            </button>
-            {koboDevices.map((device) => (
-              <button
-                key={device.folderId}
-                className="btn btn-neutral"
-                disabled={sendingToKobo}
-                onClick={() => handleSendSelectedToKobo(device)}
-              >
-                {sendingToKobo ? 'Sending…' : `Send ${selected.size} to ${device.label}`}
+          {lib.sessionExpired && (
+            <div className="mb-2 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+              <span className="flex-1">Your Google session expired.</span>
+              <button className="btn btn-primary btn-xs" onClick={lib.signIn}>
+                Reconnect
               </button>
-            ))}
-            {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
-            {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
-            {hasKobo && !koboError && koboMessage && (
-              <span className="text-xs text-neutral-500">{koboMessage}</span>
+            </div>
+          )}
+
+          <div className="sticky top-0 z-20 bg-neutral-50/95 py-2 backdrop-blur dark:bg-neutral-950/95">
+            {selected.size > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+                <span className="font-medium">{selected.size} selected</span>
+                <button className="btn btn-neutral" onClick={() => setSelected(new Set())}>
+                  Clear
+                </button>
+                <span className="mx-1 hidden h-4 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
+                <button className="btn btn-primary" disabled={downloading} onClick={handleDownloadSelected}>
+                  {downloading ? 'Downloading…' : `Download ${selected.size}`}
+                </button>
+                {koboDevices.map((device) => (
+                  <button
+                    key={device.folderId}
+                    className="btn btn-neutral"
+                    disabled={sendingToKobo}
+                    onClick={() => handleSendSelectedToKobo(device)}
+                  >
+                    {sendingToKobo ? 'Sending…' : `Send ${selected.size} to ${device.label}`}
+                  </button>
+                ))}
+                {downloadError && <span className="text-xs text-red-600">{downloadError}</span>}
+                {hasKobo && koboError && <span className="text-xs text-red-600">{koboError}</span>}
+                {hasKobo && !koboError && koboMessage && (
+                  <span className="text-xs text-neutral-500">{koboMessage}</span>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  className="field w-full"
+                  placeholder={
+                    searchMode === 'meaning'
+                      ? 'Describe the book — "generation ship sci-fi"…'
+                      : 'Search title, author, or series…'
+                  }
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <div className="mt-1 flex items-center gap-1.5">
+                  {(['keyword', 'meaning'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => switchSearchMode(m)}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                        searchMode === m
+                          ? 'border-brand-600 bg-brand-600 text-white'
+                          : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      {m === 'keyword' ? 'Keyword' : '✨ Meaning'}
+                    </button>
+                  ))}
+                  {searchMode === 'meaning' && semanticBusy && (
+                    <span className="text-[11px] text-neutral-400">
+                      {isModelLoaded() ? 'Searching…' : 'Loading search model (one-time ~23 MB)…'}
+                    </span>
+                  )}
+                  {searchMode === 'meaning' && semanticError && (
+                    <span className="text-[11px] text-red-500">{semanticError}</span>
+                  )}
+                </div>
+              </div>
+              {searchMode === 'keyword' && (
+                <select
+                  className="field h-min shrink-0"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  aria-label="Sort books"
+                >
+                  {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                    <option key={key} value={key}>
+                      {SORT_LABELS[key]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {filterChips.length > 1 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {filterChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    onClick={() => setFilter(chip.key)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      filter === chip.key
+                        ? 'border-brand-600 bg-brand-600 text-white'
+                        : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(lib.syncMessage || shareStatus) && !lib.syncing && !lib.loading && (
+              <p className="mt-1.5 truncate text-xs text-neutral-400">
+                {shareStatus ?? lib.syncMessage}
+              </p>
+            )}
+            {(filter === 'read' || filter === 'unread' || filter === 'want') && mergedReading.partial && (
+              <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
+                Hardcover sync was incomplete — some books may show as unread.
+              </p>
+            )}
+            {(filter === 'read' || filter === 'want') && reading.unmatched.read > 0 && (
+              <p className="mt-1.5 truncate text-xs text-neutral-400">
+                {reading.reader} has read {reading.unmatched.read} book
+                {reading.unmatched.read === 1 ? '' : 's'} that aren&rsquo;t in the library.
+              </p>
+            )}
+            {filter === 'want' && (
+              <p className="mt-1.5 truncate text-xs text-neutral-400">
+                Quick wins first — shorter, higher-rated books up top.
+              </p>
             )}
           </div>
-        )}
-        <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1">
-            <input
-              className="field w-full"
-              placeholder={
-                searchMode === 'meaning'
-                  ? 'Describe the book — "generation ship sci-fi"…'
-                  : 'Search title, author, or series…'
-              }
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <div className="mt-1 flex items-center gap-1.5">
-              {(['keyword', 'meaning'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => switchSearchMode(m)}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                    searchMode === m
-                      ? 'border-brand-600 bg-brand-600 text-white'
-                      : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'
-                  }`}
-                >
-                  {m === 'keyword' ? 'Keyword' : '✨ Meaning'}
+
+          {lib.loading && (
+            <p className="mt-6 text-sm text-neutral-500">
+              Building your library for the first time — this may take a moment…
+            </p>
+          )}
+          {lib.loadError && <p className="mt-6 text-sm text-red-600">{lib.loadError}</p>}
+
+          {selected.size === 0 && hasKobo && koboStatus && (
+            <p className={`mt-3 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
+              {koboStatus}
+            </p>
+          )}
+
+          {!lib.loading && files !== null && !browsing && (
+            <div className="mt-10 text-center text-sm text-neutral-400">
+              <p>
+                {files.length.toLocaleString()} book{files.length === 1 ? '' : 's'} in your library.
+                <br />
+                Search, or pick a filter, to see them.
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <button className="btn btn-neutral" onClick={() => setShowAll(true)}>
+                  Show all books
                 </button>
-              ))}
-              {searchMode === 'meaning' && semanticBusy && (
-                <span className="text-[11px] text-neutral-400">
-                  {isModelLoaded() ? 'Searching…' : 'Loading search model (one-time ~23 MB)…'}
-                </span>
-              )}
-              {searchMode === 'meaning' && semanticError && (
-                <span className="text-[11px] text-red-500">{semanticError}</span>
-              )}
+                <button className="btn btn-ghost" onClick={() => setShowDashboardScreen(true)}>
+                  Dashboard
+                </button>
+              </div>
             </div>
-          </div>
-          {searchMode === 'keyword' && (
-            <select
-              className="field h-min shrink-0"
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              aria-label="Sort books"
-            >
-              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-                <option key={key} value={key}>
-                  {SORT_LABELS[key]}
-                </option>
-              ))}
-            </select>
+          )}
+
+          {!lib.loading && files !== null && browsing && (
+            <BookList
+              rows={rows}
+              allRows={allRows}
+              totalCount={files.length}
+              sort={sort}
+              ranked={semanticScores != null}
+              semanticScores={semanticScores}
+              reader={reading.reader}
+              token={token}
+              seriesGaps={seriesGaps}
+              recommendations={recommendations}
+              authorAffinity={authorAffinityMap}
+              selected={selected}
+              expandedId={expandedId}
+              sentMap={sentMap}
+              koboDevices={koboDevices}
+              sendState={sendState}
+              emptyMessage={emptyMessage}
+              onToggleSelect={toggleSelected}
+              onSelectMany={selectMany}
+              onExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
+              onSend={sendToKobo}
+              onDownload={(file) =>
+                downloadFile(token, file)
+                  .then(() => logDownload(file))
+                  .catch((err) => {
+                    lib.flagAuthError(err)
+                    setDownloadError(err.message)
+                  })
+              }
+              onRead={(row) => setReadingBookId(row.id)}
+              onMarkRead={markReadingStatus}
+              onFilterAuthor={(a) => filterTo(a, 'author')}
+              onFilterSeries={(s) => filterTo(s, 'series')}
+              onFilterGenre={filterToGenre}
+              onFilterMood={filterToMood}
+              onRequestBook={requestBook}
+              onRequestRelease={requestRelease}
+            />
+          )}
+
+          {!lib.loading && token && settings?.showShowcase !== false && (
+            <ShowcaseSection rows={allRows} token={token} onOpenBook={jumpToRecent} />
           )}
         </div>
-        {filterChips.length > 1 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {filterChips.map((chip) => (
-              <button
-                key={chip.key}
-                onClick={() => setFilter(chip.key)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filter === chip.key
-                    ? 'border-brand-600 bg-brand-600 text-white'
-                    : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800'
-                }`}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {(lib.syncMessage || shareStatus) && !lib.syncing && !lib.loading && (
-          <p className="mt-1.5 truncate text-xs text-neutral-400">
-            {shareStatus ?? lib.syncMessage}
-          </p>
-        )}
-        {(filter === 'read' || filter === 'unread' || filter === 'want') && mergedReading.partial && (
-          <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
-            Hardcover sync was incomplete — some books may show as unread.
-          </p>
-        )}
-        {(filter === 'read' || filter === 'want') && reading.unmatched.read > 0 && (
-          <p className="mt-1.5 truncate text-xs text-neutral-400">
-            {reading.reader} has read {reading.unmatched.read} book
-            {reading.unmatched.read === 1 ? '' : 's'} that aren&rsquo;t in the library.
-          </p>
-        )}
-        {filter === 'want' && (
-          <p className="mt-1.5 truncate text-xs text-neutral-400">
-            Quick wins first — shorter, higher-rated books up top.
-          </p>
-        )}
       </div>
-
-      {lib.loading && (
-        <p className="mt-6 text-sm text-neutral-500">
-          Building your library for the first time — this may take a moment…
-        </p>
-      )}
-      {lib.loadError && <p className="mt-6 text-sm text-red-600">{lib.loadError}</p>}
-
-      {selected.size === 0 && hasKobo && koboStatus && (
-        <p className={`mt-3 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
-          {koboStatus}
-        </p>
-      )}
-
-      {!lib.loading && files !== null && !browsing && (
-        <div className="mt-10 text-center text-sm text-neutral-400">
-          <p>
-            {files.length.toLocaleString()} book{files.length === 1 ? '' : 's'} in your library.
-            <br />
-            Search, or pick a filter, to see them.
-          </p>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <button className="btn btn-neutral" onClick={() => setShowAll(true)}>
-              Show all books
-            </button>
-            <button className="btn btn-ghost" onClick={() => setShowDashboardScreen(true)}>
-              Dashboard
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!lib.loading && files !== null && browsing && (
-        <BookList
-          rows={rows}
-          allRows={allRows}
-          totalCount={files.length}
-          sort={sort}
-          ranked={semanticScores != null}
-          semanticScores={semanticScores}
-          reader={reading.reader}
-          token={token}
-          seriesGaps={seriesGaps}
-          recommendations={recommendations}
-          authorAffinity={authorAffinityMap}
-          selected={selected}
-          expandedId={expandedId}
-          sentMap={sentMap}
-          koboDevices={koboDevices}
-          sendState={sendState}
-          emptyMessage={emptyMessage}
-          onToggleSelect={toggleSelected}
-          onSelectMany={selectMany}
-          onExpand={(id) => setExpandedId((cur) => (cur === id ? null : id))}
-          onSend={sendToKobo}
-          onDownload={(file) =>
-            downloadFile(token, file)
-              .then(() => logDownload(file))
-              .catch((err) => {
-                lib.flagAuthError(err)
-                setDownloadError(err.message)
-              })
-          }
-          onRead={(row) => setReadingBookId(row.id)}
-          onMarkRead={markReadingStatus}
-          onFilterAuthor={(a) => filterTo(a, 'author')}
-          onFilterSeries={(s) => filterTo(s, 'series')}
-          onFilterGenre={filterToGenre}
-          onFilterMood={filterToMood}
-          onRequestBook={requestBook}
-          onRequestRelease={requestRelease}
-        />
-      )}
-
-      {!lib.loading && token && (
-        <ShowcaseSection rows={allRows} token={token} onOpenBook={jumpToRecent} />
-      )}
     </div>
   )
 }
