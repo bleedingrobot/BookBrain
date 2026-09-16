@@ -50,7 +50,9 @@ Two independent ticks:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -62,8 +64,8 @@ from app.data.models import (
     AcquisitionStatus,
     LibrarrRequest,
     LibrarrRequestStatus,
+    LocalFileStatus,
 )
-from app.data.models import LocalFileStatus
 from app.providers.drive.provider import DriveProvider
 from app.services import acquisition_service, local_scan_service
 from app.services.drive_service import DriveService
@@ -94,6 +96,10 @@ _LIBRARR_TIMEOUT = 15.0
 # enough that a slow but genuinely-progressing torrent isn't punished for
 # taking its time.
 _FETCHING_STUCK_AFTER = timedelta(hours=4)
+# Grace window before a non-ebook file sitting in torrent_incoming_folder is
+# considered actual junk rather than something Librarr might still be
+# mid-move into the folder.
+_JUNK_FILE_GRACE_PERIOD = timedelta(minutes=30)
 
 
 def _librarr_client() -> httpx.AsyncClient:
@@ -425,22 +431,29 @@ async def local_scan_tick(trigger: str = "scheduler") -> dict:
     if not settings.torrent_enabled:
         return {"skipped": "torrent disabled"}
 
+    # Purely local filesystem cleanup — no Drive dependency, so it runs
+    # regardless of whether credentials/inbox/library are configured yet,
+    # and regardless of whether any ebook-shaped file was found this pass
+    # (the two are unrelated: a non-ebook file is never a `pending` row at
+    # all, so it'd never be reached if this were nested under that check).
+    removed = await _cleanup_incoming_junk(settings.torrent_incoming_folder)
+
     async with async_session_factory() as session:
         repo = SettingsRepository(session)
         try:
             creds = await get_auth_service().get_credentials(repo)
         except Exception:  # noqa: BLE001
-            return {"skipped": "no drive credentials"}
+            return {"skipped": "no drive credentials", "junk_removed": removed}
         inbox = await DriveService.get_inbox_folder_config(repo)
         library = await DriveService.get_library_folder_config(repo)
     if creds is None or inbox is None or library is None:
-        return {"skipped": "not configured"}
+        return {"skipped": "not configured", "junk_removed": removed}
 
     try:
         async with async_session_factory() as session:
             pending = await local_scan_service.scan_local_folder(session, settings.torrent_incoming_folder)
             if not pending:
-                return {"pending": 0}
+                return {"pending": 0, "junk_removed": removed}
             provider = DriveProvider(build_drive_service(creds))
             await local_scan_service.match_against_wishlist(
                 session, pending, provider, inbox.folder_id, library.folder_id
@@ -450,7 +463,41 @@ async def local_scan_tick(trigger: str = "scheduler") -> dict:
                 [row.id for row in pending if row.status == LocalFileStatus.pending],
                 provider, inbox.folder_id,
             )
-        return {"pending": len(pending), **result}
+        return {"pending": len(pending), "junk_removed": removed, **result}
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("torrent: local-scan handoff tick failed")
-        return {"error": "local-scan tick failed"}
+        return {"error": "local-scan tick failed", "junk_removed": removed}
+
+
+async def _cleanup_incoming_junk(folder: str) -> int:
+    """`torrent_incoming_folder` is owned exclusively by this subsystem —
+    unlike the shared `torrents_watch_folder` (James's own pre-existing
+    manual audiobook workflow, never touched here), nothing legitimate is
+    ever supposed to sit in this one except ebook-shaped files awaiting
+    pickup. Librarr's book_type routing isn't foolproof (confirmed live
+    2026-09-16: it matched an audiobook for an ebook request), and
+    `local_scan_service.scan_local_folder` silently and permanently ignores
+    anything that isn't ebook-shaped — by design for the shared folder, but
+    here it just means a wrong-format download accumulates on disk forever
+    with nothing else ever reclaiming the space. Deletes any non-ebook file
+    older than `_JUNK_FILE_GRACE_PERIOD` (skips anything newer, in case
+    Librarr is still mid-move into the folder). Returns the count removed;
+    never raises."""
+    root = Path(folder)
+    if not root.is_dir():
+        return 0
+    cutoff = time.time() - _JUNK_FILE_GRACE_PERIOD.total_seconds()
+    removed = 0
+    for path in root.rglob("*"):
+        if not path.is_file() or local_scan_service._is_watchable(path.name):
+            continue
+        try:
+            if path.stat().st_mtime > cutoff:
+                continue
+            path.unlink()
+        except OSError:
+            logger.exception("torrent: couldn't remove junk file %s", path)
+            continue
+        removed += 1
+        logger.info("torrent: removed non-ebook file from incoming folder: %s", path.name)
+    return removed

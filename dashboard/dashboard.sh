@@ -81,6 +81,7 @@ provider_label() {  # provider_label <raw provider id> -> short display name
         openbooks) echo "OpenBooks" ;;
         annas_archive) echo "Anna's Archive" ;;
         libgen) echo "LibGen" ;;
+        torrent) echo "Torrent" ;;
         "" | unknown) echo "unknown" ;;
         *) echo "$1" ;;
     esac

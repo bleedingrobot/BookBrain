@@ -1,3 +1,5 @@
+import os
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -575,7 +577,7 @@ async def test_local_scan_tick_skipped_when_not_configured(db_session, monkeypat
     monkeypatch.setattr(auth_svc, "get_auth_service", lambda: _Auth())
 
     out = await svc.local_scan_tick()
-    assert out == {"skipped": "not configured"}
+    assert out == {"skipped": "not configured", "junk_removed": 0}
 
 
 async def test_local_scan_tick_runs_the_existing_handoff_pipeline(db_session, monkeypatch, tmp_path):
@@ -625,4 +627,52 @@ async def test_local_scan_tick_runs_the_existing_handoff_pipeline(db_session, mo
     out = await svc.local_scan_tick()
 
     assert calls == {"scan": 1, "match": 1, "copy": 1}
-    assert out == {"pending": 1, "copied": 1, "failed": 0}
+    assert out == {"pending": 1, "copied": 1, "failed": 0, "junk_removed": 0}
+
+
+# --- _cleanup_incoming_junk -----------------------------------------------
+# torrent_incoming_folder is owned exclusively by this subsystem — unlike
+# the shared torrents_watch_folder (James's own pre-existing manual
+# audiobook collection, which local_scan_service.scan_local_folder already
+# correctly leaves untouched forever by design), so cleanup here is safe.
+
+
+async def test_cleanup_incoming_junk_removes_an_old_non_ebook_file(tmp_path):
+    junk = tmp_path / "Some Audiobook.mp3"
+    junk.write_bytes(b"x" * 100)
+    old = time.time() - svc._JUNK_FILE_GRACE_PERIOD.total_seconds() - 60
+    os.utime(junk, (old, old))
+
+    removed = await svc._cleanup_incoming_junk(str(tmp_path))
+
+    assert removed == 1
+    assert not junk.exists()
+
+
+async def test_cleanup_incoming_junk_leaves_a_recent_file_alone(tmp_path):
+    """Grace period protects a file Librarr might still be mid-move into
+    the folder from being raced and deleted out from under it."""
+    junk = tmp_path / "Some Audiobook.mp3"
+    junk.write_bytes(b"x" * 100)
+
+    removed = await svc._cleanup_incoming_junk(str(tmp_path))
+
+    assert removed == 0
+    assert junk.exists()
+
+
+async def test_cleanup_incoming_junk_never_touches_ebook_files(tmp_path):
+    book = tmp_path / "A Real Book.epub"
+    book.write_bytes(b"x" * 100)
+    old = time.time() - svc._JUNK_FILE_GRACE_PERIOD.total_seconds() - 60
+    os.utime(book, (old, old))
+
+    removed = await svc._cleanup_incoming_junk(str(tmp_path))
+
+    assert removed == 0
+    assert book.exists()
+
+
+async def test_cleanup_incoming_junk_handles_a_missing_folder(tmp_path):
+    removed = await svc._cleanup_incoming_junk(str(tmp_path / "does-not-exist"))
+    assert removed == 0
