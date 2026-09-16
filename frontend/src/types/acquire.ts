@@ -39,7 +39,10 @@ export interface AcquireDownloadResponse {
 }
 
 export interface RequestCandidate {
-  full: string
+  // null for a torrent request still in flight (or failed before a file
+  // ever existed) — there's no downloadable location yet, just a Librarr
+  // request in progress.
+  full: string | null
   title: string | null
   author: string | null
   format: string | null

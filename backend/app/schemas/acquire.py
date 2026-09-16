@@ -52,7 +52,10 @@ class AcquireDownloadResponse(BaseModel):
 
 
 class RequestCandidate(BaseModel):
-    full: str
+    # None for a torrent request still in flight (or failed before a file
+    # ever existed) — submit_tick sets candidate_provider/title/author at
+    # submission time with no file to point `full` at yet.
+    full: str | None
     title: str | None = None
     author: str | None = None
     format: str | None = None

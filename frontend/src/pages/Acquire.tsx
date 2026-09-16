@@ -128,7 +128,7 @@ function RequestRow({ req }: { req: OpenRequest }) {
                     <button
                       className="rounded border border-neutral-300 px-2 py-0.5 disabled:opacity-50 dark:border-neutral-700"
                       disabled={approve.isPending}
-                      onClick={() => approve.mutate(alt.full)}
+                      onClick={() => approve.mutate(alt.full ?? undefined)}
                     >
                       Get
                     </button>
