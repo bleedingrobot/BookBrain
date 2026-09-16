@@ -1404,7 +1404,14 @@ export default function App() {
               Building your library for the first time — this may take a moment…
             </p>
           )}
-          {lib.loadError && <p className="mt-6 text-sm text-red-600">{lib.loadError}</p>}
+          {lib.loadError && (
+            <p className="mt-6 flex flex-wrap items-center gap-2 text-sm text-red-600">
+              {lib.loadError}
+              <button className="btn btn-neutral btn-xs" onClick={lib.refresh}>
+                Retry
+              </button>
+            </p>
+          )}
 
           {selected.size === 0 && hasKobo && koboStatus && (
             <p className={`mt-3 text-xs ${koboError ? 'text-red-600' : 'text-neutral-500'}`}>
