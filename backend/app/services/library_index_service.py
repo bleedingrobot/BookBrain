@@ -817,7 +817,7 @@ async def regenerate_dashboard(
         from app.services import acquisition_service
 
         provider = DriveProvider(build_drive_service(creds))
-        targets = await acquisition_service._gather_targets(provider, library_folder_id)
+        targets = await acquisition_service.gather_acquisition_targets(provider, library_folder_id)
         target_ids = {t["request_id"] for t in targets}
 
         async with async_session_factory() as session:
