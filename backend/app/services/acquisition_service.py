@@ -1141,6 +1141,12 @@ _AUTOSCAN_INBOX_THRESHOLD = 8  # kick a scan once this many downloads have piled
 # (auto-get also scans whenever it's otherwise idle and the inbox isn't empty)
 _AUTOGET_SEARCH_REUSE = timedelta(minutes=60)  # reuse a candidate row's search if fresher
 _SEARCH_BUDGET_PER_HOUR = 8  # hard ceiling on fresh OpenBooks searches
+# Libgen is a plain HTTP scraper — self-throttled inside LibgenProvider
+# (per-request delay + a fixed mirror list) — not a shared community IRC bot
+# that a whole nick can get rate-limited on. It doesn't need OpenBooks'
+# tight hourly ceiling; its own tick interval (jobs/scheduler.py) is already
+# the real throttle. This budget is just an outer safety bound.
+_LIBGEN_SEARCH_BUDGET_PER_HOUR = 40
 # Backoff before auto-get re-attempts a book. It cools down between tries,
 # longer once it's been failing a while, and a searched-but-nothing-found book
 # only gets re-checked weekly.
@@ -1149,17 +1155,21 @@ _AUTOGET_STUBBORN_AFTER = timedelta(hours=3)  # a book failing this long → the
 _AUTOGET_STUBBORN_BACKOFF = timedelta(hours=6)
 _AUTOGET_NOMATCH_BACKOFF = timedelta(days=7)
 
-_recent_search_times: list[float] = []  # monotonic timestamps, trimmed to the last hour
+# Keyed by cycle ("openbooks" / "libgen") so each provider's own auto-get
+# cycle has its own independent hourly budget instead of sharing one — see
+# _run_autoget_cycle's docstring for why the two cycles run decoupled at all.
+_recent_search_times: dict[str, list[float]] = {}
 
 
-def _search_budget_left() -> bool:
+def _search_budget_left(key: str, per_hour: int) -> bool:
     cutoff = time.monotonic() - 3600
-    _recent_search_times[:] = [t for t in _recent_search_times if t > cutoff]
-    return len(_recent_search_times) < _SEARCH_BUDGET_PER_HOUR
+    times = _recent_search_times.setdefault(key, [])
+    times[:] = [t for t in times if t > cutoff]
+    return len(times) < per_hour
 
 
-def _note_search() -> None:
-    _recent_search_times.append(time.monotonic())
+def _note_search(key: str) -> None:
+    _recent_search_times.setdefault(key, []).append(time.monotonic())
 
 
 async def _run_autoscan(scan_svc, job_id: str, creds, inbox_folder_id: str) -> None:
@@ -1185,29 +1195,18 @@ def _target_backoff(row: AcquisitionCandidate) -> timedelta:
 
 
 async def autoget_tick(trigger: str = "scheduler") -> dict:
-    """One iteration of the auto-get loop (the scheduler ticks every few
-    minutes). While everything's idle: kicks a scan if the inbox has piled up
-    (>= 20), else picks the next book that's due (no attempt yet, or its
-    backoff has elapsed) and does **one** thing — reuse a recent search's best
-    unpicked server and download it, or (if there's no fresh search and the
-    hourly budget allows) run a new search. A book the sources won't deliver
-    cools down (25 min, then 6 h once it's been failing > 3 h); one with no
-    match at all is re-checked weekly. Never raises."""
+    """OpenBooks' side of the auto-get loop — see `_run_autoget_cycle` for
+    what a cycle actually does. Gated on OpenBooks' own enabled/busy/server
+    state on top of the shared master toggle, since only this cycle depends
+    on that IRC-bot infrastructure."""
     from app.core.config import get_settings
-    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
-    from app.data.repositories.settings_repository import SettingsRepository
-    from app.providers.drive.client import build_drive_service
     from app.services import openbooks_process_service, openbooks_service
-    from app.services.auth_service import get_auth_service
-    from app.services.drive_service import DriveService
     from app.services.scan_service import get_scan_service
 
     if not get_settings().openbooks_enabled:
         return {"skipped": "openbooks disabled"}
-    async with async_session_factory() as session:
-        if (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) != "true":
-            return {"skipped": "auto-get off"}
-
+    if not await _autoget_master_enabled():
+        return {"skipped": "auto-get off"}
     if (
         openbooks_service.is_busy()
         or has_active_refresh_job()
@@ -1216,6 +1215,74 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
         return {"skipped": "busy"}
     if not (await asyncio.to_thread(openbooks_process_service.status)).get("running"):
         return {"skipped": "openbooks server not running"}
+
+    providers = [p for p in default_acquisition_providers() if p.name == "openbooks"]
+    return await _run_autoget_cycle(
+        providers=providers, budget_key="openbooks", budget_per_hour=_SEARCH_BUDGET_PER_HOUR
+    )
+
+
+async def libgen_autoget_tick(trigger: str = "scheduler") -> dict:
+    """Libgen's side of the auto-get loop, decoupled from OpenBooks' cycle —
+    see `_run_autoget_cycle` for what a cycle actually does. Libgen is a
+    plain HTTP scraper with no shared bot/server to wait on, so this only
+    checks the shared master toggle, `libgen_enabled`, and the general
+    "something else is using the acquisition machinery" busy guards — it
+    never waits on OpenBooks' own state, and runs on its own scheduler
+    interval (jobs/scheduler.py) so the two cycles land at different times
+    rather than always searching the same book together."""
+    from app.core.config import get_settings
+    from app.services.scan_service import get_scan_service
+
+    if not get_settings().libgen_enabled:
+        return {"skipped": "libgen disabled"}
+    if not await _autoget_master_enabled():
+        return {"skipped": "auto-get off"}
+    if has_active_refresh_job() or get_scan_service().has_running_job():
+        return {"skipped": "busy"}
+
+    providers = [p for p in default_acquisition_providers() if p.name == "libgen"]
+    return await _run_autoget_cycle(
+        providers=providers, budget_key="libgen", budget_per_hour=_LIBGEN_SEARCH_BUDGET_PER_HOUR
+    )
+
+
+async def _autoget_master_enabled() -> bool:
+    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+    from app.data.repositories.settings_repository import SettingsRepository
+
+    async with async_session_factory() as session:
+        return (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) == "true"
+
+
+# Serializes the two cycles' read-decide-write section against each other —
+# they run on independent schedules and could otherwise both land on the
+# same "next due book" at once and race to approve/download it twice. Only
+# guards the DB decision-making, not each cycle's own provider I/O, so a
+# slow Libgen download doesn't hold up OpenBooks' turn (or vice versa) any
+# longer than it takes to pick a target and kick off that I/O.
+_autoget_lock = asyncio.Lock()
+
+
+async def _run_autoget_cycle(
+    *, providers: list[AcquisitionProvider], budget_key: str, budget_per_hour: int
+) -> dict:
+    """One iteration of one provider's auto-get cycle. While everything's
+    idle: kicks a scan if the inbox has piled up, else picks the next book
+    that's due (no attempt yet, or its backoff has elapsed) and does **one**
+    thing — reuse a recent search's best unpicked server and download it, or
+    (if there's no fresh search and this cycle's own hourly budget allows)
+    run a new search restricted to `providers`. A book the sources won't
+    deliver cools down (25 min, then 6 h once it's been failing > 3 h); one
+    with no match at all is re-checked weekly. Never raises."""
+    from app.data.repositories.settings_repository import SettingsRepository
+    from app.providers.drive.client import build_drive_service
+    from app.services.auth_service import get_auth_service
+    from app.services.drive_service import DriveService
+    from app.services.scan_service import get_scan_service
+
+    if not providers:
+        return {"skipped": "no matching provider enabled"}
 
     async with async_session_factory() as session:
         repo = SettingsRepository(session)
@@ -1230,155 +1297,157 @@ async def autoget_tick(trigger: str = "scheduler") -> dict:
 
     provider = DriveProvider(build_drive_service(creds))
 
-    # Keep the inbox from piling up — auto-get fills it and nothing scans it
-    # until the nightly. Kick a scan once it hits the threshold (the next
-    # tick's has_running_job() guard then pauses auto-get until it's done).
-    inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
+    async with _autoget_lock:
+        # Keep the inbox from piling up — auto-get fills it and nothing scans
+        # it until the nightly. Kick a scan once it hits the threshold (the
+        # next tick's has_running_job() guard then pauses auto-get until
+        # it's done).
+        inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
 
-    def _kick_scan(reason: str) -> dict:
-        scan_svc = get_scan_service()
-        job = scan_svc.create_job()
-        asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
-        logger.info("acquire: %s — auto-scan started (%d files)", reason, len(inbox_files))
-        return {"scan_started": len(inbox_files)}
+        def _kick_scan(reason: str) -> dict:
+            scan_svc = get_scan_service()
+            job = scan_svc.create_job()
+            asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
+            logger.info("acquire: %s — auto-scan started (%d files)", reason, len(inbox_files))
+            return {"scan_started": len(inbox_files)}
 
-    if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
-        return _kick_scan(f"inbox at {len(inbox_files)} files")
+        if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
+            return _kick_scan(f"inbox at {len(inbox_files)} files")
 
-    targets = await gather_acquisition_targets(provider, library.folder_id)
-    if not targets:
-        # Nothing to acquire — if downloads are sitting unscanned, clear them.
-        if inbox_files:
-            return _kick_scan("no acquisition work, inbox has files")
-        return {"skipped": "no targets"}
+        targets = await gather_acquisition_targets(provider, library.folder_id)
+        if not targets:
+            # Nothing to acquire — if downloads are sitting unscanned, clear them.
+            if inbox_files:
+                return _kick_scan("no acquisition work, inbox has files")
+            return {"skipped": "no targets"}
 
-    now = datetime.now(UTC)
-    async with async_session_factory() as session:
-        await _dedupe_candidates(session)
-        demerits = await _server_demerits(session)
-        rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
-    by_id = {r.request_id: r for r in rows}
-    by_key: dict[str, AcquisitionCandidate] = {}
-    for r in rows:
-        by_key.setdefault(_owned_key(r.request_title, r.request_author), r)
-
-    # Never-tried targets always go first (in target order); only once none of
-    # those remain do we fall back to a due retry — and among retries, the one
-    # that's waited longest since its last attempt goes first, so a book that
-    # just failed sinks to the back of the queue instead of cutting back in
-    # line ahead of books that haven't been tried at all yet.
-    item: dict | None = None
-    existing: AcquisitionCandidate | None = None
-    due_retries: list[tuple[datetime, dict, AcquisitionCandidate]] = []
-    for t in targets:
-        row = by_id.get(t["request_id"]) or by_key.get(_owned_key(t["title"], t["author"]))
-        if row is None:
-            item, existing = t, None
-            break
-        if row.status in (AcquisitionStatus.approved, AcquisitionStatus.skipped):
-            continue
-        last = _aware(row.resolved_at) or _aware(row.updated_at)
-        if last is None or now - last >= _target_backoff(row):
-            due_retries.append((last or datetime.min.replace(tzinfo=UTC), t, row))
-    if item is None and due_retries:
-        due_retries.sort(key=lambda x: x[0])
-        _, item, existing = due_retries[0]
-    if item is None:
-        # Everything acquired or cooling down — use the idle tick to clear any
-        # downloads still sitting in the inbox.
-        if inbox_files:
-            return _kick_scan("acquisitions idle, inbox has files")
-        return {"skipped": "all caught up or cooling down", "targets": len(targets)}
-
-    rid, title = item["request_id"], item["title"]
-    existing_id = existing.id if existing is not None else None
-
-    # In one pass: re-key a row that this book already has under a different id
-    # (want-to-read / list vs the wishlist id `gather_acquisition_targets` prefers), decide
-    # whether its last search is still fresh enough to reuse, and (if so) grab
-    # its stored candidates.
-    reuse_cands: list[BookResult] = []
-    fresh_enough = False
-    if existing_id is not None:
+        now = datetime.now(UTC)
         async with async_session_factory() as session:
-            r = await session.get(AcquisitionCandidate, existing_id)
-            if r is not None:
-                if r.request_id != rid:
-                    r.request_id = rid
-                    r.source = item["source"]
-                updated = _aware(r.updated_at)
-                fresh_enough = bool(
-                    r.candidate_full
-                    and r.status != AcquisitionStatus.no_match
-                    and updated is not None
-                    and now - updated < _AUTOGET_SEARCH_REUSE
-                )
-                if fresh_enough:
-                    reuse_cands = _row_candidates(r)
-                await session.commit()
+            await _dedupe_candidates(session)
+            demerits = await _server_demerits(session)
+            rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
+        by_id = {r.request_id: r for r in rows}
+        by_key: dict[str, AcquisitionCandidate] = {}
+        for r in rows:
+            by_key.setdefault(_owned_key(r.request_title, r.request_author), r)
 
-    if fresh_enough:
-        ranked = _rank(title, item.get("author"), reuse_cands, demerits=demerits)
-    else:
-        if not _search_budget_left():
-            return {"skipped": "search budget spent this hour — steady pace", "title": title}
-        # _search_all_providers never raises — a provider that's down just
-        # contributes nothing (already logged there). An all-empty result
-        # flows into the same "no ranked candidates" handling below as a
-        # search that genuinely found nothing, and still touches the row via
-        # _upsert(preserve_existing=True) so _target_backoff() has a
-        # timestamp — otherwise a stuck target would retry every tick forever.
-        results, _dead = await _search_all_providers(default_acquisition_providers(), item)
-        _note_search()
-        ranked = _rank(title, item.get("author"), results, demerits=demerits)
-        async with async_session_factory() as session:
-            await _upsert(session, item, ranked, preserve_existing=True)
-            await session.commit()
-            row = (
-                await session.execute(
-                    select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == rid)
-                )
-            ).scalar_one_or_none()
-            existing_id = row.id if row is not None else existing_id
-        if not ranked:
-            if row is not None and row.status == AcquisitionStatus.no_match:
-                logger.info("acquire: auto-get — no EPUB match for %r", title)
-                return {"no_match": title}
-            return {"skipped": "re-search found nothing; kept the prior match", "title": title}
+        # Never-tried targets always go first (in target order); only once none of
+        # those remain do we fall back to a due retry — and among retries, the one
+        # that's waited longest since its last attempt goes first, so a book that
+        # just failed sinks to the back of the queue instead of cutting back in
+        # line ahead of books that haven't been tried at all yet.
+        item: dict | None = None
+        existing: AcquisitionCandidate | None = None
+        due_retries: list[tuple[datetime, dict, AcquisitionCandidate]] = []
+        for t in targets:
+            row = by_id.get(t["request_id"]) or by_key.get(_owned_key(t["title"], t["author"]))
+            if row is None:
+                item, existing = t, None
+                break
+            if row.status in (AcquisitionStatus.approved, AcquisitionStatus.skipped):
+                continue
+            last = _aware(row.resolved_at) or _aware(row.updated_at)
+            if last is None or now - last >= _target_backoff(row):
+                due_retries.append((last or datetime.min.replace(tzinfo=UTC), t, row))
+        if item is None and due_retries:
+            due_retries.sort(key=lambda x: x[0])
+            _, item, existing = due_retries[0]
+        if item is None:
+            # Everything acquired or cooling down — use the idle tick to clear any
+            # downloads still sitting in the inbox.
+            if inbox_files:
+                return _kick_scan("acquisitions idle, inbox has files")
+            return {"skipped": "all caught up or cooling down", "targets": len(targets)}
 
-    pick = next(((s, c) for s, c in ranked if s >= _AUTOGET_MIN_SCORE), None)
-    if pick is None:
-        # There's an EPUB but nothing confident enough — leave it in the panel
-        # for James, and back it off so we don't keep picking at it.
+        rid, title = item["request_id"], item["title"]
+        existing_id = existing.id if existing is not None else None
+
+        # In one pass: re-key a row that this book already has under a different id
+        # (want-to-read / list vs the wishlist id `gather_acquisition_targets` prefers), decide
+        # whether its last search is still fresh enough to reuse, and (if so) grab
+        # its stored candidates.
+        reuse_cands: list[BookResult] = []
+        fresh_enough = False
         if existing_id is not None:
             async with async_session_factory() as session:
                 r = await session.get(AcquisitionCandidate, existing_id)
                 if r is not None:
-                    r.resolved_at = now
+                    if r.request_id != rid:
+                        r.request_id = rid
+                        r.source = item["source"]
+                    updated = _aware(r.updated_at)
+                    fresh_enough = bool(
+                        r.candidate_full
+                        and r.status != AcquisitionStatus.no_match
+                        and updated is not None
+                        and now - updated < _AUTOGET_SEARCH_REUSE
+                    )
+                    if fresh_enough:
+                        reuse_cands = _row_candidates(r)
                     await session.commit()
-        best = ranked[0][0] if ranked else 0.0
-        logger.info("acquire: auto-get — best match for %r only %.2f, left for review", title, best)
-        return {"skipped": "no confident match", "title": title, "score": best}
 
-    # One download attempt per tick. On a failure we rotate the failed pick out
-    # of the row so the next tick reuses the same search but tries a different
-    # server; after `_AUTOGET_SEARCH_REUSE` the search goes stale and we get a
-    # fresh command anyway.
-    _score, cand = pick
-    try:
-        result = await approve_request(rid, cand.full, provider, inbox.folder_id, library.folder_id)
-        logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), cand.server)
+        if fresh_enough:
+            ranked = _rank(title, item.get("author"), reuse_cands, demerits=demerits)
+        else:
+            if not _search_budget_left(budget_key, budget_per_hour):
+                return {"skipped": "search budget spent this hour — steady pace", "title": title}
+            # _search_all_providers never raises — a provider that's down just
+            # contributes nothing (already logged there). An all-empty result
+            # flows into the same "no ranked candidates" handling below as a
+            # search that genuinely found nothing, and still touches the row via
+            # _upsert(preserve_existing=True) so _target_backoff() has a
+            # timestamp — otherwise a stuck target would retry every tick forever.
+            results, _dead = await _search_all_providers(providers, item)
+            _note_search(budget_key)
+            ranked = _rank(title, item.get("author"), results, demerits=demerits)
+            async with async_session_factory() as session:
+                await _upsert(session, item, ranked, preserve_existing=True)
+                await session.commit()
+                row = (
+                    await session.execute(
+                        select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == rid)
+                    )
+                ).scalar_one_or_none()
+                existing_id = row.id if row is not None else existing_id
+            if not ranked:
+                if row is not None and row.status == AcquisitionStatus.no_match:
+                    logger.info("acquire: auto-get — no EPUB match for %r", title)
+                    return {"no_match": title}
+                return {"skipped": "re-search found nothing; kept the prior match", "title": title}
+
+        pick = next(((s, c) for s, c in ranked if s >= _AUTOGET_MIN_SCORE), None)
+        if pick is None:
+            # There's an EPUB but nothing confident enough — leave it in the panel
+            # for James, and back it off so we don't keep picking at it.
+            if existing_id is not None:
+                async with async_session_factory() as session:
+                    r = await session.get(AcquisitionCandidate, existing_id)
+                    if r is not None:
+                        r.resolved_at = now
+                        await session.commit()
+            best = ranked[0][0] if ranked else 0.0
+            logger.info("acquire: auto-get — best match for %r only %.2f, left for review", title, best)
+            return {"skipped": "no confident match", "title": title, "score": best}
+
+        # One download attempt per tick. On a failure we rotate the failed pick out
+        # of the row so the next tick reuses the same search but tries a different
+        # server; after `_AUTOGET_SEARCH_REUSE` the search goes stale and we get a
+        # fresh command anyway.
+        _score, cand = pick
         try:
-            from app.services.library_index_service import regenerate_dashboard
+            result = await approve_request(rid, cand.full, provider, inbox.folder_id, library.folder_id)
+            logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), cand.server)
+            try:
+                from app.services.library_index_service import regenerate_dashboard
 
-            await regenerate_dashboard(creds, library.folder_id)
-        except Exception:  # noqa: BLE001 — the download already succeeded either way
-            logger.exception("acquire: dashboard refresh after auto-get failed")
-        return {"got": title, "filename": result.get("filename"), "server": cand.server}
-    except Exception as exc:  # noqa: BLE001 — approve_request already flagged the row
-        logger.warning("acquire: auto-get failed for %r via %s: %s", title, cand.server, exc)
-        await _rotate_failed_pick(existing_id, title, item.get("author"), cand.full, demerits)
-        return {"failed": title, "server": cand.server, "error": str(exc)}
+                await regenerate_dashboard(creds, library.folder_id)
+            except Exception:  # noqa: BLE001 — the download already succeeded either way
+                logger.exception("acquire: dashboard refresh after auto-get failed")
+            return {"got": title, "filename": result.get("filename"), "server": cand.server}
+        except Exception as exc:  # noqa: BLE001 — approve_request already flagged the row
+            logger.warning("acquire: auto-get failed for %r via %s: %s", title, cand.server, exc)
+            await _rotate_failed_pick(existing_id, title, item.get("author"), cand.full, demerits)
+            return {"failed": title, "server": cand.server, "error": str(exc)}
 
 
 async def _rotate_failed_pick(

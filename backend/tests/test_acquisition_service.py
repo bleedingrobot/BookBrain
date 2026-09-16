@@ -1002,7 +1002,11 @@ async def test_autoget_reuses_a_recent_search_instead_of_re_searching(db_session
 
 async def test_autoget_search_budget_caps_fresh_searches(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
-    monkeypatch.setattr(svc, "_recent_search_times", [svc.time.monotonic()] * svc._SEARCH_BUDGET_PER_HOUR)
+    monkeypatch.setattr(
+        svc,
+        "_recent_search_times",
+        {"openbooks": [svc.time.monotonic()] * svc._SEARCH_BUDGET_PER_HOUR},
+    )
 
     async def no_search(providers, item):
         raise AssertionError("budget spent — must not search")

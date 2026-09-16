@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
-from app.jobs.scheduler import sync_autoget_schedule
+from app.jobs.scheduler import sync_autoget_schedule, sync_libgen_autoget_schedule
 
 from app.api.deps import require_drive_provider
 from app.data.db import get_db
@@ -310,4 +310,5 @@ async def set_autoget(
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
         await sync_autoget_schedule(scheduler)
+        await sync_libgen_autoget_schedule(scheduler)
     return AutoGetSettings(enabled=body.enabled)

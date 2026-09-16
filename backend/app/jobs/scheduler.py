@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 _NIGHTLY_JOB_ID = "nightly-run"
 _BACKUP_JOB_ID = "backup-run"
 _AUTOGET_JOB_ID = "openbooks-autoget"
+_LIBGEN_AUTOGET_JOB_ID = "libgen-autoget"
 _LLM_TAGGING_JOB_ID = "llm-tagging"
 DEFAULT_NIGHTLY_HOUR = 2
 DEFAULT_BACKUP_HOUR = 3
@@ -46,6 +47,14 @@ DEFAULT_BACKUP_HOUR = 3
 # per hour on top of this). Jittered so ticks aren't metronomic.
 AUTOGET_INTERVAL_SECONDS = 360
 AUTOGET_INTERVAL_JITTER = 90
+# Libgen's own cycle, deliberately a different period AND phase from
+# OpenBooks' — it's a plain HTTP scraper (self-throttled inside
+# LibgenProvider) with no shared IRC bot to be careful with, so there's no
+# reason to run it on OpenBooks' slow clock or only ever search the same
+# book at the same moment as OpenBooks does. Running the two out of sync
+# also means one being down/busy never blocks the other's turn.
+LIBGEN_AUTOGET_INTERVAL_SECONDS = 150
+LIBGEN_AUTOGET_INTERVAL_JITTER = 45
 # prompts/38 — one Ollama call per tick (one map/reduce step of a book's
 # full-text pass). Originally 300s on the assumption ticks would mostly be
 # no-ops between rare windows opening — James wants full throughput instead:
@@ -73,6 +82,15 @@ async def _run_scheduled_autoget() -> None:
         await acquisition_service.autoget_tick(trigger="scheduler")
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("openbooks auto-get tick failed")
+
+
+async def _run_scheduled_libgen_autoget() -> None:
+    from app.services import acquisition_service
+
+    try:
+        await acquisition_service.libgen_autoget_tick(trigger="scheduler")
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("libgen auto-get tick failed")
 
 
 async def _run_scheduled_llm_tagging() -> None:
@@ -177,6 +195,36 @@ async def sync_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
         logger.info("openbooks auto-get: enabled, ~one acquisition per %ds when idle", AUTOGET_INTERVAL_SECONDS)
     else:
         scheduler.reschedule_job(_AUTOGET_JOB_ID, trigger=trigger)
+
+
+async def sync_libgen_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
+    """Libgen's own auto-get cycle. Shares the master on/off toggle with
+    OpenBooks' cycle (one "auto-get" switch in Settings) but not its
+    interval — see LIBGEN_AUTOGET_INTERVAL_SECONDS for why. Also off
+    whenever the libgen provider itself is disabled."""
+    from app.core.config import get_settings
+
+    enabled = await read_autoget_enabled() and get_settings().libgen_enabled
+    existing = scheduler.get_job(_LIBGEN_AUTOGET_JOB_ID)
+    if not enabled:
+        if existing is not None:
+            scheduler.remove_job(_LIBGEN_AUTOGET_JOB_ID)
+            logger.info("libgen auto-get: disabled")
+        return
+    trigger = IntervalTrigger(
+        seconds=LIBGEN_AUTOGET_INTERVAL_SECONDS, jitter=LIBGEN_AUTOGET_INTERVAL_JITTER
+    )
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_libgen_autoget, trigger=trigger, id=_LIBGEN_AUTOGET_JOB_ID,
+            name="Libgen auto-get", max_instances=1, coalesce=True, misfire_grace_time=120,
+        )
+        logger.info(
+            "libgen auto-get: enabled, ~one acquisition per %ds when idle",
+            LIBGEN_AUTOGET_INTERVAL_SECONDS,
+        )
+    else:
+        scheduler.reschedule_job(_LIBGEN_AUTOGET_JOB_ID, trigger=trigger)
 
 
 async def read_llm_tagging_enabled() -> bool:

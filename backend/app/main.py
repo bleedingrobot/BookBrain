@@ -13,6 +13,7 @@ from app.jobs.scheduler import (
     create_scheduler,
     sync_autoget_schedule,
     sync_backup_schedule,
+    sync_libgen_autoget_schedule,
     sync_llm_tagging_schedule,
     sync_nightly_schedule,
 )
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
         await sync_nightly_schedule(scheduler)
         await sync_backup_schedule(scheduler)
         await sync_autoget_schedule(scheduler)
+        await sync_libgen_autoget_schedule(scheduler)
         await sync_llm_tagging_schedule(scheduler)
         scheduler.start()
     except Exception:  # a broken schedule must never stop the API booting
