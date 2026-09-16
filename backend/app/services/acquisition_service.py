@@ -1153,8 +1153,6 @@ async def reset_request(request_id: str) -> None:
 # still working through the list over a day or two.
 
 _AUTOGET_MIN_SCORE = 0.9  # only a strong title+author match from a decent source
-_AUTOSCAN_INBOX_THRESHOLD = 8  # kick a scan once this many downloads have piled up
-# (auto-get also scans whenever it's otherwise idle and the inbox isn't empty)
 _AUTOGET_SEARCH_REUSE = timedelta(minutes=60)  # reuse a candidate row's search if fresher
 _SEARCH_BUDGET_PER_HOUR = 8  # hard ceiling on fresh OpenBooks searches
 # Libgen is a plain HTTP scraper — self-throttled inside LibgenProvider
@@ -1186,13 +1184,6 @@ def _search_budget_left(key: str, per_hour: int) -> bool:
 
 def _note_search(key: str) -> None:
     _recent_search_times.setdefault(key, []).append(time.monotonic())
-
-
-async def _run_autoscan(scan_svc, job_id: str, creds, inbox_folder_id: str) -> None:
-    try:
-        await scan_svc.run_scan(job_id, creds, inbox_folder_id)
-    except Exception:  # noqa: BLE001
-        logger.exception("acquire: auto-scan failed")
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -1323,8 +1314,7 @@ def _pick_next_target(
 async def _run_autoget_cycle(
     *, providers: list[AcquisitionProvider], budget_key: str, budget_per_hour: int
 ) -> dict:
-    """One iteration of one provider's auto-get cycle. While everything's
-    idle: kicks a scan if the inbox has piled up, else picks the next book
+    """One iteration of one provider's auto-get cycle: picks the next book
     that's due (no attempt yet, or its backoff has elapsed) and does **one**
     thing — reuse a recent search's best unpicked server and download it, or
     (if there's no fresh search and this cycle's own hourly budget allows)
@@ -1335,7 +1325,6 @@ async def _run_autoget_cycle(
     from app.providers.drive.client import build_drive_service
     from app.services.auth_service import get_auth_service
     from app.services.drive_service import DriveService
-    from app.services.scan_service import get_scan_service
 
     if not providers:
         return {"skipped": "no matching provider enabled"}
@@ -1354,54 +1343,22 @@ async def _run_autoget_cycle(
     provider = DriveProvider(build_drive_service(creds))
 
     async with _autoget_lock:
-        # Keep the inbox from piling up — auto-get fills it and nothing scans
-        # it until the nightly. Kick a scan once *unscanned* arrivals hit the
-        # threshold (the next tick's has_running_job() guard then pauses
-        # auto-get until it's done).
-        #
-        # Counting raw Drive folder contents here (2026-09-17 fix) rather
-        # than genuinely-new arrivals was a real trap: a scan doesn't move a
-        # file out of the inbox once it lands below the auto-organize
-        # confidence threshold — it sits in the Review Queue, still
-        # physically in the Drive folder, waiting on a human. Once 8 such
-        # books accumulated, every tick saw "8 files in the inbox", kicked
-        # another scan (which found nothing new — "already known" every
-        # time), and returned *before ever reaching the pick/search/download
-        # logic below* — auto-get looked alive but had wedged itself
-        # permanently on nothing but files nothing but a human clicking
-        # "review" was ever going to clear. Confirmed live: exactly 8 items
-        # sitting in the Review Queue, auto-get silent for the ~9.5 hours
-        # since the 8th one landed.
-        inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
-
-        def _kick_scan(reason: str, count: int) -> dict:
-            scan_svc = get_scan_service()
-            job = scan_svc.create_job()
-            asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
-            logger.info("acquire: %s — auto-scan started (%d files)", reason, count)
-            return {"scan_started": count}
-
-        if inbox_files:
-            drive_ids = {f["id"] for f in inbox_files if f.get("id")}
-            async with async_session_factory() as session:
-                known_ids = set(
-                    (
-                        await session.execute(
-                            select(File.drive_file_id).where(File.drive_file_id.in_(drive_ids))
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-            unscanned_count = len(drive_ids - known_ids)
-            if unscanned_count >= _AUTOSCAN_INBOX_THRESHOLD:
-                return _kick_scan(f"inbox at {unscanned_count} unscanned files", unscanned_count)
-
+        # Auto-get used to kick its own inbox scan here once files piled up
+        # (nothing else scanned the inbox except the nightly job) — removed
+        # 2026-09-17 at James's request ("keep going as much as possible"),
+        # after the pileup-scan-kick trap (a fixed version of it briefly
+        # replaced this) demonstrated that self-triggered scanning is an
+        # acquisition-pausing liability, not a safety net: any scan sets
+        # has_running_job() true, and both this cycle and Libgen's
+        # explicitly pause on that until it clears. Scanning is now purely
+        # the nightly job's responsibility (or a manual "Scan" click) —
+        # downloaded files sit in the inbox a bit longer before landing in
+        # the library, but auto-get itself never stalls waiting on its own
+        # housekeeping. `_pick_next_target` still won't double-request a
+        # book already `approved` here, scanned or not, so this doesn't risk
+        # duplicate downloads.
         targets = await gather_acquisition_targets(provider, library.folder_id)
         if not targets:
-            # Nothing to acquire — if downloads are sitting unscanned, clear them.
-            if inbox_files:
-                return _kick_scan("no acquisition work, inbox has files", len(inbox_files))
             return {"skipped": "no targets"}
 
         now = datetime.now(UTC)
@@ -1412,10 +1369,6 @@ async def _run_autoget_cycle(
 
         picked = _pick_next_target(targets, rows, now)
         if picked is None:
-            # Everything acquired or cooling down — use the idle tick to clear any
-            # downloads still sitting in the inbox.
-            if inbox_files:
-                return _kick_scan("acquisitions idle, inbox has files", len(inbox_files))
             return {"skipped": "all caught up or cooling down", "targets": len(targets)}
         item, existing = picked
 

@@ -898,31 +898,23 @@ async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeyp
     assert row.request_title == "Departure"
 
 
-async def test_autoget_does_not_wedge_on_an_inbox_full_of_already_known_files(
+async def test_autoget_never_kicks_a_scan_regardless_of_inbox_contents(
     db_session, monkeypatch, _autoget_idle
 ):
-    """2026-09-17: 8 low-confidence downloads sitting in the Review Queue
-    (already scanned, never auto-organized out of the Drive inbox because
-    nothing but a human clears them) used to trip the same pile-up check as
-    genuinely-new arrivals — kicking a pointless scan every tick forever
-    ("8 files" never changes) and permanently pre-empting real search/
-    download work. Eight already-known files in the inbox should not scan;
-    it should search and download exactly like an empty inbox would."""
-    _autoget_idle["Provider"].inbox_count = 8
+    """2026-09-17: auto-get used to pause and kick its own inbox scan once
+    downloads piled up — first trap discovered when 8 low-confidence Review
+    Queue items (never cleared automatically, only by a human) permanently
+    pre-empted real search/download work every tick. Removed entirely at
+    James's request ("keep going as much as possible") rather than merely
+    patched again: any self-triggered scan sets has_running_job() true,
+    which both this cycle and Libgen's explicitly pause on — scanning is now
+    purely the nightly job's (or a manual click's) responsibility. A full
+    inbox should never cause a scan or otherwise stop autoget from picking
+    up and downloading a due book."""
+    _autoget_idle["Provider"].inbox_count = 20
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
-    db_session.add_all(
-        File(
-            drive_file_id=f"f{i}", filename=f"b{i}.epub", sha256=f"sha{i}", size_bytes=1,
-            status=FileStatus.review,
-        )
-        for i in range(8)
-    )
-    await db_session.commit()
-
-    searched = []
 
     async def fake_search_all(providers, item):
-        searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
                       full="!Bsk A G Riddle - Departure.epub")], set()
 
@@ -934,7 +926,6 @@ async def test_autoget_does_not_wedge_on_an_inbox_full_of_already_known_files(
     monkeypatch.setattr(svc, "approve_request", fake_approve)
 
     out = await svc.autoget_tick()
-    assert searched == ["Departure"]
     assert out["got"] == "Departure"
     assert _autoget_idle["ScanSvc"].scans == []
 
@@ -1239,19 +1230,6 @@ async def test_server_demerits_counts_recent_download_timeouts(db_session):
     assert d == {"bsk": 2 * svc._SERVER_DEMERIT_STEP}
 
 
-async def test_autoget_kicks_a_scan_when_the_inbox_piles_up(db_session, monkeypatch, _autoget_idle):
-    _autoget_idle["Provider"].inbox_count = 20
-    _autoget_idle["Targets"].items = [_target("Departure")]
-
-    async def no_search(providers, item):
-        raise AssertionError("should scan, not search, when the inbox is full")
-
-    monkeypatch.setattr(svc, "_search_all_providers", no_search)
-
-    out = await svc.autoget_tick()
-    await asyncio.sleep(0.02)
-    assert out == {"scan_started": 20}
-    assert _autoget_idle["ScanSvc"].scans == ["scan-1"]
 
 
 async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypatch, _autoget_idle):

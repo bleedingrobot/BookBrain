@@ -106,8 +106,13 @@ _SEARCH_BUDGET_PER_HOUR = 60
 # from 3 — these are small epub files, not big transfers, and a dead
 # torrent no longer squats a slot for hours (_STALLED_ZERO_PROGRESS_AFTER
 # releases it in 5 minutes), so more concurrent slots no longer means more
-# hours of potential dead weight the way it used to.
-_MAX_CONCURRENT_TORRENTS = 6
+# hours of potential dead weight the way it used to. James's ask
+# 2026-09-17 ("keep going as much as possible"): raised again to 15,
+# matching qBittorrent's own max_active_downloads (also raised from 3 to 15
+# the same day) — this cap was quietly the real ceiling on torrent
+# throughput even after that: BookBrain never fed qBittorrent more than 6
+# concurrent submissions no matter how many download slots it had free.
+_MAX_CONCURRENT_TORRENTS = 15
 _LIBRARR_TIMEOUT = 15.0
 # James's ask 2026-09-16: don't wait out the rest of the 5-min submit
 # interval when a book fails fast — try the next one immediately. Bounded
