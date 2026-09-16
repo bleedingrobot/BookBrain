@@ -928,7 +928,19 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
                 "score": row.score,
                 "provider": row.candidate_provider or "openbooks",
             }
-            if row.candidate_full
+            # torrent_service.submit_tick sets candidate_provider (and a
+            # title/author guess) at submission time but has no real
+            # candidate_full yet — there's no file, just a Librarr request in
+            # flight. Gating on candidate_full alone made every torrent row
+            # serialize `candidate: null`, so the dashboard's
+            # `.candidate.provider == "torrent"` filter never matched a
+            # single row regardless of how much the subsystem actually did
+            # (confirmed live 2026-09-16: real activity, dashboard stuck at
+            # 0/0). candidate_provider alone is enough signal to attribute
+            # the row for that filter and for candidateLine's provider
+            # label; downstream consumers of candidate_full itself (the
+            # DB column, e.g. approve/download) are untouched by this.
+            if row.candidate_full or row.candidate_provider
             else None
         )
         views.append(
