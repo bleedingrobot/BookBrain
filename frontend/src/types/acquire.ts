@@ -56,7 +56,7 @@ export interface OpenRequest {
   author: string | null
   requested_by: string | null
   cover: string | null
-  status: 'pending' | 'approved' | 'skipped' | 'no_match' | 'failed' | 'unsearched'
+  status: 'pending' | 'approved' | 'skipped' | 'no_match' | 'failed' | 'unsearched' | 'fetching'
   candidate: RequestCandidate | null
   alternatives: RequestCandidate[]
   score: number | null

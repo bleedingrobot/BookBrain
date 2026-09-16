@@ -1,11 +1,13 @@
+import asyncio
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings_keys import TORRENTS_AUTOMATCH_ENABLED
-from app.data.models import LocalFile, LocalFileStatus
+from app.data.models import AcquisitionCandidate, AcquisitionStatus, LocalFile, LocalFileStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.convert.calibre import is_convertible
 from app.providers.drive.classify import is_supported_ebook
@@ -155,15 +157,54 @@ async def match_against_wishlist(
             row.status = LocalFileStatus.copied
             if best_target["source"] == "wishlist":
                 try:
-                    await acquisition_service.mark_wishlist_sourced(
-                        drive_provider, library_folder_id, best_target["request_id"]
+                    # mark_wishlist_sourced is a plain sync function (blocking
+                    # Drive I/O) — approve_request already runs it via
+                    # asyncio.to_thread for the same reason; a bare `await`
+                    # here would raise TypeError (a bool isn't awaitable),
+                    # which the broad except below was silently swallowing
+                    # every time this path ran.
+                    await asyncio.to_thread(
+                        acquisition_service.mark_wishlist_sourced,
+                        drive_provider, library_folder_id, best_target["request_id"],
                     )
                 except Exception:
                     logger.exception(
                         "local_scan: couldn't mark wishlist item %s sourced", best_target["request_id"]
                     )
+            await _mark_candidate_resolved(session, best_target, row)
 
     await session.commit()
+
+
+async def _mark_candidate_resolved(session: AsyncSession, target: dict, matched_row: LocalFile) -> None:
+    """A strong-match auto-upload just happened for `target` — flip its
+    AcquisitionCandidate row to approved so every acquisition cycle
+    (OpenBooks/Libgen/torrent) stops treating it as still wanted, and so it
+    counts correctly in the dashboard's provider breakdown. Runs for every
+    target source (wishlist/want_to_read/list), not just wishlist — that
+    scoping above is specifically for the wishlist-sidecar write, which is
+    a different, narrower thing. Get-or-create: a want_to_read/list target
+    may never have been searched before and so has no row yet."""
+    row = (
+        await session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == target["request_id"])
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = AcquisitionCandidate(request_id=target["request_id"], request_title=target["title"])
+        session.add(row)
+    row.source = target.get("source") or "wishlist"
+    row.request_title = target["title"]
+    row.request_author = target.get("author")
+    row.status = AcquisitionStatus.approved
+    row.candidate_provider = "torrent"
+    row.candidate_full = matched_row.path
+    row.candidate_title = matched_row.matched_title or target["title"]
+    row.candidate_author = matched_row.matched_author or target.get("author")
+    row.candidate_server = None
+    row.score = matched_row.matched_score
+    row.message = None
+    row.resolved_at = datetime.now(UTC)
 
 
 async def dismiss(session: AsyncSession, file_ids: list[int]) -> int:

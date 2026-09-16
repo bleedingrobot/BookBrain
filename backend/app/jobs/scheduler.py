@@ -27,6 +27,7 @@ from app.core.settings_keys import (
     NIGHTLY_RUN_ENABLED,
     NIGHTLY_RUN_HOUR,
     OPENBOOKS_AUTOGET_ENABLED,
+    TORRENT_AUTOGET_ENABLED,
 )
 from app.data.db import async_session_factory
 from app.data.repositories.settings_repository import SettingsRepository
@@ -40,6 +41,9 @@ _BACKUP_JOB_ID = "backup-run"
 _AUTOGET_JOB_ID = "openbooks-autoget"
 _LIBGEN_AUTOGET_JOB_ID = "libgen-autoget"
 _LLM_TAGGING_JOB_ID = "llm-tagging"
+_TORRENT_SUBMIT_JOB_ID = "torrent-submit"
+_TORRENT_POLL_JOB_ID = "torrent-poll"
+_TORRENT_LOCAL_SCAN_JOB_ID = "torrent-local-scan"
 DEFAULT_NIGHTLY_HOUR = 2
 DEFAULT_BACKUP_HOUR = 3
 # Slow and steady — the #ebook bots rate-limit a nick on search and download,
@@ -55,6 +59,19 @@ AUTOGET_INTERVAL_JITTER = 90
 # also means one being down/busy never blocks the other's turn.
 LIBGEN_AUTOGET_INTERVAL_SECONDS = 150
 LIBGEN_AUTOGET_INTERVAL_JITTER = 45
+# The torrent subsystem's three independent legs. Submitting is much slower
+# than the other two cycles' searches — each hit is a real download
+# commitment (bandwidth, disk, a Librarr/qBittorrent slot), not a cheap HTTP
+# call. Polling and the local-scan handoff are both cheap, local-network-ish
+# calls (Librarr's own API; a directory walk + Drive upload), so they run
+# tight and independently of the submit toggle — see torrent_service.py's
+# module docstring for why.
+TORRENT_SUBMIT_INTERVAL_SECONDS = 900
+TORRENT_SUBMIT_INTERVAL_JITTER = 120
+TORRENT_POLL_INTERVAL_SECONDS = 60
+TORRENT_POLL_INTERVAL_JITTER = 10
+TORRENT_LOCAL_SCAN_INTERVAL_SECONDS = 120
+TORRENT_LOCAL_SCAN_INTERVAL_JITTER = 20
 # prompts/38 — one Ollama call per tick (one map/reduce step of a book's
 # full-text pass). Originally 300s on the assumption ticks would mostly be
 # no-ops between rare windows opening — James wants full throughput instead:
@@ -91,6 +108,33 @@ async def _run_scheduled_libgen_autoget() -> None:
         await acquisition_service.libgen_autoget_tick(trigger="scheduler")
     except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
         logger.exception("libgen auto-get tick failed")
+
+
+async def _run_scheduled_torrent_submit() -> None:
+    from app.services import torrent_service
+
+    try:
+        await torrent_service.submit_tick(trigger="scheduler")
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("torrent submit tick failed")
+
+
+async def _run_scheduled_torrent_poll() -> None:
+    from app.services import torrent_service
+
+    try:
+        await torrent_service.poll_tick(trigger="scheduler")
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("torrent poll tick failed")
+
+
+async def _run_scheduled_torrent_local_scan() -> None:
+    from app.services import torrent_service
+
+    try:
+        await torrent_service.local_scan_tick(trigger="scheduler")
+    except Exception:  # noqa: BLE001 — a bad tick must never kill the schedule
+        logger.exception("torrent local-scan tick failed")
 
 
 async def _run_scheduled_llm_tagging() -> None:
@@ -225,6 +269,91 @@ async def sync_libgen_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
         )
     else:
         scheduler.reschedule_job(_LIBGEN_AUTOGET_JOB_ID, trigger=trigger)
+
+
+async def read_torrent_autoget_enabled() -> bool:
+    async with async_session_factory() as session:
+        return (await SettingsRepository(session).get(TORRENT_AUTOGET_ENABLED)) == "true"
+
+
+async def sync_torrent_submit_schedule(scheduler: AsyncIOScheduler) -> None:
+    """The torrent subsystem's submit leg — its own toggle (separate from
+    OPENBOOKS_AUTOGET_ENABLED, see settings_keys.TORRENT_AUTOGET_ENABLED),
+    and off entirely whenever settings.torrent_enabled is false."""
+    from app.core.config import get_settings
+
+    enabled = await read_torrent_autoget_enabled() and get_settings().torrent_enabled
+    existing = scheduler.get_job(_TORRENT_SUBMIT_JOB_ID)
+    if not enabled:
+        if existing is not None:
+            scheduler.remove_job(_TORRENT_SUBMIT_JOB_ID)
+            logger.info("torrent submit: disabled")
+        return
+    trigger = IntervalTrigger(
+        seconds=TORRENT_SUBMIT_INTERVAL_SECONDS, jitter=TORRENT_SUBMIT_INTERVAL_JITTER
+    )
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_torrent_submit, trigger=trigger, id=_TORRENT_SUBMIT_JOB_ID,
+            name="Torrent submit", max_instances=1, coalesce=True, misfire_grace_time=300,
+        )
+        logger.info(
+            "torrent submit: enabled, ~one submission per %ds when idle",
+            TORRENT_SUBMIT_INTERVAL_SECONDS,
+        )
+    else:
+        scheduler.reschedule_job(_TORRENT_SUBMIT_JOB_ID, trigger=trigger)
+
+
+async def sync_torrent_poll_schedule(scheduler: AsyncIOScheduler) -> None:
+    """The torrent subsystem's poll leg — deliberately independent of
+    TORRENT_AUTOGET_ENABLED (only gated on settings.torrent_enabled): turning
+    auto-get off should stop *starting* new torrents, not strand ones
+    already in flight with nothing polling them to completion."""
+    from app.core.config import get_settings
+
+    existing = scheduler.get_job(_TORRENT_POLL_JOB_ID)
+    if not get_settings().torrent_enabled:
+        if existing is not None:
+            scheduler.remove_job(_TORRENT_POLL_JOB_ID)
+            logger.info("torrent poll: disabled")
+        return
+    trigger = IntervalTrigger(seconds=TORRENT_POLL_INTERVAL_SECONDS, jitter=TORRENT_POLL_INTERVAL_JITTER)
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_torrent_poll, trigger=trigger, id=_TORRENT_POLL_JOB_ID,
+            name="Torrent poll", max_instances=1, coalesce=True, misfire_grace_time=60,
+        )
+        logger.info("torrent poll: enabled, checking every %ds", TORRENT_POLL_INTERVAL_SECONDS)
+    else:
+        scheduler.reschedule_job(_TORRENT_POLL_JOB_ID, trigger=trigger)
+
+
+async def sync_torrent_local_scan_schedule(scheduler: AsyncIOScheduler) -> None:
+    """The torrent subsystem's handoff leg — runs the existing torrents-
+    watch-folder scan/match/upload on a short interval instead of only
+    nightly. Same independence from TORRENT_AUTOGET_ENABLED as the poll leg,
+    for the same reason (files already sitting in the folder shouldn't wait
+    on the submit toggle)."""
+    from app.core.config import get_settings
+
+    existing = scheduler.get_job(_TORRENT_LOCAL_SCAN_JOB_ID)
+    if not get_settings().torrent_enabled:
+        if existing is not None:
+            scheduler.remove_job(_TORRENT_LOCAL_SCAN_JOB_ID)
+            logger.info("torrent local-scan: disabled")
+        return
+    trigger = IntervalTrigger(
+        seconds=TORRENT_LOCAL_SCAN_INTERVAL_SECONDS, jitter=TORRENT_LOCAL_SCAN_INTERVAL_JITTER
+    )
+    if existing is None:
+        scheduler.add_job(
+            _run_scheduled_torrent_local_scan, trigger=trigger, id=_TORRENT_LOCAL_SCAN_JOB_ID,
+            name="Torrent local-scan handoff", max_instances=1, coalesce=True, misfire_grace_time=60,
+        )
+        logger.info("torrent local-scan: enabled, checking every %ds", TORRENT_LOCAL_SCAN_INTERVAL_SECONDS)
+    else:
+        scheduler.reschedule_job(_TORRENT_LOCAL_SCAN_JOB_ID, trigger=trigger)
 
 
 async def read_llm_tagging_enabled() -> bool:

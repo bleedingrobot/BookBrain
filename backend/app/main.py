@@ -16,6 +16,9 @@ from app.jobs.scheduler import (
     sync_libgen_autoget_schedule,
     sync_llm_tagging_schedule,
     sync_nightly_schedule,
+    sync_torrent_local_scan_schedule,
+    sync_torrent_poll_schedule,
+    sync_torrent_submit_schedule,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +37,9 @@ async def lifespan(app: FastAPI):
         await sync_backup_schedule(scheduler)
         await sync_autoget_schedule(scheduler)
         await sync_libgen_autoget_schedule(scheduler)
+        await sync_torrent_submit_schedule(scheduler)
+        await sync_torrent_poll_schedule(scheduler)
+        await sync_torrent_local_scan_schedule(scheduler)
         await sync_llm_tagging_schedule(scheduler)
         scheduler.start()
     except Exception:  # a broken schedule must never stop the API booting

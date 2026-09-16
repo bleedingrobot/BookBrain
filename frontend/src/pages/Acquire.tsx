@@ -84,6 +84,13 @@ function RequestRow({ req }: { req: OpenRequest }) {
           </div>
         )}
 
+        {req.status === 'fetching' && (
+          // Torrent-only status — no synchronous download() to click "Get"
+          // on (torrent_service.py's own auto-get loop is driving this),
+          // so this is a read-only progress indicator, not an action row.
+          <p className="mt-1 text-xs text-neutral-400">⇣ Downloading via torrent…</p>
+        )}
+
         {(req.status === 'pending' || req.status === 'failed') && req.candidate && (
           <div className="mt-1.5">
             <div className="flex flex-wrap items-center gap-2 text-xs">

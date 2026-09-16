@@ -496,6 +496,14 @@ class AcquisitionStatus(str, enum.Enum):
     skipped = "skipped"  # James dismissed it — don't re-offer until reset
     no_match = "no_match"  # searched OpenBooks, nothing good enough (re-tried each refresh)
     failed = "failed"  # a download attempt failed (re-tried each refresh)
+    # Submitted to the torrent subsystem (via Librarr) and not yet in the
+    # Drive inbox — excluded from every cycle's due-retry consideration so
+    # OpenBooks/Libgen don't redundantly re-attempt a book mid-download.
+    # 8 chars deliberately, matching this column's existing VARCHAR(8)
+    # sizing (computed by SQLAlchemy's Enum type from the longest value at
+    # table-creation time) — SQLite doesn't enforce it, but a longer value
+    # would silently need a migration on a stricter backend.
+    fetching = "fetching"
 
 
 class AcquisitionCandidate(Base):
@@ -541,6 +549,54 @@ class AcquisitionCandidate(Base):
     resolved_at: Mapped[datetime | None] = mapped_column()
 
 
+class LibrarrRequestStatus(str, enum.Enum):
+    # Librarr's own lifecycle (confirmed live against a real instance
+    # 2026-09-16): pending -> approved -> searching -> downloading ->
+    # completed, with failed as the terminal error state. Librarr requires
+    # an explicit PUT /api/requests/{id}/approve before it starts searching
+    # ("users request books, admins approve" — no auto-approve setting
+    # exists) — submit_tick() calls that immediately after creating the
+    # request so no human is in the loop, but a request can still
+    # legitimately be sitting in `pending` if that approve call itself
+    # failed transiently; poll_tick() retries approving in that case.
+    pending = "pending"
+    approved = "approved"
+    searching = "searching"
+    downloading = "downloading"
+    completed = "completed"  # Librarr reports done — file should be in EBOOK_DIR
+    failed = "failed"  # Librarr gave up (no results, or a download error)
+
+
+class LibrarrRequest(Base):
+    """Tracks one torrent_service.submit_tick() submission to Librarr's
+    request API end to end: which BookBrain request it's for, Librarr's own
+    request id (for polling GET /api/requests/{id}), and the last lifecycle
+    state seen. `request_id` matches AcquisitionCandidate.request_id with no
+    hard FK — same loose-coupling choice LocalFile.matched_request_id
+    already makes, since a request row can outlive candidate-row churn
+    (dedup, re-keying) elsewhere.
+
+    Deliberately a DB table rather than correlating by re-listing Librarr's
+    own /api/requests and matching on title/author each poll: title-based
+    matching is fragile, and a table survives a backend restart mid-flight
+    (poll_tick just resumes from whatever rows are here) where anything
+    living only in Librarr's own state wouldn't tell us which BookBrain book
+    a given request was for."""
+
+    __tablename__ = "librarr_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String, nullable=False)
+    librarr_request_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    status: Mapped[LibrarrRequestStatus] = mapped_column(
+        Enum(LibrarrRequestStatus), nullable=False, default=LibrarrRequestStatus.pending
+    )
+    message: Mapped[str | None] = mapped_column(String)
+    added_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column()
+
+
 class SmartCollection(Base):
     """A named, rule-based shelf: `rule` is a small field:value query string
     (see app.services.collection_rules) resolved against the library at
@@ -580,5 +636,7 @@ __all__ = [
     "DismissedReidentFlag",
     "AcquisitionStatus",
     "AcquisitionCandidate",
+    "LibrarrRequestStatus",
+    "LibrarrRequest",
     "SmartCollection",
 ]

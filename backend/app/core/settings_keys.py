@@ -66,6 +66,15 @@ REIDENT_REPORT_JSON = "reident_report_json"
 # flagged (LocalFile.matched_*) but always waits for a human either way.
 TORRENTS_AUTOMATCH_ENABLED = "torrents_automatch_enabled"
 
+# When on, torrent_service.submit_tick() searches Librarr for the next due
+# book and submits a torrent request. Separate from OPENBOOKS_AUTOGET_ENABLED
+# by design — a torrent commits real bandwidth/disk per book, unlike a quick
+# search, so James can pause it independently of the other two sources.
+# poll_tick() (following up on already-submitted requests) runs regardless
+# of this toggle, gated only on settings.torrent_enabled, so turning this off
+# mid-flight doesn't strand an in-progress download unpolled.
+TORRENT_AUTOGET_ENABLED = "torrent_autoget_enabled"
+
 # prompts/38 — when on, an in-process job spends one Ollama call per tick
 # (one excerpt pass, or one map/reduce step of a full-text pass) tagging the
 # next organised book still missing meta/descriptions — only inside allowed

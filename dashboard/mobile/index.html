@@ -16,6 +16,7 @@
     --yellow: #d29922;
     --red: #f85149;
     --cyan: #58a6ff;
+    --magenta: #db61a2;
   }
   * { box-sizing: border-box; }
   body {
@@ -253,8 +254,8 @@ function pillClass(status) {
   return 'pill-dim';
 }
 
-const PROVIDER_LABELS = { openbooks: 'OpenBooks', annas_archive: "Anna's Archive", libgen: 'LibGen' };
-const PROVIDER_COLORS = { openbooks: 'var(--cyan)', annas_archive: 'var(--green)', libgen: 'var(--yellow)' };
+const PROVIDER_LABELS = { openbooks: 'OpenBooks', annas_archive: "Anna's Archive", libgen: 'LibGen', torrent: 'Torrent' };
+const PROVIDER_COLORS = { openbooks: 'var(--cyan)', annas_archive: 'var(--green)', libgen: 'var(--yellow)', torrent: 'var(--magenta)' };
 function providerLabel(p) { return PROVIDER_LABELS[p] || p || 'unknown'; }
 function providerColor(p) { return PROVIDER_COLORS[p] || 'var(--dim)'; }
 

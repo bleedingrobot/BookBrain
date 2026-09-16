@@ -3,7 +3,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.core.settings_keys import TORRENTS_AUTOMATCH_ENABLED
-from app.data.models import LocalFile, LocalFileStatus
+from app.data.models import AcquisitionCandidate, AcquisitionStatus, LocalFile, LocalFileStatus
 from app.data.repositories.settings_repository import SettingsRepository
 from app.services import acquisition_service, local_scan_service
 from tests.epub_fixtures import build_epub
@@ -201,7 +201,10 @@ async def test_match_against_wishlist_auto_uploads_a_strong_match_when_enabled(
 
     marked = {}
 
-    async def fake_mark(provider, folder, request_id):
+    def fake_mark(provider, folder, request_id):
+        # Plain sync, matching the real mark_wishlist_sourced's signature —
+        # it's called via asyncio.to_thread (blocking Drive I/O), not awaited
+        # directly.
         marked["request_id"] = request_id
         return True
 
@@ -215,6 +218,89 @@ async def test_match_against_wishlist_auto_uploads_a_strong_match_when_enabled(
     assert len(provider.uploads) == 1
     assert provider.uploads[0][2] == "inbox-id"  # went to the inbox, not the library folder
     assert marked["request_id"] == "r1"
+
+    candidate = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "r1")
+        )
+    ).scalar_one()
+    assert candidate.status == AcquisitionStatus.approved
+    assert candidate.candidate_provider == "torrent"
+    assert candidate.resolved_at is not None
+
+
+async def test_match_against_wishlist_flips_candidate_for_a_want_to_read_source_too(
+    db_session, tmp_path, monkeypatch
+) -> None:
+    """The AcquisitionCandidate flip must not be scoped to wishlist-source
+    targets only — only the wishlist-sidecar `mark_wishlist_sourced` write
+    is. A want_to_read/list-source strong match must equally stop
+    OpenBooks/Libgen from redundantly re-trying it."""
+    _write(tmp_path, "Brandon Sanderson - The Final Empire.epub", _plausibly_sized_epub())
+    rows = await local_scan_service.scan_local_folder(db_session, str(tmp_path))
+
+    async def fake_gather(provider, folder):
+        return _targets(request_id="wtr:1", source="want_to_read")
+
+    monkeypatch.setattr(acquisition_service, "gather_acquisition_targets", fake_gather)
+    await SettingsRepository(db_session).set(TORRENTS_AUTOMATCH_ENABLED, "true")
+
+    async def fail_if_called(*a, **kw):
+        raise AssertionError("mark_wishlist_sourced must not be called for a non-wishlist source")
+
+    monkeypatch.setattr(acquisition_service, "mark_wishlist_sourced", fail_if_called)
+
+    await local_scan_service.match_against_wishlist(
+        db_session, rows, _FakeProvider(), "inbox-id", "lib-id"
+    )
+
+    # No pre-existing row — get-or-create must build one from scratch.
+    candidate = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wtr:1")
+        )
+    ).scalar_one()
+    assert candidate.status == AcquisitionStatus.approved
+    assert candidate.candidate_provider == "torrent"
+    assert candidate.source == "want_to_read"
+    assert candidate.request_title == "The Final Empire"
+
+
+async def test_match_against_wishlist_updates_an_existing_candidate_row(
+    db_session, tmp_path, monkeypatch
+) -> None:
+    """Get-or-create's "get" half: a row already exists (e.g. OpenBooks
+    previously searched and found nothing) — it should be updated in place,
+    not duplicated."""
+    _write(tmp_path, "Brandon Sanderson - The Final Empire.epub", _plausibly_sized_epub())
+    rows = await local_scan_service.scan_local_folder(db_session, str(tmp_path))
+
+    async def fake_gather(provider, folder):
+        return _targets()
+
+    monkeypatch.setattr(acquisition_service, "gather_acquisition_targets", fake_gather)
+    await SettingsRepository(db_session).set(TORRENTS_AUTOMATCH_ENABLED, "true")
+    monkeypatch.setattr(acquisition_service, "mark_wishlist_sourced", lambda *a, **kw: True)
+
+    existing = AcquisitionCandidate(
+        request_id="r1", request_title="The Final Empire", status=AcquisitionStatus.no_match,
+        candidate_provider="openbooks",
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    await local_scan_service.match_against_wishlist(
+        db_session, rows, _FakeProvider(), "inbox-id", "lib-id"
+    )
+
+    count = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "r1")
+        )
+    ).scalars().all()
+    assert len(count) == 1  # updated in place, not duplicated
+    assert count[0].status == AcquisitionStatus.approved
+    assert count[0].candidate_provider == "torrent"
 
 
 async def test_match_against_wishlist_ignores_a_weak_match(db_session, tmp_path, monkeypatch) -> None:

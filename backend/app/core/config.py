@@ -85,8 +85,11 @@ class Settings(BaseSettings):
     seven_zip_binary: str = ""
     seven_zip_timeout_seconds: int = 60
 
-    # Local folder watched for new ebooks (e.g. a torrents download dir) to
-    # offer copying into the Drive inbox
+    # Local folder watched for new ebooks (e.g. a manually-run torrent
+    # client's download dir) to offer copying into the Drive inbox — James's
+    # existing setup points this at an SMB share from another machine
+    # (TORRENTS_WATCH_FOLDER=/mnt/torrents in .env). Deliberately untouched
+    # by the automated torrent subsystem below — see torrent_incoming_folder.
     torrents_watch_folder: str = r"D:\Torrents"
 
     # OpenBooks (https://github.com/evan-buss/openbooks) — an experimental
@@ -140,6 +143,33 @@ class Settings(BaseSettings):
     libgen_base_urls: str = (
         "https://libgen.li,https://libgen.vg,https://libgen.bz,https://libgen.gl,https://libgen.la"
     )
+
+    # Torrent acquisition — a fourth, structurally different source
+    # (torrent_service.py, not an AcquisitionProvider): BookBrain never talks
+    # to Prowlarr/qBittorrent directly, only to Librarr's own request API
+    # (https://github.com/jcraney143/librarr), which owns the indexer search
+    # and qBittorrent submission/download internally and organizes completed
+    # files into a plain folder (its EBOOK_DIR) with no library-import step.
+    # Same trust boundary as the others: admin-only, off unless
+    # TORRENT_ENABLED=true, never surfaced in the family library-viewer.
+    # Gated by its own TORRENT_AUTOGET_ENABLED DB setting rather than the
+    # shared OPENBOOKS_AUTOGET_ENABLED master switch — a torrent commits real
+    # bandwidth/disk per book, unlike a quick search, so it's pausable
+    # independently.
+    torrent_enabled: bool = False
+    librarr_url: str = "http://localhost:5050"
+    librarr_api_key: str = ""
+    # Librarr's own EBOOK_DIR, host-side bind mount (torrents-compose.yml) —
+    # deliberately a *separate* folder from torrents_watch_folder above, not
+    # a repoint of it: that field is James's existing, pre-populated manual
+    # workflow (a network share fed by a torrent client on another machine),
+    # and mixing this subsystem's automated output into it would mean
+    # shipping every download over that network share for no reason, plus
+    # conflating two different provenances in one folder. torrent_service.py's
+    # local_scan_tick scans this path specifically; the original
+    # torrents_watch_folder keeps being scanned only by the nightly job, as
+    # before this subsystem existed.
+    torrent_incoming_folder: str = "/opt/bookbrain/torrents/incoming"
 
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older

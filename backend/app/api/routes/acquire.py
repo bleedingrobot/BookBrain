@@ -4,8 +4,15 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
-from app.jobs.scheduler import sync_autoget_schedule, sync_libgen_autoget_schedule
+from app.core.config import get_settings
+from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED, TORRENT_AUTOGET_ENABLED
+from app.jobs.scheduler import (
+    sync_autoget_schedule,
+    sync_libgen_autoget_schedule,
+    sync_torrent_local_scan_schedule,
+    sync_torrent_poll_schedule,
+    sync_torrent_submit_schedule,
+)
 
 from app.api.deps import require_drive_provider
 from app.data.db import get_db
@@ -93,6 +100,14 @@ def _require_openbooks_enabled() -> None:
         )
 
 
+def _require_torrent_enabled() -> None:
+    if not get_settings().torrent_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Torrent acquisition is disabled (set TORRENT_ENABLED=true and configure LIBRARR_URL)",
+        )
+
+
 async def _search_all(providers: list[AcquisitionProvider], query: str) -> AcquireSearchResponse:
     """Fan out one free-text query to every enabled provider — a route-level
     equivalent of acquisition_service._search_all_providers, which is shaped
@@ -139,6 +154,12 @@ async def get_status() -> AcquireStatus:
                 name="annas_archive", enabled="annas_archive" in names, requires_process=False
             ),
             AcquireProviderStatus(name="libgen", enabled="libgen" in names, requires_process=False),
+            # Not an AcquisitionProvider (see torrent_service.py's module
+            # docstring for why) — Docker/systemd manages Librarr/qBittorrent/
+            # Prowlarr's lifecycle, not BookBrain, unlike OpenBooks.
+            AcquireProviderStatus(
+                name="torrent", enabled=get_settings().torrent_enabled, requires_process=False
+            ),
         ],
     )
 
@@ -311,4 +332,29 @@ async def set_autoget(
     if scheduler is not None:
         await sync_autoget_schedule(scheduler)
         await sync_libgen_autoget_schedule(scheduler)
+    return AutoGetSettings(enabled=body.enabled)
+
+
+@router.get("/torrent-autoget", response_model=AutoGetSettings)
+async def get_torrent_autoget(db: AsyncSession = Depends(get_db)) -> AutoGetSettings:
+    _require_torrent_enabled()
+    v = await SettingsRepository(db).get(TORRENT_AUTOGET_ENABLED)
+    return AutoGetSettings(enabled=v == "true")
+
+
+@router.put("/torrent-autoget", response_model=AutoGetSettings)
+async def set_torrent_autoget(
+    body: AutoGetSettings, request: Request, db: AsyncSession = Depends(get_db)
+) -> AutoGetSettings:
+    """Separate switch from /autoget (OpenBooks/Libgen) by design — a
+    torrent commits real bandwidth/disk per book, unlike a quick search, so
+    it's pausable independently. Only starting new submissions; the poll and
+    local-scan handoff legs run regardless (see torrent_service.py)."""
+    _require_torrent_enabled()
+    await SettingsRepository(db).set(TORRENT_AUTOGET_ENABLED, "true" if body.enabled else "false")
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        await sync_torrent_submit_schedule(scheduler)
+        await sync_torrent_poll_schedule(scheduler)
+        await sync_torrent_local_scan_schedule(scheduler)
     return AutoGetSettings(enabled=body.enabled)

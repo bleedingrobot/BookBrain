@@ -755,10 +755,11 @@ async def _prune_now_in_library(session: AsyncSession) -> int:
 # then best score, then the freshest search (highest id).
 _DEDUPE_STATUS_RANK = {
     AcquisitionStatus.approved: 0,
-    AcquisitionStatus.skipped: 1,
-    AcquisitionStatus.pending: 2,
-    AcquisitionStatus.failed: 3,
-    AcquisitionStatus.no_match: 4,
+    AcquisitionStatus.fetching: 1,  # a torrent in flight outranks a stale duplicate
+    AcquisitionStatus.skipped: 2,
+    AcquisitionStatus.pending: 3,
+    AcquisitionStatus.failed: 4,
+    AcquisitionStatus.no_match: 5,
 }
 _DEDUPE_CARRY_FIELDS = (
     "status", "candidate_full", "candidate_title", "candidate_author",
@@ -971,7 +972,10 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
             )
         )
 
-    order = {"pending": 0, "unsearched": 1, "no_match": 2, "failed": 2, "approved": 3, "skipped": 4}
+    order = {
+        "fetching": 0, "pending": 0, "unsearched": 1, "no_match": 2, "failed": 2,
+        "approved": 3, "skipped": 4,
+    }
     src_order = {"wishlist": 0, "want_to_read": 1, "list": 2}
     views.sort(key=lambda v: (order.get(v.status, 9), src_order.get(v.source, 9), -(v.score or 0)))
     return views
@@ -1255,13 +1259,53 @@ async def _autoget_master_enabled() -> bool:
         return (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) == "true"
 
 
-# Serializes the two cycles' read-decide-write section against each other —
-# they run on independent schedules and could otherwise both land on the
-# same "next due book" at once and race to approve/download it twice. Only
-# guards the DB decision-making, not each cycle's own provider I/O, so a
-# slow Libgen download doesn't hold up OpenBooks' turn (or vice versa) any
-# longer than it takes to pick a target and kick off that I/O.
+# Serializes every acquisition cycle's read-decide-write section against the
+# others — OpenBooks, Libgen, and the torrent subsystem (torrent_service.py)
+# all run on independent schedules and could otherwise land on the same
+# "next due book" at once and race to approve/download it twice. Only guards
+# the DB decision-making, not each cycle's own provider I/O, so a slow
+# Libgen download (or a Librarr API call) doesn't hold up another cycle's
+# turn any longer than it takes to pick a target and kick off that I/O.
 _autoget_lock = asyncio.Lock()
+
+
+def _pick_next_target(
+    targets: list[dict], rows: list[AcquisitionCandidate], now: datetime
+) -> tuple[dict, AcquisitionCandidate | None] | None:
+    """Never-tried targets always go first (in target order); only once none
+    of those remain do we fall back to a due retry — and among retries, the
+    one that's waited longest since its last attempt goes first, so a book
+    that just failed sinks to the back of the queue instead of cutting back
+    in line ahead of books that haven't been tried at all yet.
+
+    Shared by every acquisition cycle (`_run_autoget_cycle`, and the torrent
+    subsystem's `torrent_service.submit_tick`) so all of them pull from the
+    same ordering over the same backlog — under the shared `_autoget_lock`,
+    that's what lets three independently-scheduled cycles divide the never-
+    tried backlog between them instead of duplicating each other's picks.
+    `fetching` rows (a torrent request in flight) are skipped exactly like
+    `approved`/`skipped` — there's nothing to retry until it resolves one way
+    or the other. Returns None when nothing is due right now."""
+    by_id = {r.request_id: r for r in rows}
+    by_key: dict[str, AcquisitionCandidate] = {}
+    for r in rows:
+        by_key.setdefault(_owned_key(r.request_title, r.request_author), r)
+
+    due_retries: list[tuple[datetime, dict, AcquisitionCandidate]] = []
+    for t in targets:
+        row = by_id.get(t["request_id"]) or by_key.get(_owned_key(t["title"], t["author"]))
+        if row is None:
+            return t, None
+        if row.status in (AcquisitionStatus.approved, AcquisitionStatus.skipped, AcquisitionStatus.fetching):
+            continue
+        last = _aware(row.resolved_at) or _aware(row.updated_at)
+        if last is None or now - last >= _target_backoff(row):
+            due_retries.append((last or datetime.min.replace(tzinfo=UTC), t, row))
+    if due_retries:
+        due_retries.sort(key=lambda x: x[0])
+        _, item, existing = due_retries[0]
+        return item, existing
+    return None
 
 
 async def _run_autoget_cycle(
@@ -1326,38 +1370,15 @@ async def _run_autoget_cycle(
             await _dedupe_candidates(session)
             demerits = await _server_demerits(session)
             rows = list((await session.execute(select(AcquisitionCandidate))).scalars())
-        by_id = {r.request_id: r for r in rows}
-        by_key: dict[str, AcquisitionCandidate] = {}
-        for r in rows:
-            by_key.setdefault(_owned_key(r.request_title, r.request_author), r)
 
-        # Never-tried targets always go first (in target order); only once none of
-        # those remain do we fall back to a due retry — and among retries, the one
-        # that's waited longest since its last attempt goes first, so a book that
-        # just failed sinks to the back of the queue instead of cutting back in
-        # line ahead of books that haven't been tried at all yet.
-        item: dict | None = None
-        existing: AcquisitionCandidate | None = None
-        due_retries: list[tuple[datetime, dict, AcquisitionCandidate]] = []
-        for t in targets:
-            row = by_id.get(t["request_id"]) or by_key.get(_owned_key(t["title"], t["author"]))
-            if row is None:
-                item, existing = t, None
-                break
-            if row.status in (AcquisitionStatus.approved, AcquisitionStatus.skipped):
-                continue
-            last = _aware(row.resolved_at) or _aware(row.updated_at)
-            if last is None or now - last >= _target_backoff(row):
-                due_retries.append((last or datetime.min.replace(tzinfo=UTC), t, row))
-        if item is None and due_retries:
-            due_retries.sort(key=lambda x: x[0])
-            _, item, existing = due_retries[0]
-        if item is None:
+        picked = _pick_next_target(targets, rows, now)
+        if picked is None:
             # Everything acquired or cooling down — use the idle tick to clear any
             # downloads still sitting in the inbox.
             if inbox_files:
                 return _kick_scan("acquisitions idle, inbox has files")
             return {"skipped": "all caught up or cooling down", "targets": len(targets)}
+        item, existing = picked
 
         rid, title = item["request_id"], item["title"]
         existing_id = existing.id if existing is not None else None

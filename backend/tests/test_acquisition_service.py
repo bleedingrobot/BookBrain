@@ -935,6 +935,28 @@ async def test_autoget_respects_the_backoff_window(db_session, monkeypatch, _aut
     assert out["skipped"] == "all caught up or cooling down"
 
 
+async def test_autoget_skips_a_row_the_torrent_subsystem_has_in_flight(db_session, monkeypatch, _autoget_idle):
+    """Regression guard: a `fetching` row (submitted to Librarr, not yet in
+    the Drive inbox) must never be re-picked by OpenBooks/Libgen's own
+    cycle — that's the whole reason the status exists (see
+    acquisition_service._pick_next_target's docstring and
+    torrent_service.py's module docstring)."""
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    row = AcquisitionCandidate(
+        request_id="wl-dep", request_title="Departure", request_author="A G Riddle",
+        status=AcquisitionStatus.fetching, candidate_provider="torrent",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    async def no_search(providers, item):
+        raise AssertionError("a torrent is already in flight for this book — must not re-search")
+
+    monkeypatch.setattr(svc, "_search_all_providers", no_search)
+    out = await svc.autoget_tick()
+    assert out["skipped"] == "all caught up or cooling down"
+
+
 async def test_autoget_re_searches_a_stale_row_once_the_backoff_elapses(db_session, monkeypatch, _autoget_idle):
     _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
     row = AcquisitionCandidate(

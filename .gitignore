@@ -26,6 +26,10 @@ backend/*.db.before-restore
 /epub_librarian.db-shm
 /epub_librarian.db-wal
 
+# Torrent subsystem — secrets and runtime data, not the compose file itself
+docker/.env
+torrents/
+
 # Node / frontend
 node_modules/
 dist/
