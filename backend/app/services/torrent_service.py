@@ -49,6 +49,7 @@ Two independent ticks:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime, timedelta
@@ -84,6 +85,16 @@ _SEARCH_BUDGET_PER_HOUR = 20
 # replacement brake, not optional polish.
 _MAX_CONCURRENT_TORRENTS = 3
 _LIBRARR_TIMEOUT = 15.0
+# James's ask 2026-09-16: don't wait out the rest of the 5-min submit
+# interval when a book fails fast — try the next one immediately. Bounded
+# on both axes: _QUICK_POLL_MAX_WAIT_SECONDS caps how long one book is worth
+# waiting on before assuming it's genuinely still searching/downloading (not
+# a fast miss), and _MAX_SUBMISSIONS_PER_TICK caps the whole tick's length
+# so a bad patch of the backlog (several fast misses in a row) can't turn
+# one tick into an unbounded loop.
+_QUICK_POLL_INTERVAL_SECONDS = 5
+_QUICK_POLL_MAX_WAIT_SECONDS = 45
+_MAX_SUBMISSIONS_PER_TICK = 5
 # Live-confirmed 2026-09-16: Librarr can report a request "completed" for a
 # torrent that's actually stalled at 0 seeders and will never deliver a
 # file, and separately can match the wrong media type (an audiobook for an
@@ -179,7 +190,14 @@ async def _torrent_autoget_enabled() -> bool:
 
 
 async def submit_tick(trigger: str = "scheduler") -> dict:
-    """One iteration of the torrent-submission cycle. Never raises."""
+    """One iteration of the torrent-submission cycle — chains through
+    multiple books in a single call when each resolves as a fast "no
+    results" miss, instead of submitting exactly one and waiting out the
+    rest of the scheduled interval regardless of how quickly it failed.
+    Stops chaining the moment a submission is either still genuinely in
+    flight (respecting it — that's real download progress, not something to
+    rush past) or any non-per-book condition (cap/budget/nothing left to
+    try) is hit. Never raises."""
     from app.providers.drive.client import build_drive_service
     from app.services.auth_service import get_auth_service
     from app.services.scan_service import get_scan_service
@@ -208,6 +226,35 @@ async def submit_tick(trigger: str = "scheduler") -> dict:
     if not targets:
         return {"skipped": "no targets"}
 
+    attempts: list[dict] = []
+    for _ in range(_MAX_SUBMISSIONS_PER_TICK):
+        outcome = await _submit_one(targets)
+        attempts.append(outcome)
+        if "submitted" not in outcome or outcome.get("quick_result") != "failed":
+            # Either nothing was actually submitted this pass (a cap/budget/
+            # nothing-due skip — not a per-book thing to chain past), or it
+            # resolved as `completed`/is still genuinely in flight — either
+            # way, stop here rather than rushing past real progress.
+            break
+
+    if len(attempts) == 1:
+        return attempts[0]
+    logger.info(
+        "torrent: chained through %d quick misses this tick (%s)",
+        len(attempts), ", ".join(a.get("submitted", a.get("skipped", "?")) for a in attempts),
+    )
+    return {"chained_attempts": len(attempts), "attempts": attempts}
+
+
+async def _submit_one(targets: list[dict]) -> dict:
+    """Picks and submits exactly one book, mirroring the original single-
+    attempt submit_tick behaviour, then briefly polls that one submission
+    (outside the shared lock — nothing left here needs serializing against
+    the other cycles once the row is written) to see if it resolves fast.
+    `quick_result` in the returned dict is "failed" if it did (letting
+    submit_tick's caller chain to the next book immediately instead of
+    waiting for poll_tick's own schedule to notice), "completed" or
+    "still_in_flight" otherwise."""
     async with acquisition_service._autoget_lock:
         async with async_session_factory() as session:
             await acquisition_service._dedupe_candidates(session)
@@ -273,7 +320,112 @@ async def submit_tick(trigger: str = "scheduler") -> dict:
             await session.commit()
 
     logger.info("torrent: submitted %r to Librarr (request %s)", title, librarr_request_id)
-    return {"submitted": title, "librarr_request_id": librarr_request_id}
+
+    # Outside the lock — a book's own search resolving here doesn't need
+    # serializing against the other cycles' picks, only the write above did.
+    quick_result = await _quick_resolve(rid, librarr_request_id)
+    return {"submitted": title, "librarr_request_id": librarr_request_id, "quick_result": quick_result}
+
+
+async def _quick_resolve(rid: str, librarr_request_id: str) -> str:
+    """Polls a just-submitted request for up to `_QUICK_POLL_MAX_WAIT_SECONDS`,
+    applying the same status handling `poll_tick` does (via
+    `_apply_librarr_status`) — so a fast "no results" miss is caught and
+    released right here instead of waiting on poll_tick's own schedule (up
+    to 60s) to notice, letting submit_tick immediately chain to the next
+    book. Returns "failed", "completed", or "still_in_flight" (a genuinely
+    progressing download, left for poll_tick to keep tracking normally)."""
+    deadline = time.monotonic() + _QUICK_POLL_MAX_WAIT_SECONDS
+    async with _librarr_client() as client:
+        while time.monotonic() < deadline:
+            await asyncio.sleep(_QUICK_POLL_INTERVAL_SECONDS)
+            data = await _poll_librarr(client, librarr_request_id)
+            if data is None:
+                continue
+            resolved = await _apply_librarr_status(client, rid, librarr_request_id, data)
+            # _apply_librarr_status also returns non-None for `searching`/
+            # `downloading` (recognized, but not settled) — only a terminal
+            # status is actually "resolved" for our purposes here; anything
+            # else, keep polling until the deadline.
+            if resolved in (LibrarrRequestStatus.completed, LibrarrRequestStatus.failed):
+                return resolved.value
+    return "still_in_flight"
+
+
+async def _apply_librarr_status(
+    client: httpx.AsyncClient, request_id: str, librarr_request_id: str, data: dict
+) -> LibrarrRequestStatus | None:
+    """Parses one Librarr poll response and applies it: retries the approve
+    call if it's somehow still `pending` (returns None — nothing settled),
+    flips the matching AcquisitionCandidate back to failed on `failed`, and
+    just records the tracking row's status otherwise (`searching`/
+    `downloading`/`completed` — `completed` is deliberately not turned into
+    an approve here; that's local_scan_tick's job once a real file shows
+    up). Shared by `poll_tick` and `_quick_resolve` (submit_tick's fast-path
+    check) so a book that fails quickly doesn't have to wait for two
+    separate scheduled ticks to notice — the "chain to the next book
+    immediately" behaviour James asked for depends on this being usable
+    outside poll_tick's own loop too. Returns the resolved status, or None
+    if nothing settled (unrecognized status string, or still pending)."""
+    raw_status = str(data.get("status") or "").lower()
+    try:
+        new_status = LibrarrRequestStatus(raw_status)
+    except ValueError:
+        return None  # unrecognized status string — leave as-is, retry next tick
+
+    if new_status == LibrarrRequestStatus.pending:
+        # Shouldn't normally happen (submit_tick only creates a row after
+        # approving), but if it does — a transient failure on the original
+        # approve call, or Librarr resetting it for its own reasons — retry
+        # approving rather than leaving it stuck forever with nothing
+        # progressing it.
+        await _approve_librarr_request(client, librarr_request_id)
+        return None
+
+    failure_message: str | None = None
+    if new_status == LibrarrRequestStatus.failed:
+        # "attention_note" confirmed live 2026-09-16 (e.g. "No search
+        # results found") — "error"/"message" kept as fallbacks in case a
+        # different failure path uses a different field.
+        failure_message = str(
+            data.get("attention_note") or data.get("error") or data.get("message")
+            or "Librarr reported failure"
+        )
+
+    async with async_session_factory() as session:
+        row = (
+            await session.execute(
+                select(LibrarrRequest).where(LibrarrRequest.librarr_request_id == librarr_request_id)
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            row.status = new_status
+            if new_status in (LibrarrRequestStatus.completed, LibrarrRequestStatus.failed):
+                row.resolved_at = datetime.now(UTC)
+            if failure_message is not None:
+                row.message = failure_message
+            await session.commit()
+
+    if new_status == LibrarrRequestStatus.failed:
+        async with async_session_factory() as session:
+            candidate = (
+                await session.execute(
+                    select(AcquisitionCandidate).where(
+                        AcquisitionCandidate.request_id == request_id,
+                        AcquisitionCandidate.status == AcquisitionStatus.fetching,
+                    )
+                )
+            ).scalar_one_or_none()
+            if candidate is not None:
+                candidate.status = AcquisitionStatus.failed
+                candidate.message = failure_message
+                candidate.resolved_at = datetime.now(UTC)
+                await session.commit()
+        logger.warning(
+            "torrent: Librarr request %s for %r failed: %s", librarr_request_id, request_id, failure_message,
+        )
+
+    return new_status
 
 
 async def poll_tick(trigger: str = "scheduler") -> dict:
@@ -310,63 +462,14 @@ async def poll_tick(trigger: str = "scheduler") -> dict:
             data = await _poll_librarr(client, tracked.librarr_request_id)
             if data is None:
                 continue
-            raw_status = str(data.get("status") or "").lower()
-            try:
-                new_status = LibrarrRequestStatus(raw_status)
-            except ValueError:
-                continue  # unrecognized status string — leave as-is, retry next tick
-
-            if new_status == LibrarrRequestStatus.pending:
-                # Shouldn't normally happen (submit_tick only creates a row
-                # after approving), but if it does — a transient failure on
-                # the original approve call, or Librarr resetting it for its
-                # own reasons — retry approving rather than leaving it
-                # stuck forever with nothing progressing it.
-                await _approve_librarr_request(client, tracked.librarr_request_id)
+            resolved = await _apply_librarr_status(
+                client, tracked.request_id, tracked.librarr_request_id, data
+            )
+            if resolved is None:
                 continue
-
-            failure_message: str | None = None
-            if new_status == LibrarrRequestStatus.failed:
-                # "attention_note" confirmed live 2026-09-16 (e.g. "No search
-                # results found") — "error"/"message" kept as fallbacks in
-                # case a different failure path uses a different field.
-                failure_message = str(
-                    data.get("attention_note") or data.get("error") or data.get("message")
-                    or "Librarr reported failure"
-                )
-
-            async with async_session_factory() as session:
-                row = await session.get(LibrarrRequest, tracked.id)
-                if row is None:
-                    continue
-                row.status = new_status
-                if new_status in (LibrarrRequestStatus.completed, LibrarrRequestStatus.failed):
-                    row.resolved_at = datetime.now(UTC)
-                if failure_message is not None:
-                    row.message = failure_message
-                await session.commit()
             updated += 1
-
-            if new_status == LibrarrRequestStatus.failed:
-                async with async_session_factory() as session:
-                    candidate = (
-                        await session.execute(
-                            select(AcquisitionCandidate).where(
-                                AcquisitionCandidate.request_id == tracked.request_id,
-                                AcquisitionCandidate.status == AcquisitionStatus.fetching,
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if candidate is not None:
-                        candidate.status = AcquisitionStatus.failed
-                        candidate.message = failure_message
-                        candidate.resolved_at = datetime.now(UTC)
-                        await session.commit()
+            if resolved == LibrarrRequestStatus.failed:
                 newly_failed += 1
-                logger.warning(
-                    "torrent: Librarr request %s for %r failed: %s",
-                    tracked.librarr_request_id, tracked.request_id, failure_message,
-                )
 
     released = await _release_stale_fetching()
     return {"polled": len(in_flight), "updated": updated, "failed": newly_failed, "released": released}

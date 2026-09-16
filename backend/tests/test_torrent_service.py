@@ -41,6 +41,15 @@ def _reset_budget(monkeypatch):
     monkeypatch.setattr(acquisition_service, "_recent_search_times", {})
 
 
+@pytest.fixture(autouse=True)
+def _fast_quick_poll(monkeypatch):
+    # Real values (5s interval, 45s max wait) would make any test that
+    # reaches _quick_resolve take up to 45 real seconds — shrink both by
+    # 1000x so the same number of poll attempts still happens, just fast.
+    monkeypatch.setattr(svc, "_QUICK_POLL_INTERVAL_SECONDS", 0.005)
+    monkeypatch.setattr(svc, "_QUICK_POLL_MAX_WAIT_SECONDS", 0.045)
+
+
 def _target(title="Departure", author="A G Riddle", request_id="wl-dep", source="wishlist"):
     return {"request_id": request_id, "source": source, "title": title, "author": author, "isbn13": None}
 
@@ -229,11 +238,16 @@ async def test_submit_tick_submits_a_never_tried_book_and_flips_the_candidate(
     approve_route = respx.put(f"{LIBRARR_URL}/api/requests/req-1/approve").mock(
         return_value=httpx.Response(200, json={"request": {"id": "req-1", "status": "approved"}, "success": True})
     )
+    # _quick_resolve polls a few times before giving up — still genuinely
+    # in flight the whole (fast-shrunk) window, so it doesn't chain further.
+    respx.get(f"{LIBRARR_URL}/api/requests/req-1").mock(
+        return_value=httpx.Response(200, json={"request": {"id": "req-1", "status": "downloading"}, "success": True})
+    )
 
     out = await svc.submit_tick()
 
     assert approve_route.called
-    assert out == {"submitted": "Departure", "librarr_request_id": "req-1"}
+    assert out == {"submitted": "Departure", "librarr_request_id": "req-1", "quick_result": "still_in_flight"}
     row = (
         await db_session.execute(
             select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
@@ -248,7 +262,108 @@ async def test_submit_tick_submits_a_never_tried_book_and_flips_the_candidate(
         )
     ).scalar_one()
     assert tracked.librarr_request_id == "req-1"
-    assert tracked.status == LibrarrRequestStatus.approved
+    # _quick_resolve's polling already advanced this past "approved" to
+    # whatever Librarr reports mid-flight — a nice side effect of the fast
+    # check: the tracked row is kept fresher than waiting for poll_tick.
+    assert tracked.status == LibrarrRequestStatus.downloading
+
+
+@respx.mock
+async def test_submit_tick_chains_to_the_next_book_on_a_fast_miss(db_session, monkeypatch, _torrent_idle):
+    """James's ask 2026-09-16: don't wait out the rest of the interval when
+    a book fails fast — immediately try the next one. First book resolves
+    as a fast miss; the tick should immediately pick and submit a second
+    book in the same call, then stop there since that one is genuinely
+    still in flight."""
+    _torrent_idle["items"] = [
+        _target("Departure", "A G Riddle", request_id="wl-dep"),
+        _target("Sourcery", "Terry Pratchett", request_id="wl-src"),
+    ]
+
+    respx.post(f"{LIBRARR_URL}/api/requests").mock(
+        side_effect=[
+            httpx.Response(201, json={"request": {"id": "req-a", "status": "pending"}, "success": True}),
+            httpx.Response(201, json={"request": {"id": "req-b", "status": "pending"}, "success": True}),
+        ]
+    )
+    respx.put(f"{LIBRARR_URL}/api/requests/req-a/approve").mock(
+        return_value=httpx.Response(200, json={"request": {"id": "req-a", "status": "approved"}, "success": True})
+    )
+    respx.put(f"{LIBRARR_URL}/api/requests/req-b/approve").mock(
+        return_value=httpx.Response(200, json={"request": {"id": "req-b", "status": "approved"}, "success": True})
+    )
+    respx.get(f"{LIBRARR_URL}/api/requests/req-a").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "request": {"id": "req-a", "status": "failed", "attention_note": "No search results found"},
+                "success": True,
+            },
+        )
+    )
+    respx.get(f"{LIBRARR_URL}/api/requests/req-b").mock(
+        return_value=httpx.Response(200, json={"request": {"id": "req-b", "status": "downloading"}, "success": True})
+    )
+
+    out = await svc.submit_tick()
+
+    assert out["chained_attempts"] == 2
+    assert out["attempts"][0]["submitted"] == "Departure"
+    assert out["attempts"][0]["quick_result"] == "failed"
+    assert out["attempts"][1]["submitted"] == "Sourcery"
+    assert out["attempts"][1]["quick_result"] == "still_in_flight"
+
+    dep = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+        )
+    ).scalar_one()
+    assert dep.status == AcquisitionStatus.failed  # released back to the backlog, not left fetching
+
+    src = (
+        await db_session.execute(
+            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-src")
+        )
+    ).scalar_one()
+    assert src.status == AcquisitionStatus.fetching  # genuinely in flight — left alone
+
+
+async def test_submit_tick_stops_chaining_at_the_max_per_tick(db_session, monkeypatch, _torrent_idle):
+    """The chain has a hard cap so a long stretch of fast misses can't turn
+    one tick into an unbounded loop."""
+    _torrent_idle["items"] = [
+        _target(f"Book {i}", "Author", request_id=f"wl-{i}") for i in range(svc._MAX_SUBMISSIONS_PER_TICK + 2)
+    ]
+
+    counter = {"n": 0}
+
+    async def always_miss(*a, **kw):
+        counter["n"] += 1
+        return f"req-{counter['n']}"  # unique per call — librarr_request_id is a unique column
+
+    async def instantly_failed(rid, librarr_request_id):
+        # Mirrors what the real _quick_resolve/_apply_librarr_status would
+        # actually do on a fast miss — flips the candidate back to failed —
+        # so this test exercises _MAX_SUBMISSIONS_PER_TICK specifically,
+        # not _MAX_CONCURRENT_TORRENTS (which a no-op mock would trip
+        # instead, since nothing would ever free up an in-flight slot).
+        async with svc.async_session_factory() as session:
+            candidate = (
+                await session.execute(
+                    select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == rid)
+                )
+            ).scalar_one()
+            candidate.status = AcquisitionStatus.failed
+            candidate.resolved_at = datetime.now(UTC)
+            await session.commit()
+        return "failed"
+
+    monkeypatch.setattr(svc, "_submit_to_librarr", always_miss)
+    monkeypatch.setattr(svc, "_quick_resolve", instantly_failed)
+
+    out = await svc.submit_tick()
+
+    assert out["chained_attempts"] == svc._MAX_SUBMISSIONS_PER_TICK
 
 
 async def test_submit_tick_respects_the_concurrency_cap(db_session, monkeypatch, _torrent_idle):
