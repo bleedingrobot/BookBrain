@@ -1355,26 +1355,53 @@ async def _run_autoget_cycle(
 
     async with _autoget_lock:
         # Keep the inbox from piling up — auto-get fills it and nothing scans
-        # it until the nightly. Kick a scan once it hits the threshold (the
-        # next tick's has_running_job() guard then pauses auto-get until
-        # it's done).
+        # it until the nightly. Kick a scan once *unscanned* arrivals hit the
+        # threshold (the next tick's has_running_job() guard then pauses
+        # auto-get until it's done).
+        #
+        # Counting raw Drive folder contents here (2026-09-17 fix) rather
+        # than genuinely-new arrivals was a real trap: a scan doesn't move a
+        # file out of the inbox once it lands below the auto-organize
+        # confidence threshold — it sits in the Review Queue, still
+        # physically in the Drive folder, waiting on a human. Once 8 such
+        # books accumulated, every tick saw "8 files in the inbox", kicked
+        # another scan (which found nothing new — "already known" every
+        # time), and returned *before ever reaching the pick/search/download
+        # logic below* — auto-get looked alive but had wedged itself
+        # permanently on nothing but files nothing but a human clicking
+        # "review" was ever going to clear. Confirmed live: exactly 8 items
+        # sitting in the Review Queue, auto-get silent for the ~9.5 hours
+        # since the 8th one landed.
         inbox_files = await asyncio.to_thread(provider.list_files_in_folder, inbox.folder_id)
 
-        def _kick_scan(reason: str) -> dict:
+        def _kick_scan(reason: str, count: int) -> dict:
             scan_svc = get_scan_service()
             job = scan_svc.create_job()
             asyncio.create_task(_run_autoscan(scan_svc, job.job_id, creds, inbox.folder_id))
-            logger.info("acquire: %s — auto-scan started (%d files)", reason, len(inbox_files))
-            return {"scan_started": len(inbox_files)}
+            logger.info("acquire: %s — auto-scan started (%d files)", reason, count)
+            return {"scan_started": count}
 
-        if len(inbox_files) >= _AUTOSCAN_INBOX_THRESHOLD:
-            return _kick_scan(f"inbox at {len(inbox_files)} files")
+        if inbox_files:
+            drive_ids = {f["id"] for f in inbox_files if f.get("id")}
+            async with async_session_factory() as session:
+                known_ids = set(
+                    (
+                        await session.execute(
+                            select(File.drive_file_id).where(File.drive_file_id.in_(drive_ids))
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+            unscanned_count = len(drive_ids - known_ids)
+            if unscanned_count >= _AUTOSCAN_INBOX_THRESHOLD:
+                return _kick_scan(f"inbox at {unscanned_count} unscanned files", unscanned_count)
 
         targets = await gather_acquisition_targets(provider, library.folder_id)
         if not targets:
             # Nothing to acquire — if downloads are sitting unscanned, clear them.
             if inbox_files:
-                return _kick_scan("no acquisition work, inbox has files")
+                return _kick_scan("no acquisition work, inbox has files", len(inbox_files))
             return {"skipped": "no targets"}
 
         now = datetime.now(UTC)
@@ -1388,7 +1415,7 @@ async def _run_autoget_cycle(
             # Everything acquired or cooling down — use the idle tick to clear any
             # downloads still sitting in the inbox.
             if inbox_files:
-                return _kick_scan("acquisitions idle, inbox has files")
+                return _kick_scan("acquisitions idle, inbox has files", len(inbox_files))
             return {"skipped": "all caught up or cooling down", "targets": len(targets)}
         item, existing = picked
 

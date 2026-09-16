@@ -5,7 +5,7 @@ import time
 import pytest
 from sqlalchemy import select
 
-from app.data.models import AcquisitionCandidate, AcquisitionStatus
+from app.data.models import AcquisitionCandidate, AcquisitionStatus, File, FileStatus
 from app.providers.acquisition.openbooks import OpenBooksProvider
 from app.services import acquisition_service as svc
 from app.services.acquisition_service import _Wishlist, score_candidate
@@ -896,6 +896,47 @@ async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeyp
         select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
     )).scalar_one()
     assert row.request_title == "Departure"
+
+
+async def test_autoget_does_not_wedge_on_an_inbox_full_of_already_known_files(
+    db_session, monkeypatch, _autoget_idle
+):
+    """2026-09-17: 8 low-confidence downloads sitting in the Review Queue
+    (already scanned, never auto-organized out of the Drive inbox because
+    nothing but a human clears them) used to trip the same pile-up check as
+    genuinely-new arrivals — kicking a pointless scan every tick forever
+    ("8 files" never changes) and permanently pre-empting real search/
+    download work. Eight already-known files in the inbox should not scan;
+    it should search and download exactly like an empty inbox would."""
+    _autoget_idle["Provider"].inbox_count = 8
+    _autoget_idle["Targets"].items = [_target("Departure", "A G Riddle", request_id="wl-dep")]
+    db_session.add_all(
+        File(
+            drive_file_id=f"f{i}", filename=f"b{i}.epub", sha256=f"sha{i}", size_bytes=1,
+            status=FileStatus.review,
+        )
+        for i in range(8)
+    )
+    await db_session.commit()
+
+    searched = []
+
+    async def fake_search_all(providers, item):
+        searched.append(item["title"])
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
+                      full="!Bsk A G Riddle - Departure.epub")], set()
+
+    monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
+
+    async def fake_approve(request_id, full, provider, inbox, library):
+        return {"filename": "Departure.epub"}
+
+    monkeypatch.setattr(svc, "approve_request", fake_approve)
+
+    out = await svc.autoget_tick()
+    assert searched == ["Departure"]
+    assert out["got"] == "Departure"
+    assert _autoget_idle["ScanSvc"].scans == []
 
 
 async def test_autoget_skips_when_busy(db_session, monkeypatch, _autoget_idle):
