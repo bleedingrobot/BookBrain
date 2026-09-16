@@ -62,16 +62,21 @@ LIBGEN_AUTOGET_INTERVAL_JITTER = 45
 # The torrent subsystem's three independent legs. Submitting is still
 # slower than the other two cycles' searches — each hit is a real download
 # commitment (bandwidth, disk, a Librarr/qBittorrent slot), not a cheap HTTP
-# call — but James's own experience is that public-domain/small ebooks come
-# through fast, so 5 min (down from an initial 15) rather than something
-# tighter still; the 3-torrent concurrency cap (_MAX_CONCURRENT_TORRENTS in
-# torrent_service.py) is the real backstop against overlap regardless of
-# this interval. Polling and the local-scan handoff are both cheap, local-
-# network-ish calls (Librarr's own API; a directory walk + Drive upload), so
-# they run tight and independently of the submit toggle — see
-# torrent_service.py's module docstring for why.
-TORRENT_SUBMIT_INTERVAL_SECONDS = 300
-TORRENT_SUBMIT_INTERVAL_JITTER = 45
+# call.
+# James's ask 2026-09-16, direct and repeated ("no clogging, push through"):
+# 300s was tighter than it needed to be now that the real backstops
+# (_MAX_CONCURRENT_TORRENTS, the hourly search budget — both in
+# torrent_service.py, both raised the same day) are what actually prevent
+# runaway behavior, not this interval. submit_tick's own chaining already
+# blasts through a run of fast misses inside one tick, but it correctly
+# stops the moment it hits a book that isn't an instant miss (a genuinely
+# slow search, or a torrent that starts downloading, or one that turns out
+# stalled) — confirmed live: a tick would net exactly one book, then sit
+# idle for most of a 5-minute wait before trying the next. Down to 60s (matching
+# the poll interval) so a fresh chain gets to start far more often instead
+# of idling out the rest of a stalled tick.
+TORRENT_SUBMIT_INTERVAL_SECONDS = 60
+TORRENT_SUBMIT_INTERVAL_JITTER = 10
 TORRENT_POLL_INTERVAL_SECONDS = 60
 TORRENT_POLL_INTERVAL_JITTER = 10
 TORRENT_LOCAL_SCAN_INTERVAL_SECONDS = 120
