@@ -170,6 +170,16 @@ class Settings(BaseSettings):
     # torrents_watch_folder keeps being scanned only by the nightly job, as
     # before this subsystem existed.
     torrent_incoming_folder: str = "/opt/bookbrain/torrents/incoming"
+    # The one deliberate exception to "never talk to qBittorrent directly" —
+    # see torrent_service.py's module docstring and _release_stale_fetching:
+    # Librarr has no path that removes a dead torrent for a request it's
+    # given up on, so that one cleanup step reaches around it. Same
+    # credentials already duplicated into Librarr's own compose env
+    # (docker/torrents-compose.yml's QB_URL/QB_USER/QB_PASSWORD) — not a new
+    # secret, just the same one known to a second consumer.
+    qbittorrent_url: str = "http://localhost:8080"
+    qbittorrent_username: str = "admin"
+    qbittorrent_password: str = ""
 
     # Nightly SQLite backup to Drive (backup_service). How many dated
     # snapshots to keep in the library folder's backups/ subfolder — older

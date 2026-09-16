@@ -12,11 +12,25 @@ about completion.
 
 Instead this talks to Librarr (https://github.com/jcraney143/librarr), run
 headless (no library-import step — it just drops completed downloads into a
-plain folder) alongside its own Prowlarr + qBittorrent. BookBrain never talks
-to Prowlarr or qBittorrent directly; Librarr owns indexer search, scoring,
-and download submission internally, exposing a simple request lifecycle API
+plain folder) alongside its own Prowlarr + qBittorrent. BookBrain talks to
+Prowlarr only through Librarr; Librarr owns indexer search, scoring, and
+download submission internally, exposing a simple request lifecycle API
 (`POST /api/requests` -> poll `GET /api/requests/{id}` through
 pending/searching/downloading/completed/failed).
+
+One deliberate, narrow exception: `_release_stale_fetching`'s qBittorrent
+delete call (2026-09-17). Traced live why autoget had stalled for hours: a
+dead 0-seeder torrent was squatting one of qBittorrent's `max_active_downloads`
+slots (3 here) for 7-11 hours straight, so nothing behind it in the queue
+ever got a turn — three at once, in fact, filling every slot. Giving up on a
+book in *our* bookkeeping (`AcquisitionCandidate.status = failed`) was never
+enough to fix that, because reading jcraney143/librarr's own source showed
+it has no code path that removes an abandoned request's underlying torrent:
+`PUT /api/requests/{id}/cancel` only flips its DB row, and the only call
+anywhere to its `TorrentClient.DeleteTorrent` is on a *successful* import
+(`internal/download/watcher.go`). So on this one path only, BookBrain also
+calls qBittorrent's own API directly to actually free the slot — everything
+else still goes through Librarr as before.
 
 Two independent ticks:
 
@@ -213,31 +227,81 @@ async def _poll_librarr(client: httpx.AsyncClient, librarr_request_id: str) -> d
         return None
 
 
-async def _fetch_zero_speed_torrent_titles(client: httpx.AsyncClient) -> set[str]:
+async def _fetch_zero_speed_torrents(client: httpx.AsyncClient) -> dict[str, str | None]:
     """Librarr's own titles (not ours — its search-result title, e.g. "Witch
-    World (Witch World, n. 1) by Andre Norton EPUB") for every torrent-type
-    download GET /api/downloads currently reports at 0 B/s. This is the only
-    place per-torrent throughput is exposed at all — a per-request GET
-    /api/requests/{id} only ever reports the coarse pending/searching/
-    downloading/completed/failed status (see _poll_librarr / the module
-    docstring), with no way to tell a healthy "downloading" from a dead one
-    stalled at 0 seeders. Degrades quietly to "nothing confirmed stalled"
-    on any error, same philosophy as _poll_librarr."""
+    World (Witch World, n. 1) by Andre Norton EPUB"), mapped to torrent info
+    hash (or None if this particular /api/downloads response didn't include
+    one), for every torrent-type download currently reported at 0 B/s. This
+    is the only place per-torrent throughput (or a hash at all) is exposed —
+    a per-request GET /api/requests/{id} only ever reports the coarse
+    pending/searching/downloading/completed/failed status (see _poll_librarr
+    / the module docstring), with no way to tell a healthy "downloading"
+    from a dead one stalled at 0 seeders. Degrades quietly to "nothing
+    confirmed stalled" on any error, same philosophy as _poll_librarr. The
+    hash (when present) is what makes `_qbittorrent_delete_torrent` below
+    possible — but its absence shouldn't block the release itself, only the
+    qBittorrent cleanup step, so a missing hash maps to None rather than
+    dropping the title."""
     try:
         response = await client.get("/api/downloads")
         response.raise_for_status()
         data = response.json()
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("torrent: fetching Librarr downloads failed: %s", exc)
-        return set()
-    out: set[str] = set()
+        return {}
+    out: dict[str, str | None] = {}
     for d in data.get("downloads") or []:
         if d.get("source") != "torrent":
             continue
         title = d.get("title")
         if isinstance(title, str) and title and str(d.get("speed") or "").strip() in ("0 B/s", ""):
-            out.add(title)
+            hash_ = d.get("hash")
+            out[title] = hash_ if isinstance(hash_, str) and hash_ else None
     return out
+
+
+def _matching_zero_speed(needle: str | None, by_title: dict[str, str | None]) -> tuple[bool, str | None]:
+    """(matched, hash-if-known) — matched can be True with hash None (a
+    zero-speed torrent Librarr didn't report a hash for), which still
+    justifies releasing the candidate but not deleting anything downstream."""
+    normalized = normalize_title(needle)
+    if not normalized:
+        return False, None
+    for title, hash_ in by_title.items():
+        if normalized in normalize_title(title):
+            return True, hash_
+    return False, None
+
+
+async def _qbittorrent_delete_torrent(hash_: str) -> bool:
+    """Direct qBittorrent call — see the module docstring for why this one
+    path reaches around Librarr instead of going through it: Librarr itself
+    has no code path that frees a dead torrent's slot for an abandoned
+    request, so nothing else will ever do this. Best-effort: any failure
+    (qBittorrent down, wrong creds, hash already gone) just means the slot
+    stays stuck a bit longer, not a crash — same degrade-quietly philosophy
+    as every other Librarr/qBittorrent call in this module."""
+    settings = get_settings()
+    if not settings.qbittorrent_password:
+        return False
+    try:
+        async with httpx.AsyncClient(base_url=settings.qbittorrent_url, timeout=10.0) as client:
+            login = await client.post(
+                "/api/v2/auth/login",
+                data={"username": settings.qbittorrent_username, "password": settings.qbittorrent_password},
+            )
+            login.raise_for_status()
+            if login.text.strip() != "Ok.":
+                logger.warning("torrent: qBittorrent login rejected: %s", login.text)
+                return False
+            # httpx.AsyncClient keeps the Set-Cookie SID from the login call
+            # in its own jar and resends it automatically here.
+            resp = await client.post("/api/v2/torrents/delete", data={"hashes": hash_, "deleteFiles": "true"})
+            resp.raise_for_status()
+            return True
+    except httpx.HTTPError as exc:
+        logger.warning("torrent: qBittorrent delete for hash %s failed: %s", hash_, exc)
+        return False
 
 
 async def _torrent_autoget_enabled() -> bool:
@@ -534,11 +598,6 @@ async def poll_tick(trigger: str = "scheduler") -> dict:
     return {"polled": len(in_flight), "updated": updated, "failed": newly_failed, "released": released}
 
 
-def _title_among(needle: str | None, haystacks: set[str]) -> bool:
-    normalized = normalize_title(needle)
-    return bool(normalized) and any(normalized in normalize_title(h) for h in haystacks)
-
-
 async def _release_stale_fetching() -> int:
     """Free any book that's been `fetching` for too long, regardless of what
     its LibrarrRequest row says — Librarr reporting `completed` is not
@@ -548,6 +607,14 @@ async def _release_stale_fetching() -> int:
     `_STALLED_ZERO_PROGRESS_AFTER` window combined with Librarr's own
     /api/downloads confirming 0 B/s right now (a dead torrent specifically —
     see that constant's comment). Returns the number released.
+
+    Giving up locally isn't enough on its own (2026-09-17) — see the module
+    docstring: Librarr never frees the underlying qBittorrent slot for a
+    request nothing is polling any more, so this also best-effort cancels
+    the matching LibrarrRequest (both remotely and in our own tracking row,
+    so poll_tick stops polling it forever) and deletes the matching
+    qBittorrent torrent directly when a hash is known — which it is exactly
+    when the release reason was a confirmed 0 B/s match, the common case.
 
     Filters in Python, not SQL — `_MAX_CONCURRENT_TORRENTS` caps how many
     `fetching` rows can exist at once (a handful at most), so fetching them
@@ -572,26 +639,70 @@ async def _release_stale_fetching() -> int:
 
         # Only worth the extra Librarr round-trip if something's actually
         # old enough for the fast-release window to possibly apply.
-        zero_speed_titles: set[str] = set()
+        zero_speed: dict[str, str | None] = {}
         if any(age >= _STALLED_ZERO_PROGRESS_AFTER for age in ages.values()):
             async with _librarr_client() as client:
-                zero_speed_titles = await _fetch_zero_speed_torrent_titles(client)
+                zero_speed = await _fetch_zero_speed_torrents(client)
 
-        released: list[tuple[AcquisitionCandidate, str, timedelta]] = []
+        released: list[tuple[AcquisitionCandidate, str, timedelta, str | None]] = []
         for row in candidates:
             age = ages.get(row.id)
             if age is None:
                 continue
+            matched, hash_ = _matching_zero_speed(row.candidate_title or row.request_title, zero_speed)
             if age >= _FETCHING_STUCK_AFTER:
-                released.append((row, "no usable file arrived in time", age))
-            elif age >= _STALLED_ZERO_PROGRESS_AFTER and _title_among(row.candidate_title or row.request_title, zero_speed_titles):
-                released.append((row, "stalled with 0 B/s throughput, likely no seeders", age))
+                released.append((row, "no usable file arrived in time", age, hash_))
+            elif age >= _STALLED_ZERO_PROGRESS_AFTER and matched:
+                released.append((row, "stalled with 0 B/s throughput, likely no seeders", age, hash_))
 
-        for row, reason, age in released:
+        if released:
+            librarr_requests_by_request_id: dict[str, LibrarrRequest] = {
+                lr.request_id: lr
+                for lr in (
+                    await session.execute(
+                        select(LibrarrRequest).where(
+                            LibrarrRequest.request_id.in_({row.request_id for row, *_ in released}),
+                            LibrarrRequest.status.notin_(
+                                (LibrarrRequestStatus.completed, LibrarrRequestStatus.failed)
+                            ),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            }
+
+        for row, reason, age, hash_ in released:
             logger.warning("torrent: %r released early (%s) after %s fetching", row.request_title, reason, age)
             row.status = AcquisitionStatus.failed
             row.message = f"torrent subsystem: {reason}"
             row.resolved_at = datetime.now(UTC)
+
+            librarr_request = librarr_requests_by_request_id.get(row.request_id)
+            if librarr_request is not None:
+                librarr_request.status = LibrarrRequestStatus.failed
+                librarr_request.message = f"released early: {reason}"
+                async with _librarr_client() as client:
+                    try:
+                        resp = await client.put(f"/api/requests/{librarr_request.librarr_request_id}/cancel")
+                        resp.raise_for_status()
+                    except httpx.HTTPError as exc:
+                        logger.warning(
+                            "torrent: cancelling Librarr request %s failed: %s",
+                            librarr_request.librarr_request_id,
+                            exc,
+                        )
+
+            if hash_ is not None:
+                if await _qbittorrent_delete_torrent(hash_):
+                    logger.info("torrent: deleted dead qBittorrent torrent %s for %r", hash_, row.request_title)
+                else:
+                    logger.warning(
+                        "torrent: couldn't delete qBittorrent torrent %s for %r — it'll keep squatting a slot",
+                        hash_,
+                        row.request_title,
+                    )
+
         if released:
             await session.commit()
     return len(released)

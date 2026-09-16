@@ -715,6 +715,95 @@ async def test_poll_tick_releases_a_zero_speed_torrent_well_before_the_full_time
     assert hawkmoon.status == AcquisitionStatus.fetching
 
 
+@respx.mock
+async def test_release_deletes_the_dead_torrent_from_qbittorrent_and_cancels_it_in_librarr(db_session, monkeypatch):
+    """2026-09-17: releasing a candidate locally was never enough on its own
+    — traced live why autoget had stalled for hours: three 0-seeder torrents
+    squatted every one of qBittorrent's max_active_downloads slots for 7-11
+    hours because nothing ever told qBittorrent to actually remove them (see
+    the module docstring). This is still `wl-hawk` in `downloading`, not
+    `completed`, so it also exercises the Librarr cancel call."""
+    QB_URL = "http://qbittorrent.test"
+
+    class _Cfg:
+        torrent_enabled = True
+        librarr_url = LIBRARR_URL
+        librarr_api_key = ""
+        qbittorrent_url = QB_URL
+        qbittorrent_username = "admin"
+        qbittorrent_password = "secret"
+
+    monkeypatch.setattr(svc, "get_settings", lambda: _Cfg())
+
+    db_session.add(
+        LibrarrRequest(
+            request_id="wl-hawk", librarr_request_id="req-hawk",
+            status=LibrarrRequestStatus.downloading,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wl-hawk", request_title="Hawkmoon",
+            status=AcquisitionStatus.fetching, candidate_provider="torrent",
+            candidate_title="Hawkmoon",
+        )
+    )
+    await db_session.commit()
+
+    from sqlalchemy import text
+
+    stale = datetime.now(UTC) - svc._STALLED_ZERO_PROGRESS_AFTER - timedelta(minutes=1)
+    await db_session.execute(
+        text("UPDATE acquisition_candidates SET updated_at = :ts WHERE request_id = 'wl-hawk'"), {"ts": stale}
+    )
+    await db_session.commit()
+
+    respx.get(f"{LIBRARR_URL}/api/requests/req-hawk").mock(
+        return_value=httpx.Response(200, json={"request": {"status": "downloading"}, "success": True})
+    )
+    respx.get(f"{LIBRARR_URL}/api/downloads").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "downloads": [
+                    {
+                        "source": "torrent",
+                        "title": "Hawkmoon by Michael Moorcock EPUB",
+                        "status": "downloading",
+                        "speed": "0 B/s",
+                        "hash": "deadbeef00",
+                    }
+                ]
+            },
+        )
+    )
+    cancel_route = respx.put(f"{LIBRARR_URL}/api/requests/req-hawk/cancel").mock(
+        return_value=httpx.Response(200, json={"success": True})
+    )
+    login_route = respx.post(f"{QB_URL}/api/v2/auth/login").mock(
+        return_value=httpx.Response(200, text="Ok.")
+    )
+    delete_route = respx.post(f"{QB_URL}/api/v2/torrents/delete").mock(return_value=httpx.Response(200))
+
+    out = await svc.poll_tick()
+    assert out["released"] == 1
+
+    assert cancel_route.called
+    assert login_route.called
+    assert delete_route.called
+    assert delete_route.calls.last.request.read().decode() == "hashes=deadbeef00&deleteFiles=true"
+
+    hawkmoon = (
+        await db_session.execute(select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-hawk"))
+    ).scalar_one()
+    assert hawkmoon.status == AcquisitionStatus.failed
+
+    librarr_request = (
+        await db_session.execute(select(LibrarrRequest).where(LibrarrRequest.request_id == "wl-hawk"))
+    ).scalar_one()
+    assert librarr_request.status == LibrarrRequestStatus.failed
+
+
 async def test_poll_tick_leaves_a_recently_fetching_candidate_alone(db_session, monkeypatch):
     class _Cfg:
         torrent_enabled = True
