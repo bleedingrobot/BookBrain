@@ -85,7 +85,13 @@ services:
       - FILE_ORG_ENABLED=true
       - IMPORT_MODE=move
       - EBOOK_DIR=/books/ebooks
-      - INCOMING_DIR=/data/incoming
+      # Must match QB_SAVE_PATH above — this is where Librarr looks for
+      # qBittorrent's completed downloads before importing them into
+      # EBOOK_DIR. Was mistakenly set to /data/incoming, a path under the
+      # librarr-data volume that qBittorrent never writes to, so completed
+      # torrents sat retrying "local synchronized path not available"
+      # forever and never counted as done.
+      - INCOMING_DIR=/downloads
       - API_KEY=${LIBRARR_API_KEY:-}
       - RATE_LIMIT_ENABLED=true
     volumes:
