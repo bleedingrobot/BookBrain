@@ -623,13 +623,96 @@ async def test_poll_tick_releases_a_candidate_stuck_fetching_past_the_timeout(db
     out = await svc.poll_tick()
     assert out == {"polled": 0, "released": 1}
 
-    candidate = (
-        await db_session.execute(
-            select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-dep")
+
+@respx.mock
+async def test_poll_tick_releases_a_zero_speed_torrent_well_before_the_full_timeout(db_session, monkeypatch):
+    """James's ask 2026-09-16: a dead torrent (0 seeders, confirmed via
+    Librarr's own /api/downloads reporting 0 B/s) shouldn't squat on one of
+    only _MAX_CONCURRENT_TORRENTS slots for the full _FETCHING_STUCK_AFTER
+    window — "smash through what it can and leave the rest for the other
+    acquisition channels." Two candidates past _STALLED_ZERO_PROGRESS_AFTER
+    but nowhere near _FETCHING_STUCK_AFTER: one matches a 0 B/s download by
+    title and should be released early: the other doesn't match anything
+    Librarr reports as stalled and should be left alone."""
+    from sqlalchemy import text
+
+    class _Cfg:
+        torrent_enabled = True
+        librarr_url = LIBRARR_URL
+        librarr_api_key = ""
+
+    monkeypatch.setattr(svc, "get_settings", lambda: _Cfg())
+
+    db_session.add(
+        LibrarrRequest(
+            request_id="wl-witch", librarr_request_id="req-witch",
+            status=LibrarrRequestStatus.completed,
         )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wl-witch", request_title="Witch World",
+            status=AcquisitionStatus.fetching, candidate_provider="torrent",
+            candidate_title="Witch World",
+        )
+    )
+    db_session.add(
+        LibrarrRequest(
+            request_id="wl-hawk", librarr_request_id="req-hawk",
+            status=LibrarrRequestStatus.completed,
+        )
+    )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="wl-hawk", request_title="Hawkmoon",
+            status=AcquisitionStatus.fetching, candidate_provider="torrent",
+            candidate_title="Hawkmoon",
+        )
+    )
+    await db_session.commit()
+
+    stale = datetime.now(UTC) - svc._STALLED_ZERO_PROGRESS_AFTER - timedelta(minutes=1)
+    await db_session.execute(
+        text("UPDATE acquisition_candidates SET updated_at = :ts WHERE request_id IN ('wl-witch', 'wl-hawk')"),
+        {"ts": stale},
+    )
+    await db_session.commit()
+
+    respx.get(f"{LIBRARR_URL}/api/downloads").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "downloads": [
+                    {
+                        "source": "torrent",
+                        "title": "Witch World (Witch World, n. 1) by Andre Norton EPUB",
+                        "status": "downloading",
+                        "speed": "0 B/s",
+                    },
+                    {
+                        "source": "torrent",
+                        "title": "Hawkmoon by Michael Moorcock EPUB",
+                        "status": "downloading",
+                        "speed": "674 B/s",
+                    },
+                ]
+            },
+        )
+    )
+
+    out = await svc.poll_tick()
+    assert out == {"polled": 0, "released": 1}
+
+    witch = (
+        await db_session.execute(select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-witch"))
     ).scalar_one()
-    assert candidate.status == AcquisitionStatus.failed
-    assert "no usable file arrived in time" in candidate.message
+    assert witch.status == AcquisitionStatus.failed
+    assert witch.message == "torrent subsystem: stalled with 0 B/s throughput, likely no seeders"
+
+    hawkmoon = (
+        await db_session.execute(select(AcquisitionCandidate).where(AcquisitionCandidate.request_id == "wl-hawk"))
+    ).scalar_one()
+    assert hawkmoon.status == AcquisitionStatus.fetching
 
 
 async def test_poll_tick_leaves_a_recently_fetching_candidate_alone(db_session, monkeypatch):

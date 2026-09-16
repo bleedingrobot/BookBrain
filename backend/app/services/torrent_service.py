@@ -70,6 +70,7 @@ from app.data.models import (
 from app.providers.drive.provider import DriveProvider
 from app.services import acquisition_service, local_scan_service
 from app.services.drive_service import DriveService
+from app.services.text_match import normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,23 @@ _MAX_SUBMISSIONS_PER_TICK = 5
 # enough that a slow but genuinely-progressing torrent isn't punished for
 # taking its time.
 _FETCHING_STUCK_AFTER = timedelta(hours=4)
+# A much faster release for the specific, common case that doesn't need
+# 4 hours to diagnose: a torrent showing literally 0 B/s throughput (no
+# seeders willing to serve it — confirmed live 2026-09-16: "Witch World"
+# sat at 0 B/s / 0 seeds / 0 peers for over an hour and was never going to
+# recover). James's ask 2026-09-16: a dead torrent shouldn't squat on one
+# of only _MAX_CONCURRENT_TORRENTS slots for hours — "smash through what
+# it can and leave the rest for the other acquisition channels" — so once
+# a book has had a fair chance to find peers, a confirmed-zero-throughput
+# torrent is released early instead of waiting out the full generous
+# window meant for something merely slow (which this check never touches,
+# since it only fires when Librarr's own /api/downloads reports 0 B/s).
+# James's ask 2026-09-16: 5 minutes, not 15 — these are small epub files
+# (a few hundred KB to a few MB), not season-pack-sized downloads; a
+# torrent with real seeders starts moving data within seconds of adding,
+# same as "Hawkmoon" confirmed live (2 seeders, already progressing 23s
+# after submission) — 5 minutes of literal 0 B/s is already generous.
+_STALLED_ZERO_PROGRESS_AFTER = timedelta(minutes=5)
 # Grace window before a non-ebook file sitting in torrent_incoming_folder is
 # considered actual junk rather than something Librarr might still be
 # mid-move into the folder.
@@ -179,6 +197,33 @@ async def _poll_librarr(client: httpx.AsyncClient, librarr_request_id: str) -> d
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("torrent: polling Librarr request %s failed: %s", librarr_request_id, exc)
         return None
+
+
+async def _fetch_zero_speed_torrent_titles(client: httpx.AsyncClient) -> set[str]:
+    """Librarr's own titles (not ours — its search-result title, e.g. "Witch
+    World (Witch World, n. 1) by Andre Norton EPUB") for every torrent-type
+    download GET /api/downloads currently reports at 0 B/s. This is the only
+    place per-torrent throughput is exposed at all — a per-request GET
+    /api/requests/{id} only ever reports the coarse pending/searching/
+    downloading/completed/failed status (see _poll_librarr / the module
+    docstring), with no way to tell a healthy "downloading" from a dead one
+    stalled at 0 seeders. Degrades quietly to "nothing confirmed stalled"
+    on any error, same philosophy as _poll_librarr."""
+    try:
+        response = await client.get("/api/downloads")
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("torrent: fetching Librarr downloads failed: %s", exc)
+        return set()
+    out: set[str] = set()
+    for d in data.get("downloads") or []:
+        if d.get("source") != "torrent":
+            continue
+        title = d.get("title")
+        if isinstance(title, str) and title and str(d.get("speed") or "").strip() in ("0 B/s", ""):
+            out.add(title)
+    return out
 
 
 async def _torrent_autoget_enabled() -> bool:
@@ -475,11 +520,20 @@ async def poll_tick(trigger: str = "scheduler") -> dict:
     return {"polled": len(in_flight), "updated": updated, "failed": newly_failed, "released": released}
 
 
+def _title_among(needle: str | None, haystacks: set[str]) -> bool:
+    normalized = normalize_title(needle)
+    return bool(normalized) and any(normalized in normalize_title(h) for h in haystacks)
+
+
 async def _release_stale_fetching() -> int:
     """Free any book that's been `fetching` for too long, regardless of what
     its LibrarrRequest row says — Librarr reporting `completed` is not
     proof a usable file will ever actually reach the handoff folder (see
-    `_FETCHING_STUCK_AFTER`'s comment). Returns the number released.
+    `_FETCHING_STUCK_AFTER`'s comment). Two independent triggers: the full
+    `_FETCHING_STUCK_AFTER` window (any reason), or the much shorter
+    `_STALLED_ZERO_PROGRESS_AFTER` window combined with Librarr's own
+    /api/downloads confirming 0 B/s right now (a dead torrent specifically —
+    see that constant's comment). Returns the number released.
 
     Filters in Python, not SQL — `_MAX_CONCURRENT_TORRENTS` caps how many
     `fetching` rows can exist at once (a handful at most), so fetching them
@@ -496,22 +550,37 @@ async def _release_stale_fetching() -> int:
                 )
             ).scalars()
         )
-        stuck = [
-            row for row in candidates
+        ages = {
+            row.id: now - updated
+            for row in candidates
             if (updated := acquisition_service._aware(row.updated_at)) is not None
-            and now - updated >= _FETCHING_STUCK_AFTER
-        ]
-        for row in stuck:
-            logger.warning(
-                "torrent: %r stuck fetching for over %s with no file ever arriving — releasing",
-                row.request_title, _FETCHING_STUCK_AFTER,
-            )
+        }
+
+        # Only worth the extra Librarr round-trip if something's actually
+        # old enough for the fast-release window to possibly apply.
+        zero_speed_titles: set[str] = set()
+        if any(age >= _STALLED_ZERO_PROGRESS_AFTER for age in ages.values()):
+            async with _librarr_client() as client:
+                zero_speed_titles = await _fetch_zero_speed_torrent_titles(client)
+
+        released: list[tuple[AcquisitionCandidate, str, timedelta]] = []
+        for row in candidates:
+            age = ages.get(row.id)
+            if age is None:
+                continue
+            if age >= _FETCHING_STUCK_AFTER:
+                released.append((row, "no usable file arrived in time", age))
+            elif age >= _STALLED_ZERO_PROGRESS_AFTER and _title_among(row.candidate_title or row.request_title, zero_speed_titles):
+                released.append((row, "stalled with 0 B/s throughput, likely no seeders", age))
+
+        for row, reason, age in released:
+            logger.warning("torrent: %r released early (%s) after %s fetching", row.request_title, reason, age)
             row.status = AcquisitionStatus.failed
-            row.message = "torrent subsystem: no usable file arrived in time"
+            row.message = f"torrent subsystem: {reason}"
             row.resolved_at = datetime.now(UTC)
-        if stuck:
+        if released:
             await session.commit()
-    return len(stuck)
+    return len(released)
 
 
 async def local_scan_tick(trigger: str = "scheduler") -> dict:
