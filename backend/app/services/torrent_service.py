@@ -77,14 +77,23 @@ logger = logging.getLogger(__name__)
 _BUDGET_KEY = "torrent"
 # Prowlarr/qBittorrent already rate-limit themselves; Librarr sits in front
 # of both, so this is mostly an outer safety bound like Libgen's own budget,
-# not a hard external constraint. Deliberately looser than OpenBooks' 8/hour
-# (a shared, rate-limited IRC bot) but tighter than Libgen's 40/hour (a
-# cheap HTTP search) since each hit here is a real download commitment.
-_SEARCH_BUDGET_PER_HOUR = 20
+# not a hard external constraint.
+# James's ask 2026-09-16: "no clogging, push through" — 20/hour was the
+# actual bottleneck behind a 45-minute silent stall once the earlier bugs
+# stopped suppressing real throughput (submit_tick can already chain up to
+# _MAX_SUBMISSIONS_PER_TICK per 5-minute tick — 60/hour at full chaining —
+# so 20 was strictly tighter than the system's own natural pace, not a
+# deliberate ceiling above it). Raised to sit at that natural pace instead
+# of below it.
+_SEARCH_BUDGET_PER_HOUR = 60
 # Full automation with no per-book human approval removes the natural
 # throttle a manual "Get this" click provides elsewhere — this cap is the
-# replacement brake, not optional polish.
-_MAX_CONCURRENT_TORRENTS = 3
+# replacement brake, not optional polish. James's ask 2026-09-16: raised
+# from 3 — these are small epub files, not big transfers, and a dead
+# torrent no longer squats a slot for hours (_STALLED_ZERO_PROGRESS_AFTER
+# releases it in 5 minutes), so more concurrent slots no longer means more
+# hours of potential dead weight the way it used to.
+_MAX_CONCURRENT_TORRENTS = 6
 _LIBRARR_TIMEOUT = 15.0
 # James's ask 2026-09-16: don't wait out the rest of the 5-min submit
 # interval when a book fails fast — try the next one immediately. Bounded
@@ -92,10 +101,15 @@ _LIBRARR_TIMEOUT = 15.0
 # waiting on before assuming it's genuinely still searching/downloading (not
 # a fast miss), and _MAX_SUBMISSIONS_PER_TICK caps the whole tick's length
 # so a bad patch of the backlog (several fast misses in a row) can't turn
-# one tick into an unbounded loop.
+# one tick into an unbounded loop. James's ask 2026-09-16: raised from 5 —
+# a "no search results" miss resolves in a few seconds (confirmed live:
+# ~5s each), so even the full 15 is nowhere near turning one 5-minute tick
+# into an unbounded loop, and it lets one tick burn through a bad patch of
+# the backlog instead of trickling one book every 5 minutes regardless of
+# how fast each one actually resolves.
 _QUICK_POLL_INTERVAL_SECONDS = 5
 _QUICK_POLL_MAX_WAIT_SECONDS = 45
-_MAX_SUBMISSIONS_PER_TICK = 5
+_MAX_SUBMISSIONS_PER_TICK = 15
 # Live-confirmed 2026-09-16: Librarr can report a request "completed" for a
 # torrent that's actually stalled at 0 seeders and will never deliver a
 # file, and separately can match the wrong media type (an audiobook for an
