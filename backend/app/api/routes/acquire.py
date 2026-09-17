@@ -5,7 +5,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED, TORRENT_AUTOGET_ENABLED
+from app.core.settings_keys import (
+    LIBGEN_AUTOGET_ENABLED,
+    OPENBOOKS_AUTOGET_ENABLED,
+    TORRENT_AUTOGET_ENABLED,
+)
 from app.jobs.scheduler import (
     sync_autoget_schedule,
     sync_libgen_autoget_schedule,
@@ -105,6 +109,14 @@ def _require_torrent_enabled() -> None:
         raise HTTPException(
             status_code=400,
             detail="Torrent acquisition is disabled (set TORRENT_ENABLED=true and configure LIBRARR_URL)",
+        )
+
+
+def _require_libgen_enabled() -> None:
+    if not get_settings().libgen_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Libgen acquisition is disabled (set LIBGEN_ENABLED=true)",
         )
 
 
@@ -324,13 +336,35 @@ async def set_autoget(
     body: AutoGetSettings, request: Request, db: AsyncSession = Depends(get_db)
 ) -> AutoGetSettings:
     """When on, a background job downloads one confident 'Books to get'
-    candidate per minute while nothing else is running. Still OpenBooks-only
-    — see acquisition_service.autoget_tick's own gating."""
+    candidate per minute while nothing else is running. OpenBooks-only — see
+    acquisition_service.autoget_tick's own gating. Libgen and torrent have
+    their own independent switches (/libgen-autoget, /torrent-autoget)."""
     _require_openbooks_enabled()
     await SettingsRepository(db).set(OPENBOOKS_AUTOGET_ENABLED, "true" if body.enabled else "false")
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
         await sync_autoget_schedule(scheduler)
+    return AutoGetSettings(enabled=body.enabled)
+
+
+@router.get("/libgen-autoget", response_model=AutoGetSettings)
+async def get_libgen_autoget(db: AsyncSession = Depends(get_db)) -> AutoGetSettings:
+    _require_libgen_enabled()
+    v = await SettingsRepository(db).get(LIBGEN_AUTOGET_ENABLED)
+    return AutoGetSettings(enabled=v == "true")
+
+
+@router.put("/libgen-autoget", response_model=AutoGetSettings)
+async def set_libgen_autoget(
+    body: AutoGetSettings, request: Request, db: AsyncSession = Depends(get_db)
+) -> AutoGetSettings:
+    """Separate switch from /autoget (OpenBooks) — Libgen is a plain HTTP
+    scraper with its own rate limits, not the shared #ebook IRC bots, so it's
+    pausable independently."""
+    _require_libgen_enabled()
+    await SettingsRepository(db).set(LIBGEN_AUTOGET_ENABLED, "true" if body.enabled else "false")
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
         await sync_libgen_autoget_schedule(scheduler)
     return AutoGetSettings(enabled=body.enabled)
 

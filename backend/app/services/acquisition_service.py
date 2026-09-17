@@ -9,13 +9,14 @@ Find a Book page. Approving downloads it into the Drive inbox (via
 household can see it's handled; the viewer's own reconcile moves it to
 ``acquired`` once the organised book lands in the library.
 
-The admin "Search…" button (a background job) and a nightly step populate the
-candidate rows without downloading; "Get this" per row downloads one. When
-James turns on auto-get, `autoget_tick` (an in-process job) instead drives the
-whole thing itself while everything's idle: each tick it picks the next book
-that's due, searches OpenBooks for it *right then* and downloads the best EPUB
-immediately — so the download command is never stale — backing a book off when
-the sources won't deliver it.
+The admin "Search…" button (a background job) populates the candidate rows
+without downloading; "Get this" per row downloads one. When James turns on
+auto-get (independently, per source — OpenBooks/Libgen/Torrent each have
+their own toggle in Settings), `autoget_tick`/`libgen_autoget_tick` (in-
+process jobs) instead drive the whole thing themselves while everything's
+idle: each tick picks the next book that's due, searches *right then* and
+downloads the best EPUB immediately — so the download command is never
+stale — backing a book off when the sources won't deliver it.
 """
 
 from __future__ import annotations
@@ -1204,15 +1205,15 @@ def _target_backoff(row: AcquisitionCandidate) -> timedelta:
 async def autoget_tick(trigger: str = "scheduler") -> dict:
     """OpenBooks' side of the auto-get loop — see `_run_autoget_cycle` for
     what a cycle actually does. Gated on OpenBooks' own enabled/busy/server
-    state on top of the shared master toggle, since only this cycle depends
-    on that IRC-bot infrastructure."""
+    state on top of its own toggle (OPENBOOKS_AUTOGET_ENABLED), since only
+    this cycle depends on that IRC-bot infrastructure."""
     from app.core.config import get_settings
     from app.services import openbooks_process_service, openbooks_service
     from app.services.scan_service import get_scan_service
 
     if not get_settings().openbooks_enabled:
         return {"skipped": "openbooks disabled"}
-    if not await _autoget_master_enabled():
+    if not await _openbooks_autoget_enabled():
         return {"skipped": "auto-get off"}
     if (
         openbooks_service.is_busy()
@@ -1233,9 +1234,9 @@ async def libgen_autoget_tick(trigger: str = "scheduler") -> dict:
     """Libgen's side of the auto-get loop, decoupled from OpenBooks' cycle —
     see `_run_autoget_cycle` for what a cycle actually does. Libgen is a
     plain HTTP scraper with no shared bot/server to wait on, so this only
-    checks the shared master toggle, `libgen_enabled`, and the general
-    "something else is using the acquisition machinery" busy guards — it
-    never waits on OpenBooks' own state, and runs on its own scheduler
+    checks its own toggle (LIBGEN_AUTOGET_ENABLED), `libgen_enabled`, and the
+    general "something else is using the acquisition machinery" busy guards —
+    it never waits on OpenBooks' own state, and runs on its own scheduler
     interval (jobs/scheduler.py) so the two cycles land at different times
     rather than always searching the same book together."""
     from app.core.config import get_settings
@@ -1243,7 +1244,7 @@ async def libgen_autoget_tick(trigger: str = "scheduler") -> dict:
 
     if not get_settings().libgen_enabled:
         return {"skipped": "libgen disabled"}
-    if not await _autoget_master_enabled():
+    if not await _libgen_autoget_enabled():
         return {"skipped": "auto-get off"}
     if has_active_refresh_job() or get_scan_service().has_running_job():
         return {"skipped": "busy"}
@@ -1254,12 +1255,23 @@ async def libgen_autoget_tick(trigger: str = "scheduler") -> dict:
     )
 
 
-async def _autoget_master_enabled() -> bool:
-    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+async def _setting_enabled(key: str) -> bool:
     from app.data.repositories.settings_repository import SettingsRepository
 
     async with async_session_factory() as session:
-        return (await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)) == "true"
+        return (await SettingsRepository(session).get(key)) == "true"
+
+
+async def _openbooks_autoget_enabled() -> bool:
+    from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
+
+    return await _setting_enabled(OPENBOOKS_AUTOGET_ENABLED)
+
+
+async def _libgen_autoget_enabled() -> bool:
+    from app.core.settings_keys import LIBGEN_AUTOGET_ENABLED
+
+    return await _setting_enabled(LIBGEN_AUTOGET_ENABLED)
 
 
 # Serializes every acquisition cycle's read-decide-write section against the

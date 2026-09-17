@@ -367,9 +367,21 @@ export const api = {
     request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/skip`, { method: 'POST' }),
   resetOpenRequest: (requestId: string) =>
     request<void>(`/acquire/requests/${encodeURIComponent(requestId)}/reset`, { method: 'POST' }),
-  getAutoGet: () => request<{ enabled: boolean }>('/acquire/autoget'),
-  setAutoGet: (enabled: boolean) =>
+  getOpenBooksAutoGet: () => request<{ enabled: boolean }>('/acquire/autoget'),
+  setOpenBooksAutoGet: (enabled: boolean) =>
     request<{ enabled: boolean }>('/acquire/autoget', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+  getLibgenAutoGet: () => request<{ enabled: boolean }>('/acquire/libgen-autoget'),
+  setLibgenAutoGet: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/acquire/libgen-autoget', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+  getTorrentAutoGet: () => request<{ enabled: boolean }>('/acquire/torrent-autoget'),
+  setTorrentAutoGet: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/acquire/torrent-autoget', {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),

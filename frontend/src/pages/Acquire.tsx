@@ -148,11 +148,48 @@ function RequestRow({ req }: { req: OpenRequest }) {
   )
 }
 
+function AutoGetToggle({
+  label,
+  hint,
+  queryKey,
+  getFn,
+  setFn,
+}: {
+  label: string
+  hint: string
+  queryKey: string
+  getFn: () => Promise<{ enabled: boolean }>
+  setFn: (enabled: boolean) => Promise<{ enabled: boolean }>
+}) {
+  const queryClient = useQueryClient()
+  const state = useQuery({ queryKey: [queryKey], queryFn: getFn })
+  const setState = useMutation({
+    mutationFn: (enabled: boolean) => setFn(enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [queryKey] }),
+  })
+
+  return (
+    <label className="flex items-center gap-2 text-xs text-neutral-500">
+      <input
+        type="checkbox"
+        checked={state.data?.enabled ?? false}
+        disabled={setState.isPending || state.isLoading}
+        onChange={(e) => setState.mutate(e.target.checked)}
+      />
+      {label} — {hint}
+      {state.data?.enabled && <span className="text-emerald-600">· on</span>}
+    </label>
+  )
+}
+
 function OpenRequests() {
   const queryClient = useQueryClient()
   const [jobId, setJobId] = useState<string | null>(null)
 
   const requests = useQuery({ queryKey: ['open-requests'], queryFn: api.listOpenRequests })
+  const status = useQuery({ queryKey: ['acquire-status'], queryFn: api.acquireStatus })
+  const providerEnabled = (name: string) =>
+    status.data?.providers.some((p) => p.name === name && p.enabled) ?? false
 
   const job = useQuery({
     queryKey: ['open-requests-job', jobId],
@@ -181,12 +218,6 @@ function OpenRequests() {
   useEffect(() => {
     if (job.data && job.data.status !== 'running') setLastOutstanding(job.data.outstanding)
   }, [job.data])
-
-  const autoGet = useQuery({ queryKey: ['acquire-autoget'], queryFn: api.getAutoGet })
-  const setAutoGet = useMutation({
-    mutationFn: (enabled: boolean) => api.setAutoGet(enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['acquire-autoget'] }),
-  })
 
   const rows = requests.data ?? []
   const pending = rows.filter((r) => r.status === 'pending').length
@@ -245,17 +276,35 @@ function OpenRequests() {
         <p className="mt-2 text-xs text-red-600">{refresh.error.message}</p>
       )}
 
-      <label className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
-        <input
-          type="checkbox"
-          checked={autoGet.data?.enabled ?? false}
-          disabled={setAutoGet.isPending || autoGet.isLoading}
-          onChange={(e) => setAutoGet.mutate(e.target.checked)}
-        />
-        Auto-get — while idle, search fresh and download one confident book at a time; back off a
-        book the sources won’t deliver
-        {autoGet.data?.enabled && <span className="text-emerald-600">· on</span>}
-      </label>
+      <div className="mt-2 flex flex-col gap-1">
+        {providerEnabled('openbooks') && (
+          <AutoGetToggle
+            label="OpenBooks auto-get"
+            hint="while idle, search fresh and download one confident book at a time; back off a book the sources won’t deliver"
+            queryKey="acquire-autoget-openbooks"
+            getFn={api.getOpenBooksAutoGet}
+            setFn={api.setOpenBooksAutoGet}
+          />
+        )}
+        {providerEnabled('libgen') && (
+          <AutoGetToggle
+            label="Libgen auto-get"
+            hint="same idea, run independently against Libgen"
+            queryKey="acquire-autoget-libgen"
+            getFn={api.getLibgenAutoGet}
+            setFn={api.setLibgenAutoGet}
+          />
+        )}
+        {providerEnabled('torrent') && (
+          <AutoGetToggle
+            label="Torrent auto-get"
+            hint="submits a torrent request for the next due book via Librarr"
+            queryKey="acquire-autoget-torrent"
+            getFn={api.getTorrentAutoGet}
+            setFn={api.setTorrentAutoGet}
+          />
+        )}
+      </div>
 
       {requests.isLoading ? (
         <p className="mt-3 text-xs text-neutral-400">Loading…</p>

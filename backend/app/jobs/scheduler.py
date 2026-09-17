@@ -23,6 +23,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.settings_keys import (
     BACKUP_RUN_ENABLED,
     BACKUP_RUN_HOUR,
+    LIBGEN_AUTOGET_ENABLED,
     LLM_TAGGING_ENABLED,
     NIGHTLY_RUN_ENABLED,
     NIGHTLY_RUN_HOUR,
@@ -265,14 +266,19 @@ async def sync_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
         scheduler.reschedule_job(_AUTOGET_JOB_ID, trigger=trigger)
 
 
+async def read_libgen_autoget_enabled() -> bool:
+    async with async_session_factory() as session:
+        return (await SettingsRepository(session).get(LIBGEN_AUTOGET_ENABLED)) == "true"
+
+
 async def sync_libgen_autoget_schedule(scheduler: AsyncIOScheduler) -> None:
-    """Libgen's own auto-get cycle. Shares the master on/off toggle with
-    OpenBooks' cycle (one "auto-get" switch in Settings) but not its
-    interval — see LIBGEN_AUTOGET_INTERVAL_SECONDS for why. Also off
-    whenever the libgen provider itself is disabled."""
+    """Libgen's own auto-get cycle. Its own on/off toggle, independent of
+    OpenBooks' (2026-09-18 — James wants each source pausable on its own),
+    and a different interval — see LIBGEN_AUTOGET_INTERVAL_SECONDS for why.
+    Also off whenever the libgen provider itself is disabled."""
     from app.core.config import get_settings
 
-    enabled = await read_autoget_enabled() and get_settings().libgen_enabled
+    enabled = await read_libgen_autoget_enabled() and get_settings().libgen_enabled
     existing = scheduler.get_job(_LIBGEN_AUTOGET_JOB_ID)
     if not enabled:
         if existing is not None:

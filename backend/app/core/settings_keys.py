@@ -49,9 +49,16 @@ BACKUP_RUN_HOUR = "backup_run_hour"
 
 # prompts/37 — when on, an in-process job downloads one confident "Books to
 # get" candidate per minute (only while idle: OpenBooks up, nothing else
-# searching/scanning). Off by default — James turns it on from the Find a
-# Book page.
+# searching/scanning). OpenBooks-only — see LIBGEN_AUTOGET_ENABLED and
+# TORRENT_AUTOGET_ENABLED for the other two sources' independent switches.
+# Off by default — James turns it on from the Find a Book page.
 OPENBOOKS_AUTOGET_ENABLED = "openbooks_autoget_enabled"
+
+# Libgen's side of auto-get (acquisition_service.libgen_autoget_tick).
+# Separate from OPENBOOKS_AUTOGET_ENABLED by design — Libgen is a plain HTTP
+# scraper with its own rate limits, not the shared #ebook IRC bots, so James
+# can pause it independently of OpenBooks. Off by default.
+LIBGEN_AUTOGET_ENABLED = "libgen_autoget_enabled"
 
 # Cached Bulk Re-identify Audit report (reident_audit_service). A JSON blob —
 # expensive to build (a provider lookup per organised book), so it's stored
