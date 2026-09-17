@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { BACKEND_URL } from '../lib/config'
+
 interface Props {
   busy: boolean
   onRefresh: () => void
@@ -41,6 +44,19 @@ export function SettingsScreen({
   onForget,
   onBack,
 }: Props) {
+  const [backendCopyStatus, setBackendCopyStatus] = useState<string | null>(null)
+
+  async function copyBackendUrl() {
+    if (!BACKEND_URL) return
+    try {
+      await navigator.clipboard.writeText(BACKEND_URL)
+      setBackendCopyStatus('Copied!')
+    } catch {
+      setBackendCopyStatus(`Copy failed — here's the link: ${BACKEND_URL}`)
+    }
+    setTimeout(() => setBackendCopyStatus(null), 5000)
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
       <button
@@ -88,6 +104,31 @@ export function SettingsScreen({
             </button>
           </div>
           {shareStatus && <p className="text-xs text-neutral-400">{shareStatus}</p>}
+        </Section>
+
+        <Section title="Backend">
+          {BACKEND_URL ? (
+            <>
+              <p className="text-sm text-neutral-500">
+                What the household passcode sign-in talks to. Siblings never need to see or type
+                this themselves — it's already baked into the app — this is just so it's on
+                record somewhere.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="rounded bg-neutral-100 px-2 py-1 text-xs break-all dark:bg-neutral-800">
+                  {BACKEND_URL}
+                </code>
+                <button className="btn btn-neutral" onClick={copyBackendUrl}>
+                  Copy
+                </button>
+              </div>
+              {backendCopyStatus && <p className="text-xs text-neutral-400">{backendCopyStatus}</p>}
+            </>
+          ) : (
+            <p className="text-sm text-neutral-500">
+              Passcode sign-in isn't set up yet — no backend URL is configured.
+            </p>
+          )}
         </Section>
 
         <Section title="Admin">
