@@ -26,11 +26,7 @@ export const DEFAULT_GOOGLE_BOOKS_API_KEY = 'AIzaSyARc-3eRiMVr4EKC-UGTZ1RyHDv8eA
 
 // The backend's own public URL — only the passcode login path needs this
 // (Google sign-in talks to Drive directly and never involves our backend at
-// all). Unlike the values above, this can't ship a working default: it's
-// not a public identifier, it's wherever bookbrain.service is actually
-// reachable from the internet, which has to be set up (a domain + HTTPS,
-// e.g. a reverse proxy or Tailscale Funnel) before the passcode option can
-// work for anyone outside the house. Empty means "not configured yet" — the
-// passcode tab shows that plainly instead of failing at fetch() with a
-// confusing network error.
-export const BACKEND_URL = ''
+// all). Exposed via Tailscale Funnel on its own port (8443), proxying only
+// /api/viewer/* — the rest of the admin API stays unreachable from the
+// internet. See README.md's "Passcode login for the library-viewer" section.
+export const BACKEND_URL = 'https://homeserver.tail00fe4c.ts.net:8443'
