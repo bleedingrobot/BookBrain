@@ -21,6 +21,26 @@ from app.jobs.scheduler import (
     sync_torrent_submit_schedule,
 )
 
+# Under `uvicorn app.main:app` (no --log-config), uvicorn only configures its
+# own "uvicorn"/"uvicorn.access" loggers — it never touches the root logger.
+# With nothing else configuring it either, every `app.*` logger.info(...) call
+# was silently dropped: Python's default root level is WARNING, and the
+# no-handlers-anywhere "last resort" fallback only prints WARNING+, never
+# INFO. That's why e.g. acquisition_service's "auto-got" success line, and
+# the nightly job's own summary, never showed up in `journalctl -u
+# bookbrain.service` even though the work was actually happening (confirmed
+# live 2026-09-18 by checking the DB directly). Scoped to the "app" logger
+# namespace, not the root logger, so third-party libraries (httpx logs an
+# INFO line per HTTP request, noisy in a long-running server) stay at their
+# own default levels instead of flooding the journal too.
+_app_logger = logging.getLogger("app")
+_app_logger.setLevel(logging.INFO)
+_app_logger.propagate = False
+if not _app_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    _app_logger.addHandler(_handler)
+
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
