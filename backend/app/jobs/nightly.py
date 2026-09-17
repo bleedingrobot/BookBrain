@@ -142,40 +142,6 @@ async def _pull_local_folder(
         return "torrents: pull failed (see logs)"
 
 
-async def _acquire_candidates_phase(creds: Credentials, library_folder_id: str) -> str:
-    """prompts/37 — refresh OpenBooks candidates for open viewer requests.
-    Best-effort; starts the OpenBooks server if needed and stops it after."""
-    from app.services import acquisition_service, openbooks_process_service, openbooks_service
-
-    started_here = False
-    try:
-        state = await asyncio.to_thread(openbooks_process_service.status)
-        if not state["running"]:
-            if not state["installed"]:
-                return "acquire: skipped (openbooks not installed)"
-            await asyncio.to_thread(openbooks_process_service.start)
-            started_here = True
-        provider = DriveProvider(build_drive_service(creds))
-        # ~50 searches/night at ~11s each ≈ 9 min; converges over a few nights.
-        result = await acquisition_service.refresh_candidates(
-            provider, library_folder_id, limit=50
-        )
-        return (
-            f"acquire: searched {result['searched']} of {result['targets']} "
-            f"({result['outstanding']} left), {result['withCandidates']} with a candidate"
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("nightly: acquire candidates refresh failed")
-        return f"acquire: FAILED — {exc}"
-    finally:
-        if started_here:
-            try:
-                await openbooks_service.aclose()
-                await asyncio.to_thread(openbooks_process_service.stop)
-            except Exception:  # noqa: BLE001
-                logger.exception("nightly: couldn't stop the OpenBooks server")
-
-
 async def _scan_phase(creds: Credentials, inbox_folder_id: str) -> str:
     """Runs the same scan the "Start scan" button does — including its
     tail-end auto-organize of everything that cleared the threshold."""
@@ -320,23 +286,7 @@ async def run_nightly(
         except Exception as exc:  # noqa: BLE001
             logger.exception("nightly: news refresh failed")
             steps.append(f"news: FAILED — {exc}")
-        # prompts/37 — search OpenBooks for still-"wanted" viewer requests and
-        # queue EPUB candidates. Only when OPENBOOKS_ENABLED *and* the
-        # always-on auto-get loop is off — with auto-get on it does its own
-        # refill searches (and downloads), so the nightly batch would just be
-        # redundant OpenBooks/IRC churn. Never downloads here; never fails the run.
         if get_settings().openbooks_enabled:
-            from app.core.settings_keys import OPENBOOKS_AUTOGET_ENABLED
-            from app.data.repositories.settings_repository import SettingsRepository
-
-            async with async_session_factory() as session:
-                autoget_on = (
-                    await SettingsRepository(session).get(OPENBOOKS_AUTOGET_ENABLED)
-                ) == "true"
-            if autoget_on:
-                steps.append("acquire: skipped (auto-get is handling it)")
-            else:
-                steps.append(await _acquire_candidates_phase(creds, library_folder_id))
             # The viewer's Dashboard screen — a snapshot of the acquisition
             # queue (wanted/pending/downloaded, up next, hit rate). Cheap;
             # never fails the run.
