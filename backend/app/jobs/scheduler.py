@@ -54,12 +54,17 @@ AUTOGET_INTERVAL_SECONDS = 360
 AUTOGET_INTERVAL_JITTER = 90
 # Libgen's own cycle, deliberately a different period AND phase from
 # OpenBooks' — it's a plain HTTP scraper (self-throttled inside
-# LibgenProvider) with no shared IRC bot to be careful with, so there's no
-# reason to run it on OpenBooks' slow clock or only ever search the same
-# book at the same moment as OpenBooks does. Running the two out of sync
-# also means one being down/busy never blocks the other's turn.
-LIBGEN_AUTOGET_INTERVAL_SECONDS = 150
-LIBGEN_AUTOGET_INTERVAL_JITTER = 45
+# LibgenProvider, LibgenProvider._MIN_REQUEST_INTERVAL = 3.5s between any
+# request to a mirror, ~10.5s minimum for a full search+detail+download) with
+# no shared IRC bot/nick to be careful with, so there's no reason to run it on
+# OpenBooks' slow clock or only ever search the same book at the same moment
+# as OpenBooks does. Running the two out of sync also means one being
+# down/busy never blocks the other's turn. 45s (James, 2026-09-18) keeps a
+# healthy ~4x margin over that 10.5s floor while running noticeably faster
+# than the old 150s — no mirror has shown any sign of blocking us at this
+# provider's per-request pace, unlike OpenBooks' shared bots.
+LIBGEN_AUTOGET_INTERVAL_SECONDS = 45
+LIBGEN_AUTOGET_INTERVAL_JITTER = 15
 # The torrent subsystem's three independent legs. Submitting is still
 # slower than the other two cycles' searches — each hit is a real download
 # commitment (bandwidth, disk, a Librarr/qBittorrent slot), not a cheap HTTP

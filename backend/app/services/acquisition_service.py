@@ -1160,8 +1160,10 @@ _SEARCH_BUDGET_PER_HOUR = 8  # hard ceiling on fresh OpenBooks searches
 # (per-request delay + a fixed mirror list) — not a shared community IRC bot
 # that a whole nick can get rate-limited on. It doesn't need OpenBooks'
 # tight hourly ceiling; its own tick interval (jobs/scheduler.py) is already
-# the real throttle. This budget is just an outer safety bound.
-_LIBGEN_SEARCH_BUDGET_PER_HOUR = 40
+# the real throttle. This budget is just an outer safety bound — raised
+# 2026-09-18 alongside LIBGEN_AUTOGET_INTERVAL_SECONDS (150s -> 45s) so it
+# tracks the new ~80 ticks/hour cadence instead of quietly re-capping it.
+_LIBGEN_SEARCH_BUDGET_PER_HOUR = 80
 # Backoff before auto-get re-attempts a book. It cools down between tries,
 # longer once it's been failing a while, and a searched-but-nothing-found book
 # only gets re-checked weekly.
