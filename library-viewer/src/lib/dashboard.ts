@@ -8,6 +8,8 @@
 // Read-only from here — same modifiedTime-gated localStorage cache as
 // news.ts / newReleases.ts.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
+
 const FILENAME = 'bookbrain-dashboard.json'
 const CACHE_KEY = 'bookbrain.dashboard'
 
@@ -169,27 +171,17 @@ export async function fetchDashboard(token: string, libraryFolderId: string): Pr
   const cached = readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-    if (files.length === 0) return cacheValid ? cached.dashboard : EMPTY_DASHBOARD
+    const meta = await findSidecarMeta(token, libraryFolderId, FILENAME)
+    if (!meta) return cacheValid ? cached.dashboard : EMPTY_DASHBOARD
+    if (cacheValid && cached.modifiedTime === meta.modifiedTime) return cached.dashboard
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached.modifiedTime === modifiedTime) return cached.dashboard
-
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const dashboard = normaliseDashboard((await fileResp.json()) as RawFile)
+    const buf = await fetchDriveBytes(token, meta.id)
+    const dashboard = normaliseDashboard(JSON.parse(new TextDecoder().decode(buf)) as RawFile)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ libraryFolderId, modifiedTime, dashboard }))
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ libraryFolderId, modifiedTime: meta.modifiedTime, dashboard }),
+      )
     } catch {
       /* over quota / private mode */
     }

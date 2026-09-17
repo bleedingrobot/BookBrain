@@ -9,6 +9,8 @@
 //   4. nothing — the row shows a placeholder
 // Only rows actually on screen ever trigger a fetch (see components/Cover).
 
+import { fetchDriveBlob, listFolderContents } from './drive'
+
 const blobUrlByBook = new Map<string, string>()
 // In-flight fetches, so the several places a cover can be rendered at once
 // (a list row, the recently-added ticker, its duplicated track) share one
@@ -78,25 +80,11 @@ export async function loadCoverManifest(
   }
   if (coversFolderId === manifestFolderId && coverFileIdByBook.size > 0) return
   try {
+    const files = await listFolderContents(token, coversFolderId)
     const map = new Map<string, string>()
-    let pageToken: string | undefined
-    do {
-      const q = encodeURIComponent(`'${coversFolderId}' in parents and trashed = false`)
-      const page = pageToken ? `&pageToken=${pageToken}` : ''
-      const resp = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name)&pageSize=1000${page}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      if (!resp.ok) throw new Error(`covers list ${resp.status}`)
-      const data = (await resp.json()) as {
-        files: { id: string; name: string }[]
-        nextPageToken?: string
-      }
-      for (const f of data.files) {
-        if (f.name.endsWith('.jpg')) map.set(f.name.slice(0, -4), f.id)
-      }
-      pageToken = data.nextPageToken
-    } while (pageToken)
+    for (const f of files) {
+      if (f.name.endsWith('.jpg')) map.set(f.name.slice(0, -4), f.id)
+    }
     coverFileIdByBook = map
     manifestFolderId = coversFolderId
   } catch {
@@ -114,11 +102,8 @@ export async function fetchLocalCover(token: string, driveId: string): Promise<s
 
   const request = (async () => {
     try {
-      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${coverId}?alt=media`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!resp.ok) return null
-      const url = URL.createObjectURL(await resp.blob())
+      const blob = await fetchDriveBlob(token, coverId)
+      const url = URL.createObjectURL(blob)
       blobUrlByBook.set(driveId, url)
       return url
     } catch {

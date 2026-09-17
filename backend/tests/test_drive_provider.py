@@ -15,6 +15,7 @@ class _FakeFiles:
         self.list_calls: list[dict] = []
         self.create_calls: list[dict] = []
         self.update_calls: list[dict] = []
+        self.copy_calls: list[dict] = []
 
     def list(self, **kwargs) -> _FakeExecutable:
         self.list_calls.append(kwargs)
@@ -30,6 +31,10 @@ class _FakeFiles:
     def update(self, **kwargs) -> _FakeExecutable:
         self.update_calls.append(kwargs)
         return _FakeExecutable({"id": kwargs["fileId"], **kwargs.get("body", {})})
+
+    def copy(self, **kwargs) -> _FakeExecutable:
+        self.copy_calls.append(kwargs)
+        return _FakeExecutable({"id": kwargs["fileId"]})
 
 
 class _FakeService:
@@ -235,3 +240,33 @@ def test_list_epub_files_recursive_walks_subfolders() -> None:
     results = provider.list_epub_files_recursive("root")
 
     assert {f["id"] for f in results} == {"a", "b"}
+
+
+def test_find_file_by_name_returns_the_match() -> None:
+    files = _FakeFiles([{"files": [{"id": "f1", "modifiedTime": "t1"}]}])
+    provider = DriveProvider(_FakeService(files))
+
+    found = provider.find_file_by_name("folder-id", "bookbrain-wishlist.json")
+
+    assert found == {"id": "f1", "modifiedTime": "t1"}
+    query = files.list_calls[0]["q"]
+    assert "'folder-id' in parents" in query
+    assert "name = 'bookbrain-wishlist.json'" in query
+
+
+def test_find_file_by_name_returns_none_when_absent() -> None:
+    files = _FakeFiles([{"files": []}])
+    provider = DriveProvider(_FakeService(files))
+
+    assert provider.find_file_by_name("folder-id", "missing.json") is None
+
+
+def test_copy_file_sets_the_destination_as_the_only_parent() -> None:
+    files = _FakeFiles([])
+    provider = DriveProvider(_FakeService(files))
+
+    result = provider.copy_file("file-id", "dest-folder-id")
+
+    assert result == {"id": "file-id"}
+    assert files.copy_calls[0]["fileId"] == "file-id"
+    assert files.copy_calls[0]["body"] == {"parents": ["dest-folder-id"]}

@@ -43,7 +43,15 @@ describe('normaliseNewReleases', () => {
 })
 
 function jsonResponse(body: unknown, ok = true): Response {
-  return { ok, status: ok ? 200 : 500, json: async () => body } as Response
+  // fetchNewReleases' download step now goes through fetchDriveBytes
+  // (drive.ts), which reads the response as a Blob rather than calling
+  // .json() directly — blob() has to be real for its .arrayBuffer() to work.
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    json: async () => body,
+    blob: async () => new Blob([JSON.stringify(body)], { type: 'application/json' }),
+  } as Response
 }
 
 describe('fetchNewReleases', () => {

@@ -8,6 +8,7 @@ import {
   type DriveChange,
   type DriveFile,
 } from './drive'
+import { getAuthMode } from './viewerAuth'
 
 // The cached Drive file listing lives in IndexedDB, not localStorage —
 // localStorage's few-MB-per-origin quota is easy for a large library's raw
@@ -148,8 +149,10 @@ export async function loadCachedFiles(libraryFolderId: string): Promise<DriveFil
 async function fullRebuild(token: string, libraryFolderId: string): Promise<LibraryCache> {
   // Grab the sync token BEFORE walking the tree, so anything that changes
   // mid-walk isn't silently missed — it'll just be reported again
-  // (harmlessly) on the very next incremental sync.
-  const pageToken = await getStartPageToken(token)
+  // (harmlessly) on the very next incremental sync. Passcode mode has no
+  // incremental sync (no backend proxy for Drive's changes feed — see
+  // syncLibrary below), so there's no token to fetch.
+  const pageToken = getAuthMode() === 'passcode' ? '' : await getStartPageToken(token)
   const { files, folderIds } = await listLibraryTree(token, libraryFolderId)
   const cache: LibraryCache = { libraryFolderId, pageToken, files, folderIds, builtAt: Date.now() }
   await saveCache(cache)
@@ -232,6 +235,14 @@ export async function syncLibrary(
   token: string,
   libraryFolderId: string,
 ): Promise<{ cache: LibraryCache; rebuilt: boolean }> {
+  if (getAuthMode() === 'passcode') {
+    // No backend proxy for Drive's incremental changes feed (out of scope —
+    // the marginal savings don't justify replicating that machinery
+    // server-side). A full /drive/tree call is cheap enough at household
+    // scale to just always do that instead.
+    return { cache: await fullRebuild(token, libraryFolderId), rebuilt: true }
+  }
+
   const existing = await loadCache()
 
   if (!existing || existing.libraryFolderId !== libraryFolderId) {

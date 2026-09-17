@@ -5,6 +5,8 @@
 // isn't in it, the viewer falls back to parsing the organized filename.
 // See backend/app/services/library_index_service.py.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
+
 const INDEX_FILENAME = 'bookbrain-index.json'
 const CACHE_KEY = 'bookbrain.metadataIndex'
 
@@ -285,29 +287,14 @@ export async function fetchLibraryIndex(
   const cached = readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${INDEX_FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as {
-      files: { id: string; modifiedTime: string }[]
-    }
-    if (files.length === 0) return cacheValid ? cached.index : EMPTY_INDEX
+    const meta = await findSidecarMeta(token, libraryFolderId, INDEX_FILENAME)
+    if (!meta) return cacheValid ? cached.index : EMPTY_INDEX
+    if (cacheValid && cached.modifiedTime === meta.modifiedTime) return cached.index
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached.modifiedTime === modifiedTime) return cached.index
+    const buf = await fetchDriveBytes(token, meta.id)
+    const index = normalise(JSON.parse(new TextDecoder().decode(buf)) as RawIndexFile)
 
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const index = normalise((await fileResp.json()) as RawIndexFile)
-
-    const next: CachedIndex = { libraryFolderId, modifiedTime, index }
+    const next: CachedIndex = { libraryFolderId, modifiedTime: meta.modifiedTime, index }
     localStorage.setItem(CACHE_KEY, JSON.stringify(next))
     return index
   } catch {

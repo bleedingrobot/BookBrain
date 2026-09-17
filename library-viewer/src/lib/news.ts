@@ -7,6 +7,7 @@
 // item links out to the original — we only ever store headline + a short
 // excerpt + attribution.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
 import { makeSidecar } from './syncedSidecar'
 
 const FILENAME = 'bookbrain-news.json'
@@ -163,27 +164,17 @@ export async function fetchNews(token: string, libraryFolderId: string): Promise
   const cached = readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-    if (files.length === 0) return cacheValid ? cached.news : EMPTY_NEWS
+    const meta = await findSidecarMeta(token, libraryFolderId, FILENAME)
+    if (!meta) return cacheValid ? cached.news : EMPTY_NEWS
+    if (cacheValid && cached.modifiedTime === meta.modifiedTime) return cached.news
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached.modifiedTime === modifiedTime) return cached.news
-
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const news = normaliseNews((await fileResp.json()) as RawFile)
+    const buf = await fetchDriveBytes(token, meta.id)
+    const news = normaliseNews(JSON.parse(new TextDecoder().decode(buf)) as RawFile)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ libraryFolderId, modifiedTime, news }))
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ libraryFolderId, modifiedTime: meta.modifiedTime, news }),
+      )
     } catch {
       /* over quota / private mode */
     }

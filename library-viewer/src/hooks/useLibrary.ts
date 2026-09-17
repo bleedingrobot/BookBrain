@@ -15,6 +15,8 @@ import {
 } from '../lib/libraryIndex'
 import { clearLibraryCache, loadCachedFiles, syncLibrary } from '../lib/librarySync'
 import type { KoboDevice, ViewerSettings } from '../lib/settings'
+import { getAuthMode, PASSCODE_TOKEN, setAuthMode, type AuthMode } from '../lib/viewerAuth'
+import { hasPasscodeSession, loginWithPasscode, logoutPasscode } from '../lib/viewerSession'
 
 const REFRESH_LEAD_MS = 120_000 // renew the token this long before it lapses
 
@@ -28,6 +30,13 @@ export function useLibrary(settings: ViewerSettings | null) {
   const [sessionExpired, setSessionExpired] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+
+  // Which login path is active — see lib/viewerAuth.ts. Mirrored into React
+  // state (the module-level flag itself is what drive.ts actually reads)
+  // just so the UI can branch on it too.
+  const [authMode, setAuthModeState] = useState<AuthMode>(getAuthMode())
+  const [passcodeSigningIn, setPasscodeSigningIn] = useState(false)
+  const [passcodeError, setPasscodeError] = useState<string | null>(null)
 
   const [files, setFiles] = useState<DriveFile[] | null>(null)
   const [index, setIndex] = useState<LibraryIndex>(EMPTY_INDEX)
@@ -48,7 +57,15 @@ export function useLibrary(settings: ViewerSettings | null) {
   const scope = SCOPE_FULL
 
   const flagAuthError = useCallback((err: unknown) => {
-    if (isAuthError(err)) setSessionExpired(true)
+    if (!isAuthError(err)) return
+    if (getAuthMode() === 'passcode') {
+      // No silent reconnect for a passcode session (the passcode itself is
+      // never kept around client-side) — drop straight back to the login
+      // screen instead of showing a "Reconnect" button with nothing to do.
+      setToken(null)
+    } else {
+      setSessionExpired(true)
+    }
   }, [])
 
   const applyToken = useCallback((newToken: string, expiresInSeconds: number) => {
@@ -131,6 +148,8 @@ export function useLibrary(settings: ViewerSettings | null) {
 
   const signIn = useCallback(() => {
     if (!settings) return
+    setAuthMode('google')
+    setAuthModeState('google')
     setAuthError(null)
     setSigningIn(true)
     requestAccessToken(
@@ -160,6 +179,80 @@ export function useLibrary(settings: ViewerSettings | null) {
       },
     )
   }, [settings, scope, applyToken])
+
+  // Runs the same first-load sequence as signIn's callback above (seed from
+  // cache if there is one, else a full sync) — factored out so both the
+  // passcode login and the auto-resume effect below can share it.
+  const startLibraryLoad = useCallback(
+    async (activeToken: string) => {
+      if (!settings) return
+      const who = getViewerName()
+      if (who) void logActivity(activeToken, settings.libraryFolderId, who, 'sign-in', '')
+      const cached = await loadCachedFiles(settings.libraryFolderId)
+      if (cached) {
+        setFiles(cached)
+        setIndex(loadCachedIndex(settings.libraryFolderId))
+        setSyncing(true)
+        await runSyncRef.current(activeToken)
+        setSyncing(false)
+      } else {
+        setLoading(true)
+        await runSyncRef.current(activeToken)
+        setLoading(false)
+      }
+    },
+    [settings],
+  )
+
+  // The passcode login (App.tsx's passcode field) — no Google token, no
+  // silent renewal: the session lives entirely in the httpOnly cookie
+  // loginWithPasscode sets, which the browser attaches to every /api/viewer
+  // call on its own. tokenExpiresAt stays 0, which is what keeps the
+  // Google-only silent-renewal effect below a no-op for this path.
+  const signInWithPasscode = useCallback(
+    async (passcode: string) => {
+      setPasscodeError(null)
+      setPasscodeSigningIn(true)
+      try {
+        await loginWithPasscode(passcode)
+        setAuthMode('passcode')
+        setAuthModeState('passcode')
+        setSessionExpired(false)
+        setToken(PASSCODE_TOKEN)
+        await startLibraryLoad(PASSCODE_TOKEN)
+      } catch (err) {
+        setPasscodeError(err instanceof Error ? err.message : 'Sign-in failed.')
+      } finally {
+        setPasscodeSigningIn(false)
+      }
+    },
+    [startLibraryLoad],
+  )
+
+  // A returning sibling shouldn't have to retype the household passcode on
+  // every visit the way Google sign-in intentionally requires (see App.tsx's
+  // "closing or reloading this page signs you out" copy) — the session
+  // cookie is deliberately long-lived (see backend's VIEWER_SESSION_DAYS)
+  // specifically so this can auto-resume. Runs once per mount; harmless (one
+  // cheap GET, resolves false immediately) when the passcode login isn't
+  // configured or wasn't used.
+  useEffect(() => {
+    if (!settings) return
+    let cancelled = false
+    void hasPasscodeSession().then((ok) => {
+      if (cancelled || !ok) return
+      setAuthMode('passcode')
+      setAuthModeState('passcode')
+      setToken(PASSCODE_TOKEN)
+      void startLibraryLoad(PASSCODE_TOKEN)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Only ever needs to run once settings first resolve, not on every
+    // startLibraryLoad identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings])
 
   // Silent renewal shortly before the token lapses.
   useEffect(() => {
@@ -224,6 +317,9 @@ export function useLibrary(settings: ViewerSettings | null) {
     void clearLibraryCache()
     clearCachedIndex()
     clearCoverCache()
+    void logoutPasscode()
+    setAuthMode('google')
+    setAuthModeState('google')
     setToken(null)
     setTokenExpiresAt(0)
     setFiles(null)
@@ -235,9 +331,12 @@ export function useLibrary(settings: ViewerSettings | null) {
   return {
     token,
     scope,
+    authMode,
     sessionExpired,
     signingIn,
     authError,
+    passcodeSigningIn,
+    passcodeError,
     files,
     index,
     loadError,
@@ -247,6 +346,7 @@ export function useLibrary(settings: ViewerSettings | null) {
     remoteKoboDevices,
     saveKoboDevices,
     signIn,
+    signInWithPasscode,
     refresh,
     rebuild,
     reset,

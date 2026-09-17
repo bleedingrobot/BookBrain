@@ -81,6 +81,32 @@ class DriveProvider:
             .execute()
         )
 
+    def find_file_by_name(self, folder_id: str, name: str) -> dict | None:
+        """The single-file counterpart to list_files_in_folder — used by the
+        viewer proxy's sidecar routes (app/api/routes/viewer.py), which read
+        one named JSON file (bookbrain-index.json, bookbrain-wishlist.json,
+        …) rather than listing everything in the folder."""
+        parent = _escape_query_value(folder_id)
+        filename = _escape_query_value(name)
+        query = f"'{parent}' in parents and name = '{filename}' and trashed = false"
+        result = (
+            self._service.files()
+            .list(q=query, fields="files(id,modifiedTime)", pageSize=1)
+            .execute()
+        )
+        files = result.get("files", [])
+        return files[0] if files else None
+
+    def copy_file(self, file_id: str, destination_folder_id: str) -> dict:
+        """Drive's files.copy, scoped to just the id — the viewer proxy's
+        "send to Kobo" route (app/api/routes/viewer.py) is the only caller;
+        mirrors library-viewer/src/lib/drive.ts's copyFileToFolder."""
+        return (
+            self._service.files()
+            .copy(fileId=file_id, body={"parents": [destination_folder_id]}, fields="id")
+            .execute()
+        )
+
     def list_files_in_folder(self, folder_id: str) -> list[dict]:
         """Every non-folder file directly in this folder, any type — the
         scan uses this (not list_epub_files) so it can find and remove

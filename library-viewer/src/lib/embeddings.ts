@@ -8,6 +8,8 @@
 // first used, decoded once, and cached in IndexedDB (keyed by the file's
 // modifiedTime) so a repeat visit — and offline — skips the download.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
+
 const FILENAME = 'bookbrain-embeddings.bin'
 const DB_NAME = 'bookbrain-embeddings'
 const STORE = 'sidecar'
@@ -98,26 +100,12 @@ export async function fetchEmbeddings(
   const cached = await readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-    if (files.length === 0) return cacheValid ? decodeEmbeddings(cached!.buf) : null
+    const meta = await findSidecarMeta(token, libraryFolderId, FILENAME)
+    if (!meta) return cacheValid ? decodeEmbeddings(cached!.buf) : null
+    if (cacheValid && cached!.modifiedTime === meta.modifiedTime) return decodeEmbeddings(cached!.buf)
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached!.modifiedTime === modifiedTime) return decodeEmbeddings(cached!.buf)
-
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const buf = await fileResp.arrayBuffer()
-    await writeCache({ key: RECORD_KEY, libraryFolderId, modifiedTime, buf })
+    const buf = await fetchDriveBytes(token, meta.id)
+    await writeCache({ key: RECORD_KEY, libraryFolderId, modifiedTime: meta.modifiedTime, buf })
     return decodeEmbeddings(buf)
   } catch {
     return cacheValid ? decodeEmbeddings(cached!.buf) : null

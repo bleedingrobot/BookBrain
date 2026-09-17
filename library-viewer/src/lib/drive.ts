@@ -1,8 +1,15 @@
+import { BACKEND_URL } from './config'
 import { refreshAccessToken } from './tokenBroker'
+import { getAuthMode } from './viewerAuth'
 
 export interface DriveFile {
   id: string
   name: string
+}
+
+export interface SidecarMeta {
+  id: string
+  modifiedTime: string
 }
 
 export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
@@ -58,6 +65,50 @@ async function driveFetch(token: string, path: string): Promise<unknown> {
   return response.json()
 }
 
+// The passcode-mode counterpart to driveFetch — same "throw a plain Error
+// isAuthError() can recognise on a 401" contract, but against our own
+// backend's /api/viewer/* proxy instead of Google. `path` is relative to
+// that prefix, e.g. `/drive/tree`.
+async function backendFetch(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(`${BACKEND_URL}/api/viewer${path}`, {
+    ...init,
+    credentials: 'include',
+  })
+  if (response.status === 401) throw new Error('Sign-in expired — sign in again.')
+  return response
+}
+
+// id + modifiedTime for a named file directly in a folder — the "is my
+// cache stale" half of every bookbrain-*.json/.bin sidecar's read, shared
+// by readJsonFile below and the several lib/*.ts files (dashboard.ts,
+// news.ts, reading.ts, …) that do their own modifiedTime-gated caching
+// around it. Branches on auth mode so every one of those callers gets the
+// passcode-mode proxy for free.
+export async function findSidecarMeta(
+  token: string,
+  folderId: string,
+  name: string,
+): Promise<SidecarMeta | null> {
+  if (getAuthMode() === 'passcode') {
+    const resp = await backendFetch(`/drive/sidecar-meta?name=${encodeURIComponent(name)}`)
+    if (!resp.ok) throw new Error(`Backend error (${resp.status})`)
+    return (await resp.json()) as SidecarMeta | null
+  }
+  const q = encodeURIComponent(`'${folderId}' in parents and name = '${name}' and trashed = false`)
+  const data = (await driveFetch(
+    token,
+    `files?q=${q}&fields=files(id,modifiedTime)&pageSize=1`,
+  )) as { files: SidecarMeta[] }
+  return data.files[0] ?? null
+}
+
+// Raw bytes for a file id — the binary counterpart to fetchDriveBlob, for
+// callers (embeddings.ts's .bin sidecar) that want an ArrayBuffer to decode
+// rather than a Blob to hand to an <img>/foliate.
+export async function fetchDriveBytes(token: string, fileId: string): Promise<ArrayBuffer> {
+  return (await fetchDriveBlob(token, fileId)).arrayBuffer()
+}
+
 async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let next = 0
@@ -102,6 +153,14 @@ export async function listLibraryTree(
   token: string,
   rootFolderId: string,
 ): Promise<{ files: DriveFile[]; folderIds: string[] }> {
+  if (getAuthMode() === 'passcode') {
+    // The backend already knows its own library folder — one round trip,
+    // no BFS. folderIds is only ever consumed by the Drive-changes
+    // incremental sync (librarySync.ts), which passcode mode never runs.
+    const resp = await backendFetch('/drive/tree')
+    if (!resp.ok) throw new Error(`Backend error (${resp.status})`)
+    return { files: (await resp.json()) as DriveFile[], folderIds: [] }
+  }
   const allFiles: DriveFile[] = []
   const folderIds = new Set<string>([rootFolderId])
   let frontier = [rootFolderId]
@@ -185,8 +244,14 @@ export async function listAllChanges(
 }
 
 // Every non-folder file directly in `folderId` (not recursive) — used to
-// show what's actually sitting in a device's Rakuten Kobo sync folder.
+// show what's actually sitting in a device's Rakuten Kobo sync folder, and
+// (via covers.ts) to build the covers/ manifest.
 export async function listFolderContents(token: string, folderId: string): Promise<DriveFile[]> {
+  if (getAuthMode() === 'passcode') {
+    const resp = await backendFetch(`/drive/folder?folderId=${encodeURIComponent(folderId)}`)
+    if (!resp.ok) throw new Error(`Backend error (${resp.status})`)
+    return (await resp.json()) as DriveFile[]
+  }
   const files: DriveFile[] = []
   let pageToken: string | undefined
   do {
@@ -206,24 +271,18 @@ export async function listFolderContents(token: string, folderId: string): Promi
 
 // Reads a single JSON file by name from a folder. Returns its parsed
 // content and Drive id + modifiedTime (for change detection), or null.
+// Built on findSidecarMeta + fetchDriveBytes so it (and every direct caller)
+// picks up the passcode-mode backend proxy automatically.
 export async function readJsonFile<T>(
   token: string,
   folderId: string,
   name: string,
 ): Promise<{ id: string; modifiedTime: string; content: T } | null> {
-  const q = encodeURIComponent(`'${folderId}' in parents and name = '${name}' and trashed = false`)
-  const listResp = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)&pageSize=1`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  if (!listResp.ok) throw new Error(`Drive API error (${listResp.status})`)
-  const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-  if (files.length === 0) return null
-  const dl = await fetch(`https://www.googleapis.com/drive/v3/files/${files[0].id}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!dl.ok) throw new Error(`Drive API error (${dl.status})`)
-  return { id: files[0].id, modifiedTime: files[0].modifiedTime, content: (await dl.json()) as T }
+  const meta = await findSidecarMeta(token, folderId, name)
+  if (!meta) return null
+  const buf = await fetchDriveBytes(token, meta.id)
+  const content = JSON.parse(new TextDecoder().decode(buf)) as T
+  return { id: meta.id, modifiedTime: meta.modifiedTime, content }
 }
 
 // Creates or overwrites a JSON file in a folder. Returns the file's id.
@@ -235,6 +294,19 @@ export async function writeJsonFile(
   existingId: string | null,
   retried = false,
 ): Promise<string> {
+  if (getAuthMode() === 'passcode') {
+    // The backend looks the file up by name itself rather than trusting
+    // existingId — it's the only thing here with a consistent view of
+    // what's actually current, since (unlike the Google path) several
+    // siblings' browsers all funnel through the same credential.
+    const resp = await backendFetch(`/drive/sidecar?name=${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(content),
+    })
+    if (!resp.ok) throw new Error(`Failed to save (${resp.status})`)
+    return ((await resp.json()) as { id: string }).id
+  }
   const body = JSON.stringify(content)
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` })
 
@@ -276,6 +348,11 @@ export async function writeJsonFile(
 }
 
 export async function trashFile(token: string, fileId: string): Promise<void> {
+  if (getAuthMode() === 'passcode') {
+    const resp = await backendFetch(`/drive/trash/${encodeURIComponent(fileId)}`, { method: 'POST' })
+    if (!resp.ok) throw new Error(`Failed to remove file (${resp.status})`)
+    return
+  }
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -288,6 +365,15 @@ export async function trashFile(token: string, fileId: string): Promise<void> {
 }
 
 export async function copyFileToFolder(token: string, file: DriveFile, destinationFolderId: string): Promise<void> {
+  if (getAuthMode() === 'passcode') {
+    const resp = await backendFetch(`/drive/copy/${encodeURIComponent(file.id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinationFolderId }),
+    })
+    if (!resp.ok) throw new Error(`Failed to send ${file.name} to Kobo folder (${resp.status})`)
+    return
+  }
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/copy`, {
     method: 'POST',
     headers: {
@@ -303,8 +389,24 @@ export async function copyFileToFolder(token: string, file: DriveFile, destinati
 }
 
 // Raw file bytes from Drive. Shared by downloadFile (save-to-disk) and the
-// EPUB reader (which caches the blob in IndexedDB, see lib/bookCache.ts).
+// EPUB reader (which caches the blob in IndexedDB, see lib/bookCache.ts) —
+// also, via fetchDriveBytes/readJsonFile above, every JSON/binary sidecar
+// and cover fetch.
 export async function fetchDriveBlob(token: string, fileId: string): Promise<Blob> {
+  if (getAuthMode() === 'passcode') {
+    let response: Response
+    try {
+      response = await backendFetch(`/drive/blob/${encodeURIComponent(fileId)}`)
+    } catch (err) {
+      if (err instanceof Error && /sign-in expired/i.test(err.message)) throw err
+      throw new Error("Couldn't reach the library server — check your connection.")
+    }
+    if (!response.ok) {
+      if (response.status === 404) throw new Error('This file is no longer in your library.')
+      throw new Error(`The library server refused the download (error ${response.status}).`)
+    }
+    return response.blob()
+  }
   const base = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
   const auth = { Authorization: `Bearer ${token}` }
   let response: Response

@@ -4,6 +4,8 @@
 // expanded, keeping the main index download lean. Best-effort + cached,
 // same modifiedTime-gated pattern as libraryIndex.ts.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
+
 const FILENAME = 'bookbrain-recommendations.json'
 const CACHE_KEY = 'bookbrain.recommendations'
 
@@ -77,27 +79,17 @@ export async function fetchRecommendations(
   const cached = readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-    if (files.length === 0) return cacheValid ? cached.recs : {}
+    const meta = await findSidecarMeta(token, libraryFolderId, FILENAME)
+    if (!meta) return cacheValid ? cached.recs : {}
+    if (cacheValid && cached.modifiedTime === meta.modifiedTime) return cached.recs
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached.modifiedTime === modifiedTime) return cached.recs
-
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const recs = normaliseRecs((await fileResp.json()) as RawFile)
+    const buf = await fetchDriveBytes(token, meta.id)
+    const recs = normaliseRecs(JSON.parse(new TextDecoder().decode(buf)) as RawFile)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ libraryFolderId, modifiedTime, recs }))
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ libraryFolderId, modifiedTime: meta.modifiedTime, recs }),
+      )
     } catch {
       /* over quota / private mode — fine, we just re-fetch next time */
     }

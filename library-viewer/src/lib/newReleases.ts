@@ -8,6 +8,7 @@
 // entries with the `series` entries it derives itself (collectSeriesReleases)
 // into one feed for the release strips + <NewReleasesScreen>.
 
+import { fetchDriveBytes, findSidecarMeta } from './drive'
 import type { ReleaseItem } from './releases'
 
 const FILENAME = 'bookbrain-new-releases.json'
@@ -107,27 +108,17 @@ export async function fetchNewReleases(
   const cached = readCache()
   const cacheValid = cached?.libraryFolderId === libraryFolderId
   try {
-    const query = encodeURIComponent(
-      `'${libraryFolderId}' in parents and name = '${FILENAME}' and trashed = false`,
-    )
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) throw new Error(`list ${listResp.status}`)
-    const { files } = (await listResp.json()) as { files: { id: string; modifiedTime: string }[] }
-    if (files.length === 0) return cacheValid ? cached.releases : EMPTY_NEW_RELEASES
+    const meta = await findSidecarMeta(token, libraryFolderId, FILENAME)
+    if (!meta) return cacheValid ? cached.releases : EMPTY_NEW_RELEASES
+    if (cacheValid && cached.modifiedTime === meta.modifiedTime) return cached.releases
 
-    const { id, modifiedTime } = files[0]
-    if (cacheValid && cached.modifiedTime === modifiedTime) return cached.releases
-
-    const fileResp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!fileResp.ok) throw new Error(`download ${fileResp.status}`)
-    const releases = normaliseNewReleases((await fileResp.json()) as RawFile)
+    const buf = await fetchDriveBytes(token, meta.id)
+    const releases = normaliseNewReleases(JSON.parse(new TextDecoder().decode(buf)) as RawFile)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ libraryFolderId, modifiedTime, releases }))
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ libraryFolderId, modifiedTime: meta.modifiedTime, releases }),
+      )
     } catch {
       /* over quota / private mode */
     }

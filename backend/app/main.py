@@ -102,7 +102,12 @@ app = FastAPI(title="EPUB Librarian API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    # frontend_origin is the local admin UI; library_viewer_origin is the
+    # family library-viewer (GitHub Pages) — only its passcode login path
+    # calls this backend at all (Google sign-in talks to Drive directly).
+    # allow_credentials=True is required for that login's session cookie,
+    # which means allow_origins can't be "*" — both must be listed exactly.
+    allow_origins=[o for o in (settings.frontend_origin, settings.library_viewer_origin) if o],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

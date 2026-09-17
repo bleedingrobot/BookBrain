@@ -23,3 +23,14 @@ export const DEFAULT_LIBRARY_FOLDER_ID = '1BdqKbxECXkg70DZRXg3ynzxEO2hK3SrH'
 // shows up, rotate the key here. Empty = keyless endpoint + Open Library
 // fallback (see bookSearch.ts).
 export const DEFAULT_GOOGLE_BOOKS_API_KEY = 'AIzaSyARc-3eRiMVr4EKC-UGTZ1RyHDv8eAgODU'
+
+// The backend's own public URL — only the passcode login path needs this
+// (Google sign-in talks to Drive directly and never involves our backend at
+// all). Unlike the values above, this can't ship a working default: it's
+// not a public identifier, it's wherever bookbrain.service is actually
+// reachable from the internet, which has to be set up (a domain + HTTPS,
+// e.g. a reverse proxy or Tailscale Funnel) before the passcode option can
+// work for anyone outside the house. Empty means "not configured yet" — the
+// passcode tab shows that plainly instead of failing at fetch() with a
+// confusing network error.
+export const BACKEND_URL = ''

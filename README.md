@@ -64,6 +64,30 @@ cleanly. The Dashboard shows the last run's result.
 
 While the app is in "Testing" publishing status in Google Cloud Console, only test users you add explicitly can complete the consent screen.
 
+### Passcode login for the library-viewer (siblings)
+
+The family library-viewer normally has each visitor sign in with their own Google
+account, talking straight to Drive from the browser. Siblings without a Google
+account instead type a shared household passcode, which this backend checks and
+then proxies their Drive reads/writes through — see `app/api/routes/viewer.py`.
+To turn it on:
+
+1. Set `SIBLINGS_PASSCODE` in `backend/.env` to the shared passcode.
+2. Set `LIBRARY_VIEWER_ORIGIN` if the viewer isn't at the default
+   `https://bleedingrobot.github.io` GitHub Pages origin.
+3. **This backend has to be reachable over HTTPS from the internet** for the
+   passcode path to work at all — unlike Google sign-in, it's not just the
+   browser talking to Google; the browser has to reach `bookbrain.service`
+   itself. If it's currently only reachable on your home network, that's new
+   infrastructure to set up first (a reverse proxy + domain, or something like
+   Tailscale Funnel) — and only the `/api/viewer/*` routes should be exposed
+   publicly, not the rest of the admin API, which has no login check of its
+   own today.
+4. Set `library-viewer/src/lib/config.ts`'s `BACKEND_URL` to that public URL
+   and redeploy the viewer.
+5. Leave `VIEWER_COOKIE_SECURE=true` (the default) once step 3 is done — it's
+   only for testing the passcode login locally over plain http.
+
 ## Frontend
 
 Requires Node 18+.

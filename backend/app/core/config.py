@@ -54,6 +54,30 @@ class Settings(BaseSettings):
 
     frontend_origin: str = "http://localhost:5173"
 
+    # prompts/42 — passcode login for the family library-viewer (siblings
+    # without a Google account of their own). Compared with a constant-time
+    # check in viewer_session_service; empty disables the passcode path
+    # entirely (Google sign-in in the viewer is untouched and never goes
+    # through this backend at all).
+    siblings_passcode: str = ""
+    # How long a passcode session cookie stays valid before a re-login is
+    # needed. Stateless — a Fernet-signed token with an expiry check on
+    # decrypt (see viewer_session_service), no DB row to revoke — so this is
+    # also the longest a leaked cookie stays useful.
+    viewer_session_days: int = 30
+    # False only for local dev over plain http, where a Secure cookie is
+    # silently dropped by the browser — flips SameSite to Lax to compensate
+    # (fine for same-machine testing, just not cross-origin). Leave True in
+    # production: the viewer is served from a different origin (GitHub
+    # Pages) than this backend, which requires SameSite=None + Secure for
+    # the cookie to be sent at all.
+    viewer_cookie_secure: bool = True
+    # Extra CORS origin for the family library-viewer (GitHub Pages), on top
+    # of frontend_origin (the local admin UI). Needed because the passcode
+    # login path — unlike Google sign-in, which talks to Google directly —
+    # calls this backend from the viewer's own origin with credentials.
+    library_viewer_origin: str = "https://bleedingrobot.github.io"
+
     # EPUB safe-parsing limits (SPEC.md §1)
     epub_max_entry_bytes: int = 100 * 1024 * 1024
     epub_max_total_bytes: int = 500 * 1024 * 1024

@@ -143,6 +143,7 @@ export default function App() {
     () => consumeSharedSettings() ?? loadSettings(),
   )
   const [shareStatus, setShareStatus] = useState<string | null>(null)
+  const [passcode, setPasscode] = useState('')
 
   // Sidebar "Display" toggles write straight through to settings — no
   // separate draft/save step, unlike the account-fields form.
@@ -890,6 +891,38 @@ export default function App() {
           library folder. Nothing is saved anywhere but Google: closing or reloading this page signs
           you out.
         </p>
+
+        <div className="mt-8 flex items-center gap-3 text-xs text-neutral-400">
+          <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+          or
+          <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+
+        <form
+          className="mt-4 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (passcode.trim()) void lib.signInWithPasscode(passcode.trim())
+          }}
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            className="field min-w-0 flex-1"
+            placeholder="Household passcode…"
+            value={passcode}
+            onChange={(e) => setPasscode(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="btn btn-neutral shrink-0"
+            disabled={lib.passcodeSigningIn || !passcode.trim()}
+          >
+            {lib.passcodeSigningIn ? 'Checking…' : 'Continue'}
+          </button>
+        </form>
+        {lib.passcodeError && <p className="mt-3 text-sm text-red-600">{lib.passcodeError}</p>}
+
         <button
           className="mt-8 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
           onClick={() => setShowSetup(true)}
