@@ -155,6 +155,18 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   investigated and built natively). Produces `CWA-REVIEW-<date>.md` +
   follow-up numbered prompts for anything worth pursuing, GPL-3.0 license
   consequence flagged per recommendation. **Not started.**
+- [`42-logging-and-dashboard-audit.md`](42-logging-and-dashboard-audit.md) —
+  read-only audit of every log line BookBrain emits and how (or whether) it
+  reaches the two dashboards: the tty1/mobile one (`dashboard/dashboard.sh`
+  → `status.json`) and the family viewer's (`bookbrain-dashboard.json`).
+  Prompted by two 2026-09-18 failures that went unnoticed for hours — a full
+  backend hang where the only real signal was the logs going silent, and
+  OpenBooks returning nothing for 1h40m while each failure logged as one
+  indistinguishable WARNING. Measured going in: **93% of a 24h log is noise**
+  (47% an APScheduler skip message every 2s, 46% HTTP access lines that the
+  dashboard's own 30s polling generates). Ends on "if it breaks at 3am, what
+  tells James?". Produces `LOGGING-REVIEW-<date>.md` + follow-up prompts.
+  **Not started.**
 
 ## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
 
