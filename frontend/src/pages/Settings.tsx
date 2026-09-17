@@ -116,11 +116,11 @@ export function Settings() {
   })
 
   if (authStatus.isLoading) {
-    return <div className="p-6 text-sm text-neutral-500">Loading...</div>
+    return <div className="text-sm text-neutral-500">Loading...</div>
   }
 
   return (
-    <div className="max-w-xl p-6">
+    <div className="max-w-xl">
       <h1 className="text-xl font-semibold">Settings</h1>
 
       <section className="mt-6">
@@ -149,7 +149,7 @@ export function Settings() {
               Create a folder for me
             </label>
             <button
-              className="rounded bg-neutral-900 px-3 py-1.5 text-white dark:bg-neutral-100 dark:text-neutral-900"
+              className="btn btn-primary py-1.5"
               onClick={async () => {
                 const { authorization_url } = await api.authStart(folderMode)
                 window.location.href = authorization_url
@@ -163,7 +163,7 @@ export function Settings() {
             <div className="flex items-center justify-between">
               <p className="text-green-700 dark:text-green-500">Connected.</p>
               <button
-                className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
+                className="btn btn-neutral"
                 onClick={() => disconnect.mutate()}
               >
                 Disconnect
@@ -182,13 +182,13 @@ export function Settings() {
                 <p className="text-neutral-500">Name the inbox folder the app should create:</p>
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                    className="field flex-1 py-1"
                     placeholder="EPUB Library"
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}
                   />
                   <button
-                    className="rounded bg-neutral-900 px-3 py-1.5 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                    className="btn btn-primary py-1.5"
                     disabled={newFolderName.trim() === ''}
                     onClick={() => createInboxFolder.mutate(newFolderName.trim())}
                   >
@@ -228,13 +228,13 @@ export function Settings() {
                 <p className="text-neutral-500">Name the library folder the app should create:</p>
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                    className="field flex-1 py-1"
                     placeholder="My Library"
                     value={newLibraryFolderName}
                     onChange={(e) => setNewLibraryFolderName(e.target.value)}
                   />
                   <button
-                    className="rounded bg-neutral-900 px-3 py-1.5 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                    className="btn btn-primary py-1.5"
                     disabled={newLibraryFolderName.trim() === ''}
                     onClick={() => createLibraryFolder.mutate(newLibraryFolderName.trim())}
                   >
@@ -264,34 +264,34 @@ export function Settings() {
           <div className="mt-3 text-sm">
             {organizeSettings.data.dry_run ? (
               <>
-                <p className="inline-block rounded bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                <p className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                   Dry run — Drive is never touched
                 </p>
                 {!confirmingLiveMoves ? (
                   <div>
                     <button
-                      className="mt-3 block rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                      className="btn btn-neutral mt-3"
                       onClick={() => setConfirmingLiveMoves(true)}
                     >
                       Enable live moves
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-3 space-y-2 rounded border border-red-300 p-3 dark:border-red-800">
+                  <div className="mt-3 space-y-2 rounded-xl border border-red-300 p-3 dark:border-red-800">
                     <p className="text-red-700 dark:text-red-400">
                       Live moves will actually rename and move files in your Drive library
                       folder. Only enable this after reviewing a dry-run pass in Activity.
                     </p>
                     <div className="flex gap-2">
                       <button
-                        className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+                        className="btn bg-red-600 text-white hover:bg-red-700"
                         disabled={updateOrganize.isPending}
                         onClick={() => updateOrganize.mutate({ dry_run: false })}
                       >
                         Yes, enable live moves
                       </button>
                       <button
-                        className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                        className="btn btn-neutral"
                         onClick={() => setConfirmingLiveMoves(false)}
                       >
                         Cancel
@@ -302,12 +302,12 @@ export function Settings() {
               </>
             ) : (
               <>
-                <p className="inline-block rounded bg-red-100 px-2 py-0.5 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                <p className="badge bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
                   Live moves enabled
                 </p>
                 <div>
                   <button
-                    className="mt-3 rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                    className="btn btn-neutral mt-3"
                     onClick={() => updateOrganize.mutate({ dry_run: true })}
                   >
                     Switch back to dry run
@@ -338,7 +338,7 @@ export function Settings() {
                 <label className="mt-2 flex items-center gap-2 text-sm">
                   <span className="text-neutral-500">Wait</span>
                   <select
-                    className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                    className="field py-1"
                     value={organizeSettings.data.hold_hours}
                     disabled={updateOrganize.isPending}
                     onChange={(e) =>
@@ -359,7 +359,7 @@ export function Settings() {
               <label className="flex items-center gap-2 text-sm">
                 <span className="text-neutral-500">Auto-organize when confidence is at least</span>
                 <select
-                  className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                  className="field py-1"
                   value={organizeSettings.data.auto_organize_min_confidence}
                   disabled={updateOrganize.isPending}
                   onChange={(e) =>
@@ -388,7 +388,7 @@ export function Settings() {
               <label className="flex items-center gap-2 text-sm">
                 <span className="text-neutral-500">After each scan, trash duplicates</span>
                 <select
-                  className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                  className="field py-1"
                   value={organizeSettings.data.auto_trash_duplicates}
                   disabled={updateOrganize.isPending}
                   onChange={(e) =>
@@ -439,7 +439,7 @@ export function Settings() {
             <label className="flex items-center gap-2">
               <span className="text-neutral-500">At</span>
               <select
-                className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                className="field py-1"
                 value={nightly.data.hour}
                 disabled={!nightly.data.enabled || updateNightly.isPending}
                 onChange={(e) =>
@@ -543,7 +543,7 @@ export function Settings() {
             <label className="flex items-center gap-2">
               <span className="text-neutral-500">At</span>
               <select
-                className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                className="field py-1"
                 value={backupSchedule.data.hour}
                 disabled={!backupSchedule.data.enabled || updateBackupSchedule.isPending}
                 onChange={(e) =>
@@ -572,7 +572,7 @@ export function Settings() {
         <div className="mt-3 space-y-3 text-sm">
           <div className="flex flex-wrap items-center gap-3">
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral"
               disabled={runBackup.isPending}
               onClick={() => runBackup.mutate()}
             >
@@ -608,7 +608,7 @@ export function Settings() {
           )}
 
           {backups.data && backups.data.length > 0 && (
-            <ul className="divide-y divide-neutral-100 rounded border border-neutral-200 text-xs dark:divide-neutral-800 dark:border-neutral-800">
+            <ul className="card divide-y divide-neutral-100 text-xs dark:divide-neutral-800">
               {backups.data.map((b) => (
                 <li key={b.name} className="flex items-center justify-between gap-3 px-3 py-1.5">
                   <span>{b.created_at}</span>

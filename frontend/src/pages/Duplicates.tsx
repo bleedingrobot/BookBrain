@@ -108,7 +108,7 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
   const exactContent = all.filter((g) => g.status_reason !== 'same_book')
 
   return (
-    <div className={embedded ? '' : 'p-6'}>
+    <div>
       <div className="flex items-start justify-between gap-4">
         {!embedded && (
           <div>
@@ -124,7 +124,7 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
         {exactContent.length > 0 && (
           <div className="shrink-0 text-right">
             <button
-              className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+              className="btn btn-danger py-1.5 text-sm"
               onClick={() => setConfirmingClear(true)}
             >
               Clear exact-content duplicates
@@ -149,14 +149,14 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
           {clearError && <p className="text-red-600">{clearError}</p>}
           <div className="flex gap-2">
             <button
-              className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+              className="btn bg-red-600 text-white hover:bg-red-700"
               disabled={clearDuplicates.isPending}
               onClick={() => clearDuplicates.mutate()}
             >
               Yes, clear them
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+              className="btn btn-neutral"
               onClick={() => setConfirmingClear(false)}
             >
               Cancel
@@ -188,7 +188,7 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
             <h2 className="text-sm font-medium text-neutral-500">Same book, different file</h2>
             <div className="shrink-0 text-right">
               <button
-                className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+                className="btn btn-danger btn-xs"
                 disabled={clearSameBook.isPending}
                 onClick={() => setConfirmingClearSameBook(true)}
               >
@@ -219,14 +219,14 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
               {sameBookError && <p className="text-red-600">{sameBookError}</p>}
               <div className="flex gap-2">
                 <button
-                  className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  className="btn bg-red-600 text-white hover:bg-red-700"
                   disabled={clearSameBook.isPending}
                   onClick={() => clearSameBook.mutate()}
                 >
                   Yes, trash all {sameBook.length}
                 </button>
                 <button
-                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  className="btn btn-neutral"
                   onClick={() => setConfirmingClearSameBook(false)}
                 >
                   Cancel
@@ -239,14 +239,14 @@ export function Duplicates({ embedded = false }: { embedded?: boolean } = {}) {
             {sameBook.map((group) => (
               <GroupRow key={group.duplicate_file_id} group={group}>
                 <button
-                  className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+                  className="btn btn-danger btn-xs"
                   disabled={trashOne.isPending || unflagOne.isPending || clearSameBook.isPending}
                   onClick={() => trashOne.mutate(group.duplicate_file_id)}
                 >
                   Trash this copy
                 </button>
                 <button
-                  className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300"
+                  className="btn btn-neutral btn-xs"
                   disabled={trashOne.isPending || unflagOne.isPending || clearSameBook.isPending}
                   onClick={() => unflagOne.mutate(group.duplicate_file_id)}
                 >

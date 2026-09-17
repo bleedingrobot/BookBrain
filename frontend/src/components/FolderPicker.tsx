@@ -19,7 +19,7 @@ export function FolderPicker({ onSelect }: { onSelect: (folderId: string, name: 
   })
 
   return (
-    <div className="rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+    <div className="card p-3 text-sm">
       <div className="flex flex-wrap items-center gap-1 text-neutral-500">
         {stack.map((crumb, i) => (
           <span key={crumb.id ?? 'root'}>
@@ -54,13 +54,13 @@ export function FolderPicker({ onSelect }: { onSelect: (folderId: string, name: 
 
       <div className="mt-3 flex gap-2">
         <input
-          className="flex-1 rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+          className="field flex-1"
           placeholder="New folder name"
           value={newFolderName}
           onChange={(e) => setNewFolderName(e.target.value)}
         />
         <button
-          className="rounded border border-neutral-300 px-2 py-1 disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral"
           disabled={newFolderName.trim() === ''}
           onClick={async () => {
             await api.driveCreateFolder(newFolderName.trim(), current.id ?? undefined)
@@ -73,7 +73,7 @@ export function FolderPicker({ onSelect }: { onSelect: (folderId: string, name: 
       </div>
 
       <button
-        className="mt-3 w-full rounded bg-neutral-900 py-1.5 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+        className="btn btn-primary mt-3 w-full py-1.5"
         disabled={current.id === null}
         onClick={() => current.id && onSelect(current.id, current.name)}
       >

@@ -77,13 +77,13 @@ function DivergenceRow({ d }: { d: ReidentDivergence }) {
         {d.signals.map((s) => (
           <span
             key={s}
-            className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+            className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
           >
             {SIGNAL_LABEL[s]}
           </span>
         ))}
         {d.stored_from_human && (
-          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500 dark:bg-neutral-800">
+          <span className="badge bg-neutral-100 text-neutral-500 dark:bg-neutral-800">
             human-corrected
           </span>
         )}
@@ -127,7 +127,7 @@ function DivergenceRow({ d }: { d: ReidentDivergence }) {
 
       <div className="mt-2 flex items-center gap-2">
         <button
-          className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           onClick={() => {
             setCorrectError(null)
             setCorrecting((v) => !v)
@@ -136,7 +136,7 @@ function DivergenceRow({ d }: { d: ReidentDivergence }) {
           {correcting ? 'Cancel' : 'Correct…'}
         </button>
         <button
-          className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={dismiss.isPending}
           onClick={() => dismiss.mutate()}
           title="Already reviewed this one — stop flagging it"
@@ -300,7 +300,7 @@ export function ReidentAuditPanel() {
 
       <div className="mt-3 flex items-center gap-3">
         <button
-          className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral text-sm"
           disabled={running}
           onClick={startRebuild}
         >
@@ -334,7 +334,7 @@ export function ReidentAuditPanel() {
 
       {divergences.length > 0 && (
         <>
-          <div className="mt-5 rounded border border-neutral-200 p-3 text-xs dark:border-neutral-800">
+          <div className="card mt-5 p-3 text-xs">
             <p className="text-neutral-600 dark:text-neutral-400">
               <span className="font-medium">Deep re-check</span> — ask Claude to look again at the
               rows you tick. Capped at 50 per run, costs API credits, only touches already-flagged
@@ -343,7 +343,7 @@ export function ReidentAuditPanel() {
             {deepError && <p className="mt-1 text-red-600">{deepError}</p>}
             {!estimate ? (
               <button
-                className="mt-2 rounded border border-neutral-300 px-2 py-1 disabled:opacity-50 dark:border-neutral-700"
+                className="btn btn-neutral btn-xs mt-2"
                 disabled={selected.size === 0}
                 onClick={askEstimate}
               >
@@ -357,14 +357,14 @@ export function ReidentAuditPanel() {
                 </p>
                 <div className="flex gap-2">
                   <button
-                    className="rounded bg-amber-600 px-2 py-1 text-white disabled:opacity-50"
+                    className="btn bg-amber-600 text-white hover:bg-amber-700"
                     disabled={deepCheck.isPending || estimate.will_check === 0}
                     onClick={() => deepCheck.mutate([...selected])}
                   >
                     {deepCheck.isPending ? 'Re-checking…' : 'Yes, run deep re-check'}
                   </button>
                   <button
-                    className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700"
+                    className="btn btn-neutral"
                     onClick={() => setEstimate(null)}
                   >
                     Cancel

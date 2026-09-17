@@ -82,7 +82,7 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
   const busy = approve.isPending || correct.isPending || reject.isPending || approveAll.isPending
 
   return (
-    <div className={embedded ? 'grid grid-cols-1 gap-6 md:grid-cols-2' : 'grid grid-cols-1 gap-6 p-6 md:grid-cols-2'}>
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
       <div>
         {!embedded && (
           <>
@@ -98,7 +98,7 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
         {reviews.data && reviews.data.length > 0 && (
           <div className="mt-4">
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral"
               disabled={busy}
               onClick={() => setConfirmingApproveAll(true)}
             >
@@ -119,13 +119,13 @@ export function ReviewQueue({ embedded = false }: { embedded?: boolean } = {}) {
                 </p>
                 <div className="flex gap-2">
                   <button
-                    className="rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                    className="btn btn-primary"
                     onClick={() => approveAll.mutate()}
                   >
                     Yes, approve all
                   </button>
                   <button
-                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs dark:border-neutral-700"
+                    className="btn btn-neutral"
                     onClick={() => setConfirmingApproveAll(false)}
                   >
                     Cancel

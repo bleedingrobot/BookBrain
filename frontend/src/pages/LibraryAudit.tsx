@@ -27,7 +27,7 @@ function SimilarCoversPanel({ pairs }: { pairs: SimilarCoverPair[] }) {
           {pairs.map((p) => (
             <li
               key={`${p.book_a_id}-${p.book_b_id}`}
-              className="rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800"
+              className="card p-3 text-sm"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-medium">
@@ -101,7 +101,7 @@ function ClusterList({
             <div className="mt-2 flex items-center gap-2">
               {renderActions?.(cluster)}
               <button
-                className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
+                className="btn btn-neutral btn-xs"
                 disabled={dismiss.isPending}
                 onClick={() => dismiss.mutate(memberIds)}
                 title="Already reviewed this one — stop flagging it"
@@ -180,7 +180,7 @@ function TitleMergeRepairPanel() {
   })
 
   return (
-    <div className="mt-8 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+    <div className="card mt-8 p-3">
       <h2 className="text-sm font-medium text-neutral-500">Repair falsely-merged books</h2>
       <p className="mt-1 max-w-2xl text-xs text-neutral-400">
         An earlier version matched titles too loosely, so two different books by the same author
@@ -191,7 +191,7 @@ function TitleMergeRepairPanel() {
       </p>
       <div className="mt-2 flex items-center gap-3">
         <button
-          className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={repair.isPending}
           onClick={() => repair.mutate()}
         >
@@ -219,7 +219,7 @@ export function LibraryAudit() {
   const [tab, setTab] = useState<'split' | 'reident'>('split')
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-xl font-semibold">Library Audit</h1>
 
       <div className="mt-3 flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
@@ -234,7 +234,7 @@ export function LibraryAudit() {
             onClick={() => setTab(key)}
             className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${
               tab === key
-                ? 'border-neutral-900 font-medium text-neutral-900 dark:border-neutral-100 dark:text-neutral-100'
+                ? 'border-brand-600 font-medium text-brand-700 dark:text-brand-300'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
             }`}
           >

@@ -121,7 +121,7 @@ export function RecentlyOrganized() {
               <span className="text-xs text-green-700 dark:text-green-500">✓ confirmed</span>
             ) : (
               <button
-                className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+                className="btn btn-neutral btn-xs"
                 disabled={confirm.isPending}
                 onClick={() => {
                   setActionError(null)
@@ -132,7 +132,7 @@ export function RecentlyOrganized() {
               </button>
             )}
             <button
-              className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+              className="btn btn-neutral btn-xs"
               onClick={() => {
                 setActionError(null)
                 setCorrectingId(correctingId === item.file_id ? null : item.file_id)
@@ -156,7 +156,7 @@ export function RecentlyOrganized() {
   }
 
   return (
-    <div className="mt-6 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+    <div className="card mt-6 p-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-medium text-neutral-500">
           Recently auto-organized{organized.length ? ` (${organized.length})` : ''}
@@ -167,8 +167,8 @@ export function RecentlyOrganized() {
               key={opt.value}
               className={`rounded px-2 py-0.5 ${
                 since === opt.value
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                  : 'text-neutral-400'
+                  ? 'bg-brand-600 text-white'
+                  : 'text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
               }`}
               onClick={() => setSince(opt.value)}
             >
@@ -185,7 +185,7 @@ export function RecentlyOrganized() {
         </p>
         {unconfirmed.length > 0 && (
           <button
-            className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+            className="btn btn-neutral btn-xs shrink-0"
             disabled={confirmAll.isPending || confirm.isPending}
             onClick={() => {
               setActionError(null)

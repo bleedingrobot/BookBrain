@@ -225,7 +225,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
       <p className="mt-4 text-sm">
@@ -265,7 +265,7 @@ export function Dashboard() {
         </p>
       )}
 
-      <div className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <div className="card mt-4 p-4">
         <h2 className="text-sm font-medium text-neutral-500">Progress</h2>
         <ul className="mt-3 space-y-2.5">
           <li className="flex items-center justify-between gap-4 text-sm">
@@ -317,7 +317,7 @@ export function Dashboard() {
       </div>
 
       {readyToScan && (
-        <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+        <div className="card mt-4 p-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-xs font-medium text-neutral-500">
               Book Dump{bookDump.data ? ` (${bookDump.data.length})` : ''}
@@ -361,11 +361,11 @@ export function Dashboard() {
 
       {/* Step 0: Torrents folder — local files need to land in Book Dump
           before a Drive scan would ever find them, so this comes first. */}
-      <div className="mt-6 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <div className="card mt-6 p-4">
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm text-neutral-500">Check the Torrents folder for new ebooks.</p>
           <button
-            className="shrink-0 rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+            className="btn btn-neutral btn-xs shrink-0"
             disabled={torrentsChecking}
             onClick={handleCheckTorrents}
           >
@@ -384,7 +384,7 @@ export function Dashboard() {
                   {torrentsCount === 1 ? 'it' : 'them'} to Book Dump?
                 </p>
                 <button
-                  className="shrink-0 rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                  className="btn btn-primary btn-xs shrink-0"
                   onClick={() => setShowTorrents(true)}
                 >
                   Review now
@@ -509,14 +509,14 @@ export function Dashboard() {
 
                 <div className="mt-3 flex items-center gap-2">
                   <button
-                    className="ml-auto rounded bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                    className="btn btn-primary btn-xs ml-auto"
                     disabled={torrentsBusy || selectedTorrents.size === 0}
                     onClick={handleCopySelectedTorrents}
                   >
                     Copy {selectedTorrents.size || ''} to Book Dump
                   </button>
                   <button
-                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+                    className="btn btn-neutral btn-xs"
                     disabled={torrentsBusy || selectedTorrents.size === 0}
                     onClick={handleDismissSelectedTorrents}
                   >
@@ -532,7 +532,7 @@ export function Dashboard() {
       {/* Step 1: Scan */}
       <div className="mt-6">
         <button
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary py-1.5 text-sm"
           disabled={!readyToScan || scanStarting || scan.data?.status === 'running'}
           onClick={handleStartScan}
         >
@@ -570,7 +570,7 @@ export function Dashboard() {
                 Would you like to review {reviewCount === 1 ? 'it' : 'them'} now?
               </p>
               <button
-                className="shrink-0 rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                className="btn btn-primary btn-xs shrink-0"
                 onClick={() => setShowReview(true)}
               >
                 Review now
@@ -600,7 +600,7 @@ export function Dashboard() {
                 clear {duplicateCount === 1 ? 'it' : 'them'} now?
               </p>
               <button
-                className="shrink-0 rounded border border-red-300 px-3 py-1.5 text-xs text-red-700 dark:border-red-800 dark:text-red-400"
+                className="btn btn-danger btn-xs shrink-0"
                 onClick={() => setShowDuplicates(true)}
               >
                 Clear duplicates
@@ -629,7 +629,7 @@ export function Dashboard() {
               organize {organizeCount === 1 ? 'it' : 'them'} now?
             </p>
             <button
-              className="shrink-0 rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral btn-xs shrink-0"
               disabled={organizeStarting || organize.data?.status === 'running'}
               onClick={handleOrganize}
             >

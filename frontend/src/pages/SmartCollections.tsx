@@ -27,19 +27,19 @@ function RuleForm({
   return (
     <div className="space-y-2">
       <input
-        className="w-full rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="field w-full py-1.5 text-sm"
         placeholder="Name (e.g. Fantasy Favorites)"
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
       <input
-        className="w-full rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="field w-full py-1.5 text-sm"
         placeholder="Description (optional)"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
       <textarea
-        className="w-full rounded border border-neutral-300 px-3 py-1.5 font-mono text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="field w-full py-1.5 font-mono text-sm"
         rows={2}
         placeholder='genre:Fantasy AND rating>=4'
         value={rule}
@@ -50,14 +50,14 @@ function RuleForm({
       />
       <div className="flex items-center gap-2">
         <button
-          className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral py-1.5 text-sm"
           disabled={!rule.trim() || previewMutation.isPending}
           onClick={() => previewMutation.mutate()}
         >
           {previewMutation.isPending ? 'Checking…' : 'Preview'}
         </button>
         <button
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary py-1.5 text-sm"
           disabled={!name.trim() || !rule.trim()}
           onClick={() => onSubmit({ name: name.trim(), description: description.trim(), rule: rule.trim() })}
         >
@@ -76,7 +76,7 @@ function RuleForm({
         </p>
       )}
       {preview && (
-        <div className="rounded bg-neutral-100 px-3 py-2 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+        <div className="card bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:bg-neutral-900/60 dark:text-neutral-400">
           <p className="font-medium">{preview.count} matching book{preview.count === 1 ? '' : 's'}</p>
           {preview.sample.length > 0 && (
             <ul className="mt-1 list-disc pl-4">
@@ -178,7 +178,7 @@ export function SmartCollections() {
   })
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-3xl">
       <h1 className="text-xl font-semibold">Smart Collections</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Named, rule-based shelves — membership is computed from a query and stays current as the
@@ -187,7 +187,7 @@ export function SmartCollections() {
 
       <div className="mt-4">
         {creating ? (
-          <div className="rounded border border-neutral-200 p-4 dark:border-neutral-800">
+          <div className="card p-4">
             <RuleForm
               submitLabel={create.isPending ? 'Creating…' : 'Create'}
               onSubmit={(values) => create.mutate(values)}
@@ -201,7 +201,7 @@ export function SmartCollections() {
           </div>
         ) : (
           <button
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
+            className="btn btn-primary py-1.5 text-sm"
             onClick={() => setCreating(true)}
           >
             New collection

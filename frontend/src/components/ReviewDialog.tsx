@@ -61,7 +61,7 @@ export function ReviewDialog({
   const proposedSeriesNumber = review.proposed_json.series_number as number | null
 
   return (
-    <div className="rounded border border-neutral-200 p-4 dark:border-neutral-800">
+    <div className="card p-4">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-medium">{review.filename}</h3>
@@ -131,7 +131,7 @@ export function ReviewDialog({
           {review.agreement.map((a, i) => (
             <span
               key={i}
-              className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+              className="badge bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
               title={`Sources: ${a.sources.join(', ')}`}
             >
               ✓ {a.field} agreed by {a.provider_count} sources
@@ -143,21 +143,21 @@ export function ReviewDialog({
       {!editing ? (
         <div className="mt-5 flex gap-2">
           <button
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+            className="btn btn-primary py-1.5 text-sm"
             disabled={busy}
             onClick={onApprove}
           >
             Approve
           </button>
           <button
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+            className="btn btn-neutral py-1.5 text-sm"
             disabled={busy}
             onClick={() => setEditing(true)}
           >
             Edit
           </button>
           <button
-            className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+            className="btn btn-danger py-1.5 text-sm"
             disabled={busy}
             onClick={onReject}
           >
@@ -165,11 +165,11 @@ export function ReviewDialog({
           </button>
         </div>
       ) : (
-        <div className="mt-5 space-y-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+        <div className="card mt-5 space-y-2 p-3">
           <label className="block text-xs text-neutral-500">
             Title
             <input
-              className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className="field mt-1 w-full py-1 text-sm"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -177,7 +177,7 @@ export function ReviewDialog({
           <label className="block text-xs text-neutral-500">
             Author
             <input
-              className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className="field mt-1 w-full py-1 text-sm"
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
             />
@@ -186,7 +186,7 @@ export function ReviewDialog({
             <label className="block flex-1 text-xs text-neutral-500">
               Series title
               <input
-                className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                className="field mt-1 w-full py-1 text-sm"
                 value={series}
                 onChange={(e) => setSeries(e.target.value)}
               />
@@ -194,7 +194,7 @@ export function ReviewDialog({
             <label className="block w-24 text-xs text-neutral-500">
               Book #
               <input
-                className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                className="field mt-1 w-full py-1 text-sm"
                 value={seriesNumber}
                 onChange={(e) => setSeriesNumber(e.target.value)}
               />
@@ -215,7 +215,7 @@ export function ReviewDialog({
           </label>
           <div className="flex gap-2 pt-1">
             <button
-              className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+              className="btn btn-primary py-1.5 text-sm"
               disabled={busy || title.trim() === ''}
               onClick={() =>
                 onCorrect({
@@ -230,7 +230,7 @@ export function ReviewDialog({
               Save correction
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               onClick={() => setEditing(false)}
             >
               Cancel

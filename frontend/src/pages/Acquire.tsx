@@ -98,7 +98,7 @@ function RequestRow({ req }: { req: OpenRequest }) {
                 {candidateLine(req.candidate)}
               </span>
               <button
-                className="rounded bg-neutral-900 px-2 py-0.5 text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                className="btn btn-primary btn-xs"
                 disabled={approve.isPending}
                 onClick={() => approve.mutate(undefined)}
               >
@@ -126,7 +126,7 @@ function RequestRow({ req }: { req: OpenRequest }) {
                   <li key={alt.full} className="flex items-center gap-2 text-xs">
                     <span className="text-neutral-500">{candidateLine(alt)}</span>
                     <button
-                      className="rounded border border-neutral-300 px-2 py-0.5 disabled:opacity-50 dark:border-neutral-700"
+                      className="btn btn-neutral btn-xs"
                       disabled={approve.isPending}
                       onClick={() => approve.mutate(alt.full ?? undefined)}
                     >
@@ -195,7 +195,7 @@ function OpenRequests() {
   const BATCH = 25
 
   return (
-    <div className="mt-4 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+    <div className="card mt-4 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">
           Books to get{' '}
@@ -210,7 +210,7 @@ function OpenRequests() {
           </span>
         </h2>
         <button
-          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={searching}
           onClick={() => refresh.mutate(BATCH)}
         >
@@ -296,7 +296,7 @@ function ServerControl() {
         : null
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-3 rounded border border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800">
+    <div className="card mt-4 flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
       <span className="flex items-center gap-2">
         <span
           className={`h-2 w-2 rounded-full ${running ? 'bg-emerald-500' : 'bg-neutral-400'}`}
@@ -313,7 +313,7 @@ function ServerControl() {
 
       {running ? (
         <button
-          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={busy}
           onClick={() => stop.mutate()}
         >
@@ -321,7 +321,7 @@ function ServerControl() {
         </button>
       ) : (
         <button
-          className="rounded bg-neutral-900 px-2.5 py-1 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary btn-xs"
           disabled={busy || server.data?.installed === false}
           onClick={() => start.mutate()}
         >
@@ -411,14 +411,14 @@ export function Acquire() {
 
   if (!status.data?.enabled) {
     return (
-      <div className="mx-auto max-w-2xl p-6">
+      <div className="mx-auto max-w-2xl">
         <h1 className="text-xl font-semibold">Find a Book</h1>
         <p className="mt-3 text-sm text-neutral-500">
           No acquisition source is turned on. To try OpenBooks, set{' '}
-          <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">OPENBOOKS_ENABLED=true</code>{' '}
-          in <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">backend/.env</code> and
+          <code className="rounded bg-neutral-100 px-1 font-mono dark:bg-neutral-800">OPENBOOKS_ENABLED=true</code>{' '}
+          in <code className="rounded bg-neutral-100 px-1 font-mono dark:bg-neutral-800">backend/.env</code> and
           restart the backend — then a Start button here launches the OpenBooks server for you. Anna's
-          Archive needs only <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">ANNAS_ARCHIVE_ENABLED=true</code>
+          Archive needs only <code className="rounded bg-neutral-100 px-1 font-mono dark:bg-neutral-800">ANNAS_ARCHIVE_ENABLED=true</code>
           , no process to start.
         </p>
       </div>
@@ -431,7 +431,7 @@ export function Acquire() {
     search.error instanceof ApiError ? search.error.message : search.isError ? 'Search failed.' : null
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-4xl">
       <h1 className="text-xl font-semibold">Find a Book</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Experimental. Searches every enabled source for a title, downloads the one you pick, and drops
@@ -448,14 +448,14 @@ export function Acquire() {
       <h2 className="mt-6 text-sm font-medium">Search for anything</h2>
       <div className="mt-2 flex gap-2">
         <input
-          className="flex-1 rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="field flex-1"
           placeholder="title and author, e.g. mistborn brandon sanderson"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && runSearch()}
         />
         <button
-          className="shrink-0 rounded bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary shrink-0 px-4 py-2 text-sm"
           disabled={!query.trim() || search.isPending}
           onClick={() => runSearch()}
         >
@@ -489,7 +489,7 @@ export function Acquire() {
               EPUB only
             </label>
             <input
-              className="rounded border border-neutral-300 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+              className="field py-1"
               placeholder="filter results"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
@@ -525,7 +525,7 @@ export function Acquire() {
                         <span className="text-xs text-emerald-600">✓ {rs.message}</span>
                       ) : (
                         <button
-                          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+                          className="btn btn-neutral btn-xs"
                           disabled={rs.status === 'working' || download.isPending}
                           onClick={() => download.mutate(book)}
                         >

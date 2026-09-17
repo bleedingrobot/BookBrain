@@ -38,14 +38,14 @@ export function SeriesMergePanel({ cluster }: { cluster: SimilarNameCluster }) {
   return (
     <div className="mt-2">
       <button
-        className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+        className="btn btn-neutral btn-xs"
         onClick={() => setExpanded((v) => !v)}
       >
         {expanded ? 'Hide' : 'Investigate'}
       </button>
 
       {expanded && (
-        <div className="mt-2 space-y-2 rounded border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+        <div className="card mt-2 space-y-2 p-3 text-sm">
           {proposal.isLoading && <p className="text-neutral-500">Asking Claude to compare these…</p>}
           {proposal.isError && <p className="text-red-600">Failed to investigate this cluster.</p>}
 
@@ -114,7 +114,7 @@ export function SeriesMergePanel({ cluster }: { cluster: SimilarNameCluster }) {
                   {applyError && <p className="text-red-600">{applyError}</p>}
                   {!confirmingApply ? (
                     <button
-                      className="rounded bg-neutral-900 px-3 py-1.5 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+                      className="btn btn-primary"
                       onClick={() => setConfirmingApply(true)}
                     >
                       Apply fix
@@ -124,14 +124,14 @@ export function SeriesMergePanel({ cluster }: { cluster: SimilarNameCluster }) {
                       <p className="text-amber-700 dark:text-amber-400">Go ahead with exactly the plan shown above?</p>
                       <div className="flex gap-2">
                         <button
-                          className="rounded bg-amber-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
+                          className="btn bg-amber-600 text-white hover:bg-amber-700"
                           disabled={apply.isPending}
                           onClick={() => apply.mutate(proposal.data.canonical_series_name)}
                         >
                           Yes, apply fix
                         </button>
                         <button
-                          className="rounded border border-neutral-300 px-3 py-1.5 text-xs dark:border-neutral-700"
+                          className="btn btn-neutral"
                           onClick={() => setConfirmingApply(false)}
                         >
                           Cancel

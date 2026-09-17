@@ -56,12 +56,12 @@ export function CorrectFileForm({
   })
 
   return (
-    <div className="mt-2 space-y-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+    <div className="card mt-2 space-y-2 p-3">
       {initialNote && <p className="text-xs text-amber-700 dark:text-amber-400">{initialNote}</p>}
       <label className="block text-xs text-neutral-500">
         Title
         <input
-          className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="field mt-1 w-full py-1 text-sm"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -69,7 +69,7 @@ export function CorrectFileForm({
       <label className="block text-xs text-neutral-500">
         Author
         <input
-          className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="field mt-1 w-full py-1 text-sm"
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
         />
@@ -78,7 +78,7 @@ export function CorrectFileForm({
         <label className="block flex-1 text-xs text-neutral-500">
           Series (blank = standalone)
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1 w-full py-1 text-sm"
             value={series}
             onChange={(e) => setSeries(e.target.value)}
           />
@@ -86,7 +86,7 @@ export function CorrectFileForm({
         <label className="block w-20 text-xs text-neutral-500">
           Book #
           <input
-            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="field mt-1 w-full py-1 text-sm"
             value={num}
             onChange={(e) => setNum(e.target.value)}
           />
@@ -98,7 +98,7 @@ export function CorrectFileForm({
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex items-center gap-2 pt-1">
         <button
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+          className="btn btn-primary py-1.5"
           disabled={busy || title.trim() === ''}
           onClick={() =>
             onSubmit({
@@ -112,7 +112,7 @@ export function CorrectFileForm({
           {busy ? 'Saving…' : 'Save correction'}
         </button>
         <button
-          className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
+          className="btn btn-neutral py-1.5"
           onClick={onCancel}
         >
           Cancel

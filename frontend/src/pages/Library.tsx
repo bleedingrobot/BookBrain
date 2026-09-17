@@ -248,7 +248,7 @@ export function Library() {
       : files.data
 
   return (
-    <div className="p-6">
+    <div>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Library</h1>
@@ -260,7 +260,7 @@ export function Library() {
         <div className="shrink-0 text-right">
           <div className="flex justify-end gap-2">
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               disabled={organizeStarting || organize.data?.status === 'running'}
               onClick={async () => {
                 setOrganizeError(null)
@@ -278,7 +278,7 @@ export function Library() {
               {organizeSettings.data?.dry_run ? 'Organize (dry run)' : 'Organize'}
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               title="Re-identifies every library file not already tracked (AI included). Shows an estimate first."
               disabled={rebuildStarting || rebuild.data?.status === 'running'}
               onClick={requestRebuild}
@@ -286,7 +286,7 @@ export function Library() {
               Rebuild library
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               title="Rewrites bookbrain-index.json in the library folder — the metadata the viewer reads (author, series, description, ISBN, covers folder)."
               disabled={indexBusy}
               onClick={async () => {
@@ -306,7 +306,7 @@ export function Library() {
               {indexBusy ? 'Refreshing…' : 'Refresh viewer data'}
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               title="Extracts a cover thumbnail from every organised EPUB into the Drive covers/ folder. Resumable — re-running only fills the gaps."
               disabled={coverStarting || covers.data?.status === 'running'}
               onClick={async () => {
@@ -325,7 +325,7 @@ export function Library() {
               {covers.data?.status === 'running' ? 'Generating covers…' : 'Generate covers'}
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               title="Fills in missing book descriptions from Google Books / Open Library (free). Tick the box to also have Claude write one for anything still blank (uses API credits — you'll see an estimate first)."
               disabled={descStarting || descriptions.data?.status === 'running'}
               onClick={requestDescriptions}
@@ -333,7 +333,7 @@ export function Library() {
               {descriptions.data?.status === 'running' ? 'Filling descriptions…' : 'Fill descriptions'}
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               title="Writes the resolved title / author / series (and a cover, if the epub has none) into each organised .epub's own metadata, so Kobo and other readers show it correctly. Tick 'dry run' to preview what would change. Resumable."
               disabled={mdStarting || embeddedMetadata.data?.status === 'running'}
               onClick={async () => {
@@ -356,7 +356,7 @@ export function Library() {
                   : 'Fix embedded metadata'}
             </button>
             <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+              className="btn btn-neutral py-1.5 text-sm"
               disabled={exporting}
               onClick={async () => {
                 setExportError(null)
@@ -376,7 +376,7 @@ export function Library() {
               {exporting ? 'Exporting…' : 'Export to Google Sheets'}
             </button>
             <button
-              className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+              className="btn btn-danger py-1.5 text-sm"
               onClick={() => setConfirmingClear(true)}
             >
               Clear library
@@ -486,14 +486,14 @@ export function Library() {
               </p>
               <div className="flex gap-2">
                 <button
-                  className="rounded bg-amber-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  className="btn bg-amber-600 text-white hover:bg-amber-700"
                   disabled={rebuildStarting}
                   onClick={startRebuild}
                 >
                   Yes, rebuild
                 </button>
                 <button
-                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  className="btn btn-neutral"
                   onClick={() => setRebuildConfirm(null)}
                 >
                   Cancel
@@ -515,14 +515,14 @@ export function Library() {
               </p>
               <div className="flex gap-2">
                 <button
-                  className="rounded bg-amber-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  className="btn bg-amber-600 text-white hover:bg-amber-700"
                   disabled={descStarting}
                   onClick={() => startDescriptions(true)}
                 >
                   Yes, run it
                 </button>
                 <button
-                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  className="btn btn-neutral"
                   onClick={() => setDescConfirm(null)}
                 >
                   Cancel
@@ -542,14 +542,14 @@ export function Library() {
               {clearError && <p className="text-red-600">{clearError}</p>}
               <div className="flex gap-2">
                 <button
-                  className="rounded bg-red-600 px-3 py-1.5 text-white disabled:opacity-50"
+                  className="btn bg-red-600 text-white hover:bg-red-700"
                   disabled={clearLibrary.isPending}
                   onClick={() => clearLibrary.mutate()}
                 >
                   Yes, clear everything
                 </button>
                 <button
-                  className="rounded border border-neutral-300 px-3 py-1.5 dark:border-neutral-700"
+                  className="btn btn-neutral"
                   onClick={() => setConfirmingClear(false)}
                 >
                   Cancel
@@ -565,7 +565,7 @@ export function Library() {
           onClick={() => setStatus(undefined)}
           className={`rounded px-3 py-1 text-xs font-medium ${
             status === undefined
-              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+              ? 'bg-brand-600 text-white'
               : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
           }`}
         >
@@ -577,7 +577,7 @@ export function Library() {
             onClick={() => setStatus(s)}
             className={`rounded px-3 py-1 text-xs font-medium ${
               status === s
-                ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                ? 'bg-brand-600 text-white'
                 : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
             }`}
           >
@@ -637,12 +637,12 @@ export function Library() {
                 {file.computed_confidence !== null && (
                   <span className="text-xs text-neutral-400">confidence {file.computed_confidence}</span>
                 )}
-                <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE[file.status] ?? ''}`}>
+                <span className={`badge ${STATUS_BADGE[file.status] ?? ''}`}>
                   {STATUS_LABEL[file.status] ?? file.status}
                 </span>
                 {file.book_title && file.status !== 'rejected' && (
                   <button
-                    className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+                    className="btn btn-neutral btn-xs"
                     title="Fix the title / author / series, then run Organize to re-file it."
                     onClick={() => {
                       setCorrectError(null)
@@ -656,14 +656,14 @@ export function Library() {
                   (confirmingRemoveId === file.id ? (
                     <span className="flex items-center gap-1 text-xs">
                       <button
-                        className="rounded bg-red-600 px-2 py-0.5 text-white disabled:opacity-50"
+                        className="btn btn-xs bg-red-600 text-white hover:bg-red-700"
                         disabled={removeFile.isPending}
                         onClick={() => removeFile.mutate(file.id)}
                       >
                         {removeFile.isPending ? '…' : 'Confirm'}
                       </button>
                       <button
-                        className="rounded border border-neutral-300 px-2 py-0.5 dark:border-neutral-700"
+                        className="btn btn-neutral btn-xs"
                         disabled={removeFile.isPending}
                         onClick={() => setConfirmingRemoveId(null)}
                       >
@@ -672,7 +672,7 @@ export function Library() {
                     </span>
                   ) : (
                     <button
-                      className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+                      className="btn btn-neutral btn-xs"
                       title="Moves the file to Google Drive's Trash — recoverable there, not a permanent delete."
                       onClick={() => {
                         setRemoveError(null)

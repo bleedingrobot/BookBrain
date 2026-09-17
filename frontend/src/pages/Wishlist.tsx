@@ -65,16 +65,16 @@ export function Wishlist() {
   const wantedCount = (items.data ?? []).filter((i) => i.status === 'wanted').length
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-3xl">
       <h1 className="text-xl font-semibold">Wishlist</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Books you want but don't own yet. Describe one and Claude will work out which book it is and
         check it against your library. Items tick themselves off once a matching book is imported.
       </p>
 
-      <div className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <div className="card mt-4 p-4">
         <textarea
-          className="w-full rounded border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="field w-full"
           rows={2}
           placeholder="e.g. the new brandon sanderson stormlight one — or — that grimdark trilogy about the blind assassin nun"
           value={text}
@@ -82,7 +82,7 @@ export function Wishlist() {
         />
         <div className="mt-2 flex items-center gap-2">
           <button
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+            className="btn btn-primary py-1.5 text-sm"
             disabled={!text.trim() || resolve.isPending}
             onClick={() => {
               setResolved(null)
@@ -106,7 +106,7 @@ export function Wishlist() {
         )}
 
         {resolved?.found && resolved.resolved && (
-          <div className="mt-3 flex gap-3 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+          <div className="card mt-3 flex gap-3 p-3">
             <Cover url={resolved.resolved.cover_url} />
             <div className="min-w-0 flex-1">
               <div className="font-medium">{resolved.resolved.title}</div>
@@ -136,7 +136,7 @@ export function Wishlist() {
                 </p>
               ) : (
                 <button
-                  className="mt-2 rounded border border-neutral-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-neutral-700"
+                  className="btn btn-neutral mt-2 py-1.5 text-sm"
                   disabled={add.isPending}
                   onClick={() => add.mutate()}
                 >

@@ -54,7 +54,7 @@ function Row({ label, refreshKey, status }: { label: string; refreshKey: string;
           {when.text}
         </span>
         <button
-          className="rounded border border-neutral-300 px-2 py-0.5 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={refresh.isPending}
           onClick={() => refresh.mutate()}
         >
@@ -119,7 +119,7 @@ export function DiscoveryPanel() {
 
       <div className="mt-3 flex items-center gap-3">
         <button
-          className="rounded border border-neutral-300 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="btn btn-neutral btn-xs"
           disabled={resync.isPending}
           onClick={() => resync.mutate()}
         >
