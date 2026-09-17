@@ -58,6 +58,16 @@ _MAX_BOOK_BYTES = 460
 
 _CONNECT_TIMEOUT = 30.0
 _SEARCH_TIMEOUT = 90.0
+# How many IRC sessions a single search may burn through. Each attempt past
+# the first is a fresh connection dialled specifically because the previous
+# one lost the JOIN race (see OpenBooksSearchStalled). Deliberately only one
+# redial: irchighway throttles repeated connections from an IP (hit live on
+# 2026-09-18 while probing — the server stops completing the handshake and
+# OpenBooks reports "Unable to connect to IRC server"), so burning three
+# sessions per search would trade one failure mode for a worse one. One
+# redial is enough to stop a poisoned session persisting for hours, which
+# was the actual bug; auto-get retries the row on its next tick anyway.
+_SEARCH_ATTEMPTS = 2
 # A DCC transfer of an epub that's going to work responds within seconds
 # (allow a little slack for a server that briefly queues the request). A
 # longer wait just means the source is dead or trickling a truncated file —
@@ -73,6 +83,28 @@ class OpenBooksError(AcquisitionError):
 
 class OpenBooksUnavailable(OpenBooksError, AcquisitionUnavailable):
     """OpenBooks isn't reachable, refused the connection, or couldn't join IRC."""
+
+
+class OpenBooksSearchStalled(OpenBooksError):
+    """A search went out and nothing ever came back.
+
+    Almost always means OpenBooks lost a race during IRC registration: it
+    fires ``JOIN #ebooks`` before the server has finished registering the
+    connection, the server rejects it with ``451 JOIN :You have not
+    registered``, and OpenBooks neither retries the join nor reports it.
+    The WebSocket stays perfectly healthy, so nothing looks wrong from here
+    — but every later search on that session is silently dropped by the
+    server (``404 ... :Cannot send to channel (no external messages)``,
+    visible only with OpenBooks' own ``--log``). Confirmed 2026-09-18 by
+    probing a second instance: sessions that logged the 451 answered zero
+    of their searches; sessions that joined cleanly answered every one.
+
+    Whether the race is won depends on how fast the IRC server finishes its
+    hostname lookup, so it's ~50/50 per connection and looks like a flaky
+    outage rather than a hard failure. It is not retryable on the same
+    connection — only a fresh IRC session can recover, which is why
+    `search` drops the socket and redials instead of just trying again.
+    """
 
 
 class OpenBooksRateLimited(OpenBooksError, AcquisitionRateLimited):
@@ -218,7 +250,26 @@ class _OpenBooksClient:
         if len(query.encode("utf-8")) > _MAX_QUERY_BYTES:
             raise OpenBooksError("search query is too long for OpenBooks")
         async with self._lock:
-            return await self._with_reconnect(lambda: self._search(query))
+            stalled: OpenBooksSearchStalled | None = None
+            for attempt in range(1, _SEARCH_ATTEMPTS + 1):
+                try:
+                    return await self._with_reconnect(lambda: self._search(query))
+                except OpenBooksSearchStalled as exc:
+                    # The IRC session is dead for searching (see the class
+                    # docstring) and will stay dead — retrying on it would
+                    # just burn another timeout, and leaving it cached is
+                    # what turned one lost race into hours of silence.
+                    stalled = exc
+                    if attempt < _SEARCH_ATTEMPTS:
+                        logger.warning(
+                            "openbooks: search got no reply (attempt %d/%d) — the IRC "
+                            "session likely never joined #ebooks; redialing",
+                            attempt,
+                            _SEARCH_ATTEMPTS,
+                        )
+                    await self._drop()
+            assert stalled is not None
+            raise stalled
 
     async def _search(self, query: str) -> SearchOutcome:
         await self._send(_SEARCH, {"query": query})
@@ -226,7 +277,7 @@ class _OpenBooksClient:
         while True:
             msg = await self._recv_until(deadline)
             if msg is None:
-                raise OpenBooksError(
+                raise OpenBooksSearchStalled(
                     f"OpenBooks returned no results for {query!r} within "
                     f"{_SEARCH_TIMEOUT:.0f}s (the IRC search bot may be busy or "
                     "ignoring the query — try more/fuller words)"

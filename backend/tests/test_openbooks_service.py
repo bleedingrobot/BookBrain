@@ -252,3 +252,40 @@ async def test_search_timeout_is_a_clean_openbooks_error(point_at, monkeypatch):
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_search_redials_instead_of_reusing_the_dead_session(
+    point_at, monkeypatch
+):
+    """Regression (2026-09-18): OpenBooks sometimes loses a race during IRC
+    registration and never joins #ebooks, after which every search on that
+    connection is silently dropped by the IRC server — the WebSocket stays
+    healthy, so the old code happily reused the dead session for hours. A
+    stalled search has to abandon the connection and dial a fresh one."""
+    sessions: list[int] = []
+
+    async def handler(ws):
+        sessions.append(1)
+        mine = len(sessions)
+        await _expect(ws, 1)  # CONNECT
+        await ws.send(json.dumps(CONNECT_OK))
+        await _expect(ws, 2)  # SEARCH
+        if mine == 1:
+            await asyncio.sleep(5)  # first session never joined — stays silent
+            return
+        await ws.send(json.dumps({"type": 2, "appearance": 1, "title": "ok", "books": []}))
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(openbooks_service, "_SEARCH_TIMEOUT", 0.3)
+    server, url = await _serve(handler)
+    point_at(url)
+    try:
+        outcome = await openbooks_service.search("mistborn")
+    finally:
+        await openbooks_service.aclose()
+        server.close()
+        await server.wait_closed()
+
+    assert len(sessions) == 2, "the stalled session should have been dropped and redialed"
+    assert outcome.results == []
