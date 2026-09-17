@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -125,7 +126,17 @@ class AuthService:
         )
 
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            # creds.refresh() is google-auth's synchronous requests-based HTTP
+            # call — with no await/to_thread it runs straight on the event
+            # loop, blocking every other in-flight request for its duration.
+            # Harmless at the admin app's one-browser-tab request rate, but
+            # the /api/viewer/* proxy (app/api/routes/viewer.py) calls this
+            # on every request and a sync can fire a dozen-plus in parallel —
+            # if the stored token happens to be expired, that many concurrent
+            # blocking refresh calls serialize on the one event loop thread
+            # and the whole server stalls (2026-09-18: exactly this, diagnosed
+            # live via a pile of CLOSE-WAIT sockets on :8000).
+            await asyncio.to_thread(creds.refresh, Request())
             await self._persist(creds, settings_repo)
 
         return creds
