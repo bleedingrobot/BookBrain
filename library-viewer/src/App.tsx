@@ -922,6 +922,10 @@ export default function App() {
           </button>
         </form>
         {lib.passcodeError && <p className="mt-3 text-sm text-red-600">{lib.passcodeError}</p>}
+        <p className="mt-3 text-xs text-neutral-400">
+          Won't work on a work/school Wi-Fi that blocks Tailscale — try mobile data or a home
+          network instead.
+        </p>
 
         <button
           className="mt-8 text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
