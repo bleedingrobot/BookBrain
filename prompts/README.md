@@ -166,7 +166,53 @@ new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
   (47% an APScheduler skip message every 2s, 46% HTTP access lines that the
   dashboard's own 30s polling generates). Ends on "if it breaks at 3am, what
   tells James?". Produces `LOGGING-REVIEW-<date>.md` + follow-up prompts.
-  **Not started.**
+  **Done 2026-09-18** — `LOGGING-REVIEW-2026-09-18.md` + `prompts/43`–`46`.
+  Headline: `journalctl -u bookbrain.service | grep ERROR` returns **1 line for
+  7 days** during which **202 tracebacks** were printed (the root logger is
+  never configured, so every library error hits `logging.lastResort`
+  unformatted). The OpenBooks outage was **18 hours, not 1h40m**, and was
+  invisible because Libgen absorbed the load — the 09-17 18h bucket was the
+  best on record *while one of three providers was dead*. Journal retention,
+  the `app` logger config, the 2s tagging interval and the viewer Dashboard's
+  freshness label all checked out fine.
+
+## 2026-09-18 logging batch (`LOGGING-REVIEW-2026-09-18.md`) — open
+
+Order: `43` → `44` → `45`; `46` is independent.
+
+- [`43-logging-signal-to-noise.md`](43-logging-signal-to-noise.md) — **P1**,
+  ~10 lines in `main.py`. Configure the **root** logger (WARNING + the existing
+  formatter) so `apscheduler`/`sqlalchemy`/`websockets` errors stop printing
+  untimestamped and unlevelled via `logging.lastResort` — currently 202
+  tracebacks a week are ungreppable, including 32 × `database is locked`. Plus
+  a filter for the APScheduler max-instances line (**−47 % journal volume**;
+  it's on `apscheduler.scheduler`, job errors are on
+  `apscheduler.executors.*`, so they separate cleanly). Explicitly **keeps the
+  uvicorn access log** — measured, it's BookBrain's only real heartbeat
+  (`app.*` alone is 456 lines/7 days, p99 gap 4 min). Do this first: until it
+  lands, nobody can verify their own work by grepping. **Not started.**
+- [`44-per-provider-health.md`](44-per-provider-health.md) — **P1**. Fix
+  `acquire: auto-got … via None` (81 of 82 lines in 24 h — it logs
+  `cand.server`, which is OpenBooks-only; the right field is `cand.provider`,
+  and the in-scope `provider` local is the *Drive* provider, not the source).
+  Then add a **windowed** per-provider success rate to `status.json` + both
+  dashboards, because the existing `got`/`failed` counters are lifetime totals
+  and a monotonic counter can never show "dead now". **Not started.**
+- [`45-dashboard-alerts-block.md`](45-dashboard-alerts-block.md) — P2. The
+  answer to "if it breaks at 3am, what tells James?" — an `ALERTS` block at the
+  top of `dashboard.sh` (silent >5 min, provider dead, `status.json` stale,
+  traceback in the last hour, nightly ≠ success) plus `alerts.log` so a 3 a.m.
+  alert is still readable at breakfast. Also wires up `lastGeneratedAt`, which
+  the mobile page assigns and **never reads**, so a dead `dashboard.sh` serves
+  confident green pills off a stale file. No push notifications yet — tune the
+  conditions first. **Not started.**
+- [`46-logging-housekeeping.md`](46-logging-housekeeping.md) — P3, independent.
+  Retire `backend/nightly-runs.log` (5 days stale; nothing schedules its
+  writer, and it's the first plausible-looking file a 3 a.m. investigation
+  opens). Trim `status.json` (105 KB, 40 % of it `searched_recent.alternatives`
+  that no reader renders) and align the mobile page's 15 s poll with the 30 s
+  write. Plus a decision for James: the torrent provider is **4 approved
+  vs 2,210 failed** all-time. **Not started.**
 
 ## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
 
