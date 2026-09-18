@@ -39,14 +39,31 @@ check "301s fires" "$(printf '%s\n' "${ALERT_KEYS[@]}" | grep -c backend-silent)
 
 # --- 4. dead provider comes through from PROVIDERS_JSON ---
 HANG_LAST=$(( HANG_NOW - 5 ))
-PROVIDERS_JSON='{"openbooks":{"dead":true,"window_got":0,"window_attempts":47,"window_hours":6},"libgen":{"dead":false},"torrent":{"dead":false}}'
+PROVIDERS_JSON='{"openbooks":{"dead":true,"window_got":0,"window_attempts":47,"window_hours":6,"reason":"0 got in 47 download attempt(s) in 6h"},"libgen":{"dead":false},"torrent":{"dead":false}}'
 compute_alerts
-check "dead provider raises" "$(printf '%s\n' "${ALERT_MSGS[@]}" | grep -c 'provider-dead: openbooks 0/47 in 6h')" "1"
+check "dead provider raises" "$(printf '%s\n' "${ALERT_MSGS[@]}" | grep -c 'provider-dead: openbooks')" "1"
+check "  message carries the reason" "$(printf '%s\n' "${ALERT_MSGS[@]}" | grep -c '47 download attempt')" "1"
+
+# --- 4b. the shape both real outages had: enabled, and not even trying.
+# `dead` needed a download attempt, so this raised nothing at all until
+# 2026-09-18 -- replayed over the 8 days to then, `dead` fired in 0 of 188
+# windows while this condition covered both outages.
+PROVIDERS_JSON='{"openbooks":{"dead":false,"stalled":true,"window_got":0,"window_attempts":0,"window_resolutions":0,"window_hours":6,"reason":"nothing attempted in 6h — cycle not running?"},"libgen":{"dead":false}}'
+compute_alerts
+check "stalled provider raises" "$(printf '%s\n' "${ALERT_KEYS[@]}" | grep -c 'provider-stalled:openbooks')" "1"
+check "  and says which kind" "$(printf '%s\n' "${ALERT_MSGS[@]}" | grep -c 'cycle not running')" "1"
+check "  and is not also 'dead'" "$(printf '%s\n' "${ALERT_KEYS[@]}" | grep -c 'provider-dead')" "0"
+
+# --- 4c. silence the backend has NOT flagged (switched off, or no history)
+# must stay quiet -- that is the whole point of deciding it server-side.
+PROVIDERS_JSON='{"openbooks":{"dead":false,"stalled":false,"enabled":false,"window_attempts":0,"window_resolutions":0,"window_hours":6}}'
+compute_alerts
+check "unflagged silence stays quiet" "$(printf '%s\n' "${ALERT_KEYS[@]-}" | grep -c provider-)" "0"
 
 # --- 5. torrent, never proven, must never raise ---
-PROVIDERS_JSON='{"torrent":{"dead":false,"window_got":0,"window_attempts":2210,"window_hours":6}}'
+PROVIDERS_JSON='{"torrent":{"dead":false,"stalled":false,"window_got":0,"window_attempts":2210,"window_hours":6}}'
 compute_alerts
-check "torrent never raises" "$(printf '%s\n' "${ALERT_KEYS[@]-}" | grep -c provider-dead)" "0"
+check "torrent never raises" "$(printf '%s\n' "${ALERT_KEYS[@]-}" | grep -c provider-)" "0"
 
 # --- 6. status.json staleness, measured in the reader ---
 touch -d '5 minutes ago' "$STATUS_FILE"

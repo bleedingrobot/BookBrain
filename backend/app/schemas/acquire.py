@@ -18,27 +18,41 @@ class AcquisitionEventEntry(BaseModel):
     occurred_at: str | None = None
     title: str
     author: str | None = None
-    outcome: str  # "got" | "failed"
+    # "got" | "failed" (a download) | "no_match" | "unavailable" (a search)
+    outcome: str
     server: str | None = None  # OpenBooks IRC bot; None for HTTP providers
 
 
 class ProviderHealthEntry(BaseModel):
     """Windowed acquisition success for one provider, plus its last few
-    attempts. See acquisition_service.provider_health for what `dead` and
-    `proven` mean.
+    attempts. See acquisition_service.provider_health for what `dead`,
+    `stalled` and `proven` mean.
 
     Every number here comes from `acquisition_events`, not the candidate
     queue -- the queue prunes and hides finished work, which is what made a
     working OpenBooks read as idle on the dashboard.
+
+    `window_attempts` is downloads only, so the panel's "8/9 in 6h" keeps
+    meaning what it has always meant; the searches that found nothing are
+    reported alongside it rather than folded into it.
     """
 
     window_got: int
     window_failed: int
-    window_attempts: int
+    window_attempts: int  # downloads tried: got + failed
+    window_no_match: int = 0  # searched, provider hasn't got it
+    window_unavailable: int = 0  # searched, provider failed to answer
+    window_searches: int = 0  # no_match + unavailable
+    window_resolutions: int = 0  # everything that finished: attempts + searches
     lifetime_got: int
     lifetime_failed: int
+    lifetime_no_match: int = 0
+    lifetime_unavailable: int = 0
     proven: bool
+    enabled: bool = False  # .env switch and auto-get toggle both on
     dead: bool
+    stalled: bool = False
+    reason: str | None = None  # what the flag is claiming, for alert text
     searched_recent: list[AcquisitionEventEntry] = []
     got_recent: list[AcquisitionEventEntry] = []
 

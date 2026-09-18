@@ -261,6 +261,7 @@
 <div class="card">
   <h2>LibGen</h2>
   <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="lg-counts">--</span></div>
+  <div class="row"><span class="label">Searched, found nothing</span><span class="value" id="lg-nomatch">--</span></div>
   <div class="row"><span class="label">Recent window</span><span class="value"><span class="pill" id="lg-window">--</span></span></div>
   <div class="sub" style="margin:10px 0 2px">Last searched</div>
   <ul class="list" id="lg-searched-list"><li class="empty">loading&hellip;</li></ul>
@@ -271,6 +272,7 @@
 <div class="card">
   <h2>OpenBooks</h2>
   <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="ob-counts">--</span></div>
+  <div class="row"><span class="label">Searched, found nothing</span><span class="value" id="ob-nomatch">--</span></div>
   <div class="row"><span class="label">Recent window</span><span class="value"><span class="pill" id="ob-window">--</span></span></div>
   <div class="sub" style="margin:10px 0 2px">Last searched</div>
   <ul class="list" id="ob-searched-list"><li class="empty">loading&hellip;</li></ul>
@@ -284,7 +286,7 @@ const $ = id => document.getElementById(id);
 function pillClass(status) {
   const s = (status || '').toLowerCase();
   if (['running', 'ok', 'responding', 'success', 'approved'].includes(s)) return 'pill-green';
-  if (['down', 'failed', 'unreachable'].includes(s)) return 'pill-red';
+  if (['down', 'failed', 'unreachable', 'unavailable'].includes(s)) return 'pill-red';
   if (['pending', 'no_match', 'degraded', 'n/a', 'off'].includes(s)) return 'pill-yellow';
   return 'pill-dim';
 }
@@ -484,24 +486,48 @@ async function refresh() {
 function renderProviderCard(prefix, data, opts) {
   data = data || {};
   $(prefix + '-counts').textContent = opts.counts(data);
+  // "Failed" above has only ever meant "found the book, couldn't fetch it".
+  // The searches that found nothing at all were counted nowhere, which let
+  // OpenBooks read as 130 got / 6 failed -- a 96% success rate it has never
+  // had. Both event-log numbers, split because they mean different things.
+  const nomatch = $(prefix + '-nomatch');
+  if (nomatch) {
+    const nm = (data.no_match ?? 0) + (data.unavailable ?? 0);
+    nomatch.textContent = data.unavailable
+      ? `${nm} (${data.unavailable} couldn't answer)`
+      : `${nm}`;
+  }
   // Lifetime counters above; the windowed rate here. A monotonic counter can
-  // never show "this died two hours ago" -- see prompts/44. `dead` is decided
-  // by the backend so this page and the tty1 dashboard agree on the word.
+  // never show "this died two hours ago" -- see prompts/44. `dead` and
+  // `stalled` are both decided by the backend so this page, the tty1
+  // dashboard and the alerts block agree on the word. `stalled` is the one
+  // that catches the outage shape this pill used to render as a calm "idle".
   const win = $(prefix + '-window');
   if (win) {
     const attempts = data.window_attempts ?? 0;
-    win.textContent = attempts
-      ? `${data.window_got ?? 0}/${attempts} in ${data.window_hours ?? 6}h`
-      : `idle ${data.window_hours ?? 6}h`;
-    win.className = 'pill' + (data.dead ? ' pill-red'
-      : !attempts ? ''
+    const searches = data.window_searches ?? 0;
+    const hours = data.window_hours ?? 6;
+    if (data.stalled) {
+      win.textContent = `nothing tried in ${hours}h`;
+    } else if (attempts || searches) {
+      win.textContent = `${data.window_got ?? 0}/${attempts} in ${hours}h`
+        + (searches ? ` · ${searches} found nothing` : '');
+    } else {
+      win.textContent = `idle ${hours}h`;
+    }
+    win.className = 'pill' + (data.dead || data.stalled ? ' pill-red'
+      : !attempts && !searches ? ''
       : (data.window_got ?? 0) ? ' pill-green' : ' pill-yellow');
   }
   if (opts.fetching) {
     $(prefix + '-fetching').textContent = data.fetching ?? 0;
   }
+  // "no_match" / "unavailable" come straight from the event log's outcomes;
+  // spell them out here, where there's room for the difference between "this
+  // provider hasn't got the book" and "this provider didn't answer".
+  const OUTCOME_LABEL = { approved: 'got', failed: 'failed', no_match: 'found nothing', unavailable: 'no answer' };
   renderList(prefix + '-searched-list', (data.searched_recent || []).slice(0, 3), 'nothing searched yet', it =>
-    li(esc(it.title), esc(it.author), `${esc(it.status)} &middot; ${ago(it.resolved_at)}`));
+    li(esc(it.title), esc(it.author), `${esc(OUTCOME_LABEL[it.status] || it.status)} &middot; ${ago(it.resolved_at)}`));
   renderList(prefix + '-got-list', (data.got_recent || []).slice(0, 2), 'nothing downloaded yet', it =>
     li(esc(it.title), esc(it.author), ago(it.resolved_at)));
 }

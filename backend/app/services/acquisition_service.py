@@ -413,35 +413,56 @@ async def gather_acquisition_targets(provider: DriveProvider, library_folder_id:
 
 
 async def _safe_search(
-    p: AcquisitionProvider, query: str, dead: set[str]
+    p: AcquisitionProvider,
+    query: str,
+    dead: set[str],
+    errors: dict[str, str] | None = None,
 ) -> list[AcquisitionResult]:
     """Search one provider, retrying once after its own rate-limit cooldown.
     `AcquisitionUnavailable` adds the provider's name to `dead` (mutated in
     place — shared across concurrent callers, safe because every read/write
     of it happens with no `await` in between) and returns []; any other
-    `AcquisitionError` is logged and also returns []. Never raises."""
+    `AcquisitionError` is logged and also returns []. Never raises.
+
+    `errors` (same in-place mutation, same safety argument) collects whichever
+    message fired, because `dead` alone does not mean "this provider is
+    broken": OpenBooks answering every single query with "returned no results
+    within 90s" raises plain `AcquisitionError`, so it takes the last branch
+    below and never touches `dead`. That is exactly what ran for ~15 hours on
+    2026-09-16 while the dashboard showed OpenBooks idle and fine. Callers use
+    `errors` to tell "the provider failed to answer" from "the provider
+    answered, and hasn't got the book" — see `_log_search_shortfalls`."""
+
+    def _note(exc: Exception) -> None:
+        if errors is not None:
+            errors[p.name] = str(exc)
+
     try:
         return await p.search(query)
     except AcquisitionRateLimited as exc:
         await asyncio.sleep(exc.wait_seconds + 1)
         try:
             return await p.search(query)
-        except AcquisitionUnavailable:
+        except AcquisitionUnavailable as retry_exc:
             dead.add(p.name)
+            _note(retry_exc)
             return []
-        except AcquisitionError:
+        except AcquisitionError as retry_exc:
+            _note(retry_exc)
             return []
-    except AcquisitionUnavailable:
+    except AcquisitionUnavailable as exc:
         dead.add(p.name)
+        _note(exc)
         return []
     except AcquisitionError as exc:
         logger.warning("acquire: %s search failed for %r: %s", p.name, query, exc)
+        _note(exc)
         return []
 
 
 async def _search_all_providers(
     providers: list[AcquisitionProvider], item: dict
-) -> tuple[list[AcquisitionResult], set[str]]:
+) -> tuple[list[AcquisitionResult], set[str], dict[str, str]]:
     """Fan out one query to every enabled provider concurrently (mirrors
     CandidateService._query_all's asyncio.gather fan-out for metadata
     providers) — but unlike a metadata provider, an acquisition provider IS
@@ -450,14 +471,17 @@ async def _search_all_providers(
     return_exceptions=True.
 
     Returns (merged results, names of providers that raised
-    AcquisitionUnavailable this call) — used by autoget_tick, which searches
-    one book per tick against every provider at once (there's no "different
-    book instead" option within a single tick, unlike refresh_candidates'
-    per-provider workers below)."""
+    AcquisitionUnavailable this call, per-provider error message) — used by
+    autoget_tick, which searches one book per tick against every provider at
+    once (there's no "different book instead" option within a single tick,
+    unlike refresh_candidates' per-provider workers below)."""
     query = _request_query(item)
     dead: set[str] = set()
-    results_per_provider = await asyncio.gather(*(_safe_search(p, query, dead) for p in providers))
-    return [r for rs in results_per_provider for r in rs], dead
+    errors: dict[str, str] = {}
+    results_per_provider = await asyncio.gather(
+        *(_safe_search(p, query, dead, errors) for p in providers)
+    )
+    return [r for rs in results_per_provider for r in rs], dead, errors
 
 
 async def _upsert(
@@ -1054,6 +1078,59 @@ async def _log_acquisition_event(
     )
 
 
+async def _log_search_shortfalls(
+    session: AsyncSession,
+    *,
+    providers: list[AcquisitionProvider],
+    item: dict,
+    results: list[AcquisitionResult],
+    unavailable: set[str],
+    errors: dict[str, str],
+) -> None:
+    """Append one event per provider that searched and came back with nothing.
+
+    Until this existed the log recorded *downloads* only, which left both ways
+    a provider actually dies invisible to everything reading it. On 2026-09-16
+    OpenBooks answered every query with a 90-second timeout for ~15 hours; on
+    2026-09-17 it never joined the IRC channel for ~19 hours. Neither produced
+    a candidate, so neither produced a download attempt, so neither wrote a
+    row here — and `provider_health` was asking this table whether OpenBooks
+    was alive and being told, accurately, nothing whatsoever. Replayed over
+    the 8 days before this landed, its `dead` flag fired in 0 of 188 windows,
+    including both outages. A flag that says "tried and failed" needs a
+    denominator that exists while a provider is failing; this is it.
+
+    `outcome` keeps the two cases apart on purpose. `unavailable` is the
+    provider failing to answer at all — its own error, and the strong signal.
+    `no_match` is the provider answering that it hasn't got the book, which is
+    routine, and is also the honest denominator the panel never had: OpenBooks
+    read "130 got / 6 failed" while sitting on hundreds of searches that found
+    nothing at all.
+
+    A search that *did* find something is deliberately not logged — the
+    download attempt that follows logs `got` or `failed` itself, so every
+    finished attempt still appears exactly once. Only the auto-get cycles call
+    this: a manual search from the UI is somebody looking something up, not
+    the loop reporting on itself, and mixing the two would make "is this
+    provider working" unreadable."""
+    found = {r.provider for r in results}
+    for p in providers:
+        if p.name in found:
+            continue
+        message = errors.get(p.name)
+        await _log_acquisition_event(
+            session,
+            outcome="unavailable" if (p.name in unavailable or message) else "no_match",
+            provider=p.name,
+            server=None,
+            request_id=item["request_id"],
+            source=item.get("source"),
+            title=item["title"],
+            author=item.get("author"),
+            message=message or "searched; no EPUB match",
+        )
+
+
 async def approve_request(
     request_id: str,
     full_override: str | None,
@@ -1092,7 +1169,12 @@ async def approve_request(
             try:
                 async with async_session_factory() as session:
                     demerits = await _server_demerits(session)
-                results, _dead = await _search_all_providers(default_acquisition_providers(), item)
+                # Not logged as search events: this is the staleness refresh in
+                # front of a *manual* "Get this", not the auto-get loop
+                # reporting on itself (see _log_search_shortfalls).
+                results, _dead, _errs = await _search_all_providers(
+                    default_acquisition_providers(), item
+                )
                 ranked = _rank(item["title"], item.get("author"), results, demerits=demerits)
             except AcquisitionError as exc:
                 raise AcquisitionError(f"couldn't refresh the search before downloading: {exc}") from exc
@@ -1489,11 +1571,23 @@ async def _run_autoget_cycle(
             # search that genuinely found nothing, and still touches the row via
             # _upsert(preserve_existing=True) so _target_backoff() has a
             # timestamp — otherwise a stuck target would retry every tick forever.
-            results, _dead = await _search_all_providers(providers, item)
+            results, unavailable, search_errors = await _search_all_providers(providers, item)
             _note_search(budget_key)
             ranked = _rank(title, item.get("author"), results, demerits=demerits)
             async with async_session_factory() as session:
                 await _upsert(session, item, ranked, preserve_existing=True)
+                # Commits with the row update, in the same session, for the
+                # same reason approve_request logs inside its own: a search
+                # whose outcome isn't recorded is the invisible-outage bug
+                # this table exists to close.
+                await _log_search_shortfalls(
+                    session,
+                    providers=providers,
+                    item=item,
+                    results=results,
+                    unavailable=unavailable,
+                    errors=search_errors,
+                )
                 await session.commit()
                 row = (
                     await session.execute(
@@ -1601,26 +1695,31 @@ async def _rotate_failed_pick(
 # was at or above normal. There was no panel that *could* have moved.
 
 PROVIDER_HEALTH_WINDOW_HOURS = 6
-# Chosen against the real table rather than guessed. Replaying every 6h window
-# over the 8 days of history, the "0 successes while another provider is
-# succeeding" condition fires for openbooks in 4 of 150 windows (the 09-17
-# outage) and libgen in 1 of 43 — low enough to be worth reading. 3h and 12h
-# were also measured; 6h is long enough that a quiet provider with a small
-# queue isn't flagged, short enough to catch an overnight death by morning.
+# Chosen against the real table rather than guessed: 6h is long enough that a
+# quiet provider with a small queue isn't flagged, short enough to catch an
+# overnight death by morning (3h and 12h were also measured).
+#
+# An earlier version of this comment claimed the flag fired in 4 of 150
+# windows "(the 09-17 outage)". It does not, and never did — replaying every
+# 6h window over the 8 days to 2026-09-18 it fires in *zero*, because it
+# required a download attempt and a dead provider never gets far enough to
+# attempt one. See `_log_search_shortfalls`, which gives it something to
+# count; the two real outages in that history (09-16, ~15h of search
+# timeouts; 09-17, ~19h of never joining IRC) both register as `unavailable`
+# runs under the current definition.
 
 _PROVIDER_RECENT_KEEP = 5
 # How many recent attempts each provider reports. The dashboard renders 3
 # searched + 2 got; 5 covers both lists with room for a consumer that wants a
 # couple more, and keeps status.json small (this block was 37KB before
 # prompts/46 trimmed it).
-
-_PROVIDER_RECENT_SCAN = 400
-# Rows scanned to fill those per-provider lists. A single ordered read beats
-# one query per provider, but it has to reach back far enough to find a slow
-# provider's last success: at the observed ~60 events/hour across all
-# providers, 400 rows is roughly 7 hours of history, and OpenBooks lands one
-# book per ~10 minutes. A provider quieter than that shows a short list rather
-# than a wrong number -- the counters above are exact regardless.
+#
+# Filled by one small query per provider per list. It used to be a single
+# 400-row scan bucketed in Python, which was fine while only downloads were
+# logged; now that every empty search is a row too, a flood of LibGen
+# no-matches could push OpenBooks' last success off the end of any fixed
+# scan — and "no recent success" is precisely the thing that must never be
+# reported by accident.
 
 _PROVEN_LIFETIME_SUCCESS_RATE = 0.10
 # A provider is only eligible to be called "dead" if it has ever demonstrably
@@ -1631,15 +1730,48 @@ _PROVEN_LIFETIME_SUCCESS_RATE = 0.10
 # still reported; it is just never the thing that turns the panel red.
 
 
+async def _autoget_enabled_by_provider() -> dict[str, bool]:
+    """Which providers are *supposed* to be acquiring right now — the .env
+    switch and the runtime auto-get toggle together.
+
+    `stalled` needs this: a provider James has deliberately turned off is
+    silent for the most ordinary reason there is, and an alarm that can't tell
+    that from a wedged cycle is an alarm he'd learn to ignore."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    return {
+        "openbooks": bool(settings.openbooks_enabled) and await _openbooks_autoget_enabled(),
+        "libgen": bool(settings.libgen_enabled) and await _libgen_autoget_enabled(),
+        "annas_archive": bool(settings.annas_archive_enabled),
+        "torrent": bool(settings.torrent_enabled),
+    }
+
+
 async def provider_health(window_hours: int = PROVIDER_HEALTH_WINDOW_HOURS) -> dict:
     """Windowed per-provider acquisition success, alongside lifetime totals.
 
-    `dead` means: no successes in the window, at least one resolution in the
-    window (so an idle provider with an empty queue is never flagged), another
-    provider *did* succeed in the window (so a quiet night doesn't light
-    everything up), and the provider has a proven lifetime track record.
+    Two failure shapes, two flags, because they need different fixes:
+
+    `dead` — the provider is working the queue and getting nowhere: no
+    successes in the window, at least one resolution in it (a download
+    attempt *or* a search that came back empty), another provider did succeed
+    (so a quiet night doesn't light everything up), and a proven lifetime
+    record to fall short of. Searches count towards that denominator as of
+    2026-09-18; before they did, this flag could not fire for a provider that
+    was down, because being down is precisely what stops it attempting
+    downloads.
+
+    `stalled` — the provider is enabled but produced *nothing at all* in the
+    window, not even a failed search, while another provider succeeded and
+    while it has history older than the window. That is a wedged cycle (a
+    stuck `openbooks_service.is_busy()`, a child process that went away, a
+    scheduler job that never fired), not a provider that is losing. Kept
+    separate from `dead` deliberately: "hasn't tried" read as "tried and
+    failed" for long enough already.
     """
     since = datetime.now(UTC) - timedelta(hours=window_hours)
+    enabled = await _autoget_enabled_by_provider()
     async with async_session_factory() as session:
         # Counted from the append-only event log, never from
         # `acquisition_candidates`: the queue deletes a row once the book is
@@ -1660,72 +1792,135 @@ async def provider_health(window_hours: int = PROVIDER_HEALTH_WINDOW_HOURS) -> d
                 )
             )
         ).all()
-        # The last few finished attempts per provider, for the dashboard's
-        # "last searched" / "last got" lists. Fetched once and bucketed in
-        # Python rather than a query per provider: the log is small and the
-        # dashboard polls this every 30s.
-        recent_rows = list(
+        # When each provider first appears in the log, so `stalled` can tell a
+        # provider that has gone quiet from one that was only added today.
+        first_seen = dict(
             (
                 await session.execute(
-                    select(AcquisitionEvent)
-                    .order_by(AcquisitionEvent.occurred_at.desc())
-                    .limit(_PROVIDER_RECENT_SCAN)
+                    select(AcquisitionEvent.provider, func.min(AcquisitionEvent.occurred_at)).group_by(
+                        AcquisitionEvent.provider
+                    )
                 )
-            )
-            .scalars()
-            .all()
+            ).all()
         )
 
-    def _tally(rows) -> dict[str, dict[str, int]]:
-        out: dict[str, dict[str, int]] = {}
-        for name, outcome, count in rows:
-            bucket = out.setdefault(name, {"got": 0, "failed": 0})
-            if outcome == "got":
-                bucket["got"] += count
-            elif outcome == "failed":
-                bucket["failed"] += count
-        return out
+        win = _tally_outcomes(windowed)
+        life = _tally_outcomes(lifetime)
+        names = sorted(set(win) | set(life) | {n for n, on in enabled.items() if on})
 
-    def _entry(ev: AcquisitionEvent) -> dict:
-        return {
-            "occurred_at": ev.occurred_at.isoformat() if ev.occurred_at else None,
-            "title": ev.title,
-            "author": ev.author,
-            "outcome": ev.outcome,
-            "server": ev.server,
-        }
+        # The last few events per provider, for the dashboard's "last
+        # searched" / "last got" lists — two small indexed queries each rather
+        # than one fixed-depth scan bucketed in Python; see
+        # _PROVIDER_RECENT_KEEP for why that stopped being safe.
+        resolved_recent: dict[str, list[dict]] = {}
+        got_recent: dict[str, list[dict]] = {}
+        for name in names:
+            base = (
+                select(AcquisitionEvent)
+                .where(AcquisitionEvent.provider == name)
+                .order_by(AcquisitionEvent.occurred_at.desc())
+                .limit(_PROVIDER_RECENT_KEEP)
+            )
+            resolved_recent[name] = [
+                _event_entry(ev) for ev in (await session.execute(base)).scalars().all()
+            ]
+            got_recent[name] = [
+                _event_entry(ev)
+                for ev in (
+                    await session.execute(base.where(AcquisitionEvent.outcome == "got"))
+                )
+                .scalars()
+                .all()
+            ]
 
-    resolved_recent: dict[str, list[dict]] = {}
-    got_recent: dict[str, list[dict]] = {}
-    for ev in recent_rows:
-        if len(resolved_recent.setdefault(ev.provider, [])) < _PROVIDER_RECENT_KEEP:
-            resolved_recent[ev.provider].append(_entry(ev))
-        if ev.outcome == "got" and len(got_recent.setdefault(ev.provider, [])) < _PROVIDER_RECENT_KEEP:
-            got_recent[ev.provider].append(_entry(ev))
-
-    win = _tally(windowed)
-    life = _tally(lifetime)
     any_success = any(v["got"] > 0 for v in win.values())
 
     providers = {}
-    for name in sorted(set(win) | set(life)):
-        w = win.get(name, {"got": 0, "failed": 0})
-        lifetime_total = life.get(name, {"got": 0, "failed": 0})
+    for name in names:
+        w = win.get(name, _EMPTY_OUTCOMES.copy())
+        lifetime_total = life.get(name, _EMPTY_OUTCOMES.copy())
+        # `proven` stays a *download* success rate on purpose. Folding empty
+        # searches into the denominator would drag every provider towards the
+        # 10% floor (OpenBooks reads 130 got / 6 failed / 719 no-match) and
+        # eventually excuse a genuinely dead one from ever being flagged.
         lifetime_attempts = lifetime_total["got"] + lifetime_total["failed"]
         proven = (
             lifetime_attempts > 0
             and lifetime_total["got"] / lifetime_attempts >= _PROVEN_LIFETIME_SUCCESS_RATE
         )
         attempts = w["got"] + w["failed"]
+        searches = w["no_match"] + w["unavailable"]
+        resolutions = attempts + searches
+        started = _aware(first_seen.get(name))
+        is_enabled = enabled.get(name, False)
+        dead = bool(proven and resolutions > 0 and w["got"] == 0 and any_success)
+        stalled = bool(
+            proven
+            and is_enabled
+            and resolutions == 0
+            and any_success
+            and started is not None
+            and started < since
+        )
         providers[name] = {
             "window_got": w["got"],
             "window_failed": w["failed"],
             "window_attempts": attempts,
+            "window_no_match": w["no_match"],
+            "window_unavailable": w["unavailable"],
+            "window_searches": searches,
+            "window_resolutions": resolutions,
             "lifetime_got": lifetime_total["got"],
             "lifetime_failed": lifetime_total["failed"],
+            "lifetime_no_match": lifetime_total["no_match"],
+            "lifetime_unavailable": lifetime_total["unavailable"],
             "proven": proven,
-            "dead": bool(proven and attempts > 0 and w["got"] == 0 and any_success),
+            "enabled": is_enabled,
+            "dead": dead,
+            "stalled": stalled,
+            "reason": _health_reason(w, window_hours, dead=dead, stalled=stalled),
             "searched_recent": resolved_recent.get(name, []),
             "got_recent": got_recent.get(name, []),
         }
     return {"window_hours": window_hours, "providers": providers}
+
+
+# `got`/`failed` are download outcomes (approve_request); `no_match` and
+# `unavailable` are search outcomes (_log_search_shortfalls). Anything else a
+# future provider invents is counted nowhere rather than silently as a
+# success.
+_EMPTY_OUTCOMES = {"got": 0, "failed": 0, "no_match": 0, "unavailable": 0}
+
+
+def _tally_outcomes(rows) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for name, outcome, count in rows:
+        bucket = out.setdefault(name, _EMPTY_OUTCOMES.copy())
+        if outcome in bucket:
+            bucket[outcome] += count
+    return out
+
+
+def _event_entry(ev: AcquisitionEvent) -> dict:
+    return {
+        "occurred_at": ev.occurred_at.isoformat() if ev.occurred_at else None,
+        "title": ev.title,
+        "author": ev.author,
+        "outcome": ev.outcome,
+        "server": ev.server,
+    }
+
+
+def _health_reason(w: dict[str, int], hours: int, *, dead: bool, stalled: bool) -> str | None:
+    """One line saying what the flag is actually claiming, for the alert text
+    and the panel. An alarm that only says "dead" sends you to the logs to
+    find out which kind of dead; this says which."""
+    if stalled:
+        return f"nothing attempted in {hours}h — cycle not running?"
+    if not dead:
+        return None
+    if w["unavailable"]:
+        return f"{w['unavailable']} search(es) errored in {hours}h, {w['got']} got"
+    if w["failed"]:
+        return f"0 got in {w['failed']} download attempt(s) in {hours}h"
+    return f"0 got in {w['no_match']} search(es) in {hours}h"

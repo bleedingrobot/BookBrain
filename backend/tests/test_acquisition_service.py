@@ -492,7 +492,7 @@ async def test_approve_refreshes_a_stale_top_pick_before_downloading(db_session,
     async def fake_search_all(providers, item):
         searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
-                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set()
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -881,7 +881,7 @@ async def test_autoget_searches_a_due_book_then_downloads_it(db_session, monkeyp
     async def fake_search_all(providers, item):
         searched.append(item["title"])
         return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
-                      full="!Bsk A G Riddle - Departure.epub")], set()
+                      full="!Bsk A G Riddle - Departure.epub")], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -922,7 +922,7 @@ async def test_autoget_never_kicks_a_scan_regardless_of_inbox_contents(
 
     async def fake_search_all(providers, item):
         return [_book("Departure", "A G Riddle", server="Bsk", size="700KB",
-                      full="!Bsk A G Riddle - Departure.epub")], set()
+                      full="!Bsk A G Riddle - Departure.epub")], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -1012,7 +1012,7 @@ async def test_autoget_re_searches_a_stale_row_once_the_backoff_elapses(db_sessi
 
     async def fake_search_all(providers, item):
         return [_book("Departure", "A G Riddle", server="Oatmeal", size="693KB",
-                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set()
+                      full="!Oatmeal A G Riddle - Departure (retail).epub")], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -1101,7 +1101,7 @@ async def test_autoget_marks_no_match_when_search_is_empty(db_session, monkeypat
     _autoget_idle["Targets"].items = [_target("Obscure Pamphlet", request_id="wl-obs")]
 
     async def empty_search(providers, item):
-        return [], set()
+        return [], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", empty_search)
 
@@ -1133,7 +1133,7 @@ async def test_autoget_keeps_a_prior_match_when_a_re_search_finds_nothing(db_ses
     await db_session.commit()
 
     async def empty_search(providers, item):
-        return [], set()
+        return [], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", empty_search)
     out = await svc.autoget_tick()
@@ -1154,7 +1154,7 @@ async def test_autoget_one_download_attempt_per_tick(db_session, monkeypatch, _a
                   full="!Bsk A G Riddle - Departure.epub"),
             _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
                   full="!Oatmeal A G Riddle - Departure.epub"),
-        ], set()
+        ], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -1183,7 +1183,7 @@ async def test_autoget_rotates_the_pick_after_a_failed_download(db_session, monk
                   full="!Bsk A G Riddle - Departure.epub"),
             _book("Departure", "A G Riddle", server="Oatmeal", size="700KB",
                   full="!Oatmeal A G Riddle - Departure.epub"),
-        ], set()
+        ], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -1255,7 +1255,7 @@ async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypa
     await db_session.commit()
 
     async def fake_search_all(providers, item):
-        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")], set()
+        return [_book("Departure", "A G Riddle", server="Bsk", size="700KB", full="!Bsk fresh.epub")], set(), {}
 
     monkeypatch.setattr(svc, "_search_all_providers", fake_search_all)
 
@@ -1348,6 +1348,222 @@ async def test_provider_health_window_is_honoured(db_session):
     rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
     assert (await _health(db_session, rows, window_hours=6))["openbooks"]["window_got"] == 0
     assert (await svc.provider_health(window_hours=24))["providers"]["openbooks"]["window_got"] == 20
+
+
+# --- a provider that is down, not losing -----------------------------------
+#
+# Regression tests for the hole found on 2026-09-18: `dead` required a
+# download attempt, and a provider that is down never attempts one. Replaying
+# every 6h window over the 8 days to then, it fired in 0 of 188 -- including
+# the ~15h of OpenBooks search timeouts on 09-16 and the ~19h of it never
+# joining IRC on 09-17, the outage the flag was written for. Searches now log
+# too (_log_search_shortfalls), which is what gives these shapes a
+# denominator.
+
+
+def _searched(request_id, provider, outcome, hours_ago, message=None):
+    """One auto-get search that produced no candidate: `no_match` (answered,
+    hasn't got it) or `unavailable` (failed to answer)."""
+    return AcquisitionEvent(
+        request_id=request_id,
+        title=f"Book {request_id}",
+        outcome=outcome,
+        provider=provider,
+        message=message,
+        occurred_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=hours_ago),
+    )
+
+
+@pytest.fixture
+def _providers_enabled(monkeypatch):
+    """Both cycles switched on, independent of the real .env and settings
+    table -- `stalled` is explicitly gated on being enabled."""
+
+    async def enabled():
+        return {"openbooks": True, "libgen": True, "annas_archive": False, "torrent": False}
+
+    monkeypatch.setattr(svc, "_autoget_enabled_by_provider", enabled)
+
+
+async def test_provider_health_flags_a_provider_whose_every_search_errors(db_session):
+    # The 2026-09-16 shape: OpenBooks answered ~130 consecutive queries with
+    # "no results within 90s" and never got far enough to try a download, so
+    # the old attempts-only denominator was zero and nothing went red.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [
+        _searched(f"to{i}", "openbooks", "unavailable", 1, message="returned no results within 90s")
+        for i in range(12)
+    ]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["dead"] is True
+    assert health["openbooks"]["window_attempts"] == 0  # no download was ever tried
+    assert health["openbooks"]["window_unavailable"] == 12
+    assert "errored" in health["openbooks"]["reason"]
+    assert health["libgen"]["dead"] is False
+
+
+async def test_provider_health_flags_a_provider_that_only_ever_finds_nothing(db_session):
+    # Searching fine and coming back empty every time for six hours while
+    # another provider works is also not health, even though each individual
+    # no-match is routine.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_searched(f"nm{i}", "openbooks", "no_match", 1) for i in range(30)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["dead"] is True
+    assert health["openbooks"]["window_no_match"] == 30
+    assert health["openbooks"]["window_searches"] == 30
+
+
+async def test_provider_health_stalls_a_provider_that_is_enabled_but_silent(
+    db_session, _providers_enabled
+):
+    # The 2026-09-17 shape once ticks stop happening at all: no events of any
+    # kind, while LibGen keeps working. `dead` stays false (nothing was
+    # tried), `stalled` carries it -- the two need different fixes.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["window_resolutions"] == 0
+    assert health["openbooks"]["dead"] is False
+    assert health["openbooks"]["stalled"] is True
+    assert "nothing attempted" in health["openbooks"]["reason"]
+    assert health["libgen"]["stalled"] is False
+
+
+async def test_provider_health_does_not_stall_a_provider_that_is_switched_off(
+    db_session, monkeypatch
+):
+    # Turning OpenBooks' auto-get off is the most ordinary reason for silence
+    # there is; an alarm that can't tell that from a wedge is one James learns
+    # to ignore. See [[bookbrain-torrent-disabled]] for a provider in exactly
+    # this state on purpose.
+    async def only_libgen():
+        return {"openbooks": False, "libgen": True, "annas_archive": False, "torrent": False}
+
+    monkeypatch.setattr(svc, "_autoget_enabled_by_provider", only_libgen)
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["enabled"] is False
+    assert health["openbooks"]["stalled"] is False
+
+
+async def test_provider_health_does_not_stall_a_brand_new_provider(
+    db_session, _providers_enabled
+):
+    # All of openbooks' history is *inside* the window: it has only just
+    # started, so "quiet for the last 6h" says nothing about it yet.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 1) for i in range(20)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 0) for i in range(4)]
+    health = await _health(db_session, rows, window_hours=3)
+    assert health["openbooks"]["stalled"] is False
+
+
+async def test_provider_health_reports_searches_that_found_nothing(db_session):
+    # The count the panel never had: "130 got / 6 failed" read as a 96%
+    # success rate while hundreds of searches had found nothing at all.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 1) for i in range(3)]
+    rows += [_searched(f"nm{i}", "openbooks", "no_match", 1) for i in range(7)]
+    rows += [_searched("to1", "openbooks", "unavailable", 1)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["lifetime_no_match"] == 7
+    assert health["openbooks"]["lifetime_unavailable"] == 1
+    assert health["openbooks"]["window_resolutions"] == 11
+    assert health["openbooks"]["dead"] is False  # it is getting books
+    # "last searched" now means what it says, rather than "last downloaded".
+    assert {e["outcome"] for e in health["openbooks"]["searched_recent"]} & {
+        "no_match",
+        "unavailable",
+    }
+
+
+async def test_provider_health_finds_the_last_success_behind_a_flood_of_searches(db_session):
+    # A slow provider's last success must survive any number of newer rows --
+    # this is why the per-provider lists stopped being one fixed-depth scan.
+    rows = [_resolved("ok-old", "openbooks", AcquisitionStatus.approved, 5)]
+    rows += [_searched(f"nm{i}", "libgen", "no_match", 1) for i in range(500)]
+    rows += [_resolved("lg-ok", "libgen", AcquisitionStatus.approved, 1)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["got_recent"][0]["title"] == "Book ok-old"
+    assert health["openbooks"]["window_got"] == 1
+
+
+# --- what a search that found nothing writes -------------------------------
+
+
+class _FakeProvider:
+    def __init__(self, name):
+        self.name = name
+
+
+async def test_log_search_shortfalls_records_no_match_and_unavailable(db_session):
+    await svc._log_search_shortfalls(
+        db_session,
+        providers=[_FakeProvider("openbooks"), _FakeProvider("libgen")],
+        item={"request_id": "r1", "title": "Seventh Decimate", "author": "Donaldson", "source": "wishlist"},
+        results=[],
+        unavailable={"openbooks"},
+        errors={"openbooks": "OpenBooks returned no results within 90s"},
+    )
+    await db_session.commit()
+
+    events = {
+        e.provider: e for e in (await db_session.execute(select(AcquisitionEvent))).scalars().all()
+    }
+    assert events["openbooks"].outcome == "unavailable"
+    assert "90s" in events["openbooks"].message  # the reason, not just "failed"
+    assert events["libgen"].outcome == "no_match"
+    assert events["openbooks"].title == "Seventh Decimate"
+
+
+async def test_log_search_shortfalls_ignores_a_provider_that_found_something(db_session):
+    # It found a candidate, so the download attempt that follows will log
+    # got/failed itself -- logging here too would double-count it.
+    await svc._log_search_shortfalls(
+        db_session,
+        providers=[_FakeProvider("openbooks"), _FakeProvider("libgen")],
+        item={"request_id": "r1", "title": "Departure", "author": "A G Riddle", "source": "wishlist"},
+        results=[_book("Departure", "A G Riddle")],  # BookResult defaults to provider "openbooks"
+        unavailable=set(),
+        errors={},
+    )
+    await db_session.commit()
+
+    events = (await db_session.execute(select(AcquisitionEvent))).scalars().all()
+    assert [e.provider for e in events] == ["libgen"]
+    assert events[0].outcome == "no_match"
+
+
+async def test_autoget_logs_a_search_that_found_nothing(db_session, monkeypatch, _autoget_idle):
+    # End to end through the cycle: a tick whose search comes back empty must
+    # leave a row behind. This is the row that was missing for the whole of
+    # both outages -- the queue went to `no_match`, the log stayed silent, and
+    # provider health had nothing to read.
+    _autoget_idle["Targets"].items = [_target("Obernewtyn", "Isobelle Carmody", request_id="wl-obe")]
+    # `_recent_search_times` is module state that every earlier test in this
+    # file adds to, and the hourly budget is 8 — without this the tick skips
+    # before it searches and the test silently proves nothing.
+    svc._recent_search_times.clear()
+
+    async def empty_search(providers, item):
+        return [], {"openbooks"}, {"openbooks": "never joined the channel"}
+
+    monkeypatch.setattr(svc, "_search_all_providers", empty_search)
+
+    async def no_approve(*a):
+        raise AssertionError("nothing to download")
+
+    monkeypatch.setattr(svc, "approve_request", no_approve)
+
+    await svc.autoget_tick()
+
+    ev = (await db_session.execute(select(AcquisitionEvent))).scalar_one()
+    assert ev.provider == "openbooks"
+    assert ev.outcome == "unavailable"
+    assert ev.message == "never joined the channel"
+    assert ev.title == "Obernewtyn"
 
 
 # --- the acquisition log vs. the queue -------------------------------------

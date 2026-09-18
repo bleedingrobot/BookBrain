@@ -551,8 +551,13 @@ class AcquisitionCandidate(Base):
 
 class AcquisitionEvent(Base):
     """Append-only log of finished acquisition attempts — one row per download
-    that succeeded or failed, written when it resolved and never updated,
-    pruned or deleted.
+    that succeeded or failed, plus one per auto-get search that came back with
+    nothing, written when it resolved and never updated, pruned or deleted.
+
+    The search rows were added 2026-09-18 because downloads alone cannot
+    describe a broken provider: a provider that is down never gets as far as
+    attempting a download, so it wrote nothing here at all and read as merely
+    idle. See acquisition_service._log_search_shortfalls.
 
     `acquisition_candidates` is a work *queue*, and counting history from it
     under-reports every provider. Two mechanisms erase a success within
@@ -568,6 +573,12 @@ class AcquisitionEvent(Base):
     """
 
     __tablename__ = "acquisition_events"
+    # provider_health's real query shape: one provider's newest few rows. The
+    # single-column provider index meant sorting that provider's whole history
+    # on every poll, which mattered once searches started landing here too.
+    __table_args__ = (
+        Index("ix_acquisition_events_provider_occurred_at", "provider", "occurred_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
@@ -575,7 +586,10 @@ class AcquisitionEvent(Base):
     provider: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # The OpenBooks IRC bot the file came from; None for every HTTP provider.
     server: Mapped[str | None] = mapped_column(String)
-    outcome: Mapped[str] = mapped_column(String, nullable=False)  # "got" | "failed"
+    # Downloads: "got" | "failed". Searches that produced no candidate:
+    # "no_match" (the provider answered, it hasn't got the book) |
+    # "unavailable" (the provider failed to answer — timeout, 429/503).
+    outcome: Mapped[str] = mapped_column(String, nullable=False)
     # Loose link back to the queue row, which may since have been pruned.
     request_id: Mapped[str | None] = mapped_column(String)
     source: Mapped[str | None] = mapped_column(String)

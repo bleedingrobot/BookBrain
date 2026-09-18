@@ -40,7 +40,7 @@ conf_color() {  # conf_color <0-100> -- a "high is good" gauge (confidence)
 status_color() {
     case "$1" in
         RUNNING|ok|responding|success|approved) printf '%s' "$GREEN" ;;
-        DOWN|failed|unreachable) printf '%s' "$RED" ;;
+        DOWN|failed|unreachable|unavailable) printf '%s' "$RED" ;;
         pending|no_match|degraded|n/a) printf '%s' "$YELLOW" ;;
         *) printf '%s' "$RESET" ;;
     esac
@@ -117,11 +117,16 @@ BOX_WIDTH=31
 provider_box() {
     local key=$1 label=$2 hcolor=$3
     local -n out=$4
-    local got queued failed fetching
+    local got queued failed fetching nomatch
     got=$(jq -r ".${key}.got // 0" <<< "$PROVIDERS_JSON")
     queued=$(jq -r ".${key}.queued // 0" <<< "$PROVIDERS_JSON")
     failed=$(jq -r ".${key}.failed // 0" <<< "$PROVIDERS_JSON")
     fetching=$(jq -r ".${key}.fetching // 0" <<< "$PROVIDERS_JSON")
+    # Searches that came back with nothing, from the event log. Without this
+    # line OpenBooks read "got 130  failed 6" -- a 96% success rate -- while
+    # sitting on hundreds of searches that found no book at all. `failed` has
+    # only ever meant "found it, couldn't fetch it".
+    nomatch=$(jq -r "(.${key}.no_match // 0) + (.${key}.unavailable // 0)" <<< "$PROVIDERS_JSON")
 
     out=()
     out+=("$(cline "$BOX_WIDTH" "${BOLD}${hcolor}" "$label")")
@@ -130,26 +135,36 @@ provider_box() {
     else
         out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  queued $queued  failed $failed")")
     fi
+    out+=("$(cline "$BOX_WIDTH" "$DIM" "no match $nomatch")")
 
     # The windowed rate, right under the lifetime totals -- this is the line
-    # that should have moved on 2026-09-17. Red only when the backend says the
-    # provider is dead (no successes in the window while another provider is
-    # succeeding, and it has a track record to fall short of). Torrent is
-    # deliberately never red: at 4 got / 2210 failed all-time, failing is its
-    # normal state and a permanent red line is one nobody reads.
-    local whours wgot wattempts wdead wcolor
+    # that should have moved on 2026-09-17. Red when the backend says the
+    # provider is dead (working the queue, getting nowhere, while another
+    # provider succeeds) or stalled (enabled, but not even trying). Torrent is
+    # deliberately never either: at 4 got / 2210 failed all-time, failing is
+    # its normal state and a permanent red line is one nobody reads.
+    local whours wgot wattempts wsearches wdead wstalled wcolor wtext
     whours=$(jq -r ".${key}.window_hours // 6" <<< "$PROVIDERS_JSON")
     wgot=$(jq -r ".${key}.window_got // 0" <<< "$PROVIDERS_JSON")
     wattempts=$(jq -r ".${key}.window_attempts // 0" <<< "$PROVIDERS_JSON")
+    wsearches=$(jq -r ".${key}.window_searches // 0" <<< "$PROVIDERS_JSON")
     wdead=$(jq -r ".${key}.dead // false" <<< "$PROVIDERS_JSON")
-    # Red is reserved for the dead condition; a provider that simply isn't
-    # succeeding shouldn't read as healthy either, so 0 successes is yellow
-    # rather than green. Torrent lives here permanently and that is honest.
-    if [ "$wdead" = "true" ]; then wcolor="${BOLD}${RED}"
-    elif [ "$wattempts" = "0" ]; then wcolor="$DIM"
+    wstalled=$(jq -r ".${key}.stalled // false" <<< "$PROVIDERS_JSON")
+    # Red is reserved for the two flagged conditions; a provider that simply
+    # isn't succeeding shouldn't read as healthy either, so 0 successes is
+    # yellow rather than green. Torrent lives there permanently and that is
+    # honest. "idle" is now dim only when nothing was *flagged* -- silence
+    # that the backend calls stalled is the loudest line in the box.
+    wtext="${whours}h: ${wgot}/${wattempts}"
+    (( wsearches > 0 )) && wtext="$wtext  +${wsearches} nm"
+    if [ "$wstalled" = "true" ]; then
+        wcolor="${BOLD}${RED}"
+        wtext="${whours}h: STALLED, 0 tries"
+    elif [ "$wdead" = "true" ]; then wcolor="${BOLD}${RED}"
+    elif [ "$wattempts" = "0" ] && [ "$wsearches" = "0" ]; then wcolor="$DIM"
     elif [ "$wgot" = "0" ]; then wcolor="$YELLOW"
     else wcolor="$GREEN"; fi
-    out+=("$(cline "$BOX_WIDTH" "$wcolor" "${whours}h: ${wgot}/${wattempts}")")
+    out+=("$(cline "$BOX_WIDTH" "$wcolor" "$wtext")")
 
     # Each section pads to a fixed row count (rather than however many
     # entries exist) so "last searched"/"last got" land on the same row
@@ -160,7 +175,19 @@ provider_box() {
     tsv=$(jq -r ".${key}.searched_recent[:3][]? | [.resolved_at, .status, .title] | @tsv" <<< "$PROVIDERS_JSON" 2>/dev/null)
     if [ -n "$tsv" ]; then
         while IFS=$'\t' read -r ts status title; do
-            out+=("$(cline "$BOX_WIDTH" "$(status_color "$status")" "  $(ago "$ts") $status ${title:0:18}")")
+            # Short labels because the box is 31 columns and the status is the
+            # part worth keeping: "none" = searched, hasn't got it; "no-ans" =
+            # the provider itself didn't answer, which is the one to worry
+            # about. Colour still comes from the raw status word.
+            local slabel
+            case "$status" in
+                approved) slabel="got" ;;
+                failed) slabel="fail" ;;
+                no_match) slabel="none" ;;
+                unavailable) slabel="no-ans" ;;
+                *) slabel="$status" ;;
+            esac
+            out+=("$(cline "$BOX_WIDTH" "$(status_color "$status")" "  $(ago "$ts") $slabel ${title:0:18}")")
             n=$(( n + 1 ))
         done <<< "$tsv"
     fi
@@ -255,18 +282,29 @@ compute_alerts() {
         fi
     fi
 
-    # 2. A provider has stopped working. The backend owns this condition
+    # 2. A provider has stopped working. The backend owns both conditions
     #    (prompts/44) so the tty1 panel, the mobile page and this block agree.
-    local dead
-    dead=$(jq -r 'to_entries[] | select(.value.dead == true)
-                  | "\(.key) \(.value.window_got)/\(.value.window_attempts)"' \
-           <<< "$PROVIDERS_JSON" 2>/dev/null)
-    if [ -n "$dead" ]; then
-        while read -r pname prate; do
+    #
+    #    `dead` = it is working the queue and getting nowhere. `stalled` = it
+    #    is switched on and not even trying, which is the shape both real
+    #    OpenBooks outages actually had and which nothing here could see until
+    #    2026-09-18: `dead` needed a download attempt, and a provider that is
+    #    down never gets as far as attempting one. The backend's `reason`
+    #    carries which kind, so this line doesn't send you to the journal to
+    #    find out what "dead" meant this time.
+    local flagged
+    flagged=$(jq -r 'to_entries[]
+                     | select(.value.dead == true or .value.stalled == true)
+                     | [(if .value.stalled == true then "stalled" else "dead" end),
+                        .key,
+                        (.value.reason // "no successes in the window")] | @tsv' \
+              <<< "$PROVIDERS_JSON" 2>/dev/null)
+    if [ -n "$flagged" ]; then
+        while IFS=$'\t' read -r pkind pname preason; do
             [ -z "$pname" ] && continue
-            ALERT_KEYS+=("provider-dead:$pname")
-            ALERT_MSGS+=("provider-dead: $pname $prate in $(jq -r ".${pname}.window_hours // 6" <<< "$PROVIDERS_JSON")h")
-        done <<< "$dead"
+            ALERT_KEYS+=("provider-$pkind:$pname")
+            ALERT_MSGS+=("provider-$pkind: $pname — $preason")
+        done <<< "$flagged"
     fi
 
     # 3. status.json is stale -- i.e. this script itself has wedged on a curl.
@@ -532,11 +570,13 @@ while true; do
 
             # Per-process view for the "Acquisition processes" panel below --
             # one auto-get cycle's activity (torrent/libgen/openbooks), each
-            # attributed by the winning candidate's provider. A `no_match` row
-            # has no provider (its candidate fields get wiped), so it can't be
-            # attributed to whichever source(s) actually searched it -- only
-            # pending/approved/failed/fetching rows (which keep their
-            # candidate) show up here.
+            # attributed by the winning candidate's provider. Only the live
+            # `queued`/`fetching` counts survive from here (see below), which
+            # is all this is now used for: per-provider *history* comes from
+            # the event log, including the no-match counts, which the queue
+            # cannot answer for -- a `no_match` row does keep its
+            # `candidate.provider` (contrary to an earlier comment here), but
+            # only the provider that searched it last.
             #
             # Only `queued` and `fetching` survive from this block; the history
             # fields it computes are replaced wholesale by the acquisition-log
@@ -585,19 +625,33 @@ while true; do
             #
             # `occurred_at` is renamed to `resolved_at` so provider_box's jq
             # and mobile/index.html keep reading the field they already read.
+            # `no_match` and `unavailable` outcomes pass through under their
+            # own names (both renderers colour them) rather than being
+            # flattened into "failed": a provider that can't answer and a book
+            # that isn't there are not the same news.
             PHEALTH=$(curl -s -m 3 "$API/api/acquire/provider-health" 2>/dev/null)
             if [ -n "$PHEALTH" ]; then
                 MERGED=$(jq -c --argjson h "$PHEALTH" '
+                    def status: if . == "got" then "approved" else . end;
                     reduce keys[] as $p (.; .[$p] += {
                         window_hours: $h.window_hours,
                         window_got: ($h.providers[$p].window_got // 0),
                         window_attempts: ($h.providers[$p].window_attempts // 0),
+                        window_no_match: ($h.providers[$p].window_no_match // 0),
+                        window_unavailable: ($h.providers[$p].window_unavailable // 0),
+                        window_searches: ($h.providers[$p].window_searches // 0),
+                        window_resolutions: ($h.providers[$p].window_resolutions // 0),
                         dead: ($h.providers[$p].dead // false),
+                        stalled: ($h.providers[$p].stalled // false),
+                        enabled: ($h.providers[$p].enabled // false),
+                        reason: ($h.providers[$p].reason // null),
                         got: ($h.providers[$p].lifetime_got // 0),
                         failed: ($h.providers[$p].lifetime_failed // 0),
+                        no_match: ($h.providers[$p].lifetime_no_match // 0),
+                        unavailable: ($h.providers[$p].lifetime_unavailable // 0),
                         searched_recent: [($h.providers[$p].searched_recent // [])[]
                                           | {resolved_at: .occurred_at, title, author,
-                                             status: (if .outcome == "got" then "approved" else "failed" end)}],
+                                             status: (.outcome | status)}],
                         got_recent: [($h.providers[$p].got_recent // [])[]
                                      | {resolved_at: .occurred_at, title, author, status: "approved"}]
                     })' <<< "$PROVIDERS_JSON" 2>/dev/null)

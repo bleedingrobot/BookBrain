@@ -140,7 +140,27 @@ it just happens on the nightly pass instead of within two minutes. Set
 
 Per-provider health, including a windowed success rate that can actually show
 "this died two hours ago", is at `GET /api/acquire/provider-health` and on both
-dashboards.
+dashboards. It reports two different failures, because they need different
+fixes: **dead** = working the queue and getting nowhere, **stalled** = switched
+on and not even trying. Both raise an alert in `dashboard/alerts.log`.
+
+Three numbers, three meanings — worth knowing before reading the panel:
+
+- `got` / `failed` — downloads. `failed` has only ever meant "found the book,
+  couldn't fetch it".
+- `no match` — an auto-get search that came back empty. OpenBooks read "130
+  got / 6 failed" (96%!) while sitting on hundreds of these. This counter
+  starts from **2026-09-18**, when searches began being logged; it is not
+  backfilled (see `d5a2c8e41f76` for why the queue couldn't supply one).
+- `queued` — live queue state, not a work plan. `list_requests` re-ranks stored
+  candidates on every page load, so a row whose last real search was days ago
+  still reads `pending`.
+
+Both the outages this was built after (2026-09-16, ~15h of search timeouts;
+2026-09-17, ~19h of never joining IRC) produced no download attempt at all, so
+until searches were logged the `dead` flag had nothing to count and fired in
+**0 of 188** replayed 6h windows. If you tighten this logic, replay it against
+`acquisition_events` before believing it.
 
 Common commands:
 
