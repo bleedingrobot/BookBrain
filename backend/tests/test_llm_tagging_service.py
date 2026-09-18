@@ -142,6 +142,25 @@ def test_validate_chunk_result_rejects_non_dict() -> None:
         validate_chunk_result("nope")  # type: ignore[arg-type]
 
 
+def test_validators_drop_bare_generic_themes_only() -> None:
+    themes = ["Identity", "survival.", "survival against supernatural threats", "revenge", " Love "]
+    payload = {**_valid_tag_payload(), "themes": themes, "genres": ["Survival"]}
+    assert validate_tag_result(payload)["themes"] == ["survival against supernatural threats", "revenge"]
+    assert validate_tag_result(payload)["genres"] == ["Survival"]  # themes only
+    chunk = validate_chunk_result({"chunkSummary": "x", "themes": themes})
+    assert chunk["themes"] == ["survival against supernatural threats", "revenge"]
+
+
+def test_prompts_tell_the_model_not_to_emit_bare_themes() -> None:
+    from types import SimpleNamespace
+
+    from app.services.llm_tagging_service import _SCHEMA_INSTRUCTIONS, _THEME_RULE, _build_map_prompt
+
+    book = SimpleNamespace(canonical_title="T", author=None)
+    assert _THEME_RULE in _SCHEMA_INSTRUCTIONS
+    assert _THEME_RULE in _build_map_prompt(book, "text", 0, 1)
+
+
 # --------------------------------------------------------------------------
 # work selection
 # --------------------------------------------------------------------------

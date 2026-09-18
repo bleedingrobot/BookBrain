@@ -60,6 +60,28 @@ _STOPWORDS = frozenset(
 )
 _STEM_PREFIX = 7
 
+# prompts/47 A.2 — bare abstract nouns that fit almost any novel, adapted
+# from libtrails' ~30-word stoplist plus the bare words BookBrain's own
+# output leans on hardest ("survival" alone was on 215 of 553 books). They
+# become meaningless hubs the moment themes are compared across books.
+# Only an exact bare match is dropped: "survival against supernatural
+# threats" is specific and stays; so do specific single words ("revenge",
+# "colonialism", "espionage") that genuinely tell books apart.
+GENERIC_THEMES = frozenset(
+    {
+        "power", "love", "identity", "conflict", "survival", "freedom",
+        "control", "trust", "fear", "growth", "time", "people", "world",
+        "change", "future", "hope", "courage", "family", "friendship",
+        "loyalty", "betrayal", "sacrifice", "redemption", "resilience",
+        "isolation", "belonging", "transformation", "self-discovery",
+        "morality", "justice", "truth", "faith", "memory", "legacy", "loss",
+        "grief", "trauma", "humanity", "life", "death", "destiny", "fate",
+        "relationships", "community", "strength", "perseverance",
+        "determination", "adventure", "ambition", "responsibility",
+        "personal growth", "coming of age",
+    }
+)
+
 EmbedFn = Callable[[list[str]], np.ndarray]
 
 # Theme strings are short and repeat across runs, and the whole-library pass
@@ -78,6 +100,10 @@ def _cached_embed(texts: list[str]) -> np.ndarray:
 
 def normalize_theme(theme: str) -> str:
     return " ".join(theme.lower().split())
+
+
+def is_generic_theme(theme: str) -> bool:
+    return normalize_theme(theme).strip(" .!") in GENERIC_THEMES
 
 
 def _stem(word: str) -> str:
@@ -104,7 +130,7 @@ def cluster_themes(book_themes: dict[int, list[str]], embed_fn: EmbedFn = _cache
     """Map every normalized theme in `book_themes` to its canonical label."""
     books_per_theme: Counter[str] = Counter()
     for themes in book_themes.values():
-        books_per_theme.update({normalize_theme(t) for t in themes if t.strip()})
+        books_per_theme.update({normalize_theme(t) for t in themes if t.strip() and not is_generic_theme(t)})
     themes = sorted(books_per_theme)
     if not themes:
         return {}
@@ -140,8 +166,10 @@ def canonical_themes(themes: list[str], mapping: dict[str, str]) -> list[str]:
     out: list[str] = []
     for theme in themes:
         key = normalize_theme(theme)
+        if not key or is_generic_theme(key):
+            continue
         label = mapping.get(key, key)
-        if key and label not in out:
+        if label not in out:
             out.append(label)
     return out
 

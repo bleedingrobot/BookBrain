@@ -84,6 +84,15 @@ _STR_CAPS = {
 _TAG_LIST_KEYS = ("genres", "moods", "themes", "representation", "contentWarnings")
 
 
+def _clean_list(key: str, value: list) -> list[str]:
+    items = [str(v).strip() for v in value if str(v).strip()]
+    if key == "themes":
+        # prompts/47 A.2 — the prompt asks for specific phrases; this catches
+        # the bare "identity"/"survival" the model still slips in.
+        items = [t for t in items if not theme_dedup_service.is_generic_theme(t)]
+    return items[:_MAX_LIST_ITEMS]
+
+
 def _content_budget_chars(num_ctx: int) -> int:
     return max(_MIN_CHUNK_CHARS, (num_ctx - _PROMPT_OVERHEAD_TOKENS) * _CHARS_PER_TOKEN)
 
@@ -157,7 +166,7 @@ def validate_tag_result(raw: dict) -> dict:
         value = raw.get(key) or []
         if not isinstance(value, list):
             raise ValueError(f"{key!r} was not a list")
-        out[key] = [str(v).strip() for v in value if str(v).strip()][:_MAX_LIST_ITEMS]
+        out[key] = _clean_list(key, value)
     for key, cap in _STR_CAPS.items():
         value = raw.get(key)
         out[key] = str(value).strip()[:cap] if value else None
@@ -173,7 +182,7 @@ def validate_chunk_result(raw: dict) -> dict:
     for key in _TAG_LIST_KEYS:
         value = raw.get(key)
         value = value if isinstance(value, list) else []
-        out[key] = [str(v).strip() for v in value if str(v).strip()][:_MAX_LIST_ITEMS]
+        out[key] = _clean_list(key, value)
     return out
 
 
@@ -181,11 +190,16 @@ def validate_chunk_result(raw: dict) -> dict:
 # Prompts
 # --------------------------------------------------------------------------
 
-_SCHEMA_INSTRUCTIONS = """Respond with ONLY a JSON object, no other text, with exactly these keys:
+_THEME_RULE = (
+    "Each theme must be a specific multi-word phrase about THIS book, never a "
+    'bare abstract noun like "identity", "survival", "power" or "love".'
+)
+
+_SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with exactly these keys:
 - "ageRating": one short label ("General", "Teen", "Mature", or "Explicit")
 - "genres": array of genre strings
 - "moods": array of mood/tone strings (e.g. "atmospheric", "fast-paced")
-- "themes": array of thematic strings (e.g. "found family", "revenge")
+- "themes": array of thematic strings (e.g. "found family", "revenge against a corrupt church"). {_THEME_RULE}
 - "representation": array of identity/representation strings actually present on the page (e.g. "gay protagonist", "wheelchair user") — omit anything you're not seeing evidence for
 - "contentWarnings": array of content-warning strings (e.g. "graphic violence", "on-page suicide")
 - "confidenceNotes": one short sentence on how confident you are and why (e.g. limited sample, ambiguous genre)
@@ -217,7 +231,8 @@ def _build_map_prompt(book: Book, chunk_text: str, index: int, total: int) -> st
         f"Text:\n{chunk_text}\n\n"
         'Respond with ONLY a JSON object: {"chunkSummary": "...", '
         '"genres": [...], "moods": [...], "themes": [...], '
-        '"representation": [...], "contentWarnings": [...]}'
+        '"representation": [...], "contentWarnings": [...]}\n'
+        f"{_THEME_RULE}"
     )
 
 

@@ -83,10 +83,10 @@ def test_cluster_merges_middle_band_only_on_matching_stems() -> None:
 def test_cluster_keeps_middle_band_apart_when_stems_differ_even_if_they_share_a_book() -> None:
     # libtrails' co-occurrence gate would merge these; on BookBrain's data a
     # shared book is evidence the model saw them as different themes.
-    embed = _embedder({"sacrifice": 1.0, "love and sacrifice": 0.86})
-    mapping = cluster_themes({1: ["sacrifice", "love and sacrifice"]}, embed)
-    assert mapping["sacrifice"] == "sacrifice"
-    assert mapping["love and sacrifice"] == "love and sacrifice"
+    embed = _embedder({"espionage": 1.0, "secrets and espionage": 0.876})
+    mapping = cluster_themes({1: ["espionage", "secrets and espionage"]}, embed)
+    assert mapping["espionage"] == "espionage"
+    assert mapping["secrets and espionage"] == "secrets and espionage"
 
 
 def test_cluster_never_merges_below_lexical_threshold_even_with_matching_stems() -> None:
@@ -110,6 +110,15 @@ def test_canonical_themes_maps_and_dedups_in_order() -> None:
     assert canonical_themes(["Revenge", "grief and loss", "loss and grief", " "], mapping) == [
         "revenge",
         "loss and grief",
+    ]
+
+
+def test_canonical_themes_and_clusters_skip_generic_bare_themes() -> None:
+    embed = _embedder({"survival against the odds": 1.0})
+    mapping = cluster_themes({1: ["Survival", "survival against the odds", "Identity"]}, embed)
+    assert mapping == {"survival against the odds": "survival against the odds"}
+    assert canonical_themes(["Survival", "survival against the odds", "identity."], mapping) == [
+        "survival against the odds"
     ]
 
 
