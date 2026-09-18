@@ -252,16 +252,7 @@
   </div>
 </div>
 
-<div class="card">
-  <h2>Torrent (Librarr)</h2>
-  <div class="row"><span class="label">Got / Failed</span><span class="value" id="tor-counts">--</span></div>
-  <div class="row"><span class="label">Recent window</span><span class="value"><span class="pill" id="tor-window">--</span></span></div>
-  <div class="row"><span class="label">In flight</span><span class="value" id="tor-fetching">--</span></div>
-  <div class="sub" style="margin:10px 0 2px">Last searched</div>
-  <ul class="list" id="tor-searched-list"><li class="empty">loading&hellip;</li></ul>
-  <div class="sub" style="margin:10px 0 2px">Last got</div>
-  <ul class="list" id="tor-got-list"><li class="empty">loading&hellip;</li></ul>
-</div>
+<!-- Torrent card dropped 2026-09-18 (TORRENT_ENABLED=false, see README) -->
 
 <div class="card">
   <h2>LibGen</h2>
@@ -482,7 +473,6 @@ async function refresh() {
   $('nightly-finished').textContent = `Last run finished ${ago(nightly.finished_at)}`;
 
   const providers = bb.providers || {};
-  renderProviderCard('tor', providers.torrent, { counts: p => `${p.got ?? 0} / ${p.failed ?? 0}`, fetching: true });
   renderProviderCard('lg', providers.libgen, { counts: p => `${p.got ?? 0} / ${p.queued ?? 0} / ${p.failed ?? 0}` });
   renderProviderCard('ob', providers.openbooks, { counts: p => `${p.got ?? 0} / ${p.queued ?? 0} / ${p.failed ?? 0}` });
 }

@@ -370,7 +370,7 @@ HIT_PCT="n/a"
 ORG_24H="?"; ORG_7D="?"
 SEARCHED_JSON="[]"; GOT_JSON="[]"; LAST_GOT_AT=""; SOURCE_JSON="[]"
 PROVIDERS_JSON='{"openbooks":{},"libgen":{},"torrent":{}}'
-TORRENT_LINES=(); LIBGEN_LINES=(); OPENBOOKS_LINES=()
+LIBGEN_LINES=(); OPENBOOKS_LINES=()
 TAG_ENABLED="?"; TAG_DONE="?"; TAG_PENDING="?"
 TAG_CUR_TITLE=""; TAG_CUR_AUTHOR=""; TAG_CUR_STATUS=""; TAG_CUR_DONE=0; TAG_CUR_TOTAL=0
 TAG_RECENT_JSON="[]"
@@ -577,7 +577,10 @@ while true; do
                 [ -n "$MERGED" ] && PROVIDERS_JSON="$MERGED"
             fi
 
-            provider_box torrent "TORRENT" "$MAGENTA" TORRENT_LINES
+            # Torrent box dropped from the display 2026-09-18 (TORRENT_ENABLED=false,
+            # see README's "Acquisition providers" section) -- still fetched into
+            # PROVIDERS_JSON above so /api/acquire/provider-health data and the
+            # alerts logic keep working, just not rendered here.
             provider_box libgen "LIBGEN" "$YELLOW" LIBGEN_LINES
             provider_box openbooks "OPENBOOKS" "$CYAN" OPENBOOKS_LINES
         fi
@@ -820,13 +823,12 @@ while true; do
     echo
     echo "  ${BOLD}Acquisition processes${RESET} -- one box per auto-get source"
     hr
-    box_lines=${#TORRENT_LINES[@]}
-    (( ${#LIBGEN_LINES[@]} > box_lines )) && box_lines=${#LIBGEN_LINES[@]}
+    box_lines=${#LIBGEN_LINES[@]}
     (( ${#OPENBOOKS_LINES[@]} > box_lines )) && box_lines=${#OPENBOOKS_LINES[@]}
     box_blank="$(cline "$BOX_WIDTH" "$RESET" "")"
     for (( bi=0; bi<box_lines; bi++ )); do
-        printf "  %s  %s  %s\n" \
-            "${TORRENT_LINES[bi]:-$box_blank}" "${LIBGEN_LINES[bi]:-$box_blank}" "${OPENBOOKS_LINES[bi]:-$box_blank}"
+        printf "  %s  %s\n" \
+            "${LIBGEN_LINES[bi]:-$box_blank}" "${OPENBOOKS_LINES[bi]:-$box_blank}"
     done
     echo
     echo "  ${BOLD}Recently organized${RESET} -- last 5"
