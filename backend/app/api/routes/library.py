@@ -28,6 +28,7 @@ from app.services import (
     library_service,
     llm_tagging_service,
     recently_organized_service,
+    theme_dedup_service,
 )
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.cover_service import CoverService, get_cover_service
@@ -341,6 +342,15 @@ async def refresh_embeddings(limit: int = 500, db: AsyncSession = Depends(get_db
     /library/embeddings to write the sidecar. First run over the whole library
     is ~1–2 min; loop the call until `pending` is 0."""
     return await embedding_service.refresh_embeddings(db, limit=max(1, min(limit, 5000)))
+
+
+@router.post("/themes/refresh")
+async def refresh_theme_canon(db: AsyncSession = Depends(get_db)) -> dict:
+    """prompts/47 A.3 — recompute every LLM-tagged book's canonical themes
+    (`llm_tags_json.full.themesCanonical`) by two-tier dedup over the whole
+    theme vocabulary. CPU-only, a few seconds; also runs after each book's
+    reduce step."""
+    return await theme_dedup_service.refresh_theme_canon(db)
 
 
 @router.post("/embeddings")

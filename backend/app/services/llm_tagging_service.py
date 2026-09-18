@@ -44,6 +44,7 @@ from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.ai.ollama_client import OllamaBadResponse, OllamaClient, OllamaUnavailable
 from app.providers.epub.errors import EpubParseError, EpubParseTimeoutError
 from app.providers.epub.parser import extract_full_text_documents_safely
+from app.services import theme_dedup_service
 from app.services.auth_service import get_auth_service
 from app.services.llm_tagging_download import download_file_with_hard_timeout
 
@@ -496,6 +497,20 @@ async def tick() -> dict:
             logger.exception("llm tagging: failed for book %s", book.id)
             _mark_failed(book, str(exc))
 
+        just_finished = (book.llm_tags_json or {}).get("full", {}).get("status") == "done"
         await session.commit()
 
+    if just_finished:
+        await _refresh_theme_canon()
     return {"processed": book.id}
+
+
+async def _refresh_theme_canon() -> None:
+    """prompts/47 A.3 — fold the newly finished book's themes into the
+    library-wide canonical vocabulary. Best-effort: a failure here never
+    touches the book's own (already committed) tags."""
+    try:
+        async with async_session_factory() as session:
+            await theme_dedup_service.refresh_theme_canon(session)
+    except Exception:  # noqa: BLE001 — never crash the loop
+        logger.exception("llm tagging: theme dedup refresh failed")

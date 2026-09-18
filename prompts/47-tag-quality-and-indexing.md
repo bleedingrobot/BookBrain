@@ -204,6 +204,46 @@ investigation — `/api/generate` hangs indefinitely on that host as of
 2026-09-19, unrelated to this plan, needs a restart on the JamesGaming side
 before any tagging throughput work can be measured live).
 
+## Update — 2026-09-19, A.3 shipped (theme dedup), with a different middle-tier gate
+
+Built as `theme_dedup_service.py`; results in each done book's
+`llm_tags_json.full.themesCanonical` (raw `themes` untouched). Re-runs over
+the whole library after every reduce step, and on demand via
+`POST /api/library/themes/refresh`. Nothing reads it yet — that's B.1.
+
+**The co-occurrence gate from prompts/39 was measured and dropped.** On the
+553 tagged books it rejected 321 of the 0.85–0.95 pairs and accepted 3, and
+the rejections were the real duplicates ("moral dilemma"/"moral dilemmas",
+"consequences of war"/"war and its consequences"), while one of the 3
+accepted was wrong ("sacrifice" into "love and sacrifice"). libtrails
+extracts ~117 topics per book, so paraphrases share books there; BookBrain's
+reduce step emits ~10 per book and already dedups within one, so a shared
+book is evidence two themes are *different*. Ungated, the band is too loose
+("father-daughter" ~ "father-son relationships"). Replaced with a lexical
+gate: the middle band merges only when both strings reduce to the same set
+of content-word stems. The >0.95 tier is unchanged.
+
+**What it buys, measured:** 2,074 raw theme strings → 1,615 after case/
+whitespace folding → 1,476 canonical (123 merged groups, largest 4, all 123
+checked by hand, no wrong merges). Single-book themes 1,113 → 970. That's
+a smaller cut than prompts/39 implied: most of the remaining fragmentation
+is *semantic*, not phrasing ("power and control" / "power and corruption" /
+"power dynamics" are distinct strings about overlapping ideas, and
+correctly aren't merged at these thresholds). So for B.1, feed canonical
+themes to the *embedding* (which handles near-meanings on its own), and be
+cautious about exact-match uses like content_recs' IDF — the bare generic
+themes A.2 targets ("survival" on 215 books, "identity" 82, "moral
+ambiguity" 220) are the bigger hub problem there, and dedup doesn't touch
+them.
+
+**Ollama health check gives false positives.** On 2026-09-19 at ~08:45 NZST
+the trivial `"Say OK."` generate returned in 10s, but a real map call (a
+~7k-token prompt at `num_ctx` 8192) got no first token in 200-300s, and
+over the next minutes even 10- and 100-word prompts hung intermittently
+while others answered in 4s. A tiny prompt isn't enough to tell whether
+Ollama is serving: test with a real-sized map prompt before starting
+throughput work (A.5).
+
 ## Sources
 
 New this session:

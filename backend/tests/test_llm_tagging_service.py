@@ -209,3 +209,14 @@ def test_select_work_item_retries_old_failures() -> None:
 
 def test_is_pending_treats_missing_entry_as_pending() -> None:
     assert _is_pending(None, datetime.now(UTC)) is True
+
+
+async def test_theme_refresh_after_reduce_never_raises(monkeypatch, caplog) -> None:
+    from app.services import llm_tagging_service, theme_dedup_service
+
+    async def boom(session):
+        raise RuntimeError("model download failed")
+
+    monkeypatch.setattr(theme_dedup_service, "refresh_theme_canon", boom)
+    await llm_tagging_service._refresh_theme_canon()
+    assert "theme dedup refresh failed" in caplog.text
