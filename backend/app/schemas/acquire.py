@@ -12,6 +12,24 @@ class AcquireStatus(BaseModel):
     providers: list[AcquireProviderStatus] = []
 
 
+class ProviderHealthEntry(BaseModel):
+    """Windowed acquisition success for one provider. See
+    acquisition_service.provider_health for what `dead` and `proven` mean."""
+
+    window_got: int
+    window_failed: int
+    window_attempts: int
+    lifetime_got: int
+    lifetime_failed: int
+    proven: bool
+    dead: bool
+
+
+class ProviderHealth(BaseModel):
+    window_hours: int
+    providers: dict[str, ProviderHealthEntry] = {}
+
+
 class OpenBooksServerStatus(BaseModel):
     installed: bool
     running: bool

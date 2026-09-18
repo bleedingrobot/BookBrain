@@ -131,6 +131,22 @@ provider_box() {
         out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  queued $queued  failed $failed")")
     fi
 
+    # The windowed rate, right under the lifetime totals -- this is the line
+    # that should have moved on 2026-09-17. Red only when the backend says the
+    # provider is dead (no successes in the window while another provider is
+    # succeeding, and it has a track record to fall short of). Torrent is
+    # deliberately never red: at 4 got / 2210 failed all-time, failing is its
+    # normal state and a permanent red line is one nobody reads.
+    local whours wgot wattempts wdead wcolor
+    whours=$(jq -r ".${key}.window_hours // 6" <<< "$PROVIDERS_JSON")
+    wgot=$(jq -r ".${key}.window_got // 0" <<< "$PROVIDERS_JSON")
+    wattempts=$(jq -r ".${key}.window_attempts // 0" <<< "$PROVIDERS_JSON")
+    wdead=$(jq -r ".${key}.dead // false" <<< "$PROVIDERS_JSON")
+    if [ "$wdead" = "true" ]; then wcolor="${BOLD}${RED}"
+    elif [ "$wattempts" = "0" ]; then wcolor="$DIM"
+    else wcolor="$GREEN"; fi
+    out+=("$(cline "$BOX_WIDTH" "$wcolor" "${whours}h: ${wgot}/${wattempts}")")
+
     # Each section pads to a fixed row count (rather than however many
     # entries exist) so "last searched"/"last got" land on the same row
     # across all three boxes -- the three-column render below relies on
@@ -375,6 +391,32 @@ while true; do
                 {openbooks: provstats("openbooks"), libgen: provstats("libgen"), torrent: provstats("torrent")}
             ' 2>/dev/null)
             [ -z "$PROVIDERS_JSON" ] && PROVIDERS_JSON='{"openbooks":{},"libgen":{},"torrent":{}}'
+
+            # The counts above are lifetime totals, and a monotonic counter can
+            # never say "this stopped working two hours ago" -- during the
+            # 18-hour OpenBooks outage on 2026-09-17 `got` sat pinned at its
+            # lifetime value while Libgen absorbed the load, and no panel on
+            # this dashboard moved. /api/acquire/provider-health adds a windowed
+            # rate; the backend owns the "dead" definition so the mobile page
+            # and the viewer can share it rather than reimplementing it in jq.
+            # Merged into a temporary and only swapped in if jq actually
+            # succeeded: an unreachable or pre-deploy backend answers this path
+            # with the SPA's index.html, which is not JSON, and clobbering
+            # PROVIDERS_JSON with the empty output of a failed jq would blank
+            # all three boxes. Losing the windowed line is acceptable; losing
+            # the panel is not.
+            PHEALTH=$(curl -s -m 3 "$API/api/acquire/provider-health" 2>/dev/null)
+            if [ -n "$PHEALTH" ]; then
+                MERGED=$(jq -c --argjson h "$PHEALTH" '
+                    reduce keys[] as $p (.; .[$p] += {
+                        window_hours: $h.window_hours,
+                        window_got: ($h.providers[$p].window_got // 0),
+                        window_attempts: ($h.providers[$p].window_attempts // 0),
+                        dead: ($h.providers[$p].dead // false)
+                    })' <<< "$PROVIDERS_JSON" 2>/dev/null)
+                [ -n "$MERGED" ] && PROVIDERS_JSON="$MERGED"
+            fi
+
             provider_box torrent "TORRENT" "$MAGENTA" TORRENT_LINES
             provider_box libgen "LIBGEN" "$YELLOW" LIBGEN_LINES
             provider_box openbooks "OPENBOOKS" "$CYAN" OPENBOOKS_LINES

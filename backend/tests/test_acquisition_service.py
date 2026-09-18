@@ -1263,3 +1263,75 @@ async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypa
     rows = list((await db_session.execute(select(AcquisitionCandidate))).scalars())
     assert len(rows) == 1
     assert rows[0].request_id == "wl-dep"
+
+
+# --- per-provider health (prompts/44) ------------------------------------
+
+
+def _resolved(request_id, provider, status, hours_ago):
+    return AcquisitionCandidate(
+        request_id=request_id,
+        request_title=f"Book {request_id}",
+        status=status,
+        candidate_provider=provider,
+        resolved_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=hours_ago),
+    )
+
+
+async def _health(db_session, rows, **kw):
+    for r in rows:
+        db_session.add(r)
+    await db_session.commit()
+    return (await svc.provider_health(**kw))["providers"]
+
+
+async def test_provider_health_flags_a_provider_with_no_successes_in_the_window(db_session):
+    # openbooks has a proven lifetime record, then stops succeeding while
+    # libgen keeps working — the 2026-09-17 outage in miniature.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_resolved(f"bad{i}", "openbooks", AcquisitionStatus.failed, 1) for i in range(5)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["dead"] is True
+    assert health["openbooks"]["window_got"] == 0
+    assert health["openbooks"]["window_failed"] == 5
+    assert health["libgen"]["dead"] is False
+
+
+async def test_provider_health_does_not_flag_an_idle_provider(db_session):
+    # openbooks resolved nothing at all in the window: an empty queue is not
+    # a dead provider, so it must not be flagged.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["window_attempts"] == 0
+    assert health["openbooks"]["dead"] is False
+
+
+async def test_provider_health_does_not_flag_a_quiet_night(db_session):
+    # Nothing succeeded anywhere in the window — that's a quiet night, not one
+    # broken provider, and lighting everything up would be noise.
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 40) for i in range(20)]
+    rows += [_resolved(f"bad{i}", "openbooks", AcquisitionStatus.failed, 1) for i in range(5)]
+    health = await _health(db_session, rows)
+    assert health["openbooks"]["dead"] is False
+
+
+async def test_provider_health_never_flags_a_provider_that_never_worked(db_session):
+    # torrent is 4 approved / 2210 failed all-time (0.18%). Failing is its
+    # normal state, so it is reported but never turns the panel red —
+    # otherwise the alarm is permanently on and nobody reads it.
+    rows = [_resolved(f"t{i}", "torrent", AcquisitionStatus.failed, 1) for i in range(30)]
+    rows += [_resolved("t-ok", "torrent", AcquisitionStatus.approved, 40)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    health = await _health(db_session, rows)
+    assert health["torrent"]["proven"] is False
+    assert health["torrent"]["dead"] is False
+    assert health["torrent"]["window_failed"] == 30  # still reported, just not red
+
+
+async def test_provider_health_window_is_honoured(db_session):
+    rows = [_resolved(f"ok{i}", "openbooks", AcquisitionStatus.approved, 20) for i in range(20)]
+    rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
+    assert (await _health(db_session, rows, window_hours=6))["openbooks"]["window_got"] == 0
+    assert (await svc.provider_health(window_hours=24))["providers"]["openbooks"]["window_got"] == 20

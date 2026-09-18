@@ -1461,20 +1461,41 @@ async def _run_autoget_cycle(
         # server; after `_AUTOGET_SEARCH_REUSE` the search goes stale and we get a
         # fresh command anyway.
         _score, cand = pick
+        # `cand.provider` names the acquisition source; `cand.server` is the
+        # OpenBooks IRC bot nick and is None for every other provider, so
+        # logging it alone produced `via None` on 81 of 82 auto-got lines in
+        # 24h and made the 18-hour OpenBooks outage on 2026-09-17
+        # unmeasurable from the journal. Note the local `provider` variable in
+        # this scope is the DriveProvider (the upload destination), not the
+        # acquisition source — it is not the field you want here.
+        source = cand.provider + (f"/{cand.server}" if cand.server else "")
         try:
             result = await approve_request(rid, cand.full, provider, inbox.folder_id, library.folder_id)
-            logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), cand.server)
+            logger.info("acquire: auto-got %r (%s) via %s", title, result.get("filename"), source)
             try:
                 from app.services.library_index_service import regenerate_dashboard
 
                 await regenerate_dashboard(creds, library.folder_id)
             except Exception:  # noqa: BLE001 — the download already succeeded either way
                 logger.exception("acquire: dashboard refresh after auto-get failed")
-            return {"got": title, "filename": result.get("filename"), "server": cand.server}
+            # `server` is kept alongside the new `provider` rather than
+            # renamed: it is part of this tick's public shape and costs
+            # nothing to carry, so no consumer can break on the change.
+            return {
+                "got": title,
+                "filename": result.get("filename"),
+                "server": cand.server,
+                "provider": cand.provider,
+            }
         except Exception as exc:  # noqa: BLE001 — approve_request already flagged the row
-            logger.warning("acquire: auto-get failed for %r via %s: %s", title, cand.server, exc)
+            logger.warning("acquire: auto-get failed for %r via %s: %s", title, source, exc)
             await _rotate_failed_pick(existing_id, title, item.get("author"), cand.full, demerits)
-            return {"failed": title, "server": cand.server, "error": str(exc)}
+            return {
+                "failed": title,
+                "server": cand.server,
+                "provider": cand.provider,
+                "error": str(exc),
+            }
 
 
 async def _rotate_failed_pick(
@@ -1503,3 +1524,97 @@ async def _rotate_failed_pick(
         r.score = best_score
         r.alternatives_json = [_cand_dict(s, b) for s, b in reranked[1 : 1 + _MAX_ALTERNATIVES]]
         await session.commit()
+
+
+# --- Per-provider health (prompts/44, audit findings F2/F6) -----------------
+#
+# The `bookbrain.providers` block in status.json carries lifetime `got`/`failed`
+# counters, and a monotonic counter can never express "this stopped working two
+# hours ago". During the 18-hour OpenBooks outage starting 2026-09-17 ~18:00,
+# `openbooks.got` sat pinned at its lifetime value because counters don't go
+# down, Libgen silently absorbed the load, and every aggregate on the dashboard
+# was at or above normal. There was no panel that *could* have moved.
+
+PROVIDER_HEALTH_WINDOW_HOURS = 6
+# Chosen against the real table rather than guessed. Replaying every 6h window
+# over the 8 days of history, the "0 successes while another provider is
+# succeeding" condition fires for openbooks in 4 of 150 windows (the 09-17
+# outage) and libgen in 1 of 43 — low enough to be worth reading. 3h and 12h
+# were also measured; 6h is long enough that a quiet provider with a small
+# queue isn't flagged, short enough to catch an overnight death by morning.
+
+_PROVEN_LIFETIME_SUCCESS_RATE = 0.10
+# A provider is only eligible to be called "dead" if it has ever demonstrably
+# worked. Without this floor the torrent provider — 4 approved against 2,210
+# failed all-time, 0.18% — satisfies the dead condition in 56% of all 6h
+# windows and the alarm is permanently red, which trains the reader to ignore
+# it. Torrent failing is its normal operating state, not news. Its numbers are
+# still reported; it is just never the thing that turns the panel red.
+
+
+async def provider_health(window_hours: int = PROVIDER_HEALTH_WINDOW_HOURS) -> dict:
+    """Windowed per-provider acquisition success, alongside lifetime totals.
+
+    `dead` means: no successes in the window, at least one resolution in the
+    window (so an idle provider with an empty queue is never flagged), another
+    provider *did* succeed in the window (so a quiet night doesn't light
+    everything up), and the provider has a proven lifetime track record.
+    """
+    since = datetime.now(UTC) - timedelta(hours=window_hours)
+    async with async_session_factory() as session:
+        windowed = (
+            await session.execute(
+                select(
+                    AcquisitionCandidate.candidate_provider,
+                    AcquisitionCandidate.status,
+                    func.count(),
+                )
+                .where(AcquisitionCandidate.resolved_at >= since)
+                .group_by(AcquisitionCandidate.candidate_provider, AcquisitionCandidate.status)
+            )
+        ).all()
+        lifetime = (
+            await session.execute(
+                select(
+                    AcquisitionCandidate.candidate_provider,
+                    AcquisitionCandidate.status,
+                    func.count(),
+                ).group_by(AcquisitionCandidate.candidate_provider, AcquisitionCandidate.status)
+            )
+        ).all()
+
+    def _tally(rows) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for name, status, count in rows:
+            key = getattr(status, "value", status)
+            bucket = out.setdefault(name, {"got": 0, "failed": 0})
+            if key == "approved":
+                bucket["got"] += count
+            elif key == "failed":
+                bucket["failed"] += count
+        return out
+
+    win = _tally(windowed)
+    life = _tally(lifetime)
+    any_success = any(v["got"] > 0 for v in win.values())
+
+    providers = {}
+    for name in sorted(set(win) | set(life)):
+        w = win.get(name, {"got": 0, "failed": 0})
+        lifetime_total = life.get(name, {"got": 0, "failed": 0})
+        lifetime_attempts = lifetime_total["got"] + lifetime_total["failed"]
+        proven = (
+            lifetime_attempts > 0
+            and lifetime_total["got"] / lifetime_attempts >= _PROVEN_LIFETIME_SUCCESS_RATE
+        )
+        attempts = w["got"] + w["failed"]
+        providers[name] = {
+            "window_got": w["got"],
+            "window_failed": w["failed"],
+            "window_attempts": attempts,
+            "lifetime_got": lifetime_total["got"],
+            "lifetime_failed": lifetime_total["failed"],
+            "proven": proven,
+            "dead": bool(proven and attempts > 0 and w["got"] == 0 and any_success),
+        }
+    return {"window_hours": window_hours, "providers": providers}

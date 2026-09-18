@@ -41,6 +41,7 @@ from app.schemas.acquire import (
     AutoGetSettings,
     OpenBooksServerStatus,
     OpenRequest,
+    ProviderHealth,
     RequestRefreshJob,
 )
 from app.services import (
@@ -174,6 +175,16 @@ async def get_status() -> AcquireStatus:
             ),
         ],
     )
+
+
+@router.get("/provider-health", response_model=ProviderHealth)
+async def provider_health(window_hours: int = 0) -> ProviderHealth:
+    """Per-provider acquisition success inside a rolling window, next to the
+    lifetime totals. Computed here rather than as more `jq` in dashboard.sh so
+    the server dashboard, the mobile page and the viewer can share one
+    definition of "this provider has stopped working"."""
+    window = window_hours or acquisition_service.PROVIDER_HEALTH_WINDOW_HOURS
+    return ProviderHealth(**await acquisition_service.provider_health(window))
 
 
 @router.get("/server", response_model=OpenBooksServerStatus)
