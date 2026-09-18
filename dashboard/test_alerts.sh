@@ -8,6 +8,7 @@ sed -n '/^RESET=/,/^TICK=0/p' "$SRC" > /tmp/alertfns.sh
 ALERTS_LOG=$(mktemp); STATUS_FILE=$(mktemp); FAST_REFRESH=30
 source /tmp/alertfns.sh
 ALERTS_LOG=$(mktemp); : > "$ALERTS_LOG"
+ALERTS_STATE=$(mktemp); : > "$ALERTS_STATE"
 STATUS_FILE=$(mktemp); touch "$STATUS_FILE"
 NIGHTLY_STATUS="success"
 PROVIDERS_JSON='{"openbooks":{"dead":false,"window_got":3,"window_attempts":4,"window_hours":6},"libgen":{"dead":false},"torrent":{"dead":false,"window_got":0,"window_attempts":12,"window_hours":6}}'
@@ -66,7 +67,7 @@ NIGHTLY_STATUS="success"
 # Pin the journal timestamp to *now* so backend-silent stays quiet and
 # provider-dead is the only alert in play; otherwise this case silently
 # measures two transitions instead of one.
-: > "$ALERTS_LOG"; PREV_ALERT_KEYS=""
+: > "$ALERTS_LOG"; : > "$ALERTS_STATE"; PREV_ALERT_KEYS=""
 journalctl() { echo "$(command date +%s).000000 fresh line"; }
 PROVIDERS_JSON='{"openbooks":{"dead":true,"window_got":0,"window_attempts":47,"window_hours":6}}'
 compute_alerts; log_alert_transitions
@@ -95,5 +96,27 @@ check "tracebacks in the hour raise" "$(printf '%s\n' "${ALERT_MSGS[@]}" | grep 
 TB_OUT=""
 compute_alerts
 check "no tracebacks, no alert" "$(printf '%s\n' "${ALERT_KEYS[@]-}" | grep -c tracebacks)" "0"
+
+# --- 10. a second concurrent instance must not re-raise ---
+# bookbrain-dashboard-web.service runs this script under ttyd, one process per
+# connected browser, so several instances tick against one alerts.log. This is
+# the bug that showed up live: with per-process state, each re-RAISED every
+# already-active alert.
+: > "$ALERTS_LOG"; : > "$ALERTS_STATE"
+PROVIDERS_JSON='{"openbooks":{"dead":true,"window_got":0,"window_attempts":47,"window_hours":6}}'
+compute_alerts; log_alert_transitions                  # instance A, first tick
+( PREV_ALERT_KEYS=""; compute_alerts; log_alert_transitions )   # instance B, fresh process
+( PREV_ALERT_KEYS=""; compute_alerts; log_alert_transitions )   # instance C
+check "concurrent instances log 1 RAISED" "$(grep -c RAISED "$ALERTS_LOG")" "1"
+
+# --- 11. a restart does not re-announce an already-active alert ---
+( PREV_ALERT_KEYS=""; compute_alerts; log_alert_transitions )
+check "restart does not re-raise" "$(grep -c RAISED "$ALERTS_LOG")" "1"
+
+# --- 12. the log self-truncates ---
+ALERTS_LOG_MAX_LINES=10
+for i in $(seq 1 12); do printf 'filler %s\n' "$i" >> "$ALERTS_LOG"; done
+PROVIDERS_JSON='{"openbooks":{"dead":false}}'; compute_alerts; log_alert_transitions
+check "log truncates past the cap" "$([ "$(wc -l < "$ALERTS_LOG")" -le 10 ] && echo yes)" "yes"
 
 echo; echo "passed $pass, failed $fail"; [ "$fail" -eq 0 ]

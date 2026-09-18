@@ -34,6 +34,7 @@ import asyncio
 import logging
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -406,6 +407,22 @@ _LOG_PATH = Path(__file__).resolve().parents[2] / "nightly-runs.log"
 
 
 def _configure_standalone_logging() -> None:
+    """Only ever runs under `python -m app.jobs.nightly`, never in the server.
+
+    The file handler is kept, narrowly, for the Windows Scheduled Task path
+    documented in README.md (`scripts/register-nightly-task.bat`): there is no
+    journal there and a Scheduled Task discards stderr, so this file is that
+    setup's only record. On this Linux box nothing runs the standalone
+    entrypoint — no systemd timer, no crontab — the in-process APScheduler job
+    runs the nightly and logs to the journal like everything else.
+
+    That combination is what made the file dangerous: it sat five days stale
+    at 66KB, holding a complete, plausible, perfectly-formatted successful
+    nightly summary — exactly what a 3am investigation opens first and
+    believes. The stale copy has been deleted; the banner below is so that any
+    file which reappears announces which path wrote it and when, instead of
+    looking like the scheduled run's output.
+    """
     handler = RotatingFileHandler(_LOG_PATH, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     handler.setFormatter(fmt)
@@ -419,7 +436,13 @@ def _configure_standalone_logging() -> None:
 
 def main() -> int:
     _configure_standalone_logging()
-    logger.info("nightly: standalone run starting (log: %s)", _LOG_PATH)
+    logger.info(
+        "nightly: MANUAL standalone run (`python -m app.jobs.nightly`) started %s — "
+        "this file records the CLI path only; the scheduled in-process nightly logs "
+        "to the journal, not here (log: %s)",
+        datetime.now().astimezone().isoformat(timespec="seconds"),
+        _LOG_PATH,
+    )
     result = asyncio.run(run_nightly_job(trigger="cli"))
     if result.skipped:
         logger.info("nightly: %s", result.summary)

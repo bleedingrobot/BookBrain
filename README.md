@@ -47,7 +47,13 @@ Two layers run the same job (`app/jobs/nightly.py::run_nightly`):
 - **In-process** — an APScheduler job in the FastAPI lifespan. Fires only if the
   server is up at the chosen hour. Toggling the setting re-arms it live.
 - **Standalone** — `python -m app.jobs.nightly`, no HTTP layer, exits non-zero on
-  failure, logs to `backend/nightly-runs.log`. For when the machine's usually not
+  failure, logs to stderr and to `backend/nightly-runs.log`. That file records the
+  **manual/Scheduled-Task path only** — on the Linux homeserver the in-process job
+  above is what actually runs, and it logs to the journal
+  (`journalctl -u bookbrain.service`), not to this file. Each standalone run writes
+  a banner saying so, because a stale `nightly-runs.log` full of a plausible
+  successful summary is exactly what a 3am investigation opens first and believes.
+  For when the machine's usually not
   running the server overnight: double-click `backend/scripts/register-nightly-task.bat`
   once to install a Windows Scheduled Task (2am by default; pass an hour to match
   the in-app setting). `unregister-nightly-task.bat` removes it.
@@ -115,7 +121,26 @@ as a systemd service instead of a manual `uvicorn --reload` window:
   from `npm run build`) directly, so there's one permanent URL instead of a
   locally-launched `npm run dev` server.
 - **`bookbrain-dashboard.service`** — an optional status readout on the
-  server's own console (tty1); unrelated to the app itself.
+  server's own console (tty1); unrelated to the app itself. Its `ALERTS` block
+  (`dashboard/dashboard.sh`) is the one place a 3am failure shows up, and
+  `dashboard/alerts.log` records each raise/clear so it's still readable at
+  breakfast. `dashboard/test_alerts.sh` covers the conditions.
+
+### Acquisition providers
+
+OpenBooks and Libgen are on. **Torrent is off as of 2026-09-18**
+(`TORRENT_ENABLED=false` in `backend/.env`): all-time it managed 4 successful
+downloads against 2,210 failures — 0.18%, versus openbooks 125/8 and libgen
+79/41 — while producing steady log volume and 2,214 DB rows in two days. That
+switch stops the submit, poll and fast local-scan legs. It does **not** stop
+the nightly `_pull_local_folder` step, so downloading a torrent by hand on
+JAMESGAMING and letting BookBrain pick it out of the watch folder still works;
+it just happens on the nightly pass instead of within two minutes. Set
+`TORRENT_ENABLED=true` and restart to bring it all back.
+
+Per-provider health, including a windowed success rate that can actually show
+"this died two hours ago", is at `GET /api/acquire/provider-health` and on both
+dashboards.
 
 Common commands:
 

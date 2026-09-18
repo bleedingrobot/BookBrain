@@ -228,6 +228,7 @@ ago() {
 # that every one of them is pull-based, and tty1 is unwatched at 3am. This
 # block is the one red thing, and alerts.log is how it survives the night.
 ALERTS_LOG="/opt/bookbrain/dashboard/alerts.log"
+ALERTS_STATE="/opt/bookbrain/dashboard/.alerts-state"
 ALERTS_LOG_MAX_LINES=2000
 SILENCE_ALARM_SECONDS=300
 PREV_ALERT_KEYS=""
@@ -301,29 +302,44 @@ compute_alerts() {
 # Append one line per alert *transition* -- not per tick, which would be 2,880
 # lines a day. This is the part that converts "a red thing nobody was awake to
 # see" into "at 18:04 OpenBooks stopped, at 07:00 it was still stopped".
+#
+# The previous tick's active set lives in a FILE, not a shell variable, and the
+# whole read-diff-append-write is under flock. That is not over-engineering:
+# bookbrain-dashboard-web.service runs this same script under ttyd, one process
+# per connected browser, so several instances tick concurrently against one
+# alerts.log. With per-process state each of them re-RAISED every already-active
+# alert -- observed live, the same "tracebacks" alert logged twice 11s apart.
+# Sharing the state file also means a restart doesn't re-announce conditions
+# that were already active before it.
 log_alert_transitions() {
-    local now_iso cur key
+    local now_iso cur
     now_iso=$(date -Iseconds)
     cur=" ${ALERT_KEYS[*]-} "
-    for key in ${ALERT_KEYS[@]+"${ALERT_KEYS[@]}"}; do
-        [[ "$PREV_ALERT_KEYS" == *" $key "* ]] && continue
-        local i=0 msg="$key"
-        for i in "${!ALERT_KEYS[@]}"; do
-            [ "${ALERT_KEYS[$i]}" = "$key" ] && msg="${ALERT_MSGS[$i]}"
+    {
+        flock 9
+        PREV_ALERT_KEYS=" $(cat "$ALERTS_STATE" 2>/dev/null) "
+        local key i msg
+        for key in ${ALERT_KEYS[@]+"${ALERT_KEYS[@]}"}; do
+            [[ "$PREV_ALERT_KEYS" == *" $key "* ]] && continue
+            msg="$key"
+            for i in "${!ALERT_KEYS[@]}"; do
+                [ "${ALERT_KEYS[$i]}" = "$key" ] && msg="${ALERT_MSGS[$i]}"
+            done
+            printf '%s  RAISED   %s\n' "$now_iso" "$msg" >> "$ALERTS_LOG"
         done
-        printf '%s  RAISED   %s\n' "$now_iso" "$msg" >> "$ALERTS_LOG"
-    done
-    for key in $PREV_ALERT_KEYS; do
-        [[ "$cur" == *" $key "* ]] && continue
-        printf '%s  CLEARED  %s\n' "$now_iso" "$key" >> "$ALERTS_LOG"
-    done
-    PREV_ALERT_KEYS="$cur"
+        for key in $PREV_ALERT_KEYS; do
+            [[ "$cur" == *" $key "* ]] && continue
+            printf '%s  CLEARED  %s\n' "$now_iso" "$key" >> "$ALERTS_LOG"
+        done
+        printf '%s' "${ALERT_KEYS[*]-}" > "$ALERTS_STATE"
 
-    # One line per transition is slow growth, but not zero growth.
-    if [ -f "$ALERTS_LOG" ] && (( $(wc -l < "$ALERTS_LOG") > ALERTS_LOG_MAX_LINES )); then
-        tail -n "$(( ALERTS_LOG_MAX_LINES / 2 ))" "$ALERTS_LOG" > "$ALERTS_LOG.tmp" \
-            && mv "$ALERTS_LOG.tmp" "$ALERTS_LOG"
-    fi
+        # One line per transition is slow growth, but not zero growth.
+        if [ -f "$ALERTS_LOG" ] && (( $(wc -l < "$ALERTS_LOG") > ALERTS_LOG_MAX_LINES )); then
+            tail -n "$(( ALERTS_LOG_MAX_LINES / 2 ))" "$ALERTS_LOG" > "$ALERTS_LOG.tmp" \
+                && mv "$ALERTS_LOG.tmp" "$ALERTS_LOG"
+        fi
+    } 9>>"$ALERTS_STATE.lock"
+    PREV_ALERT_KEYS="$cur"
 }
 
 render_alerts() {
@@ -485,13 +501,25 @@ while true; do
             # Last 5 resolved (any outcome) and last 5 actually downloaded,
             # newest first -- and the timestamp of the most recent download,
             # for the "how long has it been" line.
-            SEARCHED_JSON=$(echo "$REQ" | jq -c '
+            # `slim` keeps exactly the fields the two readers of status.json
+            # actually render -- dashboard.sh's own jq filters and
+            # mobile/index.html -- and drops the rest. Each full request row
+            # carried an opaque `full` handle plus an `alternatives` array of
+            # complete candidate objects (200-character
+            # `!Bot Author - [Series 01] - Title (epub).rar` strings, five deep,
+            # per provider); the providers block alone was 37KB of a 100KB file
+            # rewritten every 30s, and nothing rendered any of it. `candidate`
+            # is projected to `provider` alone because the queue's got_recent
+            # list is labelled with it (index.html:472).
+            SLIM='def slim: {title, author, status, resolved_at,
+                             candidate: (if .candidate then {provider: .candidate.provider} else null end)};'
+            SEARCHED_JSON=$(echo "$REQ" | jq -c "$SLIM"'
                 [.[] | select(.status != "unsearched" and .resolved_at != null)]
-                | sort_by(.resolved_at) | reverse | .[:5]' 2>/dev/null)
+                | sort_by(.resolved_at) | reverse | .[:5] | map(slim)' 2>/dev/null)
             [ -z "$SEARCHED_JSON" ] && SEARCHED_JSON="[]"
-            GOT_JSON=$(echo "$REQ" | jq -c '
+            GOT_JSON=$(echo "$REQ" | jq -c "$SLIM"'
                 [.[] | select(.status == "approved" and .resolved_at != null)]
-                | sort_by(.resolved_at) | reverse | .[:5]' 2>/dev/null)
+                | sort_by(.resolved_at) | reverse | .[:5] | map(slim)' 2>/dev/null)
             [ -z "$GOT_JSON" ] && GOT_JSON="[]"
             LAST_GOT_AT=$(echo "$GOT_JSON" | jq -r '.[0].resolved_at // empty' 2>/dev/null)
             # Where got books actually came from -- openbooks / annas_archive /
@@ -509,7 +537,7 @@ while true; do
             # attributed to whichever source(s) actually searched it -- only
             # pending/approved/failed/fetching rows (which keep their
             # candidate) show up here.
-            PROVIDERS_JSON=$(echo "$REQ" | jq -c '
+            PROVIDERS_JSON=$(echo "$REQ" | jq -c "$SLIM"'
                 def provstats(p):
                     ([.[] | select((.candidate.provider // "") == p)]) as $rows
                     | {
@@ -517,8 +545,8 @@ while true; do
                         fetching: ([$rows[] | select(.status=="fetching")] | length),
                         got: ([$rows[] | select(.status=="approved")] | length),
                         failed: ([$rows[] | select(.status=="failed")] | length),
-                        searched_recent: ([$rows[] | select(.resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5]),
-                        got_recent: ([$rows[] | select(.status=="approved" and .resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5])
+                        searched_recent: ([$rows[] | select(.resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5] | map(slim)),
+                        got_recent: ([$rows[] | select(.status=="approved" and .resolved_at != null)] | sort_by(.resolved_at) | reverse | .[:5] | map(slim))
                     };
                 {openbooks: provstats("openbooks"), libgen: provstats("libgen"), torrent: provstats("torrent")}
             ' 2>/dev/null)
