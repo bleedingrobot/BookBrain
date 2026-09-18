@@ -295,6 +295,18 @@ and `SPEC.md` § "Identification pipeline (2026)".
 | 18 | [`18-nightly-db-backup.md`](18-nightly-db-backup.md) | feature — backend + Settings | **DONE 2026-09-07.** `backup_service.py` — `VACUUM INTO` snapshot + `.sql.gz` dump → `backups/` subfolder of the Drive library folder on each nightly run (first, best-effort), last 7 kept. `POST/GET /api/library/backup[s]` + a Settings block. `RESTORE.md`. 572 backend tests green. |
 | 17 | [`17-library-viewer-epub-reader.md`](17-library-viewer-epub-reader.md) | feature — `library-viewer` only | **§A–C DONE 2026-09-07** (`e08b700` + `511d2cf`). Vendored `foliate-js` (EPUB path, no npm dep) → `components/Reader.tsx`: full-screen paginated reader, tap/key/swipe, Contents drawer, Display panel (`readerPrefs.ts`), position in `localStorage` (`readingProgress.ts`), IndexedDB offline byte-cache (`bookCache.ts`, LRU 300 MB/20). "Read" on `.epub` rows + "Continue reading" strip + "Clear downloaded books". Build/lint/90 tests green; James-verified on real devices (`2ad7e40` + `c9c4c6b` follow-up fixes). **Considered complete.** §D (word-count→time-left), §E (cross-device position sync), Kobo sync — all dropped (James); position stays per-device, progress shown as `%`. |
 
+- [`47-tag-quality-and-indexing.md`](47-tag-quality-and-indexing.md) — revisits
+  `prompts/39` now that two of its options (tag-based similar books,
+  richer embeddings) have shipped; fresh research on controlled vocabulary
+  vs. free-form tag generation, JSON-schema-constrained batching, and
+  semantic tag dedup. Phase A: constrain genres/moods to a curated
+  vocabulary, stoplist generic themes, real two-tier theme dedup
+  (Union-Find), JSON-Schema `format` + batch 3-5 chunks/call for throughput.
+  Phase B: feed deduped themes into embeddings, RRF search fusion, MMR
+  rerank on similar-books, a hard content-warning filter (data already
+  exists, near-zero lift). Phase C (auto-shelves, relationship graph,
+  ask-your-library) deferred until A/B land on clean data. **Not started.**
+
 ## Shared context (every session should know this)
 
 - **Repo:** `C:\Users\Giant\Documents\epub-librarian` — the directory keeps the
