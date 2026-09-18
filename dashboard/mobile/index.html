@@ -123,6 +123,10 @@
     color: var(--dim); font-size: 12px; text-decoration: none;
   }
   .tabs a.active { color: var(--text); border-color: var(--cyan); }
+  /* Embedded in the library-viewer's Dashboard screen: the tabs go, since
+     /term is the unauthenticated shell and has no business inside a page
+     served from GitHub Pages. */
+  body.embedded .tabs { display: none; }
 </style>
 </head>
 <body>
@@ -518,6 +522,25 @@ function renderAlerts(alerts) {
     el.innerHTML = `<div class="title"><span class="t stale">${esc(a)}</span></div>`;
     list.appendChild(el);
   }
+}
+
+// The library-viewer's Dashboard screen frames this page (tailnet devices
+// only -- the viewer shows its family dashboard when this never loads). It
+// can't read a cross-origin frame's height, so tell it: this message is also
+// how the viewer knows the page is reachable at all. Only the height leaves,
+// and only to the viewer's origins.
+const VIEWER_ORIGINS = ['https://bleedingrobot.github.io', 'http://localhost:5173'];
+const embedded = window.self !== window.top;
+if (embedded) {
+  document.body.classList.add('embedded');
+  const report = () => {
+    const height = document.documentElement.scrollHeight;
+    for (const origin of VIEWER_ORIGINS) {
+      window.parent.postMessage({ type: 'bookbrain-mobile-dash', height }, origin);
+    }
+  };
+  new ResizeObserver(report).observe(document.body);
+  report();
 }
 
 refresh();

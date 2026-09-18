@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { BookRow } from '../lib/books'
 import { SORTS, topGenres } from '../lib/books'
 import { Cover } from './Cover'
+import { MOBILE_DASH_URL } from '../lib/config'
 import type { Dashboard } from '../lib/dashboard'
 import type { LibraryIndex } from '../lib/libraryIndex'
 import { timeAgo } from '../lib/news'
@@ -83,19 +84,110 @@ function GrowthSparkline({ rows }: { rows: BookRow[] }) {
   )
 }
 
+const MOBILE_DASH_ORIGIN = new URL(MOBILE_DASH_URL).origin
+const MOBILE_DASH_SEEN_KEY = 'bookbrain.mobileDashSeen'
+// How long to hold the family dashboard back on a device where the mobile
+// dash answered last time, before deciding it's off the tailnet today.
+const MOBILE_DASH_WAIT_MS = 5000
+
+function readSeen(): boolean {
+  try {
+    return localStorage.getItem(MOBILE_DASH_SEEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeSeen(seen: boolean) {
+  try {
+    if (seen) localStorage.setItem(MOBILE_DASH_SEEN_KEY, '1')
+    else localStorage.removeItem(MOBILE_DASH_SEEN_KEY)
+  } catch {
+    /* private mode */
+  }
+}
+
+// The mobile dash is tailnet-only, so whether it loads is the whole test of
+// "is this James's device". It posts its height once it's up (see
+// dashboard/mobile/index.html) — that message is the signal; a frame that
+// never loads never sends one.
+function useMobileDash() {
+  const [height, setHeight] = useState<number | null>(null)
+  const [waiting, setWaiting] = useState(readSeen)
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== MOBILE_DASH_ORIGIN || e.data?.type !== 'bookbrain-mobile-dash') return
+      if (typeof e.data.height !== 'number') return
+      setHeight(e.data.height)
+      writeSeen(true)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  useEffect(() => {
+    if (!waiting) return
+    const t = setTimeout(() => {
+      setWaiting(false)
+      writeSeen(false)
+    }, MOBILE_DASH_WAIT_MS)
+    return () => clearTimeout(t)
+  }, [waiting])
+
+  return { live: height !== null, waiting: waiting && height === null, height: height ?? 0 }
+}
+
 export function DashboardScreen({
-  rows,
-  index,
-  dashboard,
-  token,
   onBack,
-  onOpenBook,
+  ...props
 }: {
   rows: BookRow[]
   index: LibraryIndex
   dashboard: Dashboard
   token: string
   onBack: () => void
+  onOpenBook: (id: string) => void
+}) {
+  const mobile = useMobileDash()
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
+      <button
+        className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
+        onClick={onBack}
+      >
+        &larr; Back to library
+      </button>
+
+      {/* Always mounted, so it starts loading at once and isn't reloaded
+          when it's revealed; hidden until it has said it's up. */}
+      <iframe
+        src={MOBILE_DASH_URL}
+        title="Server dashboard"
+        sandbox="allow-scripts allow-same-origin"
+        allow="local-network-access; local-network"
+        className={mobile.live ? 'mt-3 block w-full rounded-lg' : 'hidden'}
+        style={{ height: Math.max(mobile.height, 200) }}
+      />
+
+      {mobile.waiting && <p className="mt-6 text-sm text-neutral-400">Connecting to the server…</p>}
+      {!mobile.live && !mobile.waiting && <FamilyDashboard {...props} />}
+    </div>
+  )
+}
+
+function FamilyDashboard({
+  rows,
+  index,
+  dashboard,
+  token,
+  onOpenBook,
+}: {
+  rows: BookRow[]
+  index: LibraryIndex
+  dashboard: Dashboard
+  token: string
   onOpenBook: (id: string) => void
 }) {
   const recent = useMemo(() => [...rows].sort(SORTS.added).slice(0, 5), [rows])
@@ -111,14 +203,7 @@ export function DashboardScreen({
   const hasTagging = taggingTotal > 0
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
-      <button
-        className="text-xs text-neutral-400 underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300"
-        onClick={onBack}
-      >
-        &larr; Back to library
-      </button>
-
+    <>
       <h1 className="mt-3 text-xl font-semibold tracking-tight">Dashboard</h1>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">
         The shelf, the queue, and everything in between.
@@ -304,6 +389,6 @@ export function DashboardScreen({
           </div>
         </section>
       )}
-    </div>
+    </>
   )
 }

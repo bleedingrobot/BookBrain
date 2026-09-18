@@ -30,3 +30,9 @@ export const DEFAULT_GOOGLE_BOOKS_API_KEY = 'AIzaSyARc-3eRiMVr4EKC-UGTZ1RyHDv8eA
 // /api/viewer/* — the rest of the admin API stays unreachable from the
 // internet. See README.md's "Passcode login for the library-viewer" section.
 export const BACKEND_URL = 'https://homeserver.tail00fe4c.ts.net:8443'
+
+// The server-ops mobile dashboard (dashboard/mobile/index.html). Tailnet-only
+// and never funneled, so it loads on James's own devices and nowhere else:
+// the Dashboard screen frames it when it answers, and shows the family
+// dashboard when it doesn't.
+export const MOBILE_DASH_URL = 'https://homeserver.tail00fe4c.ts.net/'
