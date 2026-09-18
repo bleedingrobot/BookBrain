@@ -29,17 +29,80 @@ from app.jobs.scheduler import (
 # INFO. That's why e.g. acquisition_service's "auto-got" success line, and
 # the nightly job's own summary, never showed up in `journalctl -u
 # bookbrain.service` even though the work was actually happening (confirmed
-# live 2026-09-18 by checking the DB directly). Scoped to the "app" logger
-# namespace, not the root logger, so third-party libraries (httpx logs an
-# INFO line per HTTP request, noisy in a long-running server) stay at their
-# own default levels instead of flooding the journal too.
+# live 2026-09-18 by checking the DB directly). The INFO level is scoped to
+# the "app" namespace, not the root logger, because third-party libraries are
+# far chattier than we are: httpx logs an INFO line per HTTP request, which in
+# a long-running server would bury our own output.
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
 _app_logger = logging.getLogger("app")
 _app_logger.setLevel(logging.INFO)
 _app_logger.propagate = False
 if not _app_logger.handlers:
     _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    _handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     _app_logger.addHandler(_handler)
+
+# The root logger gets the same formatter so that library output is visually
+# identical to ours and greppable by the same rules — but at WARNING, for the
+# httpx reason above. Before this, the root logger had no handler anywhere in
+# its chain, so every non-`app.*` logger (apscheduler.*, sqlalchemy.*,
+# websockets, httpx) fell through to Python's `logging.lastResort`: a bare
+# WARNING StreamHandler with *no formatter*. The errors were all being
+# printed, they just arrived with no timestamp, no level and no logger name.
+# Measured over the 7 days to 2026-09-18: 202 `Traceback (most recent call
+# last):` in the journal against exactly 1 line matching `ERROR app.`, so
+# `journalctl -u bookbrain.service | grep -i error` found one line for the
+# week while 32 `database is locked` failures went unnoticed. `app.*` keeps
+# `propagate = False`, so it does not double-log through this handler.
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.WARNING)
+if not _root_logger.handlers:
+    _root_handler = logging.StreamHandler()
+    _root_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    _root_logger.addHandler(_root_handler)
+
+
+class _MaxInstancesFilter(logging.Filter):
+    """Drop APScheduler's max-instances skip line; keep everything else.
+
+    47.5% of the journal (25,836 of 54,427 lines in 24h) was:
+
+        Execution of job "LLM tagging (trigger: interval[0:00:02], ...)"
+        skipped: maximum number of running instances reached (1)
+
+    That is not a bug and the 2s interval is not a mistake — see the comment
+    in jobs/scheduler.py: a tiny interval plus max_instances=1 plus coalesce
+    is a deliberate "refire the instant the previous tick frees up" idiom, so
+    the real pacing is however long Ollama takes. The message is misleveled
+    noise, not a signal.
+
+    It is safe to filter surgically because APScheduler puts it on a
+    different logger from job errors: `apscheduler.scheduler` logs exactly
+    two things at WARNING (this, and "Error getting due jobs from job
+    store"), while `'Job "%s" raised an exception'` is logged by
+    `apscheduler.executors.<alias>` and is untouched by this filter. A filter
+    is used rather than raising the logger to ERROR so the jobstore-read
+    warning survives.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "maximum number of running" not in str(record.msg)
+
+
+logging.getLogger("apscheduler.scheduler").addFilter(_MaxInstancesFilter())
+
+# NOT disabled: the uvicorn access log, which is another ~45% of the journal.
+# Killing it is the obvious next move and it is the wrong one. BookBrain's own
+# application logging is 456 lines per 7 days — one every ~22 minutes, with a
+# routine 16-minute gap (p99 inter-line gap 3.97 min, max 16.2 min). On that
+# stream alone, "silent for 10 minutes" is normal and a log-silence alarm is
+# unbuildable. With the access log on, the p99 gap across all lines is 31s, so
+# "nothing for 5 minutes" has a near-zero false-positive rate and would have
+# caught the 14-minute event-loop hang on 2026-09-18. The dashboard's own 30s
+# poll is BookBrain's de facto heartbeat, and the alerts block in dashboard.sh
+# builds its silence alarm on top of it. Silencing the APScheduler noise above
+# is safe precisely because the access log stays.
 
 logger = logging.getLogger(__name__)
 
