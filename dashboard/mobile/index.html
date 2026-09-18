@@ -260,8 +260,9 @@
 
 <div class="card">
   <h2>LibGen</h2>
-  <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="lg-counts">--</span></div>
+  <div class="row"><span class="label">Got / Pending / Failed</span><span class="value" id="lg-counts">--</span></div>
   <div class="row"><span class="label">Searched, found nothing</span><span class="value" id="lg-nomatch">--</span></div>
+  <div class="row"><span class="label">Pending, not searched in 24h</span><span class="value" id="lg-stale">--</span></div>
   <div class="row"><span class="label">Recent window</span><span class="value"><span class="pill" id="lg-window">--</span></span></div>
   <div class="sub" style="margin:10px 0 2px">Last searched</div>
   <ul class="list" id="lg-searched-list"><li class="empty">loading&hellip;</li></ul>
@@ -271,8 +272,9 @@
 
 <div class="card">
   <h2>OpenBooks</h2>
-  <div class="row"><span class="label">Got / Queued / Failed</span><span class="value" id="ob-counts">--</span></div>
+  <div class="row"><span class="label">Got / Pending / Failed</span><span class="value" id="ob-counts">--</span></div>
   <div class="row"><span class="label">Searched, found nothing</span><span class="value" id="ob-nomatch">--</span></div>
+  <div class="row"><span class="label">Pending, not searched in 24h</span><span class="value" id="ob-stale">--</span></div>
   <div class="row"><span class="label">Recent window</span><span class="value"><span class="pill" id="ob-window">--</span></span></div>
   <div class="sub" style="margin:10px 0 2px">Last searched</div>
   <ul class="list" id="ob-searched-list"><li class="empty">loading&hellip;</li></ul>
@@ -496,6 +498,15 @@ function renderProviderCard(prefix, data, opts) {
     nomatch.textContent = data.unavailable
       ? `${nm} (${data.unavailable} couldn't answer)`
       : `${nm}`;
+  }
+  // "Pending" is the queue's own word, and it does not mean "about to
+  // happen": list_requests re-ranks stored candidates on every page load, so
+  // a row last really searched days ago comes back as pending. This row says
+  // how much of the number is that.
+  const stale = $(prefix + '-stale');
+  if (stale) {
+    const n = data.queued_stale ?? 0;
+    stale.textContent = n ? `${n} of ${data.queued ?? 0}` : '0';
   }
   // Lifetime counters above; the windowed rate here. A monotonic counter can
   // never show "this died two hours ago" -- see prompts/44. `dead` and

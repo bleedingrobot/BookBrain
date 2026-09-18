@@ -117,9 +117,10 @@ BOX_WIDTH=31
 provider_box() {
     local key=$1 label=$2 hcolor=$3
     local -n out=$4
-    local got queued failed fetching nomatch
+    local got queued qstale failed fetching nomatch
     got=$(jq -r ".${key}.got // 0" <<< "$PROVIDERS_JSON")
     queued=$(jq -r ".${key}.queued // 0" <<< "$PROVIDERS_JSON")
+    qstale=$(jq -r ".${key}.queued_stale // 0" <<< "$PROVIDERS_JSON")
     failed=$(jq -r ".${key}.failed // 0" <<< "$PROVIDERS_JSON")
     fetching=$(jq -r ".${key}.fetching // 0" <<< "$PROVIDERS_JSON")
     # Searches that came back with nothing, from the event log. Without this
@@ -133,9 +134,11 @@ provider_box() {
     if [ "$key" = "torrent" ]; then
         out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  fetching $fetching  failed $failed")")
     else
-        out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  queued $queued  failed $failed")")
+        out+=("$(cline "$BOX_WIDTH" "$RESET" "got $got  pending $queued  failed $failed")")
     fi
-    out+=("$(cline "$BOX_WIDTH" "$DIM" "no match $nomatch")")
+    # "pending 61" of which 28 were last really searched a week ago is not a
+    # queue that's about to move; say so rather than implying it is.
+    out+=("$(cline "$BOX_WIDTH" "$DIM" "no match $nomatch   $qstale stale")")
 
     # The windowed rate, right under the lifetime totals -- this is the line
     # that should have moved on 2026-09-17. Red when the backend says the
@@ -578,15 +581,33 @@ while true; do
             # `candidate.provider` (contrary to an earlier comment here), but
             # only the provider that searched it last.
             #
-            # Only `queued` and `fetching` survive from this block; the history
-            # fields it computes are replaced wholesale by the acquisition-log
-            # merge below. They are still computed here so the panel degrades
-            # to something rather than nothing if that request fails.
-            PROVIDERS_JSON=$(echo "$REQ" | jq -c "$SLIM"'
+            # Only `queued`, `queued_stale` and `fetching` survive from this
+            # block; the history fields it computes are replaced wholesale by
+            # the acquisition-log merge below. They are still computed here so
+            # the panel degrades to something rather than nothing if that
+            # request fails.
+            #
+            # `queued_stale` exists because the count on its own reads as a
+            # work plan and isn't one: `list_requests` re-ranks stored
+            # candidates on every page load, which can put a row back to
+            # `pending` without re-touching the provider, so most of
+            # OpenBooks' 61 "queued" on 2026-09-18 had last actually been
+            # searched days earlier. Labelled `pending` in the panels for the
+            # same reason -- it is the queue's own word for this state, and it
+            # doesn't promise anything is about to happen.
+            #
+            # Measured on `searched_at` (the row's `updated_at`), never
+            # `resolved_at`: a search that finds candidates *clears*
+            # `resolved_at`, so a fresh pending row has none and filtering on
+            # it counts the freshest rows as the stalest.
+            STALE_BEFORE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)
+            PROVIDERS_JSON=$(echo "$REQ" | jq -c --arg stale "$STALE_BEFORE" "$SLIM"'
                 def provstats(p):
                     ([.[] | select((.candidate.provider // "") == p)]) as $rows
                     | {
                         queued: ([$rows[] | select(.status=="pending")] | length),
+                        queued_stale: ([$rows[] | select(.status=="pending"
+                                        and (.searched_at // "") < $stale)] | length),
                         fetching: ([$rows[] | select(.status=="fetching")] | length),
                         got: ([$rows[] | select(.status=="approved")] | length),
                         failed: ([$rows[] | select(.status=="failed")] | length),

@@ -128,6 +128,10 @@ class OpenRequest(BaseModel):
     score: float | None = None
     message: str | None = None
     resolved_at: str | None = None
+    # When the search behind this row last ran -- not the same as
+    # `resolved_at`, which is cleared whenever a search finds something. See
+    # acquisition_service.RequestView.
+    searched_at: str | None = None
 
 
 class RequestRefreshJob(BaseModel):

@@ -700,6 +700,16 @@ class RequestView:
     score: float | None = None
     message: str | None = None
     resolved_at: str | None = None
+    # When this row's search last actually ran. `resolved_at` cannot answer
+    # that: `_upsert` clears it whenever a search finds candidates, so a
+    # freshly searched `pending` row has no `resolved_at` at all, while a
+    # `pending` row that kept an old one is stale by definition. The dashboard
+    # needs the difference, because `list_requests` re-ranks stored candidates
+    # on every page load and puts rows back to `pending` without re-searching
+    # anything -- which is why "queued 61" could be 58 rows nobody had looked
+    # for in over a day. Same field `_run_autoget_cycle` judges search
+    # freshness by (`_AUTOGET_SEARCH_REUSE`).
+    searched_at: str | None = None
 
 
 async def list_suggestions(provider: DriveProvider, library_folder_id: str) -> dict:
@@ -983,6 +993,7 @@ async def list_requests(provider: DriveProvider, library_folder_id: str) -> list
                 score=row.score,
                 message=row.message,
                 resolved_at=row.resolved_at.isoformat() if row.resolved_at else None,
+                searched_at=row.updated_at.isoformat() if row.updated_at else None,
             )
         )
 
