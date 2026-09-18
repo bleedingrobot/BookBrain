@@ -37,6 +37,10 @@
   h1 .host { color: var(--cyan); font-weight: 700; }
   h1 .clock { color: var(--dim); font-weight: 400; font-size: 12px; white-space: nowrap; }
   .stale { color: var(--red); }
+  /* When status.json is stale every number on this page is a fossil, so grey
+     the gauges rather than let them read as confidently current. */
+  body.is-stale .metrics { opacity: .45; filter: grayscale(1); }
+  #alerts-card.alerting { border-color: var(--red); }
   .sub { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
   .card {
     background: var(--card);
@@ -130,6 +134,11 @@
 
 <h1><span class="host" id="host">--</span><span class="clock" id="clock">loading&hellip;</span></h1>
 <div class="sub" id="sub">&nbsp;</div>
+
+<div class="card" id="alerts-card">
+  <h2>Alerts</h2>
+  <ul class="list" id="alerts-list"><li class="empty">loading&hellip;</li></ul>
+</div>
 
 <div class="card">
   <h2>System</h2>
@@ -279,7 +288,7 @@ const $ = id => document.getElementById(id);
 
 function pillClass(status) {
   const s = (status || '').toLowerCase();
-  if (['running', 'ok', 'success', 'approved'].includes(s)) return 'pill-green';
+  if (['running', 'ok', 'responding', 'success', 'approved'].includes(s)) return 'pill-green';
   if (['down', 'failed', 'unreachable'].includes(s)) return 'pill-red';
   if (['pending', 'no_match', 'degraded', 'n/a', 'off'].includes(s)) return 'pill-yellow';
   return 'pill-dim';
@@ -334,6 +343,13 @@ function esc(s) {
 
 let lastGeneratedAt = null;
 
+// Matched to dashboard.sh's FAST_REFRESH. The page used to poll every 15s
+// against a file rewritten every 30s with `cache: 'no-store'`, so half of
+// every phone's fetches pulled ~105KB of guaranteed-identical bytes over
+// Tailscale -- roughly 25MB/hour for an open tab, half of it redundant.
+// `no-store` is correct and stays; the poll interval is what was wrong.
+const POLL_MS = 30000;
+
 async function refresh() {
   let d;
   try {
@@ -347,7 +363,21 @@ async function refresh() {
   lastGeneratedAt = d.generated_at;
   $('host').textContent = d.host;
   $('clock').textContent = d.now;
-  $('sub').textContent = `updated ${ago(d.generated_at)}`;
+
+  // If dashboard.sh dies, bookbrain-dashboard-mobile.service keeps happily
+  // serving the last status.json it wrote: the fetch above succeeds, the
+  // catch-block banner never fires, and this page renders a full set of
+  // confident green pills off an arbitrarily old file. `lastGeneratedAt` was
+  // already being assigned here and then never read anywhere in the file --
+  // this is the read it was missing.
+  const staleAfterMs = POLL_MS * 3;
+  const stale = Date.now() - new Date(d.generated_at).getTime() > staleAfterMs;
+  $('sub').innerHTML = stale
+    ? `<span class="stale">stale &mdash; last updated ${ago(d.generated_at)}</span>`
+    : `updated ${ago(d.generated_at)}`;
+  document.body.classList.toggle('is-stale', stale);
+
+  renderAlerts(d.alerts || []);
 
   $('cpu-n').textContent = d.cpu_pct + '%';
   $('cpu-bar').style.width = d.cpu_pct + '%';
@@ -371,7 +401,9 @@ async function refresh() {
 
   const bb = d.bookbrain || {};
   setPill('bb-service', bb.service_state);
-  setPill('bb-health', bb.api_health);
+  // "responding", not "ok": /api/health returns a literal, so it proves only
+  // that the event loop is alive. The Alerts card above covers the rest.
+  setPill('bb-health', bb.api_health === 'ok' ? 'responding' : bb.api_health);
   $('s-books').textContent = bb.book_count ?? '?';
   $('s-reviews').textContent = bb.reviews ?? '?';
   $('s-inbox').textContent = bb.inbox ?? '?';
@@ -467,7 +499,9 @@ function renderProviderCard(prefix, data, opts) {
     win.textContent = attempts
       ? `${data.window_got ?? 0}/${attempts} in ${data.window_hours ?? 6}h`
       : `idle ${data.window_hours ?? 6}h`;
-    win.className = 'pill' + (data.dead ? ' pill-red' : '');
+    win.className = 'pill' + (data.dead ? ' pill-red'
+      : !attempts ? ''
+      : (data.window_got ?? 0) ? ' pill-green' : ' pill-yellow');
   }
   if (opts.fetching) {
     $(prefix + '-fetching').textContent = data.fetching ?? 0;
@@ -478,8 +512,26 @@ function renderProviderCard(prefix, data, opts) {
     li(esc(it.title), esc(it.author), ago(it.resolved_at)));
 }
 
+function renderAlerts(alerts) {
+  const card = $('alerts-card');
+  const list = $('alerts-list');
+  if (!card || !list) return;
+  list.innerHTML = '';
+  if (!alerts.length) {
+    card.className = 'card';
+    list.innerHTML = '<li class="empty">no alerts</li>';
+    return;
+  }
+  card.className = 'card alerting';
+  for (const a of alerts) {
+    const el = document.createElement('li');
+    el.innerHTML = `<div class="title"><span class="t stale">${esc(a)}</span></div>`;
+    list.appendChild(el);
+  }
+}
+
 refresh();
-setInterval(refresh, 15000);
+setInterval(refresh, POLL_MS);
 
 // If the tab is hidden for a while (phone locked) and comes back, refresh immediately.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });

@@ -39,7 +39,7 @@ conf_color() {  # conf_color <0-100> -- a "high is good" gauge (confidence)
 
 status_color() {
     case "$1" in
-        RUNNING|ok|success|approved) printf '%s' "$GREEN" ;;
+        RUNNING|ok|responding|success|approved) printf '%s' "$GREEN" ;;
         DOWN|failed|unreachable) printf '%s' "$RED" ;;
         pending|no_match|degraded|n/a) printf '%s' "$YELLOW" ;;
         *) printf '%s' "$RESET" ;;
@@ -142,8 +142,12 @@ provider_box() {
     wgot=$(jq -r ".${key}.window_got // 0" <<< "$PROVIDERS_JSON")
     wattempts=$(jq -r ".${key}.window_attempts // 0" <<< "$PROVIDERS_JSON")
     wdead=$(jq -r ".${key}.dead // false" <<< "$PROVIDERS_JSON")
+    # Red is reserved for the dead condition; a provider that simply isn't
+    # succeeding shouldn't read as healthy either, so 0 successes is yellow
+    # rather than green. Torrent lives here permanently and that is honest.
     if [ "$wdead" = "true" ]; then wcolor="${BOLD}${RED}"
     elif [ "$wattempts" = "0" ]; then wcolor="$DIM"
+    elif [ "$wgot" = "0" ]; then wcolor="$YELLOW"
     else wcolor="$GREEN"; fi
     out+=("$(cline "$BOX_WIDTH" "$wcolor" "${whours}h: ${wgot}/${wattempts}")")
 
@@ -213,6 +217,134 @@ ago() {
     if (( diff < 3600 )); then echo "$(( diff/60 ))m ago"
     elif (( diff < 86400 )); then echo "$(( diff/3600 ))h ago"
     else echo "$(( diff/86400 ))d ago"
+    fi
+}
+
+# --- Alerts (prompts/45) --------------------------------------------------
+#
+# If BookBrain breaks at 3am, what tells James? Before this: nothing. He found
+# out when he noticed books had stopped arriving, which for the 2026-09-17
+# OpenBooks outage took 18 hours. The signals mostly existed; the problem is
+# that every one of them is pull-based, and tty1 is unwatched at 3am. This
+# block is the one red thing, and alerts.log is how it survives the night.
+ALERTS_LOG="/opt/bookbrain/dashboard/alerts.log"
+ALERTS_LOG_MAX_LINES=2000
+SILENCE_ALARM_SECONDS=300
+PREV_ALERT_KEYS=""
+
+# compute_alerts -> fills ALERT_KEYS / ALERT_MSGS (parallel arrays)
+compute_alerts() {
+    ALERT_KEYS=(); ALERT_MSGS=()
+
+    # 1. Backend silent. The 5-minute threshold is measured, not guessed: over
+    #    the 7-day journal the p99 inter-line gap is 31s, and the only silences
+    #    past 5 minutes were the 09-18 hang (14.3 min) and two install-day gaps.
+    #    THIS DEPENDS ON THE UVICORN ACCESS LOG STAYING ON -- see the comment in
+    #    backend/app/main.py. BookBrain's own `app.*` stream is 456 lines per
+    #    7 days with a routine 16-minute gap, so if someone ever disables the
+    #    access log to cut journal volume, this alarm dies silently.
+    local last_line_at now_epoch silent_for
+    last_line_at=$(journalctl -u bookbrain.service -n 1 -o short-unix 2>/dev/null | cut -d. -f1)
+    now_epoch=$(date +%s)
+    if [[ "$last_line_at" =~ ^[0-9]+$ ]]; then
+        silent_for=$(( now_epoch - last_line_at ))
+        if (( silent_for > SILENCE_ALARM_SECONDS )); then
+            ALERT_KEYS+=("backend-silent")
+            ALERT_MSGS+=("backend-silent: no journal line for $(( silent_for / 60 ))m")
+        fi
+    fi
+
+    # 2. A provider has stopped working. The backend owns this condition
+    #    (prompts/44) so the tty1 panel, the mobile page and this block agree.
+    local dead
+    dead=$(jq -r 'to_entries[] | select(.value.dead == true)
+                  | "\(.key) \(.value.window_got)/\(.value.window_attempts)"' \
+           <<< "$PROVIDERS_JSON" 2>/dev/null)
+    if [ -n "$dead" ]; then
+        while read -r pname prate; do
+            [ -z "$pname" ] && continue
+            ALERT_KEYS+=("provider-dead:$pname")
+            ALERT_MSGS+=("provider-dead: $pname $prate in $(jq -r ".${pname}.window_hours // 6" <<< "$PROVIDERS_JSON")h")
+        done <<< "$dead"
+    fi
+
+    # 3. status.json is stale -- i.e. this script itself has wedged on a curl.
+    #    Computed from the file's mtime in the *reader*, deliberately: a writer
+    #    that has hung cannot report that it has hung.
+    if [ -f "$STATUS_FILE" ]; then
+        local age=$(( now_epoch - $(stat -c %Y "$STATUS_FILE") ))
+        if (( age > FAST_REFRESH * 3 )); then
+            ALERT_KEYS+=("status-stale")
+            ALERT_MSGS+=("status-stale: status.json ${age}s old (> $(( FAST_REFRESH * 3 ))s)")
+        fi
+    fi
+
+    # 4. Tracebacks in the last hour. Cheap, and precise only because prompts/43
+    #    gave library errors a real formatter. Expect this to be non-zero on day
+    #    one -- there were 202 in the 7 days to 09-18, 32 of them `database is
+    #    locked`. If it ends up permanently red, fix the locking or tune the
+    #    threshold; do not just delete the alarm.
+    local tb
+    tb=$(journalctl -u bookbrain.service --since '1 hour ago' --no-pager 2>/dev/null | grep -c 'Traceback')
+    if [[ "$tb" =~ ^[0-9]+$ ]] && (( tb > 0 )); then
+        ALERT_KEYS+=("tracebacks")
+        ALERT_MSGS+=("tracebacks: $tb in the last hour")
+    fi
+
+    # 5. Nightly job. Already fetched every tick; just promoted into the block.
+    if [ -n "$NIGHTLY_STATUS" ] && [ "$NIGHTLY_STATUS" != "success" ] && [ "$NIGHTLY_STATUS" != "n/a" ]; then
+        ALERT_KEYS+=("nightly")
+        ALERT_MSGS+=("nightly: last run $NIGHTLY_STATUS")
+    fi
+}
+
+# Append one line per alert *transition* -- not per tick, which would be 2,880
+# lines a day. This is the part that converts "a red thing nobody was awake to
+# see" into "at 18:04 OpenBooks stopped, at 07:00 it was still stopped".
+log_alert_transitions() {
+    local now_iso cur key
+    now_iso=$(date -Iseconds)
+    cur=" ${ALERT_KEYS[*]-} "
+    for key in ${ALERT_KEYS[@]+"${ALERT_KEYS[@]}"}; do
+        [[ "$PREV_ALERT_KEYS" == *" $key "* ]] && continue
+        local i=0 msg="$key"
+        for i in "${!ALERT_KEYS[@]}"; do
+            [ "${ALERT_KEYS[$i]}" = "$key" ] && msg="${ALERT_MSGS[$i]}"
+        done
+        printf '%s  RAISED   %s\n' "$now_iso" "$msg" >> "$ALERTS_LOG"
+    done
+    for key in $PREV_ALERT_KEYS; do
+        [[ "$cur" == *" $key "* ]] && continue
+        printf '%s  CLEARED  %s\n' "$now_iso" "$key" >> "$ALERTS_LOG"
+    done
+    PREV_ALERT_KEYS="$cur"
+
+    # One line per transition is slow growth, but not zero growth.
+    if [ -f "$ALERTS_LOG" ] && (( $(wc -l < "$ALERTS_LOG") > ALERTS_LOG_MAX_LINES )); then
+        tail -n "$(( ALERTS_LOG_MAX_LINES / 2 ))" "$ALERTS_LOG" > "$ALERTS_LOG.tmp" \
+            && mv "$ALERTS_LOG.tmp" "$ALERTS_LOG"
+    fi
+}
+
+render_alerts() {
+    local n=${#ALERT_KEYS[@]}
+    if (( n == 0 )); then
+        printf "  %sALERTS%s  %sno alerts%s\n" "$BOLD" "$RESET" "$GREEN" "$RESET"
+    else
+        local i
+        for i in "${!ALERT_MSGS[@]}"; do
+            if (( i == 0 )); then
+                printf "  %s%sALERTS%s  %s%s%s\n" "$BOLD" "$RED" "$RESET" "$BOLD$RED" "${ALERT_MSGS[$i]}" "$RESET"
+            else
+                printf "  %-8s%s%s%s\n" "" "$BOLD$RED" "${ALERT_MSGS[$i]}" "$RESET"
+            fi
+        done
+    fi
+    if [ -s "$ALERTS_LOG" ]; then
+        local line
+        while IFS= read -r line; do
+            printf "  %s%-8s%s%s\n" "$DIM" "" "$line" "$RESET"
+        done < <(tail -n 3 "$ALERTS_LOG")
     fi
 }
 
@@ -474,11 +606,20 @@ while true; do
     fi
     TICK=$(( TICK + 1 ))
 
+    # Computed here, just before the snapshot is written and the screen is
+    # redrawn, so the tty1 block, alerts.log and the mobile page all describe
+    # the same tick.
+    compute_alerts
+    log_alert_transitions
+    ALERTS_JSON=$(printf '%s\n' ${ALERT_MSGS[@]+"${ALERT_MSGS[@]}"} | jq -R . | jq -sc 'map(select(. != ""))')
+    [ -z "$ALERTS_JSON" ] && ALERTS_JSON="[]"
+
     # --- Write a JSON snapshot for the mobile web dashboard (ttyd only
     # mirrors this tty, it can't reflow the fixed-width layout for a phone
     # screen -- the mobile page polls this file instead). Written atomically
     # so the web server never serves a half-written file.
     jq -n \
+        --argjson alerts "$ALERTS_JSON" \
         --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --arg host "$(hostname)" \
         --arg now "$NOW" \
@@ -539,6 +680,7 @@ while true; do
         --arg nightly_finished_at "$NIGHTLY_FINISHED" \
         --arg nightly_summary "$NIGHTLY_SUMMARY" \
         '{
+            alerts: $alerts,
             generated_at: $generated_at, host: $host, now: $now, uptime: $uptime,
             load: $load, nproc: $nproc, lan_ip: $lan_ip, ts_ip: $ts_ip,
             cpu_pct: $cpu_pct, mem_pct: $mem_pct, mem_used_gb: $mem_used_gb, mem_total_gb: $mem_total_gb,
@@ -588,9 +730,18 @@ while true; do
     printf "  Disk /  %s%3s%s  %s  %s / %s\n" "$(pct_color "$DISK_PCT_NUM")" "$DISK_PCT" "$RESET" "$(bar "$DISK_PCT_NUM" 50)" "$DISK_USED" "$DISK_SIZE"
     echo
     hr
+    render_alerts
+    hr
+    # `api:` is a liveness probe and nothing more -- /api/health returns a
+    # literal, so it proves the event loop can still serve a request (which is
+    # exactly what the 09-18 hang broke) but says nothing about the database,
+    # Drive credentials, the scheduler or any provider. Labelled "responding"
+    # rather than "ok" so the word stops carrying weight it hasn't earned; the
+    # alerts block above is what covers the rest.
     printf "  BookBrain   service: %s%-9s%s api: %s%-12s%s\n" \
         "$(status_color "$BB_STATE")" "$BB_STATE" "$RESET" \
-        "$(status_color "${HEALTH_OK:-unreachable}")" "${HEALTH_OK:-unreachable}" "$RESET"
+        "$(status_color "${HEALTH_OK:-unreachable}")" \
+        "$([ "${HEALTH_OK:-}" = "ok" ] && echo "responding" || echo "${HEALTH_OK:-unreachable}")" "$RESET"
     hr
     printf "  %-18s %-18s %-18s %-18s %-18s\n" \
         "books: $BOOK_COUNT" "reviews: $REVIEW_N" "inbox: $INBOX_N" "duplicates: $DUP_N" "local scan: $LOCALSCAN_N"

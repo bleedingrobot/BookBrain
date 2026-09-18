@@ -36,6 +36,9 @@ dist/
 
 # Dashboard runtime
 dashboard/mobile/status.json
+# Alert transitions, appended by dashboard.sh (prompts/45). Runtime state,
+# self-truncating, and meaningful only on the box that wrote it.
+dashboard/alerts.log
 
 # Editors / OS
 .vscode/
