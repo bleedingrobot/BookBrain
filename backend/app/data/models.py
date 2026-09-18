@@ -549,6 +549,42 @@ class AcquisitionCandidate(Base):
     resolved_at: Mapped[datetime | None] = mapped_column()
 
 
+class AcquisitionEvent(Base):
+    """Append-only log of finished acquisition attempts — one row per download
+    that succeeded or failed, written when it resolved and never updated,
+    pruned or deleted.
+
+    `acquisition_candidates` is a work *queue*, and counting history from it
+    under-reports every provider. Two mechanisms erase a success within
+    minutes: `_prune_now_in_library` deletes the row once the file is
+    organised, and `list_requests` hides any row whose wishlist item has been
+    reconciled past "sourced". On 2026-09-18 OpenBooks got six books in an
+    hour and the dashboard showed two -- the other four had already been filed
+    and deleted. A high-volume provider like LibGen hides the same bug, because
+    at one book a minute something is always still inside the deletion lag.
+
+    Provider health and the "last got" lists read this table; the queue goes
+    back to answering "what still needs getting", which is what it is good at.
+    """
+
+    __tablename__ = "acquisition_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    # "openbooks" | "libgen" | "annas_archive" | "torrent"
+    provider: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # The OpenBooks IRC bot the file came from; None for every HTTP provider.
+    server: Mapped[str | None] = mapped_column(String)
+    outcome: Mapped[str] = mapped_column(String, nullable=False)  # "got" | "failed"
+    # Loose link back to the queue row, which may since have been pruned.
+    request_id: Mapped[str | None] = mapped_column(String)
+    source: Mapped[str | None] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    author: Mapped[str | None] = mapped_column(String)
+    filename: Mapped[str | None] = mapped_column(String)
+    message: Mapped[str | None] = mapped_column(String)  # failure reason, else None
+
+
 class LibrarrRequestStatus(str, enum.Enum):
     # Librarr's own lifecycle (confirmed live against a real instance
     # 2026-09-16): pending -> approved -> searching -> downloading ->

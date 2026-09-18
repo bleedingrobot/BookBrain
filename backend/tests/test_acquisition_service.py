@@ -5,7 +5,13 @@ import time
 import pytest
 from sqlalchemy import select
 
-from app.data.models import AcquisitionCandidate, AcquisitionStatus, File, FileStatus
+from app.data.models import (
+    AcquisitionCandidate,
+    AcquisitionEvent,
+    AcquisitionStatus,
+    File,
+    FileStatus,
+)
 from app.providers.acquisition.openbooks import OpenBooksProvider
 from app.services import acquisition_service as svc
 from app.services.acquisition_service import _Wishlist, score_candidate
@@ -1269,12 +1275,19 @@ async def test_autoget_re_keys_a_row_found_under_another_id(db_session, monkeypa
 
 
 def _resolved(request_id, provider, status, hours_ago):
-    return AcquisitionCandidate(
+    """One finished attempt in the acquisition log.
+
+    Provider health counts events, not queue rows — the queue prunes and hides
+    finished work, so counting it there under-reported every provider. `status`
+    stays in the signature because these tests read more clearly in the
+    queue's vocabulary than as raw "got"/"failed" strings.
+    """
+    return AcquisitionEvent(
         request_id=request_id,
-        request_title=f"Book {request_id}",
-        status=status,
-        candidate_provider=provider,
-        resolved_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=hours_ago),
+        title=f"Book {request_id}",
+        outcome="got" if status is AcquisitionStatus.approved else "failed",
+        provider=provider,
+        occurred_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=hours_ago),
     )
 
 
@@ -1335,3 +1348,143 @@ async def test_provider_health_window_is_honoured(db_session):
     rows += [_resolved(f"lg{i}", "libgen", AcquisitionStatus.approved, 1) for i in range(4)]
     assert (await _health(db_session, rows, window_hours=6))["openbooks"]["window_got"] == 0
     assert (await svc.provider_health(window_hours=24))["providers"]["openbooks"]["window_got"] == 20
+
+
+# --- the acquisition log vs. the queue -------------------------------------
+#
+# Regression tests for the 2026-09-18 "OpenBooks is doing nothing" report:
+# OpenBooks got 6 books in an hour and the dashboard showed 2. Nothing was
+# wrong with OpenBooks. Provider health was counted out of
+# `acquisition_candidates`, which deletes an approved row once the file is
+# organised (_prune_now_in_library) and hides one whose wishlist item has been
+# reconciled past "sourced" (list_requests) — so a success stopped being
+# counted within a minute or two of happening, and the effect was invisible on
+# LibGen (~1 book/min, always something inside the lag) while it made OpenBooks
+# (~1 per 10 min) read as idle.
+
+
+async def test_provider_health_still_counts_a_success_after_its_queue_row_is_gone(db_session):
+    # The exact shape of the bug: the download happened, then the queue row was
+    # pruned because the book reached the library. The success must survive.
+    db_session.add(
+        AcquisitionEvent(
+            request_id="r1",
+            title="The Fresco",
+            author="Sheri S Tepper",
+            provider="openbooks",
+            server="Pondering-Ebooks2",
+            outcome="got",
+            occurred_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=30),
+        )
+    )
+    await db_session.commit()
+    # No AcquisitionCandidate row exists at all — that is what pruning leaves.
+    assert (await db_session.execute(select(AcquisitionCandidate))).first() is None
+
+    health = (await svc.provider_health())["providers"]["openbooks"]
+    assert health["lifetime_got"] == 1
+    assert health["window_got"] == 1
+    assert health["got_recent"][0]["title"] == "The Fresco"
+
+
+async def test_approve_request_logs_an_acquisition_event(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            request_title="Karavans",
+            request_author="Jennifer Roberson",
+            status=AcquisitionStatus.pending,
+            candidate_full="!Ook Jennifer Roberson - Karavans.epub",
+            candidate_title="Karavans",
+            candidate_author="Jennifer Roberson",
+            candidate_format="epub",
+            candidate_provider="openbooks",
+            candidate_server="Ook",
+        )
+    )
+    await db_session.commit()
+
+    async def fake_acquire(acquisition_provider, full, filename, drive_provider, inbox):
+        return {"filename": filename, "drive_file_id": "d1", "size_bytes": 123}
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", fake_acquire)
+    monkeypatch.setattr(svc, "mark_wishlist_sourced", lambda p, f, rid: True)
+
+    await svc.approve_request("r1", None, object(), "inbox", "lib")
+
+    ev = (await db_session.execute(select(AcquisitionEvent))).scalar_one()
+    assert ev.outcome == "got"
+    assert ev.provider == "openbooks"
+    assert ev.server == "Ook"  # the IRC bot, so a bad one can be spotted
+    assert ev.title == "Karavans"
+
+
+async def test_approve_request_logs_a_failed_attempt(db_session, monkeypatch):
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="r1",
+            request_title="Sword-Breaker",
+            status=AcquisitionStatus.pending,
+            candidate_full="!TrainFiles Sword-Breaker.epub",
+            candidate_title="Sword-Breaker",
+            candidate_format="epub",
+            candidate_provider="openbooks",
+            candidate_server="TrainFiles",
+        )
+    )
+    await db_session.commit()
+
+    async def boom(acquisition_provider, full, filename, drive_provider, inbox):
+        raise svc.AcquisitionError("didn't deliver the file within 75s")
+
+    monkeypatch.setattr(svc.acquire_service, "acquire_to_inbox", boom)
+
+    with pytest.raises(svc.AcquisitionError):
+        await svc.approve_request("r1", None, object(), "inbox", "lib")
+
+    ev = (await db_session.execute(select(AcquisitionEvent))).scalar_one()
+    assert ev.outcome == "failed"
+    assert ev.provider == "openbooks"
+    assert "75s" in ev.message
+
+
+async def test_provider_health_counts_are_unaffected_by_queue_churn(db_session):
+    # A slow provider with every queue row already cleaned up must not read as
+    # worse than a fast one whose rows happen to still be in flight.
+    now = _dt.datetime.now(_dt.UTC)
+    for i in range(6):
+        db_session.add(
+            AcquisitionEvent(
+                request_id=f"ob{i}",
+                title=f"OpenBooks Book {i}",
+                provider="openbooks",
+                outcome="got",
+                occurred_at=now - _dt.timedelta(minutes=10 * i),
+            )
+        )
+    # LibGen: same window, one still-live queue row alongside its events.
+    for i in range(6):
+        db_session.add(
+            AcquisitionEvent(
+                request_id=f"lg{i}",
+                title=f"LibGen Book {i}",
+                provider="libgen",
+                outcome="got",
+                occurred_at=now - _dt.timedelta(minutes=i),
+            )
+        )
+    db_session.add(
+        AcquisitionCandidate(
+            request_id="lg-live",
+            request_title="Still In Flight",
+            status=AcquisitionStatus.approved,
+            candidate_provider="libgen",
+            resolved_at=now,
+        )
+    )
+    await db_session.commit()
+
+    health = (await svc.provider_health())["providers"]
+    assert health["openbooks"]["window_got"] == 6
+    assert health["libgen"]["window_got"] == 6  # not 7 — the queue row is not a second success
+    assert len(health["openbooks"]["got_recent"]) == 5  # _PROVIDER_RECENT_KEEP

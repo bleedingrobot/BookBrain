@@ -12,9 +12,25 @@ class AcquireStatus(BaseModel):
     providers: list[AcquireProviderStatus] = []
 
 
+class AcquisitionEventEntry(BaseModel):
+    """One finished acquisition attempt from the append-only event log."""
+
+    occurred_at: str | None = None
+    title: str
+    author: str | None = None
+    outcome: str  # "got" | "failed"
+    server: str | None = None  # OpenBooks IRC bot; None for HTTP providers
+
+
 class ProviderHealthEntry(BaseModel):
-    """Windowed acquisition success for one provider. See
-    acquisition_service.provider_health for what `dead` and `proven` mean."""
+    """Windowed acquisition success for one provider, plus its last few
+    attempts. See acquisition_service.provider_health for what `dead` and
+    `proven` mean.
+
+    Every number here comes from `acquisition_events`, not the candidate
+    queue -- the queue prunes and hides finished work, which is what made a
+    working OpenBooks read as idle on the dashboard.
+    """
 
     window_got: int
     window_failed: int
@@ -23,6 +39,8 @@ class ProviderHealthEntry(BaseModel):
     lifetime_failed: int
     proven: bool
     dead: bool
+    searched_recent: list[AcquisitionEventEntry] = []
+    got_recent: list[AcquisitionEventEntry] = []
 
 
 class ProviderHealth(BaseModel):

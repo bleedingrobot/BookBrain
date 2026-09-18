@@ -537,6 +537,11 @@ while true; do
             # attributed to whichever source(s) actually searched it -- only
             # pending/approved/failed/fetching rows (which keep their
             # candidate) show up here.
+            #
+            # Only `queued` and `fetching` survive from this block; the history
+            # fields it computes are replaced wholesale by the acquisition-log
+            # merge below. They are still computed here so the panel degrades
+            # to something rather than nothing if that request fails.
             PROVIDERS_JSON=$(echo "$REQ" | jq -c "$SLIM"'
                 def provstats(p):
                     ([.[] | select((.candidate.provider // "") == p)]) as $rows
@@ -565,6 +570,21 @@ while true; do
             # PROVIDERS_JSON with the empty output of a failed jq would blank
             # all three boxes. Losing the windowed line is acceptable; losing
             # the panel is not.
+            # `got`, `failed` and both recent lists are overwritten from the
+            # backend's append-only acquisition log, because the $REQ-derived
+            # versions above are structurally wrong: the queue deletes an
+            # approved row once the file is organised and hides it once the
+            # wishlist item is reconciled, so a success disappears from $REQ
+            # within a minute or two of happening. On 2026-09-18 OpenBooks got
+            # 6 books in an hour and this panel showed 2. LibGen looked fine
+            # through the same bug only because at ~1 book/min something is
+            # always still inside the deletion lag.
+            #
+            # `queued` and `fetching` are deliberately NOT overwritten: those
+            # are live queue state, which is exactly what $REQ is right about.
+            #
+            # `occurred_at` is renamed to `resolved_at` so provider_box's jq
+            # and mobile/index.html keep reading the field they already read.
             PHEALTH=$(curl -s -m 3 "$API/api/acquire/provider-health" 2>/dev/null)
             if [ -n "$PHEALTH" ]; then
                 MERGED=$(jq -c --argjson h "$PHEALTH" '
@@ -572,7 +592,14 @@ while true; do
                         window_hours: $h.window_hours,
                         window_got: ($h.providers[$p].window_got // 0),
                         window_attempts: ($h.providers[$p].window_attempts // 0),
-                        dead: ($h.providers[$p].dead // false)
+                        dead: ($h.providers[$p].dead // false),
+                        got: ($h.providers[$p].lifetime_got // 0),
+                        failed: ($h.providers[$p].lifetime_failed // 0),
+                        searched_recent: [($h.providers[$p].searched_recent // [])[]
+                                          | {resolved_at: .occurred_at, title, author,
+                                             status: (if .outcome == "got" then "approved" else "failed" end)}],
+                        got_recent: [($h.providers[$p].got_recent // [])[]
+                                     | {resolved_at: .occurred_at, title, author, status: "approved"}]
                     })' <<< "$PROVIDERS_JSON" 2>/dev/null)
                 [ -n "$MERGED" ] && PROVIDERS_JSON="$MERGED"
             fi

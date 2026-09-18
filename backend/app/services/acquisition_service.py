@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.data.db import async_session_factory
 from app.data.models import (
     AcquisitionCandidate,
+    AcquisitionEvent,
     AcquisitionStatus,
     Author,
     Book,
@@ -1015,6 +1016,44 @@ def _resolve_provider(name: str, providers: list[AcquisitionProvider]) -> Acquis
     raise AcquisitionError(f"the '{name}' acquisition source is no longer enabled")
 
 
+async def _log_acquisition_event(
+    session: AsyncSession,
+    *,
+    outcome: str,
+    provider: str,
+    server: str | None,
+    request_id: str,
+    source: str | None,
+    title: str | None,
+    author: str | None,
+    filename: str | None = None,
+    message: str | None = None,
+) -> None:
+    """Append one finished attempt to the acquisition log.
+
+    Called from inside `approve_request`'s own session so the event and the
+    queue row's new status commit together -- a success that isn't logged is
+    exactly the invisible-download bug this table exists to fix. The caller
+    commits; this only stages the insert.
+    """
+    session.add(
+        AcquisitionEvent(
+            occurred_at=datetime.now(UTC),
+            provider=provider or "openbooks",
+            server=server,
+            outcome=outcome,
+            request_id=request_id,
+            source=source,
+            # The queue row can be pruned before anyone reads this, so the
+            # event carries its own copy of what was got rather than a join.
+            title=title or request_id,
+            author=author,
+            filename=filename,
+            message=message,
+        )
+    )
+
+
 async def approve_request(
     request_id: str,
     full_override: str | None,
@@ -1078,6 +1117,9 @@ async def approve_request(
         title = alt["title"] if alt else row.candidate_title
         author = alt["author"] if alt else row.candidate_author
         provider_name = (alt.get("provider") if alt else row.candidate_provider) or "openbooks"
+        # The OpenBooks IRC bot that served this pick, for the event log —
+        # None for every HTTP provider.
+        server = (alt.get("server") if alt else row.candidate_server) or None
         filename = _filename_for(full, title, author)
 
         acquisition_provider = _resolve_provider(provider_name, default_acquisition_providers())
@@ -1089,6 +1131,18 @@ async def approve_request(
             row.status = AcquisitionStatus.failed
             row.message = str(exc)
             row.resolved_at = datetime.now(UTC)  # so auto-get won't re-hit it straight away
+            await _log_acquisition_event(
+                session,
+                outcome="failed",
+                provider=provider_name,
+                server=server,
+                request_id=request_id,
+                source=row.source,
+                title=title or row.request_title,
+                author=author or row.request_author,
+                filename=filename,
+                message=str(exc),
+            )
             await session.commit()
             raise
 
@@ -1099,6 +1153,17 @@ async def approve_request(
         row.candidate_provider = provider_name
         row.message = None
         row.resolved_at = datetime.now(UTC)
+        await _log_acquisition_event(
+            session,
+            outcome="got",
+            provider=provider_name,
+            server=server,
+            request_id=request_id,
+            source=row.source,
+            title=title or row.request_title,
+            author=author or row.request_author,
+            filename=result.get("filename") or filename,
+        )
         await session.commit()
 
     try:
@@ -1543,6 +1608,20 @@ PROVIDER_HEALTH_WINDOW_HOURS = 6
 # were also measured; 6h is long enough that a quiet provider with a small
 # queue isn't flagged, short enough to catch an overnight death by morning.
 
+_PROVIDER_RECENT_KEEP = 5
+# How many recent attempts each provider reports. The dashboard renders 3
+# searched + 2 got; 5 covers both lists with room for a consumer that wants a
+# couple more, and keeps status.json small (this block was 37KB before
+# prompts/46 trimmed it).
+
+_PROVIDER_RECENT_SCAN = 400
+# Rows scanned to fill those per-provider lists. A single ordered read beats
+# one query per provider, but it has to reach back far enough to find a slow
+# provider's last success: at the observed ~60 events/hour across all
+# providers, 400 rows is roughly 7 hours of history, and OpenBooks lands one
+# book per ~10 minutes. A provider quieter than that shows a short list rather
+# than a wrong number -- the counters above are exact regardless.
+
 _PROVEN_LIFETIME_SUCCESS_RATE = 0.10
 # A provider is only eligible to be called "dead" if it has ever demonstrably
 # worked. Without this floor the torrent provider — 4 approved against 2,210
@@ -1562,37 +1641,67 @@ async def provider_health(window_hours: int = PROVIDER_HEALTH_WINDOW_HOURS) -> d
     """
     since = datetime.now(UTC) - timedelta(hours=window_hours)
     async with async_session_factory() as session:
+        # Counted from the append-only event log, never from
+        # `acquisition_candidates`: the queue deletes a row once the book is
+        # organised and hides it once the wishlist item moves past "sourced",
+        # so counting successes there silently under-reports every provider
+        # and makes a slow one look stopped. See AcquisitionEvent.
         windowed = (
             await session.execute(
-                select(
-                    AcquisitionCandidate.candidate_provider,
-                    AcquisitionCandidate.status,
-                    func.count(),
-                )
-                .where(AcquisitionCandidate.resolved_at >= since)
-                .group_by(AcquisitionCandidate.candidate_provider, AcquisitionCandidate.status)
+                select(AcquisitionEvent.provider, AcquisitionEvent.outcome, func.count())
+                .where(AcquisitionEvent.occurred_at >= since)
+                .group_by(AcquisitionEvent.provider, AcquisitionEvent.outcome)
             )
         ).all()
         lifetime = (
             await session.execute(
-                select(
-                    AcquisitionCandidate.candidate_provider,
-                    AcquisitionCandidate.status,
-                    func.count(),
-                ).group_by(AcquisitionCandidate.candidate_provider, AcquisitionCandidate.status)
+                select(AcquisitionEvent.provider, AcquisitionEvent.outcome, func.count()).group_by(
+                    AcquisitionEvent.provider, AcquisitionEvent.outcome
+                )
             )
         ).all()
+        # The last few finished attempts per provider, for the dashboard's
+        # "last searched" / "last got" lists. Fetched once and bucketed in
+        # Python rather than a query per provider: the log is small and the
+        # dashboard polls this every 30s.
+        recent_rows = list(
+            (
+                await session.execute(
+                    select(AcquisitionEvent)
+                    .order_by(AcquisitionEvent.occurred_at.desc())
+                    .limit(_PROVIDER_RECENT_SCAN)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     def _tally(rows) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
-        for name, status, count in rows:
-            key = getattr(status, "value", status)
+        for name, outcome, count in rows:
             bucket = out.setdefault(name, {"got": 0, "failed": 0})
-            if key == "approved":
+            if outcome == "got":
                 bucket["got"] += count
-            elif key == "failed":
+            elif outcome == "failed":
                 bucket["failed"] += count
         return out
+
+    def _entry(ev: AcquisitionEvent) -> dict:
+        return {
+            "occurred_at": ev.occurred_at.isoformat() if ev.occurred_at else None,
+            "title": ev.title,
+            "author": ev.author,
+            "outcome": ev.outcome,
+            "server": ev.server,
+        }
+
+    resolved_recent: dict[str, list[dict]] = {}
+    got_recent: dict[str, list[dict]] = {}
+    for ev in recent_rows:
+        if len(resolved_recent.setdefault(ev.provider, [])) < _PROVIDER_RECENT_KEEP:
+            resolved_recent[ev.provider].append(_entry(ev))
+        if ev.outcome == "got" and len(got_recent.setdefault(ev.provider, [])) < _PROVIDER_RECENT_KEEP:
+            got_recent[ev.provider].append(_entry(ev))
 
     win = _tally(windowed)
     life = _tally(lifetime)
@@ -1616,5 +1725,7 @@ async def provider_health(window_hours: int = PROVIDER_HEALTH_WINDOW_HOURS) -> d
             "lifetime_failed": lifetime_total["failed"],
             "proven": proven,
             "dead": bool(proven and attempts > 0 and w["got"] == 0 and any_success),
+            "searched_recent": resolved_recent.get(name, []),
+            "got_recent": got_recent.get(name, []),
         }
     return {"window_hours": window_hours, "providers": providers}
