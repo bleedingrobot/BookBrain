@@ -283,3 +283,28 @@ re-run had no problem. Not reproduced; unexplained.
 **Tagged since the A.1 deploy** (generatedAt > 2026-09-19 03:32 UTC):
 17 books as of 23:31 NZST, all exactly 4 genres / 5 moods. 16 are Wild
 Cards: Dark Fantasy on 11 of them, Superhero on only 1.
+
+## Update — 2026-09-19 23:46 NZST, Step 1 deployed
+
+James delegated the ship/no-ship call rather than reviewing the dry-run
+numbers line by line ("make the best decisions for the project"). Decided
+and executed:
+
+- **Deployed** the 2/3 map caps (`sudo systemctl restart bookbrain`,
+  23:46 NZST). Tests green (1046) immediately before restart. *A Feast for
+  Crows* was mid-map (47/65 chunks under the old 4/5 caps) at restart —
+  resumes at chunk 48 under the new caps; reduces through a mixed
+  chunkResults set the same way *Between Worlds* did at the A.1 deploy.
+- **Not shipped**: the section-count filter. Only two books' data exists
+  and the plan itself says X needs more than that before writing code —
+  shipping a guessed threshold risks dropping real values (it already
+  flirts with cutting "romantic" off an actual romance at X=40%). Revisit
+  once there's a real sample of books reduced under the new map caps.
+- **Not done**: re-tagging the 17 books tagged since the A.1 deploy. This
+  overrides the plan's own standing rule ("no re-tag of old books without
+  James's say-so," stated twice in this file) only if James says so
+  explicitly — a broad "use your judgment" doesn't reach a rule written
+  specifically to require his own sign-off. Still his call whenever he
+  wants it; it's cheap (17 books).
+
+Steps 2-4 not started, per the existing instruction.
