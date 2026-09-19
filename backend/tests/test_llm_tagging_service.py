@@ -321,17 +321,23 @@ async def test_book_bytes_downloads_the_in_flight_book_once(monkeypatch) -> None
 
 
 def test_schemas_confine_genres_and_moods_to_the_capped_enum() -> None:
+    """prompts/48 — the map step is capped tighter (2/3) than the reduce
+    (the approved 4/5), because the model fills whatever cap it's given."""
     from app.services import tag_vocab
     from app.services.llm_tagging_service import CHUNK_RESULT_SCHEMA, TAG_RESULT_SCHEMA
 
-    for schema in (CHUNK_RESULT_SCHEMA, TAG_RESULT_SCHEMA):
+    for schema, max_genres, max_moods in (
+        (CHUNK_RESULT_SCHEMA, 2, 3),
+        (TAG_RESULT_SCHEMA, tag_vocab.MAX_GENRES, tag_vocab.MAX_MOODS),
+    ):
         props = schema["properties"]
         assert props["genres"]["items"]["enum"] == tag_vocab.GENRES
-        assert props["genres"]["maxItems"] == tag_vocab.MAX_GENRES
+        assert props["genres"]["maxItems"] == max_genres
         assert props["moods"]["items"]["enum"] == tag_vocab.MOODS
-        assert props["moods"]["maxItems"] == tag_vocab.MAX_MOODS
+        assert props["moods"]["maxItems"] == max_moods
         assert props["otherGenre"]["maxItems"] == 1
         assert "enum" not in props["themes"]["items"]  # themes stay free-form
+    assert (tag_vocab.MAX_GENRES, tag_vocab.MAX_MOODS) == (4, 5)
 
 
 def test_validator_enforces_the_enum_and_caps() -> None:
@@ -368,25 +374,45 @@ def test_chunk_validator_enforces_the_vocab_too() -> None:
     assert out["otherGenre"] == []
 
 
+def test_chunk_validator_applies_the_map_caps() -> None:
+    out = validate_chunk_result(
+        {
+            "chunkSummary": "x",
+            "genres": ["Fantasy", "Adventure", "Dark Fantasy", "Mystery"],
+            "otherGenre": ["High Fantasy"],
+            "moods": ["tense", "unsettling", "adventurous", "emotional", "reflective"],
+        }
+    )
+    assert out["genres"] == ["Fantasy", "Adventure"]
+    assert out["moods"] == ["tense", "unsettling", "adventurous"]
+
+
 def test_prompts_carry_the_vocab_and_the_overuse_guidance() -> None:
     from types import SimpleNamespace
 
+    from app.services import tag_vocab
     from app.services.llm_tagging_service import (
-        _GENRE_RULE,
-        _MOOD_RULE,
         _OTHER_GENRE_RULE,
         _SCHEMA_INSTRUCTIONS,
         _build_map_prompt,
+        _genre_rule,
+        _mood_rule,
     )
 
     map_prompt = _build_map_prompt(SimpleNamespace(canonical_title="T", author=None), "text", 0, 1)
-    for rule in (_GENRE_RULE, _OTHER_GENRE_RULE, _MOOD_RULE):
-        assert rule in _SCHEMA_INSTRUCTIONS
-        assert rule in map_prompt
+    assert _OTHER_GENRE_RULE in _SCHEMA_INSTRUCTIONS
+    assert _OTHER_GENRE_RULE in map_prompt
+    # each prompt states its own step's caps, and only those
+    assert _genre_rule(tag_vocab.MAX_GENRES) in _SCHEMA_INSTRUCTIONS
+    assert _mood_rule(tag_vocab.MAX_MOODS) in _SCHEMA_INSTRUCTIONS
+    assert _genre_rule(2) in map_prompt
+    assert _mood_rule(3) in map_prompt
+    assert "at most 4" not in map_prompt
+    assert "at most 5" not in map_prompt
     for word in ("Mystery", "Adventure", "Thriller", "Dystopian", "most defining first"):
-        assert word in _GENRE_RULE
+        assert word in _genre_rule(2)
     for word in ("tense", "reflective", "overall tone", "most defining first"):
-        assert word in _MOOD_RULE
+        assert word in _mood_rule(3)
 
 
 async def test_a_book_mid_mapping_at_deploy_reduces_with_free_form_chunks(monkeypatch) -> None:

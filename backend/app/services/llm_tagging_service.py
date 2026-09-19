@@ -84,6 +84,14 @@ _MIN_CHUNK_CHARS = 2000
 # Don't raise OLLAMA_NUM_CTX without checking `size_vram` in /api/ps first.
 
 _MAX_LIST_ITEMS = 12
+# prompts/48 Step 1 — the map step gets tighter genre/mood caps than the
+# reduce (tag_vocab.MAX_GENRES/MAX_MOODS). The model treats any cap as a
+# quota: at 4/5, every section of *The Serpent Sea* filled every slot, and
+# filler like Dark Fantasy (18 of 26 sections) then read to the reduce step
+# as strong evidence. Prompt wording ("4 is a limit, not a target") changed
+# nothing. With fewer slots a section names only what it's surest of.
+_MAP_MAX_GENRES = 2
+_MAP_MAX_MOODS = 3
 _STR_CAPS = {
     "ageRating": 40,
     "confidenceNotes": 500,
@@ -180,7 +188,7 @@ def chunk_documents(docs: list[str], *, target_chars: int) -> list[str]:
 # --------------------------------------------------------------------------
 
 
-def _apply_vocab(out: dict, raw_other: object) -> None:
+def _apply_vocab(out: dict, raw_other: object, *, max_genres: int, max_moods: int) -> None:
     """prompts/47 A.1 — the schema already confines genres/moods to the
     enum and otherGenre to one value; this enforces the same after the fact
     (belt and braces, like the theme stoplist) via the approved map, so an
@@ -192,9 +200,9 @@ def _apply_vocab(out: dict, raw_other: object) -> None:
         [str(v) for v in raw_other] if isinstance(raw_other, list) else []
     )
     genres += [g for g in hatch_genres if g not in genres]
-    out["genres"] = genres[: tag_vocab.MAX_GENRES]
+    out["genres"] = genres[:max_genres]
     out["otherGenre"] = [*hatch_other, *(o for o in other if o not in hatch_other)][:1]
-    out["moods"] = tag_vocab.curate_moods(out["moods"])[: tag_vocab.MAX_MOODS]
+    out["moods"] = tag_vocab.curate_moods(out["moods"])[:max_moods]
 
 
 def validate_tag_result(raw: dict) -> dict:
@@ -206,7 +214,9 @@ def validate_tag_result(raw: dict) -> dict:
         if not isinstance(value, list):
             raise ValueError(f"{key!r} was not a list")
         out[key] = _clean_list(key, value)
-    _apply_vocab(out, raw.get("otherGenre"))
+    _apply_vocab(
+        out, raw.get("otherGenre"), max_genres=tag_vocab.MAX_GENRES, max_moods=tag_vocab.MAX_MOODS
+    )
     for key, cap in _STR_CAPS.items():
         value = raw.get(key)
         out[key] = str(value).strip()[:cap] if value else None
@@ -223,7 +233,7 @@ def validate_chunk_result(raw: dict) -> dict:
         value = raw.get(key)
         value = value if isinstance(value, list) else []
         out[key] = _clean_list(key, value)
-    _apply_vocab(out, raw.get("otherGenre"))
+    _apply_vocab(out, raw.get("otherGenre"), max_genres=_MAP_MAX_GENRES, max_moods=_MAP_MAX_MOODS)
     return out
 
 
@@ -247,31 +257,40 @@ _THEME_RULE = (
 _ALLOWED_GENRES = ", ".join(tag_vocab.GENRES)
 _ALLOWED_MOODS = ", ".join(tag_vocab.MOODS)
 
-_GENRE_RULE = (
-    f"Genres: at most {tag_vocab.MAX_GENRES}, most defining first, only from: {_ALLOWED_GENRES}. "
-    "Pick Mystery only if solving a mystery drives the plot, Adventure only if the book is "
-    "above all a journey, quest or adventure story, Thriller only if it is built around "
-    "danger and a race against time, Dystopian only if an oppressive society is what the "
-    "book is about. A secret, a trip, a chase or a bad government somewhere in the story "
-    "is not enough."
-)
+# The map and reduce steps share the wording but not the caps (see
+# _MAP_MAX_GENRES), hence functions of the cap.
+def _genre_rule(cap: int) -> str:
+    return (
+        f"Genres: at most {cap}, most defining first, only from: {_ALLOWED_GENRES}. "
+        "Pick Mystery only if solving a mystery drives the plot, Adventure only if the book is "
+        "above all a journey, quest or adventure story, Thriller only if it is built around "
+        "danger and a race against time, Dystopian only if an oppressive society is what the "
+        "book is about. A secret, a trip, a chase or a bad government somewhere in the story "
+        "is not enough."
+    )
+
+
 _OTHER_GENRE_RULE = (
     'otherGenre: leave it empty ([]). Only if the book plainly belongs to a genre that '
     "nothing in the genre list covers, give that one genre's name."
 )
-_MOOD_RULE = (
-    f"Moods: at most {tag_vocab.MAX_MOODS}, most defining first, only from: {_ALLOWED_MOODS}. "
-    "A mood is the book's overall tone, how it feels to read, never what a character "
-    "feels in one scene. Pick tense only if suspense runs through most of the book, not "
-    "just its climax, and reflective only if the book itself dwells on inner life or "
-    "ideas, not because a character stops to think."
-)
+
+
+def _mood_rule(cap: int) -> str:
+    return (
+        f"Moods: at most {cap}, most defining first, only from: {_ALLOWED_MOODS}. "
+        "A mood is the book's overall tone, how it feels to read, never what a character "
+        "feels in one scene. Pick tense only if suspense runs through most of the book, not "
+        "just its climax, and reflective only if the book itself dwells on inner life or "
+        "ideas, not because a character stops to think."
+    )
+
 
 _SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with exactly these keys:
 - "ageRating": one short label ("General", "Teen", "Mature", or "Explicit")
-- "genres": array of genres. {_GENRE_RULE}
+- "genres": array of genres. {_genre_rule(tag_vocab.MAX_GENRES)}
 - "otherGenre": array of at most one genre. {_OTHER_GENRE_RULE}
-- "moods": array of moods. {_MOOD_RULE}
+- "moods": array of moods. {_mood_rule(tag_vocab.MAX_MOODS)}
 - "themes": array of thematic strings (e.g. "found family", "revenge against a corrupt church"). {_THEME_RULE}
 - "representation": array of identity/representation strings actually present on the page (e.g. "gay protagonist", "wheelchair user") — omit anything you're not seeing evidence for
 - "contentWarnings": array of content-warning strings (e.g. "graphic violence", "on-page suicide")
@@ -284,38 +303,45 @@ _SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with 
 # schema fixes the shape, the prompt still explains what goes in each field.
 # The validators stay too (belt and braces, and they apply the caps/stoplist).
 _STRING_LIST = {"type": "array", "items": {"type": "string"}, "maxItems": _MAX_LIST_ITEMS}
-_TAG_LIST_SCHEMAS = {
-    **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
-    "genres": {
-        "type": "array",
-        "items": {"type": "string", "enum": tag_vocab.GENRES},
-        "maxItems": tag_vocab.MAX_GENRES,
-    },
-    "moods": {
-        "type": "array",
-        "items": {"type": "string", "enum": tag_vocab.MOODS},
-        "maxItems": tag_vocab.MAX_MOODS,
-    },
-    "otherGenre": {"type": "array", "items": {"type": "string"}, "maxItems": 1},
-}
+
+
+def _tag_list_schemas(max_genres: int, max_moods: int) -> dict:
+    return {
+        **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
+        "genres": {
+            "type": "array",
+            "items": {"type": "string", "enum": tag_vocab.GENRES},
+            "maxItems": max_genres,
+        },
+        "moods": {
+            "type": "array",
+            "items": {"type": "string", "enum": tag_vocab.MOODS},
+            "maxItems": max_moods,
+        },
+        "otherGenre": {"type": "array", "items": {"type": "string"}, "maxItems": 1},
+    }
+
+
+_MAP_TAG_LIST_SCHEMAS = _tag_list_schemas(_MAP_MAX_GENRES, _MAP_MAX_MOODS)
+_REDUCE_TAG_LIST_SCHEMAS = _tag_list_schemas(tag_vocab.MAX_GENRES, tag_vocab.MAX_MOODS)
 
 CHUNK_RESULT_SCHEMA = {
     "type": "object",
-    "properties": {"chunkSummary": {"type": "string"}, **_TAG_LIST_SCHEMAS},
-    "required": ["chunkSummary", *_TAG_LIST_SCHEMAS],
+    "properties": {"chunkSummary": {"type": "string"}, **_MAP_TAG_LIST_SCHEMAS},
+    "required": ["chunkSummary", *_MAP_TAG_LIST_SCHEMAS],
 }
 
 TAG_RESULT_SCHEMA = {
     "type": "object",
     "properties": {
         "ageRating": {"type": "string", "enum": ["General", "Teen", "Mature", "Explicit"]},
-        **_TAG_LIST_SCHEMAS,
+        **_REDUCE_TAG_LIST_SCHEMAS,
         "confidenceNotes": {"type": "string"},
         "shortDescription": {"type": "string"},
         "longSummary": {"type": "string"},
     },
     "required": [
-        "ageRating", *_TAG_LIST_SCHEMAS, "confidenceNotes", "shortDescription", "longSummary",
+        "ageRating", *_REDUCE_TAG_LIST_SCHEMAS, "confidenceNotes", "shortDescription", "longSummary",
     ],
 }
 
@@ -345,8 +371,8 @@ def _build_map_prompt(book: Book, chunk_text: str, index: int, total: int) -> st
         'Respond with ONLY a JSON object: {"chunkSummary": "...", '
         '"genres": [...], "otherGenre": [...], "moods": [...], "themes": [...], '
         '"representation": [...], "contentWarnings": [...]}\n'
-        f"{_GENRE_RULE}\n{_OTHER_GENRE_RULE}\n"
-        f"{_MOOD_RULE} Judge the tone of this section as a whole.\n"
+        f"{_genre_rule(_MAP_MAX_GENRES)}\n{_OTHER_GENRE_RULE}\n"
+        f"{_mood_rule(_MAP_MAX_MOODS)} Judge the tone of this section as a whole.\n"
         f"{_THEME_RULE}"
     )
 
