@@ -1,6 +1,7 @@
 # Task 47 — Tag quality and indexing: from free-form generation to something search can trust
 
-**Status: plan only, not started. Captured 2026-09-19.** James asked to revisit
+**Status: Phase A done 2026-09-19 (A.5 as something other than batching;
+see the updates at the end). Phase B/C not started. Captured 2026-09-19.** James asked to revisit
 `prompts/39-llm-tag-intelligence.md`'s research now that some of it has
 actually shipped, do a fresh research pass, and turn it into an executable
 plan focused on two things: how the tagging pipeline itself treats tags at
@@ -305,9 +306,9 @@ those files, not tagging. Not investigated.
 ## Update — 2026-09-19, A.1 vocabulary approved (part 1 of 2)
 
 James approved the closed genre/mood sets and the raw→curated mapping as
-drafted. They live in `backend/app/services/tag_vocab.py`, which nothing
-imports yet. Part 2 (enum schemas, `otherGenre`, backfill, consumers) is
-still to do.
+drafted. They live in `backend/app/services/tag_vocab.py`. Part 2 (enum
+schemas, `otherGenre`, backfill, consumers) shipped the same day; see
+the next update.
 
 **Measured on the 556 books with a done full pass:** 202 distinct raw
 genres and 177 raw moods (casefolded) → 46 genres and 23 moods. Every raw
@@ -337,6 +338,80 @@ thriller` → Political Intrigue only (also mapping it to Thriller would add
 `speculative fiction`, `religious fiction`, `psychological fiction`,
 `philosophical fiction`, `drama` dropped. Genres are Title Case, moods
 lowercase.
+
+## Update — 2026-09-19, A.1 part 2 shipped (vocabulary wired in, backfilled)
+
+Four commits, deployed 15:32 NZST:
+
+- **Generation.** `genres`/`moods` are enum arrays in both schemas, capped
+  at 4/5. Both prompts list the allowed values and give guidance for the
+  overused ones. New `otherGenre` (max 1) is the escape hatch. The
+  validators enforce all of it through the approved map. The reduce step
+  writes `genresCanonical`/`moodsCanonical`/`otherGenreCanonical` next to
+  the raw fields, and maps chunk evidence first. That way the book that was
+  mid-mapping at deploy (*Between Worlds*, 5 of 13 free-form chunks)
+  reduces with one vocabulary.
+- **Backfill.** `tag_vocab.refresh_tag_vocab` writes the same three
+  fields on every done book. Raw values are untouched and old books are
+  not truncated. It runs after each reduce and via
+  `POST /api/library/tag-vocab/refresh`. It updated 556 books, and a second
+  run updated 0. As predicted, *Aura* has no genres (otherGenre
+  "Autobiographical Fiction") and *Nightmare Journey* has no moods. There
+  were no unmapped raw values. Averages went from 6.3 → 5.3 genres and
+  7.4 → 4.9 moods; old books aren't capped, so they still carry overuse.
+- **Unknown raw values** (not in the map): a genre goes to otherGenre so
+  it gets reviewed, and a mood is dropped. The pass reports both.
+- **Consumers.** `library_index_service._llm_tags` returns the curated
+  values as `genres`/`moods`, so content recs, embeddings and the viewer
+  index (ShowcaseSection) all switched together. New books can only emit
+  enum values, and reading raw values for old books would leave two
+  vocabularies side by side. otherGenre is kept out of all three because
+  it is unreviewed. Hardcover facet chips are unchanged.
+- **Review surface.** The admin Settings page has a collapsed "Genres
+  outside the vocabulary" list under LLM tagging, backed by
+  `other_genres` on `GET /api/library/llm-tagging`. It currently shows 16
+  values on 23 books.
+
+**Content recs moved a lot.** They were regenerated right after the
+backfill. No book's top-8 list is unchanged, and mean overlap with the
+old list is 32%. By the one cheap proxy available, the result is slightly
+better: same-author recs went from 27.5% to 30.4% and same-series from
+9.9% to 11.0%. *The Serpent Sea* now gets *The Cloud Roads* and *Books of the
+Raksura*, where before it got mostly Koontz. Embeddings, the recs file and
+the index were all regenerated too.
+
+**The Serpent Sea (596), same model, enum prompts vs stored 2026-09-18
+output:**
+
+| | stored (raw) | stored → mapped | new |
+|---|---|---|---|
+| genres | Fantasy, Science Fiction, Adventure, Mystery, Drama | Fantasy, Science Fiction, Adventure, Mystery | Fantasy, Epic Fantasy, Adventure, Dark Fantasy |
+| moods | atmospheric, tense, hopeful, reflective, nervous, suspenseful | atmospheric, tense, hopeful, reflective | adventurous, tense, unsettling, hopeful, reflective |
+
+Better: Science Fiction, Mystery and Drama are gone. Mystery appeared in
+14 of 26 sections, and the reduce dropped it as the guidance asks. Worse:
+**Dark Fantasy** is wrong for Raksura, and it came from 18 of 26 sections.
+tense and reflective survived their guidance.
+
+**The caps act as quotas.** Every map call returned exactly 5 moods, 22 of
+26 returned exactly 4 genres, and so did the reduce. Adding "4 is a
+limit, not a target: most books need two or three" to both rules changed
+nothing: same genres, 5 moods again. That wording was reverted and is not
+what shipped. With 4,313 books still queued, expect nearly every new book
+to have exactly 4 genres and 5 moods, with filler like Dark Fantasy in
+the spare slots. Untried options (James's call): lower caps in the map schema only,
+so section evidence is sparser; show the reduce how many sections
+carried each value ("Dark Fantasy: 18/26"); or drop values seen in only a
+minority of sections before the reduce.
+
+**Cost.** On the same chunk, old vs new map prompt, two runs each: output
+tokens went from ~247 to ~348 and generation from 44 to 40 tok/s (grammar
+overhead), so a call takes ~9s instead of ~7s. The whole book took 300s for
+27 calls. This eats part of A.5's ~1.9× gain. The prompt is ~6.7-7.0k
+tokens, which still fits num_ctx 8192 with the output.
+
+DB snapshot from before the backfill:
+`backend/epub_librarian.db.bak-pre-tag-vocab-2026-09-19`.
 
 ## Sources
 
