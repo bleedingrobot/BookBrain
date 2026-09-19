@@ -316,7 +316,19 @@ and `SPEC.md` § "Identification pipeline (2026)".
   reduce as the fallback, then get James's OK. Then B.1 (canonical themes
   into embeddings), B.3 (MMR on similar books), B.2/B.4 if still open,
   and two small items (per-step overhead, 26 unextractable books).
-  **Not started.**
+  **Step 1 shipped 2026-09-19** — map-only caps (2 genres/3 moods; reduce
+  stays 4/5) dry-run on two books (Dark Fantasy dropped from 18/26 sections
+  to 0 on *The Serpent Sea*), deployed live. Section-count filter fallback
+  not needed/not built (two books' data was too little to pick a threshold).
+  17 books tagged under the old 4/5 caps left un-re-tagged, James's call.
+  Steps 2-4 not started; see `49` for Step 2.
+- [`49-themes-into-embeddings.md`](49-themes-into-embeddings.md) — `48`
+  Step 2 / `47`'s B.1: fold `llm_tags_json.full.themesCanonical` (deduped
+  since A.3) into `embedding_service.embed_input`'s `tags`, which currently
+  excludes themes for a reason (noisy raw values) that no longer applies.
+  Not added to the viewer index, only the embedding. Measure ~5 vibe
+  queries' top-10 before/after on real data before deploying. **Not
+  started.**
 
 ## Shared context (every session should know this)
 
