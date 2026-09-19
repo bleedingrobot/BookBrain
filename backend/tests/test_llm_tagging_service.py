@@ -437,3 +437,14 @@ async def test_a_book_mid_mapping_at_deploy_reduces_with_free_form_chunks(monkey
     assert "Science Fiction, Epistolary Fiction, tense, first contact gone wrong" in evidence
     assert "desperate" not in evidence and "Drama" not in evidence
 
+
+async def test_tag_vocab_refresh_after_reduce_never_raises(monkeypatch, caplog) -> None:
+    from app.services import llm_tagging_service, tag_vocab
+
+    async def boom(session):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(tag_vocab, "refresh_tag_vocab", boom)
+    await llm_tagging_service._refresh_tag_vocab()
+    assert "tag vocab refresh failed" in caplog.text
+

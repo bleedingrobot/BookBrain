@@ -670,6 +670,7 @@ async def tick() -> dict:
 
     if just_finished:
         await _refresh_theme_canon()
+        await _refresh_tag_vocab()
     return {"processed": book.id}
 
 
@@ -683,3 +684,15 @@ async def _refresh_theme_canon() -> None:
     except Exception:  # noqa: BLE001 — never crash the loop
         logger.exception("llm tagging: theme dedup refresh failed")
 
+
+async def _refresh_tag_vocab() -> None:
+    """prompts/47 A.1 — re-map every done book through the current approved
+    vocabulary, so an edit to tag_vocab's maps reaches old books by the next
+    finished book without anyone remembering to run the backfill. The
+    finished book already has its own curated fields from the reduce step.
+    Best-effort, like the theme refresh."""
+    try:
+        async with async_session_factory() as session:
+            await tag_vocab.refresh_tag_vocab(session)
+    except Exception:  # noqa: BLE001 — never crash the loop
+        logger.exception("llm tagging: tag vocab refresh failed")

@@ -28,6 +28,7 @@ from app.services import (
     library_service,
     llm_tagging_service,
     recently_organized_service,
+    tag_vocab,
     theme_dedup_service,
 )
 from app.services.auth_service import AuthService, get_auth_service
@@ -351,6 +352,16 @@ async def refresh_theme_canon(db: AsyncSession = Depends(get_db)) -> dict:
     theme vocabulary. CPU-only, a few seconds; also runs after each book's
     reduce step."""
     return await theme_dedup_service.refresh_theme_canon(db)
+
+
+@router.post("/tag-vocab/refresh")
+async def refresh_tag_vocab(db: AsyncSession = Depends(get_db)) -> dict:
+    """prompts/47 A.1 — re-map every LLM-tagged book's raw genres/moods
+    through the approved vocabulary (`app.services.tag_vocab`) into
+    `genresCanonical`/`moodsCanonical`/`otherGenreCanonical`. No Ollama,
+    under a second; also runs after each reduce step. Run it after editing
+    the maps."""
+    return await tag_vocab.refresh_tag_vocab(db)
 
 
 @router.post("/embeddings")

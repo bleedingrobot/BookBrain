@@ -25,6 +25,15 @@ needs the cap below plus prompt guidance on new output, and a re-tag for
 old books (not approved — don't start one).
 """
 
+import logging
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.data.models import Book
+
+logger = logging.getLogger(__name__)
+
 OTHER = "__other__"
 
 # Approved caps for new output, most defining first. The raw data averaged
@@ -299,3 +308,47 @@ def canonical_fields(full: dict) -> dict:
         "otherGenreCanonical": other,
     }
 
+
+async def refresh_tag_vocab(session: AsyncSession) -> dict:
+    """Write `canonical_fields` onto every book with a done full pass whose
+    derived values changed, the way theme_dedup_service writes
+    `themesCanonical`: raw `genres`/`moods`/`otherGenre` are never touched,
+    so a later change to the map just means running this again. No Ollama.
+    Runs after each reduce step and on demand via
+    `POST /api/library/tag-vocab/refresh`."""
+    books = (
+        (await session.execute(select(Book).where(Book.llm_tags_json.is_not(None)))).scalars().all()
+    )
+    done = updated = 0
+    no_genres: list[str] = []
+    no_moods: list[str] = []
+    unmapped_genres: set[str] = set()
+    unmapped_moods: set[str] = set()
+    for book in books:
+        full = (book.llm_tags_json or {}).get("full")
+        if not isinstance(full, dict) or full.get("status") != "done":
+            continue
+        done += 1
+        unmapped_genres |= {g for g in full.get("genres") or [] if _key(g) not in GENRE_MAP}
+        unmapped_moods |= {m for m in full.get("moods") or [] if _key(m) not in MOOD_MAP}
+        fields = canonical_fields(full)
+        if not fields["genresCanonical"]:
+            no_genres.append(book.canonical_title)
+        if not fields["moodsCanonical"]:
+            no_moods.append(book.canonical_title)
+        if all(full.get(k) == v for k, v in fields.items()):
+            continue
+        book.llm_tags_json = {**book.llm_tags_json, "full": {**full, **fields}}
+        updated += 1
+    await session.commit()
+
+    result = {
+        "books": done,
+        "booksUpdated": updated,
+        "withoutGenres": sorted(no_genres),
+        "withoutMoods": sorted(no_moods),
+        "unmappedGenres": sorted(unmapped_genres),
+        "unmappedMoods": sorted(unmapped_moods),
+    }
+    logger.info("tag vocab: %s", result)
+    return result
