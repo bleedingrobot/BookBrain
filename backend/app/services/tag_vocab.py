@@ -1,6 +1,9 @@
 """prompts/47 A.1 — the controlled vocabulary for LLM genres/moods, approved
-by James 2026-09-19. NOT WIRED IN YET: nothing imports this module until
-A.1 part 2 (enum schemas, otherGenre, backfill) lands.
+by James 2026-09-19. Used three ways: as the enums in llm_tagging_service's
+JSON Schemas (new output can only use these values), by the validators
+there (belt and braces), and by `refresh_tag_vocab` to map every
+already-tagged book's raw values into `genresCanonical`/`moodsCanonical`/
+`otherGenreCanonical` without re-running Ollama.
 
 Drawn from every book with a done full pass (556 books, 2026-09-19): 202
 distinct raw genres and 177 raw moods (casefolded) collapse to the 46 and
@@ -10,9 +13,11 @@ lowercase.
 GENRE_MAP / MOOD_MAP: casefolded raw value -> curated values ([] = drop).
 A raw genre mapped to OTHER goes to the `otherGenre` review slot instead of
 being dropped: a real genre that doesn't earn an enum slot at this
-library's size. Every raw value in use on 2026-09-19 has an entry; later
-unknown values (from books tagged before the enum shipped) are the
-backfill's call.
+library's size. Every raw value in use on 2026-09-19 has an entry. A raw
+value with no entry (a book tagged between then and the enum shipping)
+is treated like OTHER for genres, so a human sees it, and dropped for
+moods, which have no review slot and whose strays were mostly a
+character's state in one scene.
 
 The mapping fixes fragmentation, not overuse: `tense` is on 544 of 556
 books after mapping, `reflective` 492, Mystery 287, Adventure 319. That
@@ -236,3 +241,61 @@ _M = {
 
 GENRE_MAP: dict[str, list[str]] = {g.lower(): [g] for g in GENRES} | _G
 MOOD_MAP: dict[str, list[str]] = {m: [m] for m in MOODS} | _M
+
+
+def _key(value: str) -> str:
+    return " ".join(str(value).split()).casefold()
+
+
+def _add(out: list[str], value: str) -> None:
+    if _key(value) not in {_key(v) for v in out}:
+        out.append(value)
+
+
+def curate_genres(raw: list[str]) -> tuple[list[str], list[str]]:
+    """Raw genre strings -> (curated enum genres, otherGenre values), both
+    order-preserving and deduped. An OTHER mapping or an unknown value goes
+    to the second list as the raw string, for a human to review."""
+    genres: list[str] = []
+    other: list[str] = []
+    for value in raw:
+        value = str(value).strip()
+        if not value:
+            continue
+        for g in GENRE_MAP.get(_key(value), [OTHER]):
+            if g == OTHER:
+                _add(other, value)
+            else:
+                _add(genres, g)
+    return genres, other
+
+
+def curate_moods(raw: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in raw:
+        for m in MOOD_MAP.get(_key(value), []):
+            _add(out, m)
+    return out
+
+
+def canonical_fields(full: dict) -> dict:
+    """The derived curated fields for one done `llm_tags_json.full`, from
+    its raw `genres`/`moods` plus the model's own `otherGenre` (absent on
+    books tagged before the enum). Never truncated to the caps: those apply
+    to new output, not to what old books already say.
+
+    `otherGenre` goes through the same map, so a value that is really an
+    enum genre ("High Fantasy") becomes that genre and a dropped one
+    ("Drama") goes; only what's left is up for review."""
+    genres, other = curate_genres(list(full.get("genres") or []))
+    hatch_genres, hatch_other = curate_genres(list(full.get("otherGenre") or []))
+    for g in hatch_genres:
+        _add(genres, g)
+    for o in hatch_other:
+        _add(other, o)
+    return {
+        "genresCanonical": genres,
+        "moodsCanonical": curate_moods(list(full.get("moods") or [])),
+        "otherGenreCanonical": other,
+    }
+

@@ -117,6 +117,7 @@ def _valid_tag_payload() -> dict:
     return {
         "ageRating": "Teen",
         "genres": ["Fantasy"],
+        "otherGenre": [],
         "moods": ["dark"],
         "themes": ["revenge"],
         "representation": [],
@@ -165,9 +166,8 @@ def test_validate_chunk_result_rejects_non_dict() -> None:
 
 def test_validators_drop_bare_generic_themes_only() -> None:
     themes = ["Identity", "survival.", "survival against supernatural threats", "revenge", " Love "]
-    payload = {**_valid_tag_payload(), "themes": themes, "genres": ["Survival"]}
+    payload = {**_valid_tag_payload(), "themes": themes}
     assert validate_tag_result(payload)["themes"] == ["survival against supernatural threats", "revenge"]
-    assert validate_tag_result(payload)["genres"] == ["Survival"]  # themes only
     chunk = validate_chunk_result({"chunkSummary": "x", "themes": themes})
     assert chunk["themes"] == ["survival against supernatural threats", "revenge"]
 
@@ -313,3 +313,127 @@ async def test_book_bytes_downloads_the_in_flight_book_once(monkeypatch) -> None
     assert await svc._book_bytes(None, "a") == b"epub-a"
     assert await svc._book_bytes(None, "b") == b"epub-b"
     assert calls == ["a", "b"]
+
+
+# --------------------------------------------------------------------------
+# prompts/47 A.1 — the controlled genre/mood vocabulary
+# --------------------------------------------------------------------------
+
+
+def test_schemas_confine_genres_and_moods_to_the_capped_enum() -> None:
+    from app.services import tag_vocab
+    from app.services.llm_tagging_service import CHUNK_RESULT_SCHEMA, TAG_RESULT_SCHEMA
+
+    for schema in (CHUNK_RESULT_SCHEMA, TAG_RESULT_SCHEMA):
+        props = schema["properties"]
+        assert props["genres"]["items"]["enum"] == tag_vocab.GENRES
+        assert props["genres"]["maxItems"] == tag_vocab.MAX_GENRES
+        assert props["moods"]["items"]["enum"] == tag_vocab.MOODS
+        assert props["moods"]["maxItems"] == tag_vocab.MAX_MOODS
+        assert props["otherGenre"]["maxItems"] == 1
+        assert "enum" not in props["themes"]["items"]  # themes stay free-form
+
+
+def test_validator_enforces_the_enum_and_caps() -> None:
+    payload = {
+        **_valid_tag_payload(),
+        "genres": ["Fantasy", "Sci-Fi", "Drama", "Horror", "Mystery", "Romance", "Poetry"],
+        "moods": ["Tense", "desperate", "suspenseful", "dark", "eerie", "funny", "cozy", "epic"],
+    }
+    out = validate_tag_result(payload)
+    # mapped, "Drama" dropped, capped at 4 in the order given
+    assert out["genres"] == ["Fantasy", "Science Fiction", "Horror", "Mystery"]
+    # "desperate" dropped, "suspenseful" folds into "tense", capped at 5
+    assert out["moods"] == ["tense", "dark", "unsettling", "funny", "cozy"]
+    assert out["otherGenre"] == ["Poetry"]  # an off-list genre isn't lost
+
+
+def test_validator_checks_other_genre_against_the_map() -> None:
+    def other(values: list[str]) -> dict:
+        return validate_tag_result({**_valid_tag_payload(), "otherGenre": values})
+
+    assert other(["High Fantasy"])["genres"] == ["Fantasy", "Epic Fantasy"]
+    assert other(["High Fantasy"])["otherGenre"] == []
+    assert other(["Drama"])["otherGenre"] == []
+    assert other(["Epistolary Fiction", "Poetry"])["otherGenre"] == ["Epistolary Fiction"]
+    assert other(["Solarpunk"])["otherGenre"] == ["Solarpunk"]
+
+
+def test_chunk_validator_enforces_the_vocab_too() -> None:
+    out = validate_chunk_result(
+        {"chunkSummary": "x", "genres": ["Sci-Fi"], "moods": ["relieved", "Eerie"]}
+    )
+    assert out["genres"] == ["Science Fiction"]
+    assert out["moods"] == ["unsettling"]
+    assert out["otherGenre"] == []
+
+
+def test_prompts_carry_the_vocab_and_the_overuse_guidance() -> None:
+    from types import SimpleNamespace
+
+    from app.services.llm_tagging_service import (
+        _GENRE_RULE,
+        _MOOD_RULE,
+        _OTHER_GENRE_RULE,
+        _SCHEMA_INSTRUCTIONS,
+        _build_map_prompt,
+    )
+
+    map_prompt = _build_map_prompt(SimpleNamespace(canonical_title="T", author=None), "text", 0, 1)
+    for rule in (_GENRE_RULE, _OTHER_GENRE_RULE, _MOOD_RULE):
+        assert rule in _SCHEMA_INSTRUCTIONS
+        assert rule in map_prompt
+    for word in ("Mystery", "Adventure", "Thriller", "Dystopian", "most defining first"):
+        assert word in _GENRE_RULE
+    for word in ("tense", "reflective", "overall tone", "most defining first"):
+        assert word in _MOOD_RULE
+
+
+async def test_a_book_mid_mapping_at_deploy_reduces_with_free_form_chunks(monkeypatch) -> None:
+    """Chunks mapped before the enum shipped keep their free-form values;
+    the reduce step still has to work, and sees them mapped."""
+    from types import SimpleNamespace
+
+    from app.services import llm_tagging_service as svc
+
+    async def two_docs(data, settings):
+        return ["Some text."]
+
+    monkeypatch.setattr(svc, "_extract_documents", two_docs)
+    old_chunk = {
+        "chunkSummary": "old",
+        "genres": ["Sci-Fi", "Drama", "Epistolary Fiction"],
+        "moods": ["desperate", "Suspenseful"],
+        "themes": ["first contact gone wrong"],
+        "representation": [],
+        "contentWarnings": [],
+    }
+    book = SimpleNamespace(
+        canonical_title="T",
+        author=None,
+        llm_tags_json={
+            "full": {
+                "status": "reducing",
+                "chunksTotal": 1,
+                "chunksDone": 1,
+                "chunkResults": [old_chunk],
+            }
+        },
+    )
+    prompts: list[str] = []
+
+    class _Client:
+        async def generate_json(self, *, system, prompt, schema=None):
+            prompts.append(prompt)
+            return {**_valid_tag_payload(), "genres": ["Science Fiction"], "moods": ["tense"]}
+
+    await svc._run_full_step(_Client(), book, b"", get_settings())
+    full = book.llm_tags_json["full"]
+    assert full["status"] == "done"
+    assert full["genresCanonical"] == ["Science Fiction"]
+    assert full["moodsCanonical"] == ["tense"]
+    assert full["otherGenreCanonical"] == []
+    evidence = prompts[0].split("(evidence: ")[1]
+    assert "Science Fiction, Epistolary Fiction, tense, first contact gone wrong" in evidence
+    assert "desperate" not in evidence and "Drama" not in evidence
+

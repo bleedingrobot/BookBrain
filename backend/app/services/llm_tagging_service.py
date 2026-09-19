@@ -44,7 +44,7 @@ from app.data.repositories.settings_repository import SettingsRepository
 from app.providers.ai.ollama_client import OllamaBadResponse, OllamaClient, OllamaUnavailable
 from app.providers.epub.errors import EpubParseError, EpubParseTimeoutError
 from app.providers.epub.parser import extract_full_text_documents_safely
-from app.services import theme_dedup_service
+from app.services import tag_vocab, theme_dedup_service
 from app.services.auth_service import get_auth_service
 from app.services.llm_tagging_download import download_file_with_hard_timeout
 
@@ -180,6 +180,23 @@ def chunk_documents(docs: list[str], *, target_chars: int) -> list[str]:
 # --------------------------------------------------------------------------
 
 
+def _apply_vocab(out: dict, raw_other: object) -> None:
+    """prompts/47 A.1 — the schema already confines genres/moods to the
+    enum and otherGenre to one value; this enforces the same after the fact
+    (belt and braces, like the theme stoplist) via the approved map, so an
+    off-list value is mapped, sent to otherGenre, or dropped exactly as the
+    backfill would. A genre-looking otherGenre ("High Fantasy") joins the
+    genres; "Drama" goes."""
+    genres, other = tag_vocab.curate_genres(out["genres"])
+    hatch_genres, hatch_other = tag_vocab.curate_genres(
+        [str(v) for v in raw_other] if isinstance(raw_other, list) else []
+    )
+    genres += [g for g in hatch_genres if g not in genres]
+    out["genres"] = genres[: tag_vocab.MAX_GENRES]
+    out["otherGenre"] = [*hatch_other, *(o for o in other if o not in hatch_other)][:1]
+    out["moods"] = tag_vocab.curate_moods(out["moods"])[: tag_vocab.MAX_MOODS]
+
+
 def validate_tag_result(raw: dict) -> dict:
     if not isinstance(raw, dict):
         raise ValueError("model response was not a JSON object")
@@ -189,6 +206,7 @@ def validate_tag_result(raw: dict) -> dict:
         if not isinstance(value, list):
             raise ValueError(f"{key!r} was not a list")
         out[key] = _clean_list(key, value)
+    _apply_vocab(out, raw.get("otherGenre"))
     for key, cap in _STR_CAPS.items():
         value = raw.get(key)
         out[key] = str(value).strip()[:cap] if value else None
@@ -205,6 +223,7 @@ def validate_chunk_result(raw: dict) -> dict:
         value = raw.get(key)
         value = value if isinstance(value, list) else []
         out[key] = _clean_list(key, value)
+    _apply_vocab(out, raw.get("otherGenre"))
     return out
 
 
@@ -217,10 +236,42 @@ _THEME_RULE = (
     'bare abstract noun like "identity", "survival", "power" or "love".'
 )
 
+# prompts/47 A.1 — genres/moods come from a closed list (tag_vocab), spelled
+# out here as well as enforced by the schema: grammar-constrained decoding
+# alone would force the model onto the list mid-word without it knowing what
+# was on offer. The approved caps are there so the reduce step stops
+# unioning every section's evidence (old books averaged 6.3 genres and 7.4
+# moods), and the named values are the ones old output put on most books
+# (after mapping, "tense" on 544 of 556, "reflective" 492, Adventure 319,
+# Mystery 287).
+_ALLOWED_GENRES = ", ".join(tag_vocab.GENRES)
+_ALLOWED_MOODS = ", ".join(tag_vocab.MOODS)
+
+_GENRE_RULE = (
+    f"Genres: at most {tag_vocab.MAX_GENRES}, most defining first, only from: {_ALLOWED_GENRES}. "
+    "Pick Mystery only if solving a mystery drives the plot, Adventure only if the book is "
+    "above all a journey, quest or adventure story, Thriller only if it is built around "
+    "danger and a race against time, Dystopian only if an oppressive society is what the "
+    "book is about. A secret, a trip, a chase or a bad government somewhere in the story "
+    "is not enough."
+)
+_OTHER_GENRE_RULE = (
+    'otherGenre: leave it empty ([]). Only if the book plainly belongs to a genre that '
+    "nothing in the genre list covers, give that one genre's name."
+)
+_MOOD_RULE = (
+    f"Moods: at most {tag_vocab.MAX_MOODS}, most defining first, only from: {_ALLOWED_MOODS}. "
+    "A mood is the book's overall tone, how it feels to read, never what a character "
+    "feels in one scene. Pick tense only if suspense runs through most of the book, not "
+    "just its climax, and reflective only if the book itself dwells on inner life or "
+    "ideas, not because a character stops to think."
+)
+
 _SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with exactly these keys:
 - "ageRating": one short label ("General", "Teen", "Mature", or "Explicit")
-- "genres": array of genre strings
-- "moods": array of mood/tone strings (e.g. "atmospheric", "fast-paced")
+- "genres": array of genres. {_GENRE_RULE}
+- "otherGenre": array of at most one genre. {_OTHER_GENRE_RULE}
+- "moods": array of moods. {_MOOD_RULE}
 - "themes": array of thematic strings (e.g. "found family", "revenge against a corrupt church"). {_THEME_RULE}
 - "representation": array of identity/representation strings actually present on the page (e.g. "gay protagonist", "wheelchair user") — omit anything you're not seeing evidence for
 - "contentWarnings": array of content-warning strings (e.g. "graphic violence", "on-page suicide")
@@ -233,26 +284,39 @@ _SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with 
 # schema fixes the shape, the prompt still explains what goes in each field.
 # The validators stay too (belt and braces, and they apply the caps/stoplist).
 _STRING_LIST = {"type": "array", "items": {"type": "string"}, "maxItems": _MAX_LIST_ITEMS}
+_TAG_LIST_SCHEMAS = {
+    **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
+    "genres": {
+        "type": "array",
+        "items": {"type": "string", "enum": tag_vocab.GENRES},
+        "maxItems": tag_vocab.MAX_GENRES,
+    },
+    "moods": {
+        "type": "array",
+        "items": {"type": "string", "enum": tag_vocab.MOODS},
+        "maxItems": tag_vocab.MAX_MOODS,
+    },
+    "otherGenre": {"type": "array", "items": {"type": "string"}, "maxItems": 1},
+}
 
 CHUNK_RESULT_SCHEMA = {
     "type": "object",
-    "properties": {
-        "chunkSummary": {"type": "string"},
-        **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
-    },
-    "required": ["chunkSummary", *_TAG_LIST_KEYS],
+    "properties": {"chunkSummary": {"type": "string"}, **_TAG_LIST_SCHEMAS},
+    "required": ["chunkSummary", *_TAG_LIST_SCHEMAS],
 }
 
 TAG_RESULT_SCHEMA = {
     "type": "object",
     "properties": {
         "ageRating": {"type": "string", "enum": ["General", "Teen", "Mature", "Explicit"]},
-        **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
+        **_TAG_LIST_SCHEMAS,
         "confidenceNotes": {"type": "string"},
         "shortDescription": {"type": "string"},
         "longSummary": {"type": "string"},
     },
-    "required": ["ageRating", *_TAG_LIST_KEYS, "confidenceNotes", "shortDescription", "longSummary"],
+    "required": [
+        "ageRating", *_TAG_LIST_SCHEMAS, "confidenceNotes", "shortDescription", "longSummary",
+    ],
 }
 
 _MAP_SYSTEM_PROMPT = (
@@ -279,18 +343,35 @@ def _build_map_prompt(book: Book, chunk_text: str, index: int, total: int) -> st
         f"Book: {_book_label(book)}. Section {index + 1} of {total}.\n\n"
         f"Text:\n{chunk_text}\n\n"
         'Respond with ONLY a JSON object: {"chunkSummary": "...", '
-        '"genres": [...], "moods": [...], "themes": [...], '
+        '"genres": [...], "otherGenre": [...], "moods": [...], "themes": [...], '
         '"representation": [...], "contentWarnings": [...]}\n'
+        f"{_GENRE_RULE}\n{_OTHER_GENRE_RULE}\n"
+        f"{_MOOD_RULE} Judge the tone of this section as a whole.\n"
         f"{_THEME_RULE}"
     )
+
+
+def _chunk_evidence(chunk: dict) -> list[str]:
+    """One section's genre/mood/theme/representation evidence for the reduce
+    prompt. Genres/moods go through the approved map first, so a book that
+    was mid-mapping when the enum shipped (free-form chunkResults from
+    before, enum ones after) hands the reduce step one vocabulary."""
+    genres, other = tag_vocab.curate_genres(
+        [*chunk.get("genres", []), *chunk.get("otherGenre", [])]
+    )
+    return [
+        *genres,
+        *other,
+        *tag_vocab.curate_moods(chunk.get("moods", [])),
+        *chunk.get("themes", []),
+        *chunk.get("representation", []),
+    ]
 
 
 def _build_reduce_prompt(book: Book, chunk_results: list[dict]) -> str:
     sections = []
     for i, chunk in enumerate(chunk_results):
-        evidence = ", ".join(
-            v for key in _TAG_LIST_KEYS[:-1] for v in chunk.get(key, [])
-        ) or "none noted"
+        evidence = ", ".join(_chunk_evidence(chunk)) or "none noted"
         sections.append(
             f"[section {i + 1}] {chunk.get('chunkSummary', '')} (evidence: {evidence})"
         )
@@ -388,7 +469,12 @@ async def _run_full_step(client: OllamaClient, book: Book, data: bytes, settings
             schema=TAG_RESULT_SCHEMA,
         )
         tags = validate_tag_result(raw)
-        full = {**tags, "status": "done", "generatedAt": _now_iso()}
+        full = {
+            **tags,
+            **tag_vocab.canonical_fields(tags),
+            "status": "done",
+            "generatedAt": _now_iso(),
+        }
 
     llm_tags["full"] = full
     book.llm_tags_json = llm_tags
@@ -596,3 +682,4 @@ async def _refresh_theme_canon() -> None:
             await theme_dedup_service.refresh_theme_canon(session)
     except Exception:  # noqa: BLE001 — never crash the loop
         logger.exception("llm tagging: theme dedup refresh failed")
+
