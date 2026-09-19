@@ -1,0 +1,91 @@
+{
+  "id": "tony-diterlizzi-h-the-wyrm-king",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Tony DiTerlizzi, Holly Black / The Wyrm King / series=Beyond the Spiderwick Chronicles #3.0 (model=claude-opus-5, conf=85)",
+  "source": {
+    "file_id": 2001,
+    "drive_file_id": "17h_J3vFOE4448izT67PN_iuvKgtGujG4",
+    "filename": "DiTerlizzi, Tony & Black, Holly - [Beyond the Spiderwick Chronicles 3] - The Wyrm King.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 85
+  },
+  "filename": "DiTerlizzi, Tony & Black, Holly - [Beyond the Spiderwick Chronicles 3] - The Wyrm King.epub",
+  "evidence": {
+    "title": "The Wyrm King",
+    "authors": [
+      "Tony DiTerlizzi",
+      "Holly Black"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": "9781416996620",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Blues and Bliss div#book-inner p, div#book-inner div { font-size: 1.0em; } a { color: black; } a:link, a:visited, a:hover, a:active { color: blue; } div#book-inner * { margin-top: 0 !important; margin-bottom: 0 !important;}"
+  },
+  "candidates": [
+    {
+      "title": "Wyrm King",
+      "authors": [
+        "Holly Black",
+        "Tony DiTerlizzi"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Wyrm King",
+    "author": "Tony DiTerlizzi, Holly Black",
+    "series": "Beyond the Spiderwick Chronicles",
+    "series_number": 3,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename, EPUB metadata, and ISBN-13 (9781416996620) all agree on 'The Wyrm King' by Tony DiTerlizzi and Holly Black. Open Library confirms the same ISBN and authors. Series info comes from the filename: book 3 of Beyond the Spiderwick Chronicles, which matches the known publication order (Nixie's Song, A Giant Problem, The Wyrm King). The stray 'Blues and Bliss' CSS/boilerplate text on the first page appears to be leftover template junk and does not affect identification.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": null,
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "unresolved",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Wyrm King",
+      "author": "Tony DiTerlizzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Wyrm King",
+      "author": "Holly Black",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "title: epub='The Wyrm King'; provider='Wyrm King'",
+    "author: epub='Tony DiTerlizzi'; provider='Holly Black'"
+  ]
+}

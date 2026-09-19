@@ -23,12 +23,20 @@ export interface ReviewSummary {
   computed_confidence: number | null
 }
 
+export interface AgreementLine {
+  field: string
+  value: string
+  provider_count: number
+  sources: string[]
+}
+
 export interface ReviewDetail extends ReviewSummary {
   proposed_json: Record<string, unknown>
   correction_json: Record<string, unknown> | null
   reasoning_summary: string | null
   evidence: EvidenceItem[]
   candidates: CandidateItem[]
+  agreement: AgreementLine[]
 }
 
 export interface CorrectReviewRequest {

@@ -18,7 +18,65 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5"
     google_books_api_key: str = ""
 
+    # Hardcover (https://hardcover.app) as a third metadata provider — a
+    # human-curated catalogue whose series data beats Google Books / Open
+    # Library. A Personal Access Token from hardcover.app account settings
+    # (Hardcover API -> New API Key). Backend only — their API forbids
+    # browser use. Empty = the provider is not added to candidate_service and
+    # nothing changes. See prompts/25-hardcover-integration.md.
+    hardcover_api_token: str = ""
+    # prompts/30 — display name for whoever's Hardcover reading data the
+    # `bookbrain-reading.json` sidecar carries. Empty → the Hardcover username.
+    hardcover_reader_name: str = ""
+
+    # prompts/15 Stage A — web-search grounding for the identify call. When on
+    # (default), the AI identification path may call the Anthropic web_search
+    # server tool to verify title/author/series/first-publication year against
+    # the live web before answering — targeting the post-training-cutoff
+    # "invented a plausible series" failure. It is billed per search, so
+    # identification_service.should_ground only turns it on for books with a
+    # recent-year signal (filename or provider pub date within ~2 years) — a
+    # few percent of AI-path calls, not all of them. Set False to disable
+    # entirely (tests never hit the network regardless).
+    ai_web_search_enabled: bool = True
+    ai_web_search_max_uses: int = 2
+
+    # prompts/15 Stage H — a second, adversarial AI call ("confirm this exactly
+    # or correct it") for AI-path identifications that land in the uncertain
+    # band (70 <= computed_confidence < confidence_auto_organize). OFF by
+    # default: it is one extra ~$0.03 model call per uncertain new book, and
+    # James is hard budget-limited. Turn on only when the review queue is
+    # noisier than the spend. When on: an agreeing verifier lifts confidence a
+    # little (double-checked); a disagreeing one takes the correction AND forces
+    # the review queue (two AI opinions differed — a human should look).
+    ai_verify_enabled: bool = False
+    ai_verify_cost_usd: float = 0.03
+
     frontend_origin: str = "http://localhost:5173"
+
+    # prompts/42 — passcode login for the family library-viewer (siblings
+    # without a Google account of their own). Compared with a constant-time
+    # check in viewer_session_service; empty disables the passcode path
+    # entirely (Google sign-in in the viewer is untouched and never goes
+    # through this backend at all).
+    siblings_passcode: str = ""
+    # How long a passcode session cookie stays valid before a re-login is
+    # needed. Stateless — a Fernet-signed token with an expiry check on
+    # decrypt (see viewer_session_service), no DB row to revoke — so this is
+    # also the longest a leaked cookie stays useful.
+    viewer_session_days: int = 30
+    # False only for local dev over plain http, where a Secure cookie is
+    # silently dropped by the browser — flips SameSite to Lax to compensate
+    # (fine for same-machine testing, just not cross-origin). Leave True in
+    # production: the viewer is served from a different origin (GitHub
+    # Pages) than this backend, which requires SameSite=None + Secure for
+    # the cookie to be sent at all.
+    viewer_cookie_secure: bool = True
+    # Extra CORS origin for the family library-viewer (GitHub Pages), on top
+    # of frontend_origin (the local admin UI). Needed because the passcode
+    # login path — unlike Google sign-in, which talks to Google directly —
+    # calls this backend from the viewer's own origin with credentials.
+    library_viewer_origin: str = "https://bleedingrobot.github.io"
 
     # EPUB safe-parsing limits (SPEC.md §1)
     epub_max_entry_bytes: int = 100 * 1024 * 1024
@@ -30,13 +88,147 @@ class Settings(BaseSettings):
     confidence_auto_organize: int = 95
     confidence_auto_flagged: int = 85
 
-    # Calibre CLI conversion (mobi/rtf -> epub before processing)
+    # AI spend guard rails (finding 11). Per-call figures are padded
+    # estimates in the same spirit as reident_audit_service's
+    # ~1.5k in + 0.4k out; they exist to show the user a "~$X" before a
+    # click, not to bill anything.
+    ai_description_cap: int = 200  # max model-written blurbs per backfill run
+    ai_description_cost_usd: float = 0.01  # describe(): ~150 in + ~400 out
+    # a full forced-tool identify pass. Only a few percent of these ground
+    # (prompts/15 Stage A — recent books only), so the blended figure is
+    # barely above the un-grounded ~0.03.
+    ai_identify_cost_usd: float = 0.035
+
+    # Calibre CLI conversion (mobi/rtf/txt -> epub before processing)
     ebook_convert_binary: str = "ebook-convert"
     ebook_convert_timeout_seconds: int = 120
 
-    # Local folder watched for new ebooks (e.g. a torrents download dir) to
-    # offer copying into the Drive inbox
+    # 7-Zip CLI, used only to read .cbr (RAR) comic archives — .cbr is kept
+    # as-is like .cbz, never converted. Empty = auto-detect: PATH (7z / 7za /
+    # 7zz), then the standard Windows install dir.
+    seven_zip_binary: str = ""
+    seven_zip_timeout_seconds: int = 60
+
+    # Local folder watched for new ebooks (e.g. a manually-run torrent
+    # client's download dir) to offer copying into the Drive inbox — James's
+    # existing setup points this at an SMB share from another machine
+    # (TORRENTS_WATCH_FOLDER=/mnt/torrents in .env). Deliberately untouched
+    # by the automated torrent subsystem below — see torrent_incoming_folder.
     torrents_watch_folder: str = r"D:\Torrents"
+
+    # OpenBooks (https://github.com/evan-buss/openbooks) — an experimental
+    # "Find a book" flow in the admin app. OpenBooks runs separately in
+    # server mode (backend/tools/run-openbooks.ps1) and BookBrain talks to
+    # its WebSocket API as the single allowed client: search -> pick a
+    # result -> download -> upload into the Drive inbox, where the normal
+    # scan/identify/organize pipeline takes over. Off unless
+    # OPENBOOKS_ENABLED=true. `openbooks_download_dir` must match the `--dir`
+    # OpenBooks was started with (files land in its `books/` subfolder).
+    # See prompts/37-openbooks-acquire.md.
+    openbooks_enabled: bool = False
+    openbooks_ws_url: str = "ws://localhost:5228/ws"
+    openbooks_download_dir: str = r"C:\Users\Giant\Documents\epub-librarian\backend\tools\openbooks-dl"
+    # IRC bot that answers searches on #ebook. "search" is the default; flip to
+    # "searchook" when "search" is down (OpenBooks' own advice). Takes effect
+    # on the next Start of the OpenBooks server.
+    openbooks_searchbot: str = "search"
+    # Path to the openbooks executable. Empty = look for
+    # backend/tools/openbooks.exe next to this checkout. The admin "Find a
+    # Book" page has a Start/Stop button that launches it with this.
+    openbooks_binary: str = ""
+
+    # Anna's Archive — a second AcquisitionProvider (providers/acquisition/),
+    # searched/downloaded alongside OpenBooks. Same trust boundary as
+    # OpenBooks: admin-only, off unless ANNAS_ARCHIVE_ENABLED=true, never
+    # surfaced in the family library-viewer. No local process to manage
+    # (stateless HTTP scraping), unlike OpenBooks.
+    annas_archive_enabled: bool = False
+    # These mirror domains rotate/go dead often — annas-archive.org itself
+    # stopped resolving entirely as of 2026-09-16. .gl was confirmed live
+    # (DDoS-Guard protected — exactly what ANNAS_ARCHIVE_FLARESOLVERR_URL is
+    # for) as of the same date; check for a current one if this goes stale.
+    annas_archive_base_url: str = "https://annas-archive.gl"
+    # Optional bot-protection fallback — a FlareSolverr sidecar (see
+    # backend/tools/run-flaresolverr.sh). Empty = direct-httpx-only, the
+    # original behavior, unchanged. Set to e.g. "http://127.0.0.1:8191/v1"
+    # once the container is running.
+    annas_archive_flaresolverr_url: str = ""
+
+    # Libgen — a third AcquisitionProvider (providers/acquisition/), same
+    # trust boundary as OpenBooks/Anna's Archive: admin-only, off unless
+    # LIBGEN_ENABLED=true, never surfaced in the family library-viewer.
+    libgen_enabled: bool = False
+    # Comma-separated, tried in order — individual mirrors rot faster than
+    # the domain family as a whole, so unlike annas_archive_base_url this is
+    # a list, not a single URL. All five confirmed live and directly
+    # scrapable (no Cloudflare/DDoS-Guard challenge) as of 2026-09-16;
+    # libgen.is/.st resolved but timed out from this network the same day.
+    # Check for a current set if this goes stale.
+    libgen_base_urls: str = (
+        "https://libgen.li,https://libgen.vg,https://libgen.bz,https://libgen.gl,https://libgen.la"
+    )
+
+    # Torrent acquisition — a fourth, structurally different source
+    # (torrent_service.py, not an AcquisitionProvider): BookBrain never talks
+    # to Prowlarr/qBittorrent directly, only to Librarr's own request API
+    # (https://github.com/jcraney143/librarr), which owns the indexer search
+    # and qBittorrent submission/download internally and organizes completed
+    # files into a plain folder (its EBOOK_DIR) with no library-import step.
+    # Same trust boundary as the others: admin-only, off unless
+    # TORRENT_ENABLED=true, never surfaced in the family library-viewer.
+    # Gated by its own TORRENT_AUTOGET_ENABLED DB setting rather than the
+    # shared OPENBOOKS_AUTOGET_ENABLED master switch — a torrent commits real
+    # bandwidth/disk per book, unlike a quick search, so it's pausable
+    # independently.
+    torrent_enabled: bool = False
+    librarr_url: str = "http://localhost:5050"
+    librarr_api_key: str = ""
+    # Librarr's own EBOOK_DIR, host-side bind mount (torrents-compose.yml) —
+    # deliberately a *separate* folder from torrents_watch_folder above, not
+    # a repoint of it: that field is James's existing, pre-populated manual
+    # workflow (a network share fed by a torrent client on another machine),
+    # and mixing this subsystem's automated output into it would mean
+    # shipping every download over that network share for no reason, plus
+    # conflating two different provenances in one folder. torrent_service.py's
+    # local_scan_tick scans this path specifically; the original
+    # torrents_watch_folder keeps being scanned only by the nightly job, as
+    # before this subsystem existed.
+    torrent_incoming_folder: str = "/opt/bookbrain/torrents/incoming"
+    # The one deliberate exception to "never talk to qBittorrent directly" —
+    # see torrent_service.py's module docstring and _release_stale_fetching:
+    # Librarr has no path that removes a dead torrent for a request it's
+    # given up on, so that one cleanup step reaches around it. Same
+    # credentials already duplicated into Librarr's own compose env
+    # (docker/torrents-compose.yml's QB_URL/QB_USER/QB_PASSWORD) — not a new
+    # secret, just the same one known to a second consumer.
+    qbittorrent_url: str = "http://localhost:8080"
+    qbittorrent_username: str = "admin"
+    qbittorrent_password: str = ""
+
+    # Nightly SQLite backup to Drive (backup_service). How many dated
+    # snapshots to keep in the library folder's backups/ subfolder — older
+    # ones are trashed (recoverable) after each new upload.
+    backup_retention: int = 7
+
+    # A local Ollama instance (typically on a separate, only-sometimes-on
+    # gaming PC, reached over Tailscale) for the slow-drip LLM-tagging
+    # background job (llm_tagging_service) — genres/moods/themes/content
+    # warnings/descriptions read from a book's actual text. Never used by the
+    # main identification pipeline. Empty host = the feature can't run even
+    # if LLM_TAGGING_ENABLED is on. See prompts/38-llm-tagging.md.
+    ollama_host: str = ""
+    ollama_model: str = "qwen3:14b"
+    # Context window requested per call (Ollama's `options.num_ctx`). Text is
+    # chunked/sampled to fit under this minus prompt overhead — raise it if
+    # the gaming PC's VRAM allows a bigger window, which also means fewer,
+    # bigger chunks per book.
+    ollama_num_ctx: int = 8192
+    ollama_timeout_seconds: float = 120.0
+    # The allowed-window check (overnight / weekday 9am-3pm) needs to know
+    # James's actual local time — this server runs on UTC, so comparing
+    # against the machine's own clock silently gets every window backwards.
+    # An IANA zone name (handles DST automatically; a fixed offset wouldn't).
+    llm_tagging_timezone: str = "Pacific/Auckland"
 
 
 @lru_cache

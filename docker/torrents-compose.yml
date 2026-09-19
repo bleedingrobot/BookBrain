@@ -1,0 +1,104 @@
+# Prowlarr (indexers) + qBittorrent (download engine) + Librarr (orchestrator)
+# for BookBrain's torrent acquisition subsystem (app/services/torrent_service.py).
+#
+# BookBrain itself only ever talks to Librarr's API — never to Prowlarr or
+# qBittorrent directly (see torrent_service.py's module docstring). Librarr
+# owns the Prowlarr search + qBittorrent submission/download internally.
+#
+# host networking (network_mode: host), matching the existing Jellyfin
+# container on this host: simplest path to qBittorrent's WebUI localhost-
+# bypass working reliably (bridge networking's port-forwarded connections
+# don't reliably appear as 127.0.0.1 to the container, which would silently
+# defeat that bypass), at the cost of these services' UIs being reachable
+# from any device on the LAN, not just this machine — the same trade-off
+# already accepted for Jellyfin.
+#
+# No VPN (confirmed decision) — public Torznab indexers only.
+#
+# One-time manual setup after `docker compose up -d` (can't be automated —
+# genuinely needs a human at a web UI):
+#   1. Open http://<this-host>:9696, run through Prowlarr's setup wizard,
+#      copy its API key from Settings > General.
+#   2. Add 2-3 public Torznab-compatible indexers in Prowlarr.
+#   3. Open http://<this-host>:5050, set Librarr's PROWLARR_API_KEY (below)
+#      to the key from step 1, and its own API_KEY to a freshly generated
+#      value — put that in BookBrain's .env as LIBRARR_API_KEY.
+#
+# Host path <-> BookBrain config correspondence (see app/core/config.py):
+#   ./incoming (this file's directory) == torrents_watch_folder
+#   — Librarr organizes completed downloads here (EBOOK_DIR); BookBrain's
+#     existing torrents-watch-folder auto-match picks them up from there.
+
+services:
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Pacific/Auckland
+    volumes:
+      - /opt/bookbrain/torrents/prowlarr-config:/config
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Pacific/Auckland
+      - WEBUI_PORT=8080
+    volumes:
+      - /opt/bookbrain/torrents/qbittorrent-config:/config
+      - /opt/bookbrain/torrents/qbittorrent-downloads:/downloads
+    restart: unless-stopped
+
+  librarr:
+    image: ghcr.io/jcraney143/librarr:latest
+    container_name: librarr
+    network_mode: host
+    environment:
+      - LIBRARR_PORT=5050
+      - LIBRARR_DB_PATH=/data/librarr.db
+      - SETTINGS_FILE=/data/settings.json
+      # Both point at localhost, not container names — network_mode: host
+      # has no inter-container DNS, everything shares the host's network
+      # namespace instead.
+      - PROWLARR_URL=http://localhost:9696
+      - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
+      - TORRENT_CLIENT=qbittorrent
+      - QB_URL=http://localhost:8080
+      - QB_USER=admin
+      - QB_PASS=${QB_PASSWORD:-}
+      # Must match qbittorrent's own /downloads mount above — the *arr-stack
+      # convention of identical container paths across the download client
+      # and the app that reads its output, even though the two are separate
+      # containers with their own volume mounts.
+      - QB_SAVE_PATH=/downloads
+      - QB_CATEGORY=bookbrain
+      # Library-agnostic: no CALIBRE_LIBRARY_PATH / ABS_URL / KAVITA_URL /
+      # KOMGA_URL set, so this just organizes into a plain folder with no
+      # library-import step.
+      - FILE_ORG_ENABLED=true
+      - IMPORT_MODE=move
+      - EBOOK_DIR=/books/ebooks
+      # Must match QB_SAVE_PATH above — this is where Librarr looks for
+      # qBittorrent's completed downloads before importing them into
+      # EBOOK_DIR. Was mistakenly set to /data/incoming, a path under the
+      # librarr-data volume that qBittorrent never writes to, so completed
+      # torrents sat retrying "local synchronized path not available"
+      # forever and never counted as done.
+      - INCOMING_DIR=/downloads
+      - API_KEY=${LIBRARR_API_KEY:-}
+      - RATE_LIMIT_ENABLED=true
+    volumes:
+      - /opt/bookbrain/torrents/librarr-data:/data
+      - /opt/bookbrain/torrents/incoming:/books/ebooks
+      - /opt/bookbrain/torrents/qbittorrent-downloads:/downloads
+    depends_on:
+      - prowlarr
+      - qbittorrent
+    restart: unless-stopped

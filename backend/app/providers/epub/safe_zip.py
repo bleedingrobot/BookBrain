@@ -43,6 +43,12 @@ class SafeZipReader:
 
         self._names = {info.filename for info in infos}
 
+    @property
+    def names(self) -> list[str]:
+        """Every entry name, sorted — a stable order for callers that need to
+        pick "the first" of something (e.g. a comic archive's cover page)."""
+        return sorted(self._names)
+
     def exists(self, name: str) -> bool:
         return name in self._names
 

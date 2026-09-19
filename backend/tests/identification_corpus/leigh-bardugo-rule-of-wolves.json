@@ -1,0 +1,104 @@
+{
+  "id": "leigh-bardugo-rule-of-wolves",
+  "case_tags": [
+    "fast-path-isbn"
+  ],
+  "notes": "fast-path-isbn; stored: Leigh Bardugo / Rule of Wolves / series=King of Scars #2.0 (model=deterministic, conf=95)",
+  "source": {
+    "file_id": 2541,
+    "drive_file_id": "1UMVs-z257IXAxWXX8Q0WW6F3J2WNDew4",
+    "filename": "Rule of Wolves by Leigh Bardugo.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 95
+  },
+  "filename": "Rule of Wolves by Leigh Bardugo.epub",
+  "evidence": {
+    "title": "Rule of Wolves",
+    "authors": [
+      "Leigh Bardugo"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": "9781250142306",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Rule of Wolves",
+      "authors": [
+        "Leigh Bardugo"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books",
+      "isbn13": "9781250142306",
+      "isbn10": null
+    },
+    {
+      "title": "Rule of Wolves",
+      "authors": [
+        "Leigh Bardugo",
+        "LitJoy Crate"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library",
+      "isbn13": "9781250142306",
+      "isbn10": null
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": "King of Scars",
+    "series_number": 2
+  },
+  "answer": {
+    "title": "Rule of Wolves",
+    "author": "Leigh Bardugo",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Rule of Wolves",
+      "author": "Leigh Bardugo",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Rule of Wolves",
+      "author": "Leigh Bardugo",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Rule of Wolves",
+      "author": "Leigh Bardugo",
+      "series": "The Nikolai Duology",
+      "series_number": 2.0,
+      "url": "https://www.wikidata.org/wiki/Q107299173",
+      "note": null
+    }
+  ],
+  "truth_disagreements": []
+}

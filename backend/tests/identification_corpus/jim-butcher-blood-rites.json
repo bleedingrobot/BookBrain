@@ -1,0 +1,131 @@
+{
+  "id": "jim-butcher-blood-rites",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Jim Butcher / Blood Rites / series=The Dresden Files #6.0 (model=claude-opus-5, conf=60)",
+  "source": {
+    "file_id": 2208,
+    "drive_file_id": "1-6qcmDfSfloURStN-arBNbVX0j5wy74A",
+    "filename": "Blood Rites - Jim Butcher.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 60
+  },
+  "filename": "Blood Rites - Jim Butcher.epub",
+  "evidence": {
+    "title": "Blood Rites",
+    "authors": [
+      "Jim Butcher"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": 1.0,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "Blood Rites",
+      "authors": [
+        "Jim Butcher"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    },
+    {
+      "title": "Blood rites",
+      "authors": [
+        "Jim Butcher"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    },
+    {
+      "title": "Blood Rites",
+      "authors": [
+        "Jim Butcher"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "Blood Rites",
+    "author": "Jim Butcher",
+    "series": "The Dresden Files",
+    "series_number": 6,
+    "ai_confidence": 95,
+    "reasoning_summary": "Filename and EPUB metadata both give 'Blood Rites' by Jim Butcher, corroborated by three Open Library candidate matches. Blood Rites is well known as book 6 of Jim Butcher's The Dresden Files series, though series data was absent from the file and providers.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Blood Rites",
+    "author": "Jim Butcher",
+    "series": "The Dresden Files",
+    "series_number": 6.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": null,
+      "series_number": 1.0,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": "The Dresden Files",
+      "series_number": 6.0,
+      "url": "https://www.wikidata.org/wiki/Q4927691",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": "The Dresden Files",
+      "series_number": 6.0,
+      "url": "https://www.kobo.com/ww/en/ebook/blood-rites-book-six-of-the-dresden-files",
+      "note": "conf=0.98; Kobo lists it explicitly as \"Book 6 - Dresden Files\" (Ace/Penguin, ISBN 9781101146668), and Penguin Random House's Dresden Files Collection 1-6 lists Blood Rites as the sixth title after Storm Front, Fool Moon, Grave Peril, Summer Knight, and Death Masks. Originally published 2004."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Blood Rites",
+      "author": "Jim Butcher",
+      "series": "The Dresden Files",
+      "series_number": 6.0,
+      "url": "https://en.wikipedia.org/wiki/Blood_Rites_(novel)",
+      "note": "conf=0.98; Proposed series=None is incorrect. Blood Rites is book 6 of The Dresden Files (Roc, Aug 2004), featuring Harry Dresden and Thomas Raith. Title and author confirmed as proposed."
+    }
+  ],
+  "truth_disagreements": []
+}

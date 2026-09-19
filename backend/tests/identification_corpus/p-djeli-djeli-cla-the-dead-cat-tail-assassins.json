@@ -1,0 +1,103 @@
+{
+  "id": "p-djeli-djeli-cla-the-dead-cat-tail-assassins",
+  "case_tags": [
+    "post-cutoff"
+  ],
+  "notes": "post-cutoff; stored: P. Djeli Djeli Clark / The Dead Cat Tail Assassins / series=None #None (model=deterministic, conf=55)",
+  "source": {
+    "file_id": 2585,
+    "drive_file_id": "1Ic06V09EOzsHx-zwFn1HbfIGHyOM27OH",
+    "filename": "The Dead Cat Tail Assassins -- P_ Djeli Djeli Clark -- 2024 -- Gale, a Cengage Group -- 9781420519266 -- 23162e81811c401e241d41b601c8e998 -- Anna’s Archive.epub",
+    "captured_from": "db",
+    "stored_model": "deterministic",
+    "stored_confidence": 55
+  },
+  "filename": "The Dead Cat Tail Assassins -- P_ Djeli Djeli Clark -- 2024 -- Gale, a Cengage Group -- 9781420519266 -- 23162e81811c401e241d41b601c8e998 -- Anna’s Archive.epub",
+  "evidence": {
+    "title": "The Dead Cat Tail Assassins",
+    "authors": [
+      "P. Djeli Djeli Clark"
+    ],
+    "language": "en",
+    "description": "<p><b><i>The Dead Cat Tail Assassins are not cats.<br>Nor do they have tails.<br></i><br><i>But they are most assuredly dead.<br></i></b><b><br>Nebula and Alex Award winner P. Djèlí Clark introduces a brand-new world and a fantastical city full of gods and assassins.</b><br><b>A Most Anticipated Book of 2024 According to <i>Bookish</i>, <i>She Reads</i>, <i>Civilian Reader</i>, and <i>FanFiAddict</i></b><br>Eveen the Eviscerator is skilled, discreet, professional, and here for your most pressing needs in the ancient city of Tal Abisi. Her guild is strong, her blades are sharp, and her rules are simple. Those sworn to the Matron of Assassins&#8212;resurrected, deadly, wiped of their memories&#8212;have only three unbreakable vows.<br>First, the contract must be just. That's above Eveen's pay grade.<br>Second, even the most powerful assassin may only kill the contracted. Eveen's a professional. She's never missed her mark.<br>The third and the simplest: once you accept a job, you...",
+    "isbn10": null,
+    "isbn13": "9781420519266",
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [
+    {
+      "title": "The Dead Cat Tail Assassins",
+      "authors": [
+        "P. Djeli Djeli Clark"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "google_books",
+      "isbn13": "9781420519266",
+      "isbn10": null
+    },
+    {
+      "title": "Dead Cat Tail Assassins",
+      "authors": [
+        "P. Djèlí Clark"
+      ],
+      "series": null,
+      "series_number": null,
+      "source": "open_library"
+    }
+  ],
+  "candidate_fidelity": "db-reconstructed+isbn-refit",
+  "recorded_ai": null,
+  "recorded_series_ai": {
+    "series": null,
+    "series_number": null
+  },
+  "answer": {
+    "title": "The Dead Cat Tail Assassins",
+    "author": null,
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "unresolved",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djeli Djeli Clark",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "provider",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djeli Djeli Clark",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "The Dead Cat Tail Assassins",
+      "author": "P. Djèlí Clark",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q130711761",
+      "note": null
+    }
+  ],
+  "truth_disagreements": [
+    "author: epub='P. Djeli Djeli Clark'; provider='P. Djeli Djeli Clark'; wikidata='P. Djèlí Clark'"
+  ]
+}

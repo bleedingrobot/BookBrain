@@ -11,7 +11,7 @@ export function Inbox() {
   const files = useQuery({ queryKey: ['drive-files'], queryFn: api.driveFiles })
 
   if (files.isLoading) {
-    return <div className="p-6 text-sm text-neutral-500">Loading...</div>
+    return <div className="text-sm text-neutral-500">Loading...</div>
   }
 
   if (files.isError) {
@@ -22,7 +22,7 @@ export function Inbox() {
           ? 'No inbox folder configured yet.'
           : 'Failed to load files.'
     return (
-      <div className="p-6 text-sm text-neutral-500">
+      <div className="text-sm text-neutral-500">
         {message}{' '}
         <Link to="/settings" className="underline">
           Go to Settings
@@ -33,7 +33,7 @@ export function Inbox() {
   }
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-xl font-semibold">Inbox</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Raw listing from Drive, before parsing and identification run. See the{' '}
@@ -48,7 +48,7 @@ export function Inbox() {
           <li key={file.id} className="flex items-center justify-between py-2">
             <span>{file.name}</span>
             {file.status_reason && (
-              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                 {REASON_LABEL[file.status_reason] ?? file.status_reason}
               </span>
             )}

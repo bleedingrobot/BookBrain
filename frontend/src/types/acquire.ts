@@ -1,0 +1,90 @@
+export interface AcquireProviderStatus {
+  name: string
+  enabled: boolean
+  requires_process: boolean
+}
+
+export interface AcquireStatus {
+  enabled: boolean
+  providers: AcquireProviderStatus[]
+}
+
+export interface OpenBooksServerStatus {
+  installed: boolean
+  running: boolean
+  managed: boolean
+  pid: number | null
+}
+
+export interface AcquireBook {
+  server: string | null
+  author: string
+  title: string
+  format: string
+  size: string
+  full: string
+  provider: string
+}
+
+export interface AcquireSearchResponse {
+  results: AcquireBook[]
+  parse_errors: number
+  message: string | null
+}
+
+export interface AcquireDownloadResponse {
+  filename: string
+  drive_file_id: string | null
+  size_bytes: number
+}
+
+export interface RequestCandidate {
+  // null for a torrent request still in flight (or failed before a file
+  // ever existed) — there's no downloadable location yet, just a Librarr
+  // request in progress.
+  full: string | null
+  title: string | null
+  author: string | null
+  format: string | null
+  size: string | null
+  server: string | null
+  score: number | null
+  provider: string
+}
+
+export interface OpenRequest {
+  request_id: string
+  source: 'wishlist' | 'want_to_read' | 'list'
+  title: string
+  author: string | null
+  requested_by: string | null
+  cover: string | null
+  status: 'pending' | 'approved' | 'skipped' | 'no_match' | 'failed' | 'unsearched' | 'fetching'
+  candidate: RequestCandidate | null
+  alternatives: RequestCandidate[]
+  score: number | null
+  message: string | null
+  resolved_at: string | null
+}
+
+export interface AcquireSuggestion {
+  title: string
+  author: string | null
+  isbn13: string | null
+  from_list?: string | null
+}
+
+export interface AcquireSuggestions {
+  want_to_read: AcquireSuggestion[]
+  from_lists: AcquireSuggestion[]
+}
+
+export interface RequestRefreshJob {
+  job_id: string
+  status: 'running' | 'done' | 'failed'
+  searched: number
+  total: number
+  with_candidates: number
+  outstanding: number
+  detail: string | null
+}

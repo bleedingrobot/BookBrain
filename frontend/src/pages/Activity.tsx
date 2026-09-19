@@ -2,6 +2,14 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../services/api'
 
+const ACTION_LABEL: Record<string, string> = {
+  move: 'move',
+  rename: 'rename',
+  move_and_rename: 'move + rename',
+  write_metadata: 'metadata rewrite',
+  series_merge: 'series merge',
+}
+
 export function Activity() {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +26,7 @@ export function Activity() {
   })
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-xl font-semibold">Activity</h1>
       <p className="mt-1 text-sm text-neutral-500">
         Every move/rename the app has made — dry runs included, clearly marked.
@@ -32,13 +40,16 @@ export function Activity() {
             <div className="flex items-center justify-between">
               <span className="font-medium">{op.filename}</span>
               <div className="flex items-center gap-2">
+                <span className="badge bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                  {ACTION_LABEL[op.action] ?? op.action}
+                </span>
                 {op.dry_run && (
-                  <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                     dry run
                   </span>
                 )}
                 <span
-                  className={`rounded px-2 py-0.5 text-xs ${
+                  className={`badge ${
                     op.status === 'undone'
                       ? 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
                       : 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
@@ -55,14 +66,20 @@ export function Activity() {
             </p>
             <p className="text-xs text-neutral-400">{new Date(op.timestamp).toLocaleString()}</p>
 
-            {!op.dry_run && op.status === 'done' && (
+            {op.undoable && (
               <button
-                className="mt-2 rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+                className="btn btn-neutral btn-xs mt-2"
                 disabled={undo.isPending}
                 onClick={() => undo.mutate(op.id)}
               >
                 Undo
               </button>
+            )}
+            {op.action === 'series_merge' && op.status === 'done' && (
+              <p className="mt-2 text-xs text-neutral-400">
+                Series merges can't be auto-undone — re-run the merge with the other name as
+                canonical, or split the series in Library Audit.
+              </p>
             )}
           </li>
         ))}

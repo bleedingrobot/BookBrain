@@ -1,0 +1,77 @@
+{
+  "id": "j-a-sutherland-wronged-a-story-of-the-dark",
+  "case_tags": [
+    "human-corrected"
+  ],
+  "notes": "human-corrected; stored: J.A. Sutherland / Wronged: A Story of the Dark / series=Alexis Carew #None (model=None, conf=None)",
+  "source": {
+    "file_id": 2004,
+    "drive_file_id": "1Ig7I_aaS-PVQof0o1VLdKJNPwjvxFeNR",
+    "filename": "Wronged - A Story of the Dark ( - J.A. Sutherland.epub",
+    "captured_from": "db",
+    "stored_model": null,
+    "stored_confidence": null
+  },
+  "filename": "Wronged - A Story of the Dark ( - J.A. Sutherland.epub",
+  "evidence": {
+    "title": "Wronged - A Story of the Dark (Alexis Carew #301)",
+    "authors": [
+      "J.A. Sutherland"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": null,
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "Wronged: A Story of the Dark",
+    "author": "J.A. Sutherland",
+    "series": "Alexis Carew",
+    "series_number": 3.5,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "Wronged - A Story of the Dark (Alexis Carew #301)",
+      "author": "J.A. Sutherland",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "Wronged: A Story of the Dark",
+      "author": "J.A. Sutherland",
+      "series": "Alexis Carew",
+      "series_number": 3.5,
+      "url": "https://www.goodreads.com/en/book/show/27916909",
+      "note": "conf=0.9; Short story set in the Alexis Carew universe, following Jon Bartlett, set ~30 years before Into the Dark and intended to be read after The Little Ships (#3). Goodreads catalogues it as Alexis Carew #3.5; the EPUB's \"#301\" is the publisher's Kindle side-story numbering (compare Planetfall listed as \"Alexis Carew Book 101\"). A portion of it was later expanded into the novel Spacer (Spacer, Smuggler, Pirate, Spy #1, 2018)."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "Wronged: A Story of the Dark",
+      "author": "J.A. Sutherland",
+      "series": "Alexis Carew",
+      "series_number": 3.5,
+      "url": "https://www.goodreads.com/en/book/show/27916909",
+      "note": "conf=0.9; The EPUB metadata's \"#301\" is a bogus/internal sort number, not a real series position. Verified: this is a short story (2015) in J.A. Sutherland's Alexis Carew space-opera series, listed on Goodreads as Alexis Carew #3.5 — it is set ~30 years before Into the Dark (#1) and is best read after The Little Ships (#3). Protagonist is Jon Bartlett, whose story was later expanded in the related \"Spacer, Smuggler, Pirate, Spy\" sub-series; the tight placement for this exact title remains Alexis Carew 3.5. (LibraryThing loosely lists it as \"Book 7\" by publication order, which is not the canonical position.)"
+    }
+  ],
+  "truth_disagreements": []
+}

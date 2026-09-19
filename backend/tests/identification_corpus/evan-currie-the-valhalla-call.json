@@ -1,0 +1,86 @@
+{
+  "id": "evan-currie-the-valhalla-call",
+  "case_tags": [
+    "ai-series-uncorroborated"
+  ],
+  "notes": "ai-series-uncorroborated; stored: Evan Currie / The Valhalla Call / series=Hayden War Cycle #4.0 (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 1693,
+    "drive_file_id": "1Dcmkj3Ld01pppwV2JQeIbbix-S-qxfs0",
+    "filename": "Evan Currie - Hayden War Cycle 04 - The Valhalla Call.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Evan Currie - Hayden War Cycle 04 - The Valhalla Call.epub",
+  "evidence": {
+    "title": "The Valhalla Call (Warrior's Wings)",
+    "authors": [
+      "Currie",
+      "Evan"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "The Valhalla Call",
+    "author": "Evan Currie",
+    "series": "Hayden War Cycle",
+    "series_number": 4,
+    "ai_confidence": 88,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"The Valhalla Call\" by Evan Currie. Filename indicates book 4 of the Hayden War Cycle; the EPUB title subtitle \"Warrior's Wings\" is the alternate/republished series name for the same series (Hayden War Cycle was rebranded as Warrior's Wings), so the series identity is consistent. No provider candidates returned, but internal evidence is coherent.",
+    "needs_human_review": false
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "The Valhalla Call",
+    "author": "Evan Currie",
+    "series": "Hayden War Cycle",
+    "series_number": 4.0,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "weak",
+      "series": "weak",
+      "series_number": "weak"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "The Valhalla Call (Warrior's Wings)",
+      "author": "Currie",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "The Valhalla Call",
+      "author": "Evan Currie",
+      "series": "Hayden War Cycle",
+      "series_number": 4.0,
+      "url": "https://www.goodreads.com/book/show/18103837-the-valhalla-call",
+      "note": "conf=0.95; Goodreads lists it as \"The Valhalla Call (Hayden War Cycle, #4)\". Publisher blurb (AbeBooks/LibraryThing) states it is \"book four of the Hayden's War Arc of the Warrior's Wings series\" — the series was rebranded \"Warrior's Wings\" (also listed by some retailers as \"On Silver Wings, 4\") on later 47North editions, matching the EPUB metadata \"The Valhalla Call (Warrior's Wings)\". It concludes the Hayden War arc begun in On Silver Wings. Author metadata \"Currie\" = Evan Currie."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "The Valhalla Call",
+      "author": "Evan Currie",
+      "series": "Hayden War Cycle",
+      "series_number": 4.0,
+      "url": "https://www.goodreads.com/series/85249-hayden-war-cycle",
+      "note": "conf=0.93; Author metadata \"Currie\" expanded to Evan Currie (verified). Book 4 of the series listed on Goodreads/FantasticFiction as \"Hayden War Cycle\" (also marketed as \"On Silver Wings\" and, after the 47North rebrand, as the \"Warrior's Wings\" series — publisher blurbs call it \"book four of the Hayden's War Arc of the Warrior's Wings series\"). Kept the tight arc name Hayden War Cycle, #4; first published 2013. No ISBN in file; print edition ISBN 9781522659488 exists."
+    }
+  ],
+  "truth_disagreements": []
+}

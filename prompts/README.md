@@ -1,0 +1,370 @@
+# Work prompts
+
+Each file is meant to be run as its **own fresh Claude Code session** (start a
+new chat, paste the file's contents or say "follow `prompts/NN-*.md`").
+
+## Recurring
+
+- [`review.md`](review.md) — a full read-only project review. Produces a written
+  assessment and a fresh batch of numbered work-prompts. Run it every few weeks
+  or after a burst of feature work.
+
+## Standalone
+
+- [`25-hardcover-integration.md`](25-hardcover-integration.md) — Hardcover API.
+  **Phases 1 + 2 + 3 shipped 2026-09-08** (metadata provider; canonical series
+  membership → named "missing books"; "Readers also liked" → wishlist).
+  Phase 1.5 scoped.
+- [`26-hardcover-phase-4.md`](26-hardcover-phase-4.md) — Hardcover Phase 4:
+  metadata badges/filters (B), new & upcoming per series (A), Hardcover as a
+  description source (C), characters (D). Order B → A → C → D.
+  **Parts B + A + C shipped 2026-09-08** — B: curated
+  rating/pages/category/genres → `hardcover_json.meta` → index v4 → viewer
+  badges + genre facet + rating sort. A: series `release_date` → per-entry
+  `releaseDate` → viewer "Next in …" / "Coming: … — <month year>" + a "Coming
+  soon" filter chip. C: `hardcover_json.meta.description` is tried first (zero
+  cost) by fill-missing-descriptions. **Part D (characters) skipped by design
+  — `book_characters` data is too spotty; see prompts/26 header.**
+- [`27-new-and-upcoming-releases.md`](27-new-and-upcoming-releases.md) —
+  `RecentMarquee`-style scrolling cover strips for new / upcoming releases,
+  filtered to authors + series the library knows, each cover → wishlist
+  Request. Part 1 (series, ~free — Part A data is already in the index) → Part
+  2 (per-author Hardcover pass + sidecar) → Part 3 (optional global "most
+  anticipated"). **All three shipped 2026-09-08.** Part 1: per-entry `isbn13`
+  in the series catalogue (index → v5), `collectSeriesReleases` + a
+  generalised `<Marquee>` + `<ReleaseMarquee>` strips + `<ReleaseCard>` →
+  Request. Part 2: `authors.hardcover_json` + `hardcover_new_releases_service`
+  + `bookbrain-new-releases.json` + `<NewReleasesScreen>`; the strips show a
+  merged series+author feed. Part 3: `fetch_global_anticipated` → sidecar
+  `global` array → a third strip gated on a `showGlobalReleases` setting
+  (default off). Not browser-verified; live sidecars need a refresh + index
+  regen (or the nightly). **Backfilled + live 2026-09-08.**
+- [`28-hardcover-author-identity.md`](28-hardcover-author-identity.md) — use
+  Hardcover's `authors` graph (`canonical_id` / `alias_id` / `alternate_names`)
+  to merge forked author rows the current `normalize_person_name` + shared-book
+  heuristic can't (`Iain M. Banks`/`Iain Banks` with no shared book; pen name
+  ↔ legal name). Phase 1 = resolve `authors.hardcover_person_id` (rides the
+  prompts/27 per-author pass) + a merge pass in `repair_forked_authors.py`.
+  Phase 2 (optional) = resolve at scan time so new books don't fork.
+  **Both phases shipped 2026-09-09** — Phase 1: `resolve_person_id`
+  canonical→alias walk verified live; repair pass 2 merges same-key rows
+  sharing a person id and SUGGESTs pen-name pairs. Phase 2:
+  `HardcoverProvider.resolve_person_id` + `scan_service` resolves it pre-lock
+  and `_find_or_create_author` reuses a row by `hardcover_person_id` when the
+  name-key misses (pen names, `George R. R. Martin` vs `George Martin`).
+- [`29-semantic-search.md`](29-semantic-search.md) — natural-language
+  ("meaning") search in the library-viewer: backend pre-embeds every book
+  (all-MiniLM-L6-v2, ONNX, no torch) → `bookbrain-embeddings.bin` sidecar;
+  viewer loads the same model once (vendored, ~23 MB, SW-cached) and embeds
+  only the query, ranks by cosine. **All phases done + browser-verified
+  2026-09-09.** Phase 0:
+  free description backfill (882 blurbs, effective coverage 91% — later
+  pushed to 96% via a working backend Google Books key + `refresh_epub`).
+  Phase 1:
+  `embedding_service` (all-MiniLM-L6-v2 ONNX, no torch) + `books.embedding`
+  migration + `bookbrain-embeddings.bin` sidecar (int8) + nightly step +
+  `POST /library/embeddings[/refresh]` + parity script. **Phase 2 done
+  2026-09-09** — `@huggingface/transformers` (lazy chunk), model vendored in
+  `public/models/`, `lib/embeddings.ts` + `lib/semanticSearch.ts` +
+  Keyword|Meaning toggle in `App.tsx`, "· NN% match" per row. Parity
+  cosine 0.99. **Browser-verified 2026-09-09** ("female assassin" → good
+  results). Feature done + live.
+- [`30-reading-status.md`](30-reading-status.md) — pull James's Hardcover
+  reading data into a `bookbrain-reading.json` sidecar → Read/Unread/Want
+  filters + rating badges in the viewer. Phase 2 unlocks "read next in a
+  series you own" + an author-frequency signal for the release strips.
+  Licence: James's own data / own token / own tool. **Phase 1 shipped
+  2026-09-09** — `hardcover_reading_service`
+  (paged `me{user_books}`) + `build_reading_payload` (ISBN then title match) +
+  nightly + `POST /library/reading`; viewer `lib/reading.ts` + `ReadingBadge`
+  + Read/Unread/Want chips. **Live: 385 matched** (231 read / 120 want / 29
+  reading), 180 read books not in the library. **Phase 2 shipped 2026-09-09**
+  — `nextInSeries` + `<ReadNext>` strip (~56 candidates, most-recently-active
+  first), `readingProfile` weights the release strips by how much you read
+  the author, `★ Favourites` filter (rating ≥ 4). **Want-to-read ↔ wishlist
+  shipped 2026-09-09** — `wantUnowned[]` in the v2 reading sidecar → a "From
+  your Hardcover want-to-read" card on the Wishlist screen (106 candidates
+  live, one-tap Request). **Phase 3 (write-back) shipped 2026-09-09** — James asked for it
+  ("both ways"). Viewer queues status changes (expanded-row buttons + auto
+  "read" on finishing an epub) to `bookbrain-reading-pending.json`; backend
+  `apply_pending` (ISBN/search resolve → `insert`/`update_user_book`,
+  idempotent) flushes it on each `regenerate_reading`. Status only, never
+  reviews.
+- [`31-hardcover-more.md`](31-hardcover-more.md) — ten more things to leverage
+  from Hardcover, nine parts, one commit each, value ÷ effort order: **A**
+  moods / pace / content-warning tags (extends `meta`, index v6) · **B**
+  rating-aware recs + want-to-read "quick wins" triage (viewer-only, uses the
+  synced ratings) · **C** reading-goal progress line + a reading-stats screen
+  (reading sidecar → v3) · **D** followed-authors signal for the release
+  strips · **E** community lists ("on N lists" + list-sourced wishlist
+  candidates) · **F** Hardcover Prompts → a "your library answers" screen ·
+  **G** a gated "trending on Hardcover" strip · **H** edition metadata
+  gap-fill (pages / pub year / audio hours) · **I** reading-progress two-way
+  sync (resurrects `prompts/17` §E, Hardcover-backed — the big one, do last).
+  A–H are catalogue data (shared-viewer safe) except B/C/D which use James's
+  own synced data; I is the licence-sensitive one. Every query needs live
+  verification first — field names in the doc are unverified. **Parts A, B,
+  C, E, F, G, H, I shipped 2026-09-10; D dropped (no data)** — A: mood/content-
+  warning tags; B: author-affinity rec re-rank + want-to-read quick-wins;
+  C: `me{goals}` → goal bar + `<ReadingStatsScreen>`; E1: "on N lists" + a
+  "Most listed" sort; E2: curated Hardcover lists → a "From lists you'd like"
+  card on the Wishlist screen (`bookbrain-lists.json`); F: Hardcover Prompts
+  → `bookbrain-prompts.json` + a "Your library answers" screen (+ a shared
+  `match_hardcover_book_ids` helper); G: opt-in "Trending on Hardcover" strip
+  (`new-releases` sidecar v2); H: edition pages/pub-year/audio-hours gap-fill;
+  I: reading-progress two-way sync (`user_book_reads` — advance-only writes on
+  reader close + "Reading · 62%" from Hardcover; reading sidecar v4). Index →
+  v7. **D skipped** — Hardcover exposes no followed-authors to a PAT.
+  **prompts/31 done bar the epub resume-at-position deferral + browser
+  verification.**
+- [`32-sff-news-feeds.md`](32-sff-news-feeds.md) — an SFF-news section under
+  the release marquees: the backend fetches ~9 curated RSS/Atom feeds
+  (Reactor, Locus, File 770, Grimdark Mag, Book Riot SF/F…), writes
+  `bookbrain-news.json`, the viewer shows the latest merged headlines +
+  excerpt + link-out. Same static-site/CORS → backend-sidecar pattern as the
+  release strips. Adds `feedparser`. **Both parts shipped 2026-09-10** —
+  `sff_news_service` fetches 9 feeds → `bookbrain-news.json` (nightly + `POST
+  /api/library/news`); viewer `<NewsFeed>` compact section + `<NewsScreen>`
+  with a source filter, `showNews` setting (default on). Live: 50 items.
+- [`37-openbooks-acquire.md`](37-openbooks-acquire.md) — experimental "Find a
+  Book" admin page backed by a locally-run OpenBooks server (IRC). Search →
+  pick → backend downloads → uploads into the Drive inbox → normal pipeline.
+  **Shipped 2026-09-10** — `openbooks_service` (single lock-serialised WS
+  client), `acquire_service` (validate + upload + clean up), `GET/POST
+  /api/acquire/{status,search,download}`, `frontend` "Find a Book" page,
+  `backend/tools/run-openbooks.ps1` + a Start/Stop button on the page that
+  launches it (`openbooks_process_service`). Off unless
+  `OPENBOOKS_ENABLED=true`. Admin-only, never in the family viewer.
+  Browser-verified (screenshot): server strip + search + results table. Inbox
+  upload path is unit-tested (needs Drive creds to run live).
+- [`40-piper-tts.md`](40-piper-tts.md) — replace the reader's browser-voice
+  read-aloud (`lib/tts.ts` / Web Speech API) with Piper (local neural TTS).
+  James: full replacement, not an opt-in alongside the browser voice.
+  Surfaces a real open question before any code: the static library-viewer
+  has no live path to the backend, so a live per-block Piper call (the
+  ROADMAP spike's sketch) only works for a reader who can reach the home
+  server — deliberately left open whether to build that or pre-synthesize
+  audio as a Drive sidecar instead (matches every other backend→viewer
+  feature's existing pattern). **Not started.**
+- [`41-calibre-web-automated-review.md`](41-calibre-web-automated-review.md)
+  — read-only deep dive into `crocodilestick/Calibre-Web-Automated`'s
+  actual code (not just its README) to find anything worth borrowing for
+  BookBrain — Kobo/e-reader sync, its built-in Google Drive integration,
+  duplicate detection, metadata providers, EPUB repair, OPDS, and more.
+  Explicitly scoped away from Shelfmark/the book-downloader (already
+  investigated and built natively). Produces `CWA-REVIEW-<date>.md` +
+  follow-up numbered prompts for anything worth pursuing, GPL-3.0 license
+  consequence flagged per recommendation. **Not started.**
+- [`42-logging-and-dashboard-audit.md`](42-logging-and-dashboard-audit.md) —
+  read-only audit of every log line BookBrain emits and how (or whether) it
+  reaches the two dashboards: the tty1/mobile one (`dashboard/dashboard.sh`
+  → `status.json`) and the family viewer's (`bookbrain-dashboard.json`).
+  Prompted by two 2026-09-18 failures that went unnoticed for hours — a full
+  backend hang where the only real signal was the logs going silent, and
+  OpenBooks returning nothing for 1h40m while each failure logged as one
+  indistinguishable WARNING. Measured going in: **93% of a 24h log is noise**
+  (47% an APScheduler skip message every 2s, 46% HTTP access lines that the
+  dashboard's own 30s polling generates). Ends on "if it breaks at 3am, what
+  tells James?". Produces `LOGGING-REVIEW-<date>.md` + follow-up prompts.
+  **Done 2026-09-18** — `LOGGING-REVIEW-2026-09-18.md` + `prompts/43`–`46`.
+  Headline: `journalctl -u bookbrain.service | grep ERROR` returns **1 line for
+  7 days** during which **202 tracebacks** were printed (the root logger is
+  never configured, so every library error hits `logging.lastResort`
+  unformatted). The OpenBooks outage was **18 hours, not 1h40m**, and was
+  invisible because Libgen absorbed the load — the 09-17 18h bucket was the
+  best on record *while one of three providers was dead*. Journal retention,
+  the `app` logger config, the 2s tagging interval and the viewer Dashboard's
+  freshness label all checked out fine.
+
+## 2026-09-18 logging batch (`LOGGING-REVIEW-2026-09-18.md`) — open
+
+Order: `43` → `44` → `45`; `46` is independent.
+
+- [`43-logging-signal-to-noise.md`](43-logging-signal-to-noise.md) — **P1**,
+  ~10 lines in `main.py`. Configure the **root** logger (WARNING + the existing
+  formatter) so `apscheduler`/`sqlalchemy`/`websockets` errors stop printing
+  untimestamped and unlevelled via `logging.lastResort` — currently 202
+  tracebacks a week are ungreppable, including 32 × `database is locked`. Plus
+  a filter for the APScheduler max-instances line (**−47 % journal volume**;
+  it's on `apscheduler.scheduler`, job errors are on
+  `apscheduler.executors.*`, so they separate cleanly). Explicitly **keeps the
+  uvicorn access log** — measured, it's BookBrain's only real heartbeat
+  (`app.*` alone is 456 lines/7 days, p99 gap 4 min). Do this first: until it
+  lands, nobody can verify their own work by grepping. **Not started.**
+- [`44-per-provider-health.md`](44-per-provider-health.md) — **P1**. Fix
+  `acquire: auto-got … via None` (81 of 82 lines in 24 h — it logs
+  `cand.server`, which is OpenBooks-only; the right field is `cand.provider`,
+  and the in-scope `provider` local is the *Drive* provider, not the source).
+  Then add a **windowed** per-provider success rate to `status.json` + both
+  dashboards, because the existing `got`/`failed` counters are lifetime totals
+  and a monotonic counter can never show "dead now". **Not started.**
+- [`45-dashboard-alerts-block.md`](45-dashboard-alerts-block.md) — P2. The
+  answer to "if it breaks at 3am, what tells James?" — an `ALERTS` block at the
+  top of `dashboard.sh` (silent >5 min, provider dead, `status.json` stale,
+  traceback in the last hour, nightly ≠ success) plus `alerts.log` so a 3 a.m.
+  alert is still readable at breakfast. Also wires up `lastGeneratedAt`, which
+  the mobile page assigns and **never reads**, so a dead `dashboard.sh` serves
+  confident green pills off a stale file. No push notifications yet — tune the
+  conditions first. **Not started.**
+- [`46-logging-housekeeping.md`](46-logging-housekeeping.md) — P3, independent.
+  Retire `backend/nightly-runs.log` (5 days stale; nothing schedules its
+  writer, and it's the first plausible-looking file a 3 a.m. investigation
+  opens). Trim `status.json` (105 KB, 40 % of it `searched_recent.alternatives`
+  that no reader renders) and align the mobile page's 15 s poll with the 30 s
+  write. Plus a decision for James: the torrent provider is **4 approved
+  vs 2,210 failed** all-time. **Not started.**
+
+## 2026-09-10 review batch (`REVIEW-2026-09-10.md`) — open
+
+Reviewed `prompts/29`–`32` + this session's fixes. Recommended order:
+**33 → 36 → 34 → 35** (33 is the only P1; 33/36 are independent and fit one
+session; 34/35 are independent of everything).
+
+| # | File | Sev | Status | One line |
+|---|------|-----|--------|----------|
+| 33 | [`33-harden-reading-writeback.md`](33-harden-reading-writeback.md) | **P1**+P2 | **shipped 2026-09-10** | F1: `_resolve_book_id` now runs a title+author `_confident_match` before accepting a search hit; **and** the reader no longer auto-marks a book read on finish (James's call — deliberate ✓ button only). F2: failed write-backs dropped after 5 attempts. F4: 3 partial-and-smaller pulls → write `partial: true` + viewer note. F7: unmatched read-status rows that look owned are logged. |
+| 34 | [`34-sidecar-sync-helper.md`](34-sidecar-sync-helper.md) | P2 | **partial 2026-09-10** | `lib/syncedSidecar.ts` (`makeSidecar`) + the 3 RMW modules migrated (readingQueue / readNextSnooze / news-dismiss) — F3's "lost mark read" now reconciled via a join-merge re-read (Drive v3 has no ETag). 7 read-only modules' mechanical migration + wishlist/activityLog deferred. |
+| 35 | [`35-admin-discovery-refresh.md`](35-admin-discovery-refresh.md) | P2 | **shipped 2026-09-10** | F5: the admin app has no button to refresh any Hardcover/discovery sidecar — this session needed manual `curl` re-runs repeatedly. A "Discovery data" panel in Settings + `GET /api/library/discovery-status`. |
+| 36 | [`36-feedparser-parse-timeout.md`](36-feedparser-parse-timeout.md) | P2 | **shipped 2026-09-10** | F8: `feedparser.parse` runs with no timeout; a hijacked/garbage feed wedges the nightly news step. Wrap in `asyncio.wait_for`. |
+
+## 2026-09-08 review batch (`REVIEW-2026-09-08.md`) — shipped
+
+No P0/P1. Recommended order: 19 → 21 → 23 → 22 → 20 → 24. **All shipped 2026-09-08.**
+
+| # | File | Sev | Status | One line |
+|---|------|-----|--------|----------|
+| 19 | [`19-gitignore-restore-artifacts.md`](19-gitignore-restore-artifacts.md) | P2 | **done** | `.gitignore` the `*.db.pre-restore-*` / `*.db.before-restore` / `backup-runs.log*` a restore leaves behind. |
+| 20 | [`20-coauthor-identity-policy.md`](20-coauthor-identity-policy.md) | P2 | **done** | Policy 1 (file under primary author) — `_find_or_create_author` deterministic, harness scores on the primary, `repair_forked_authors.py` reworked (25 merges proposed on the real DB; James runs `--write`). |
+| 21 | [`21-rule-match-title-trust.md`](21-rule-match-title-trust.md) | P2 | **done** | `find_rule_match` no longer auto-organizes an unverified/placeholder title at confidence 100. |
+| 22 | [`22-librarysync-selective-rebuild.md`](22-librarysync-selective-rebuild.md) | P2 | **done** | `librarySync.ts` does a full tree rebuild on *any* sync error; only a stale sync token warrants that. |
+| 23 | [`23-cover-service-tests.md`](23-cover-service-tests.md) | P3 | **done** | Finding was overstated — `cover_service` was mostly tested; added the missing `regenerate_covers` edge-path cases. |
+| 24 | [`24-book-repository-match-cache.md`](24-book-repository-match-cache.md) | P2 | **done** | `book_repository.MatchCache` + `build_match_cache()` primed once per scan/rebuild batch in `_process_batch`, threaded to `resolve_book(match_cache=)`; `_find_or_create_author`/`_series` hit it (O(1) `session.get`) instead of the full-table scan. Miss falls back to the scan; one-off callers pass `None`. No behaviour change, corpus unchanged. |
+
+## 2026-09-06 review batch (all shipped)
+
+Ran in this order — 3 and 5 leaned on 1 and 2, but none was a hard dependency:
+
+| # | File | One line |
+|---|------|----------|
+| 1 | [`01-ship-series-merge.md`](01-ship-series-merge.md) | Review, test and commit the uncommitted `series-merge` / library-audit work |
+| 2 | [`02-scheduled-runs.md`](02-scheduled-runs.md) | Nightly unattended scan → organize → covers → index |
+| 3 | [`03-epub-metadata-writeback.md`](03-epub-metadata-writeback.md) | Write the resolved title/author/series + cover into the EPUB itself |
+| 5 | [`05-bulk-reidentify-audit.md`](05-bulk-reidentify-audit.md) | Re-check every organised book's identification, report what changed |
+
+## 2026-09-06 review batch #2 (`REVIEW-2026-09-06.md`) — all shipped
+
+Worked in one session via `prompts/12` (order 06 → 08 → 07 → 10 → 09 → 11),
+commit per stage. SHAs + details in `REVIEW-2026-09-06.md` §"Shipped 2026-09-06".
+
+| # | File | Sev | One line |
+|---|------|-----|----------|
+| 06 | [`06-title-collision-false-duplicates.md`](06-title-collision-false-duplicates.md) | P0 | `normalize_title` merges distinct books → `same_book` false positives → bulk trash |
+| 07 | [`07-librarysync-missing-parents.md`](07-librarysync-missing-parents.md) | P1 | Viewer sync drops a cached file when a Drive change record omits `parents` |
+| 08 | [`08-alembic-enum-drift.md`](08-alembic-enum-drift.md) | P2 | Migration for the `status`/`status_reason` enum additions; wire `alembic check` in |
+| 09 | [`09-organize-write-lock.md`](09-organize-write-lock.md) | P2 | `OrganizeService._write_lock` not reset per test; unify the write locks |
+| 10 | [`10-series-merge-undo.md`](10-series-merge-undo.md) | P2 | Series-merge Operations logged as undoable but Undo leaves a broken state |
+| 11 | [`11-ai-spend-guardrails.md`](11-ai-spend-guardrails.md) | P2 | Cap + cost estimate for `descriptions?ai=true` and rebuild |
+
+`REVIEW-2026-09-06-FIXPLAN.md` (repo root) resolves the open design choices in
+06–11. [`12-work-the-review-fixes.md`](12-work-the-review-fixes.md) is the
+staged, commit-per-stage prompt that works through all six in one session
+(order: 06 → 08 → 07 → 10 → 09 → 11).
+
+## Trustworthy identification (`prompts/13` + `14`) — all shipped
+
+| # | File | Kind | One line |
+|---|------|------|----------|
+| 13 | [`13-trustworthy-identification.md`](13-trustworthy-identification.md) | hardening | **A + B** (`351850e`): `series_number` clamp + `UNCORROBORATED_SERIES_PENALTY` (structural gap #1). C + D split to prompt 14 |
+| 14 | [`14-identification-learning-and-cover-dedup.md`](14-identification-learning-and-cover-dedup.md) | hardening | **C** (`c309245`): recent `/correct` pairs fed into the identify prompt as few-shot (+~209 tok worst case). **D** (`edff935`): `files.cover_phash` + "Near-identical cover art" panel in Library Audit |
+
+## First-pass identification accuracy push (`prompts/15`) — COMPLETE 2026-09-07
+
+All stages shipped: 0 (harness) + A–D (Tier 1) + E–H (Tier 2) + I/J/K (Tier 3).
+See `15-identification-accuracy-push.md` Sequencing block, `IDENTIFICATION-EVAL.md`,
+and `SPEC.md` § "Identification pipeline (2026)".
+
+| # | File | Kind | One line |
+|---|------|------|----------|
+| 15 | [`15-identification-accuracy-push.md`](15-identification-accuracy-push.md) | umbrella / multi-session | Get first-scan identify+name+file accuracy toward ~100%. **Stage 0 landed & redesigned autonomous** (James wanted zero manual verification): 74-book corpus with **triangulated** answer keys (`scripts/build_truth.py` — Wikidata + 2 web-grounded Claude calls; a field counts only when ≥2 independent sources agree), `pytest -m corpus` gate, plus `test_identification_invariants.py` + `test_identification_mutation.py` (need no ground truth). Baseline is **partial** — API credit ran out mid-`build_truth`; re-run to complete. **Stage A shipped (2026-09-06)**: web-search grounding on the AI identify turn (`identify(prompt, ground=)` + `web_search_20260209` + `should_ground()` gate + `settings.ai_web_search_enabled`); offline corpus unchanged by construction, live measurement pending credit. **Stage B shipped (2026-09-06)**: Google Books + Open Library now populate `MetadataCandidate.series` / `series_number` / `genre` (F1); `SERIES_DISAGREEMENT_PENALTY` needs a provider consensus now. **Stage C shipped (2026-09-06)**: `providers/filename/parser.py` structured inbound-filename parse → labelled prompt block + `filename_corroborates` verdict replacing the weak substring test (F2); corpus `wrong_auto_organized` 2→1. **Stage D shipped (2026-09-06)**: spine-walking text snippet (`[front matter]` + `[body sample]`, skips cover/nav) + `EpubEvidence.publisher`/`pub_date`/`subjects`/`all_isbns` + `description` and all four into `_build_prompt`; `hash_evidence` untouched so the cached AI decisions stay valid. **Tier 1 complete.** **Tier 2 complete (2026-09-06)**: E placeholder/junk-metadata detector (fast-path skip + `PLACEHOLDER_METADATA_PENALTY`), F ISBN-trust check (`title_similarity ≥ 0.80` on the fast path), G positive confidence components (`DESCRIPTION_CORROBORATES` / `PUBYEAR_PLAUSIBLE`, additive) + `resolved_series` threaded through reident recompute, H verification pass (one adversarial `audit_book_identity` call for the 70–95 band, `settings.ai_verify_enabled` **off by default**). All offline-flat (frozen AI); E/F/G no AI cost, H opt-in. **Tier 3**: **J + K shipped (2026-09-07)** — J: `normalize_person_name` author match key + `Author.sort_name` + article-insensitive series match + `SeriesAlias` consulted/written on merge + dry-run repair/backfill scripts. K: `batch_prior_service` — a ≥3-file author/series consensus in a scan lifts a `review` file whose filename names it (+12, cap 92), before the auto-organize pass. Both corpus-flat (harness starts empty / scores one file at a time). Still to do: **I** (recently-auto-organized Dashboard tray + `settings.organize_hold_hours` soft-hold) — split into its own prompt below. One commit/stage. |
+| 16 | [`16-stage-i-recently-organized-tray.md`](16-stage-i-recently-organized-tray.md) | prompts/15 Stage I | **DONE 2026-09-07.** `GET /api/library/recently-organized` + `recently_organized_service` + `RecentlyOrganized.tsx` Dashboard tray (Confirm/Correct/Confirm-all, 24h/48h/7d toggle); `POST /api/files/{id}/confirm` + `/files/confirm-batch` = idempotent `Review(approved)` signal; `settings.organize_hold_hours` soft-hold (default 0 = byte-identical no-op, one `discovered_at` WHERE clause) folded into `/settings/organize`. `Operation.confidence`/`model` now populated by organize. No AI cost. |
+
+## Recent
+
+| # | File | Kind | One line |
+|---|------|------|----------|
+| 18 | [`18-nightly-db-backup.md`](18-nightly-db-backup.md) | feature — backend + Settings | **DONE 2026-09-07.** `backup_service.py` — `VACUUM INTO` snapshot + `.sql.gz` dump → `backups/` subfolder of the Drive library folder on each nightly run (first, best-effort), last 7 kept. `POST/GET /api/library/backup[s]` + a Settings block. `RESTORE.md`. 572 backend tests green. |
+| 17 | [`17-library-viewer-epub-reader.md`](17-library-viewer-epub-reader.md) | feature — `library-viewer` only | **§A–C DONE 2026-09-07** (`e08b700` + `511d2cf`). Vendored `foliate-js` (EPUB path, no npm dep) → `components/Reader.tsx`: full-screen paginated reader, tap/key/swipe, Contents drawer, Display panel (`readerPrefs.ts`), position in `localStorage` (`readingProgress.ts`), IndexedDB offline byte-cache (`bookCache.ts`, LRU 300 MB/20). "Read" on `.epub` rows + "Continue reading" strip + "Clear downloaded books". Build/lint/90 tests green; James-verified on real devices (`2ad7e40` + `c9c4c6b` follow-up fixes). **Considered complete.** §D (word-count→time-left), §E (cross-device position sync), Kobo sync — all dropped (James); position stays per-device, progress shown as `%`. |
+
+- [`47-tag-quality-and-indexing.md`](47-tag-quality-and-indexing.md) — revisits
+  `prompts/39` now that two of its options (tag-based similar books,
+  richer embeddings) have shipped; fresh research on controlled vocabulary
+  vs. free-form tag generation, JSON-schema-constrained batching, and
+  semantic tag dedup. Phase A: constrain genres/moods to a curated
+  vocabulary, stoplist generic themes, real two-tier theme dedup
+  (Union-Find), JSON-Schema `format` + batch 3-5 chunks/call for throughput.
+  Phase B: feed deduped themes into embeddings, RRF search fusion, MMR
+  rerank on similar-books, a hard content-warning filter (data already
+  exists, near-zero lift). Phase C (auto-shelves, relationship graph,
+  ask-your-library) deferred until A/B land on clean data. **Phase A done
+  2026-09-19** (batching measured and rejected; throughput ~1.9× via
+  chunk packing + download caching instead). Phase B not started; see `48`.
+- [`48-tag-caps-then-phase-b.md`](48-tag-caps-then-phase-b.md) — what to do
+  next after A.1 shipped. **Step 1 is time-sensitive:** the model fills the
+  genre/mood caps (4/5) every time, putting filler like Dark Fantasy on
+  Raksura, and prompt wording didn't fix it. The plan: test lower caps on
+  the map step only (2/3) on two named books, with a code filter after the
+  reduce as the fallback, then get James's OK. Then B.1 (canonical themes
+  into embeddings), B.3 (MMR on similar books), B.2/B.4 if still open,
+  and two small items (per-step overhead, 26 unextractable books).
+  **Step 1 shipped 2026-09-19** — map-only caps (2 genres/3 moods; reduce
+  stays 4/5) dry-run on two books (Dark Fantasy dropped from 18/26 sections
+  to 0 on *The Serpent Sea*), deployed live. Section-count filter fallback
+  not needed/not built (two books' data was too little to pick a threshold).
+  17 books tagged under the old 4/5 caps left un-re-tagged, James's call.
+  Steps 2-4 not started; see `49` for Step 2.
+- [`49-themes-into-embeddings.md`](49-themes-into-embeddings.md) — `48`
+  Step 2 / `47`'s B.1: fold `llm_tags_json.full.themesCanonical` (deduped
+  since A.3) into `embedding_service.embed_input`'s `tags`, which currently
+  excludes themes for a reason (noisy raw values) that no longer applies.
+  Not added to the viewer index, only the embedding. Measure ~5 vibe
+  queries' top-10 before/after on real data before deploying. **Not
+  started.**
+
+## Shared context (every session should know this)
+
+- **Repo:** `C:\Users\Giant\Documents\epub-librarian` — the directory keeps the
+  old name; the project is **BookBrain**. Read `README.md`, `SPEC.md`,
+  `ROADMAP.md`, and `AGENTS.md`/`CLAUDE.md` if present before starting.
+- **Three apps:**
+  - `backend/` — FastAPI + SQLAlchemy 2.0 async + Alembic, SQLite. Strict layering
+    `api/ → services/ → providers/ → data/`. `cd backend && pytest` (includes
+    `tests/test_migrations.py`, which runs `alembic upgrade head` + `alembic check`
+    in a subprocess — schema drift fails the suite). Dev server
+    `uvicorn app.main:app --reload` on `:8000`.
+  - `frontend/` — React + TS + Vite + TanStack Query + Tailwind v4, the local
+    admin UI. `cd frontend && npm run dev` on `:5173`, proxies `/api` to `:8000`.
+    `npm run build` to typecheck.
+  - `library-viewer/` — separate static React app, the family-facing browser.
+    Deployed to GitHub Pages by a **GitHub Actions workflow on push to `main`**.
+    `cd library-viewer && npm run build && npx vitest run && npm run lint`.
+- **Deploy:** only `library-viewer` deploys (on push to main). `backend`/`frontend`
+  run locally — nothing to deploy, but still build + test before committing.
+- **Git:** work happens directly on `main`. Commit + push proactively when the
+  task is green (build + tests pass). End commit messages with:
+  `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
+- **The user (James) is not terminal-savvy** — run commands yourself, don't hand
+  him a list to type. He tests against a running app, not by reading diffs.
+- **Windows gotchas that have bitten before:**
+  - Orphaned `uvicorn --reload` workers hold the SQLite file → "database is
+    locked". Check for and kill stragglers before blaming code.
+  - A long `BackgroundTask` under `uvicorn --reload` can wedge the dev server.
+  - Services serialize their SQLite writes with a **module-level `asyncio.Lock`**;
+    `conftest.py` resets those per-test because `pytest-asyncio` gives each test
+    its own event loop and a lock binds to the loop of its first acquire. If you
+    add a new singleton lock, add a reset for it in `conftest.py`.
+- **AI:** `anthropic_model = claude-opus-5`. Structured output via forced tool
+  schema. Known recurring failure: the model reasons correctly that a `series`
+  value is bogus, then emits it anyway — see the memory note
+  "BookBrain AI series hallucination".
+- **App-computed confidence is authoritative** (SPEC §1) — never route on the
+  AI's self-reported confidence.

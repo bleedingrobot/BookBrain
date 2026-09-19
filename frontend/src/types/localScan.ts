@@ -3,6 +3,9 @@ export interface LocalFileSummary {
   filename: string
   path: string
   size_bytes: number
+  matched_title: string | null
+  matched_author: string | null
+  matched_score: number | null
 }
 
 export interface CopyResult {

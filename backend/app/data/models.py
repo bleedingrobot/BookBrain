@@ -4,11 +4,14 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -45,6 +48,15 @@ class OperationAction(str, enum.Enum):
     move = "move"
     rename = "rename"
     move_and_rename = "move_and_rename"
+    # Rewrote the .epub's embedded OPF metadata (title/author/series/cover)
+    # in place. Not app-undoable — we don't keep the original bytes (Drive's
+    # own revision history is the fallback). See operation_service.undo_operation.
+    write_metadata = "write_metadata"
+    # A file moved as part of a series merge. Logged for the Activity trail
+    # but deliberately NOT auto-undoable: the merge deletes the emptied source
+    # Series row + folder, so a naive "move it back" lands the file in a
+    # deleted folder with a stale book.series. See operation_service.
+    series_merge = "series_merge"
 
 
 class OperationStatus(str, enum.Enum):
@@ -73,6 +85,18 @@ class Author(Base):
     sort_name: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # prompts/27 Part 2 — Hardcover's recent + near-future books for this
+    # author, refreshed by hardcover_new_releases_service on a schedule.
+    #   {books: [{title, releaseDate, isbn13, category, genres}]}
+    # hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+    # prompts/28 Phase 1 — Hardcover's canonical "person id" for this author
+    # (its id after following canonical_id then alias_id). Two Author rows that
+    # resolve to the same value are the same person even with no shared book
+    # ("Iain M. Banks" / "Iain Banks"). Written by the same per-author pass.
+    hardcover_person_id: Mapped[int | None] = mapped_column()
+
     books: Mapped[list["Book"]] = relationship(back_populates="author")
 
 
@@ -82,6 +106,17 @@ class Series(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    # prompts/25 Phase 2 — Hardcover's canonical view of this series, refreshed
+    # by hardcover_series_service on a schedule. hardcover_json:
+    #   {id, name, slug, primaryCount,
+    #    books: [{position, title, releaseDate?, isbn13?}],
+    #    match: "auto" | "manual" | "none"}
+    # "none" = we searched and found no good match (don't re-search nightly);
+    # "manual" = James pinned hardcover_json.id (never re-matched, list still
+    # refreshed). hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
 
     aliases: Mapped[list["SeriesAlias"]] = relationship(back_populates="series")
     books: Mapped[list["Book"]] = relationship(back_populates="series")
@@ -110,6 +145,47 @@ class Book(Base):
     first_published: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # prompts/25 Phase 3 — Hardcover's "readers also liked" for this book,
+    # refreshed by hardcover_recs_service on a schedule.
+    #   {id: <hardcover book id>, similar: [{title, author, isbn13}]}  (top ~15)
+    # hardcover_synced_at drives the "needs a refresh?" query.
+    hardcover_json: Mapped[dict | None] = mapped_column(JSON)
+    hardcover_synced_at: Mapped[datetime | None] = mapped_column()
+
+    # prompts/29 — a local sentence embedding (all-MiniLM-L6-v2, 384-dim
+    # float32, L2-normalised, stored raw) of this book's title/author/series +
+    # blurb, for the library-viewer's semantic search. embedding_hash is a
+    # hash of the embed input so a refresh only re-embeds what changed;
+    # embedding_model guards against a model swap.
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    embedding_hash: Mapped[str | None] = mapped_column(String)
+    embedding_model: Mapped[str | None] = mapped_column(String)
+
+    # prompts/38 — local Ollama tagging + descriptions (llm_tagging_service),
+    # read from the book's actual text rather than a provider or the model's
+    # memorised knowledge. Kept separate from hardcover_json (which is fully
+    # replaced on every Hardcover refresh) and from `description` (still the
+    # one field the viewer reads) until James has compared enough books to
+    # trust one process and decides to promote it.
+    #   {"excerpt": {...}, "full": {...}}, each shaped as one of:
+    #     - not attempted: key absent
+    #     - in progress (full only): {status: "mapping"|"reducing",
+    #       chunksTotal, chunksDone, chunkResults: [...]}
+    #     - done: {ageRating, genres, moods, themes, representation,
+    #       contentWarnings, confidenceNotes, shortDescription, longSummary,
+    #       generatedAt}
+    #     - failed: {error, failedAt} — retried after a backoff window
+    llm_tags_json: Mapped[dict | None] = mapped_column(JSON)
+
+    # prompts/39 — locally-computed tag-similarity "similar books"
+    # (content_recs_service), from books' own llm_tags_json.full — a
+    # relational computation (one book's tags can change another's list),
+    # so content_recs_synced_at is an observability timestamp, not a
+    # staleness filter; every run recomputes the whole thing.
+    #   {"similar": [{bookId, sharedTags, score}], "generatedAt"}
+    content_recs_json: Mapped[dict | None] = mapped_column(JSON)
+    content_recs_synced_at: Mapped[datetime | None] = mapped_column()
+
     author: Mapped["Author | None"] = relationship(back_populates="books")
     series: Mapped["Series | None"] = relationship(back_populates="books")
     identifiers: Mapped[list["Identifier"]] = relationship(back_populates="book")
@@ -136,6 +212,24 @@ class File(Base):
     drive_parent_id: Mapped[str | None] = mapped_column(String)
     filename: Mapped[str] = mapped_column(String, nullable=False)
     sha256: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # The content hash this file had *before* BookBrain rewrote its embedded
+    # metadata (see metadata_writeback_service). NULL if never rewritten.
+    # Exact-duplicate detection and sticky corrections (SPEC §1) match on
+    # this too, so a re-upload of the pristine original still resolves to
+    # the same book / inherits the same human correction.
+    original_sha256: Mapped[str | None] = mapped_column(String, index=True)
+    # Set once the embedded OPF metadata has been written to match the
+    # resolved book — a hash of (title, author, series, series_number). The
+    # writeback job skips a file whose key already matches, so re-runs cause
+    # no hash churn; a later correction changes the key and it's picked up.
+    embedded_metadata_key: Mapped[str | None] = mapped_column(String)
+    # Hex string of a 64-bit perceptual hash (imagehash.phash) of this file's
+    # organised cover thumbnail — 16 hex chars, NULL until a cover has been
+    # generated and NULL for a .nocover file. Used by Library Audit to flag
+    # different-identified files with near-identical cover art (a re-upload
+    # with rewritten metadata that sha256 dedup can't catch). Not indexed:
+    # the audit is a full O(n²) scan of a few thousand short strings.
+    cover_phash: Mapped[str | None] = mapped_column(String)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"))
     status: Mapped[FileStatus] = mapped_column(
@@ -258,6 +352,68 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class WishlistStatus(str, enum.Enum):
+    wanted = "wanted"
+    acquired = "acquired"
+
+
+class WishlistItem(Base):
+    """A book the user wants but doesn't own yet. `raw_request` is what they
+    typed; the rest is what Claude + Google Books resolved it to. Flips to
+    `acquired` (with `acquired_file_id`) once a matching book turns up in
+    the library — see wishlist_service.reconcile."""
+
+    __tablename__ = "wishlist"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    raw_request: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    author: Mapped[str | None] = mapped_column(String)
+    series: Mapped[str | None] = mapped_column(String)
+    series_number: Mapped[float | None] = mapped_column()
+    isbn13: Mapped[str | None] = mapped_column(String)
+    cover_url: Mapped[str | None] = mapped_column(String)
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[WishlistStatus] = mapped_column(
+        Enum(WishlistStatus), nullable=False, default=WishlistStatus.wanted
+    )
+    acquired_at: Mapped[datetime | None] = mapped_column()
+    acquired_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class JobRunStatus(str, enum.Enum):
+    running = "running"
+    success = "success"
+    failed = "failed"
+
+
+class JobRun(Base):
+    """Audit trail for a whole-pipeline run (currently only `kind="nightly"`).
+    Unlike the in-memory `ScanService._jobs` tracker, this survives a server
+    restart, so the morning-after Dashboard can show what the overnight run
+    did — and a `running` row doubles as a coarse "a pipeline run is active"
+    flag that keeps a scheduled run and a standalone `python -m app.jobs.nightly`
+    from stepping on each other (see job_run_service.has_active_run)."""
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    trigger: Mapped[str] = mapped_column(String, nullable=False)  # scheduler | cli | manual
+    status: Mapped[JobRunStatus] = mapped_column(
+        Enum(JobRunStatus), nullable=False, default=JobRunStatus.running
+    )
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column()
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (Index("ix_job_runs_kind_started", "kind", "started_at"),)
+
+
 class LocalFileStatus(str, enum.Enum):
     pending = "pending"
     copied = "copied"
@@ -280,6 +436,231 @@ class LocalFile(Base):
         Enum(LocalFileStatus), nullable=False, default=LocalFileStatus.pending
     )
     discovered_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Best wishlist/want-to-read/list target this file's filename matched
+    # against (acquisition_service.gather_acquisition_targets + score_candidate),
+    # populated by local_scan_service.match_against_wishlist. Null until a
+    # scan has run a match pass, or if nothing scored above the flag threshold.
+    matched_request_id: Mapped[str | None] = mapped_column(String)
+    matched_title: Mapped[str | None] = mapped_column(String)
+    matched_author: Mapped[str | None] = mapped_column(String)
+    matched_score: Mapped[float | None] = mapped_column(Float)
+
+
+class DismissedReidentFlag(Base):
+    """A book the Bulk Re-identify Audit flagged as diverging from its stored
+    identification that James has reviewed and decided not to act on (a
+    false positive, or a divergence he's chosen to leave). The reident
+    report filters these out by book id at read time — same pattern as
+    DismissedAuditCluster. Keyed on book id alone: the report row *is* a
+    book, and any later real change to that book (a /correct) is a
+    different question that a fresh rebuild will re-surface if it still
+    diverges."""
+
+    __tablename__ = "dismissed_reident_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    book_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("book_id", name="uq_dismissed_reident_flag"),)
+
+
+class AuditClusterKind(str, enum.Enum):
+    series = "series"
+    author = "author"
+
+
+class DismissedAuditCluster(Base):
+    """A Library Audit "possibly split" cluster the user has already
+    reviewed and decided isn't worth re-flagging (a false positive, or a
+    real split they've chosen to leave as-is) — audit_library filters these
+    out by exact member-id-set match. member_ids_key is the cluster's
+    member ids, sorted and comma-joined (e.g. "6,399") — if the cluster's
+    membership changes later (e.g. one member gets merged away elsewhere),
+    that's a different key and the dismissal naturally stops applying,
+    since it's genuinely a different question being asked."""
+
+    __tablename__ = "dismissed_audit_clusters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[AuditClusterKind] = mapped_column(Enum(AuditClusterKind), nullable=False)
+    member_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("kind", "member_ids_key", name="uq_dismissed_audit_cluster"),)
+
+
+class AcquisitionStatus(str, enum.Enum):
+    pending = "pending"  # a candidate has been found, waiting for James to approve
+    approved = "approved"  # downloaded and pushed into the Drive inbox
+    skipped = "skipped"  # James dismissed it — don't re-offer until reset
+    no_match = "no_match"  # searched OpenBooks, nothing good enough (re-tried each refresh)
+    failed = "failed"  # a download attempt failed (re-tried each refresh)
+    # Submitted to the torrent subsystem (via Librarr) and not yet in the
+    # Drive inbox — excluded from every cycle's due-retry consideration so
+    # OpenBooks/Libgen don't redundantly re-attempt a book mid-download.
+    # 8 chars deliberately, matching this column's existing VARCHAR(8)
+    # sizing (computed by SQLAlchemy's Enum type from the longest value at
+    # table-creation time) — SQLite doesn't enforce it, but a longer value
+    # would silently need a migration on a stricter backend.
+    fetching = "fetching"
+
+
+class AcquisitionCandidate(Base):
+    """prompts/37 — an OpenBooks search result matched to a book BookBrain
+    should try to get: an unfilled `bookbrain-wishlist.json` request (status
+    "wanted"), the owner's Hardcover want-to-read that isn't owned, or a
+    curated-list candidate. Populated by `acquisition_service.refresh_candidates`
+    (the "Search…" button + a nightly step); James approves one per row from the
+    Find a Book page, which downloads it into the inbox (and, for a wishlist
+    row, marks the item "sourced").
+
+    Keyed on `request_id`: the wishlist item id, or "wtr:<key>" / "list:<key>"
+    for the sidecar sources. EPUB candidates only, by design."""
+
+    __tablename__ = "acquisition_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    # "wishlist" | "want_to_read" | "list"
+    source: Mapped[str] = mapped_column(String, nullable=False, server_default="wishlist")
+    request_title: Mapped[str] = mapped_column(String, nullable=False)
+    request_author: Mapped[str | None] = mapped_column(String)
+    status: Mapped[AcquisitionStatus] = mapped_column(
+        Enum(AcquisitionStatus), nullable=False, default=AcquisitionStatus.pending
+    )
+    # The current best pick (null for no_match).
+    candidate_full: Mapped[str | None] = mapped_column(String)
+    candidate_title: Mapped[str | None] = mapped_column(String)
+    candidate_author: Mapped[str | None] = mapped_column(String)
+    candidate_format: Mapped[str | None] = mapped_column(String)
+    candidate_size: Mapped[str | None] = mapped_column(String)
+    candidate_server: Mapped[str | None] = mapped_column(String)
+    # Which AcquisitionProvider supplied the current best pick — "openbooks",
+    # "annas_archive", etc. Existing rows predate multi-provider support and
+    # backfill to "openbooks" (the only source before this column existed).
+    candidate_provider: Mapped[str] = mapped_column(String, nullable=False, server_default="openbooks")
+    score: Mapped[float | None] = mapped_column(Float)
+    # Other plausible EPUBs, best first: [{full,title,author,format,size,server,score}].
+    alternatives_json: Mapped[list | None] = mapped_column(JSON)
+    message: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column()
+
+
+class AcquisitionEvent(Base):
+    """Append-only log of finished acquisition attempts — one row per download
+    that succeeded or failed, plus one per auto-get search that came back with
+    nothing, written when it resolved and never updated, pruned or deleted.
+
+    The search rows were added 2026-09-18 because downloads alone cannot
+    describe a broken provider: a provider that is down never gets as far as
+    attempting a download, so it wrote nothing here at all and read as merely
+    idle. See acquisition_service._log_search_shortfalls.
+
+    `acquisition_candidates` is a work *queue*, and counting history from it
+    under-reports every provider. Two mechanisms erase a success within
+    minutes: `_prune_now_in_library` deletes the row once the file is
+    organised, and `list_requests` hides any row whose wishlist item has been
+    reconciled past "sourced". On 2026-09-18 OpenBooks got six books in an
+    hour and the dashboard showed two -- the other four had already been filed
+    and deleted. A high-volume provider like LibGen hides the same bug, because
+    at one book a minute something is always still inside the deletion lag.
+
+    Provider health and the "last got" lists read this table; the queue goes
+    back to answering "what still needs getting", which is what it is good at.
+    """
+
+    __tablename__ = "acquisition_events"
+    # provider_health's real query shape: one provider's newest few rows. The
+    # single-column provider index meant sorting that provider's whole history
+    # on every poll, which mattered once searches started landing here too.
+    __table_args__ = (
+        Index("ix_acquisition_events_provider_occurred_at", "provider", "occurred_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    # "openbooks" | "libgen" | "annas_archive" | "torrent"
+    provider: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # The OpenBooks IRC bot the file came from; None for every HTTP provider.
+    server: Mapped[str | None] = mapped_column(String)
+    # Downloads: "got" | "failed". Searches that produced no candidate:
+    # "no_match" (the provider answered, it hasn't got the book) |
+    # "unavailable" (the provider failed to answer — timeout, 429/503).
+    outcome: Mapped[str] = mapped_column(String, nullable=False)
+    # Loose link back to the queue row, which may since have been pruned.
+    request_id: Mapped[str | None] = mapped_column(String)
+    source: Mapped[str | None] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    author: Mapped[str | None] = mapped_column(String)
+    filename: Mapped[str | None] = mapped_column(String)
+    message: Mapped[str | None] = mapped_column(String)  # failure reason, else None
+
+
+class LibrarrRequestStatus(str, enum.Enum):
+    # Librarr's own lifecycle (confirmed live against a real instance
+    # 2026-09-16): pending -> approved -> searching -> downloading ->
+    # completed, with failed as the terminal error state. Librarr requires
+    # an explicit PUT /api/requests/{id}/approve before it starts searching
+    # ("users request books, admins approve" — no auto-approve setting
+    # exists) — submit_tick() calls that immediately after creating the
+    # request so no human is in the loop, but a request can still
+    # legitimately be sitting in `pending` if that approve call itself
+    # failed transiently; poll_tick() retries approving in that case.
+    pending = "pending"
+    approved = "approved"
+    searching = "searching"
+    downloading = "downloading"
+    completed = "completed"  # Librarr reports done — file should be in EBOOK_DIR
+    failed = "failed"  # Librarr gave up (no results, or a download error)
+
+
+class LibrarrRequest(Base):
+    """Tracks one torrent_service.submit_tick() submission to Librarr's
+    request API end to end: which BookBrain request it's for, Librarr's own
+    request id (for polling GET /api/requests/{id}), and the last lifecycle
+    state seen. `request_id` matches AcquisitionCandidate.request_id with no
+    hard FK — same loose-coupling choice LocalFile.matched_request_id
+    already makes, since a request row can outlive candidate-row churn
+    (dedup, re-keying) elsewhere.
+
+    Deliberately a DB table rather than correlating by re-listing Librarr's
+    own /api/requests and matching on title/author each poll: title-based
+    matching is fragile, and a table survives a backend restart mid-flight
+    (poll_tick just resumes from whatever rows are here) where anything
+    living only in Librarr's own state wouldn't tell us which BookBrain book
+    a given request was for."""
+
+    __tablename__ = "librarr_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String, nullable=False)
+    librarr_request_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    status: Mapped[LibrarrRequestStatus] = mapped_column(
+        Enum(LibrarrRequestStatus), nullable=False, default=LibrarrRequestStatus.pending
+    )
+    message: Mapped[str | None] = mapped_column(String)
+    added_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column()
+
+
+class SmartCollection(Base):
+    """A named, rule-based shelf: `rule` is a small field:value query string
+    (see app.services.collection_rules) resolved against the library at
+    index-build time, so the collection's membership stays live as the
+    library grows instead of being a fixed, hand-picked list."""
+
+    __tablename__ = "smart_collections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    rule: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
 __all__ = [
@@ -296,5 +677,16 @@ __all__ = [
     "Review",
     "LibraryRule",
     "Setting",
+    "JobRunStatus",
+    "JobRun",
     "LocalFile",
+    "WishlistItem",
+    "AuditClusterKind",
+    "DismissedAuditCluster",
+    "DismissedReidentFlag",
+    "AcquisitionStatus",
+    "AcquisitionCandidate",
+    "LibrarrRequestStatus",
+    "LibrarrRequest",
+    "SmartCollection",
 ]

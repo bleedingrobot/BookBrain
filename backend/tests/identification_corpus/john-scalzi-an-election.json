@@ -1,0 +1,86 @@
+{
+  "id": "john-scalzi-an-election",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: John Scalzi / An Election / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 2182,
+    "drive_file_id": "1kgvUNAiIJndrEs3_H7S-NrSCLxwKSDdW",
+    "filename": "Scalzi, John--An Election.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "Scalzi, John--An Election.epub",
+  "evidence": {
+    "title": "An Election",
+    "authors": [
+      "Scalzi",
+      "John"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "An Election",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 72,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"An Election\" by John Scalzi. This is a short story/novelette by John Scalzi (part of his \"The Human Division\" serialized Old Man's War universe series — episode 6, \"The Back Channel\"? uncertain) — actually \"An Election\" is a standalone short story Scalzi published (2007, later collected). No metadata provider candidates were returned, so series affiliation is unverified; I left series null. Confidence in title/author is high; series/edition details unconfirmed, so flagging for human review.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "An Election",
+    "author": "John Scalzi",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "weak",
+      "series": "unresolved",
+      "series_number": "unresolved"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "An Election",
+      "author": "Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "An Election",
+      "author": "John Scalzi",
+      "series": "Third District",
+      "series_number": 1.0,
+      "url": "https://www.goodreads.com/series/406045-third-district",
+      "note": "conf=0.82; Short story (~2010, Subterranean Press, posted on Scalzi's Whatever blog; ebook edition Jan 2012, also sold as \"An Election Story\" on Kobo). Set in the \"Third District\" — Goodreads lists a 2-book Third District series: An Election (2010, #1) and Constituent Service (2024/2025, #2, an indirect sequel). The numbering is by publication order per Goodreads; the story itself was not marketed as a numbered volume when first released."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "An Election",
+      "author": "John Scalzi",
+      "series": null,
+      "series_number": null,
+      "url": "https://whatever.scalzi.com/2010/11/01/an-election-a-short-story-presented-by-subterranean-press/",
+      "note": "conf=0.85; Verified: \"An Election\" is a standalone humorous short story by John Scalzi, presented by Subterranean Press/Subterranean Online and published free on Scalzi's blog Whatever on November 1, 2010 (an election-themed piece released ahead of the US midterms). Scalzi's own \"Creative Sampler\" page lists it as a standalone short story, not as part of any book series. Plot: a human runs for city council in a district where humans are a minority among aliens. It is NOT part of Old Man's War, and although some reader reviews note a tonal similarity to The Android's Dream (and one Goodreads reviewer loosely calls it the \"Third District universe\"), no publisher or bibliographic source identifies a real named series containing this title. Therefore series = null. Author metadata \"Scalzi\" expanded to John Scalzi."
+    }
+  ],
+  "truth_disagreements": []
+}

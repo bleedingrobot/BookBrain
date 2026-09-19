@@ -1,0 +1,94 @@
+{
+  "id": "gene-wolfe-la-befana",
+  "case_tags": [
+    "standalone-series-risk"
+  ],
+  "notes": "standalone-series-risk; stored: Gene Wolfe / La Befana / series=None #None (model=claude-opus-5, conf=25)",
+  "source": {
+    "file_id": 1871,
+    "drive_file_id": "1eNxnODFc_pImOgVPLtlGgPwKAa_-y_PI",
+    "filename": "La Befana - Gene Wolfe.epub",
+    "captured_from": "db",
+    "stored_model": "claude-opus-5",
+    "stored_confidence": 25
+  },
+  "filename": "La Befana - Gene Wolfe.epub",
+  "evidence": {
+    "title": "La Befana",
+    "authors": [
+      "Gene Wolfe"
+    ],
+    "language": "en",
+    "description": null,
+    "isbn10": null,
+    "isbn13": null,
+    "series": null,
+    "series_number": null,
+    "text_snippet": "Cover @page {padding: 0pt; margin:0pt} body { text-align: center; padding:0pt; margin: 0pt; }"
+  },
+  "candidates": [],
+  "candidate_fidelity": "db-reconstructed",
+  "recorded_ai": {
+    "title": "La Befana",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "ai_confidence": 80,
+    "reasoning_summary": "Filename and EPUB metadata agree on title \"La Befana\" by Gene Wolfe. This is a known Gene Wolfe short story (first published in Galaxy, 1973), here evidently packaged as a standalone EPUB single. No ISBN, no provider candidates, and the only body text is boilerplate cover CSS, so no independent confirmation of edition or collection membership; title/author attribution itself is consistent and plausible.",
+    "needs_human_review": true
+  },
+  "recorded_series_ai": null,
+  "answer": {
+    "title": "La Befana",
+    "author": "Gene Wolfe",
+    "series": null,
+    "series_number": null,
+    "verified": true,
+    "source": "triangulated",
+    "provenance": {
+      "title": "consensus",
+      "author": "consensus",
+      "series": "consensus",
+      "series_number": "consensus"
+    }
+  },
+  "truth_claims": [
+    {
+      "source": "epub",
+      "title": "La Befana",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": null,
+      "note": null
+    },
+    {
+      "source": "wikidata",
+      "title": "La Befana",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.wikidata.org/wiki/Q141213992",
+      "note": null
+    },
+    {
+      "source": "web_claude_identify",
+      "title": "La Befana",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "http://www.isfdb.org/cgi-bin/title.cgi?51878=",
+      "note": "conf=0.94; \"La Befana\" is a standalone short story by Gene Wolfe, first published in Galaxy Science Fiction, January 1973 (v33n04). The ISFDB title record (#51878) lists it as SHORTFICTION / short story with no series affiliation; it was reprinted in anthologies such as Best SF: 1973 / The Year's Best Science Fiction No. 7 (Harrison & Aldiss) and in Wolfe's collection The Island of Doctor Death and Other Stories and Other Stories / Castle of Days. Anthology and collection appearances are not series membership. This ebook is a single-story file with no ISBN."
+    },
+    {
+      "source": "web_claude_verify",
+      "title": "La Befana",
+      "author": "Gene Wolfe",
+      "series": null,
+      "series_number": null,
+      "url": "https://www.isfdb.org/cgi-bin/title.cgi?51878",
+      "note": "conf=0.95; Standalone short story by Gene Wolfe, first published in Galaxy, January 1973 (v33n04). ISFDB title record #51878 lists it as SHORTFICTION with no series affiliation; it appears only in anthologies/collections (e.g., Best SF: 1973 / The Year's Best Science Fiction No. 7, Christmas Stars, Castle of Days), not as part of any Wolfe series. Title and author metadata confirmed correct; series correctly null."
+    }
+  ],
+  "truth_disagreements": []
+}

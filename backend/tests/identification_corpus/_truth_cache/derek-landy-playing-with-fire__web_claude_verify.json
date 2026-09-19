@@ -1,0 +1,9 @@
+{
+  "source": "web_claude_verify",
+  "title": "Playing with Fire",
+  "author": "Derek Landy",
+  "series": "Skulduggery Pleasant",
+  "series_number": 2.0,
+  "url": "https://www.amazon.com/Playing-Fire-Skulduggery-Pleasant-Book/dp/0061240885",
+  "note": "conf=0.97; Proposal had all fields null; filled in and verified. ISBN 9780061240881 = HarperCollins US edition (ISBN-10 0061240885) of \"Playing with Fire (Skulduggery Pleasant, Book 2)\" by Derek Landy, 2008. Multiple sources (Fantastic Fiction, B&N, series wiki) confirm it is the second volume of the Skulduggery Pleasant series, consistent with the \"2\" prefix in the filename. Canonical title is \"Playing with Fire\"; some editions prefix it \"Skulduggery Pleasant: Playing with Fire\" (series padding, omitted). Note the American editions sometimes number differently in later volumes, but book 2 is uncontested."
+}

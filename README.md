@@ -5,7 +5,14 @@ Auto-organizing Google Drive EPUB library manager. See [SPEC.md](SPEC.md) for th
 ## Layout
 
 - `backend/` — FastAPI + SQLAlchemy + Alembic (async), layered `api/ → services/ → providers/ → data/`
-- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4
+- `frontend/` — React + TypeScript + Vite + TanStack Query + Tailwind v4 (local admin UI)
+- `library-viewer/` — React + Vite + Tailwind, the family-facing browser. Reads the
+  `bookbrain-index.json` sidecar + covers straight from Drive (no backend). Deployed
+  to GitHub Pages on push to `main`. Includes an in-browser EPUB reader built on a
+  **vendored** copy of [foliate-js](https://github.com/johnfactotum/foliate-js)
+  (`src/vendor/foliate/`, EPUB path only, no npm dependency — see its `VERSION`).
+  Reader typography/theme and per-book reading position live in `localStorage`;
+  opened books are cached in IndexedDB for offline reading.
 
 ## Backend
 
@@ -23,6 +30,37 @@ uvicorn app.main:app --reload
 
 Runs at `http://localhost:8000`. Tests: `pytest`.
 
+Dependencies (including APScheduler, added for the nightly run) are declared in
+`pyproject.toml` — `pip install -e ".[dev]"` installs them. After pulling changes,
+re-run that and `alembic upgrade head`.
+
+### Nightly unattended run
+
+Settings → **Nightly run** turns on a once-a-night pass that does the whole
+pipeline with no one watching: pull the Torrents folder, scan the Book Dump,
+auto-organize everything above the confidence threshold, then refresh covers and
+the library index. It never resolves a review or clears a duplicate — uncertain
+books still wait in the queue.
+
+Two layers run the same job (`app/jobs/nightly.py::run_nightly`):
+
+- **In-process** — an APScheduler job in the FastAPI lifespan. Fires only if the
+  server is up at the chosen hour. Toggling the setting re-arms it live.
+- **Standalone** — `python -m app.jobs.nightly`, no HTTP layer, exits non-zero on
+  failure, logs to stderr and to `backend/nightly-runs.log`. That file records the
+  **manual/Scheduled-Task path only** — on the Linux homeserver the in-process job
+  above is what actually runs, and it logs to the journal
+  (`journalctl -u bookbrain.service`), not to this file. Each standalone run writes
+  a banner saying so, because a stale `nightly-runs.log` full of a plausible
+  successful summary is exactly what a 3am investigation opens first and believes.
+  For when the machine's usually not
+  running the server overnight: double-click `backend/scripts/register-nightly-task.bat`
+  once to install a Windows Scheduled Task (2am by default; pass an hour to match
+  the in-app setting). `unregister-nightly-task.bat` removes it.
+
+A dead Google token makes either layer log "reconnect Google in Settings" and stop
+cleanly. The Dashboard shows the last run's result.
+
 ### Google OAuth setup (needed for Milestone 2+)
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project, enable the **Google Drive API**, and create an **OAuth client ID** of type "Web application".
@@ -31,6 +69,30 @@ Runs at `http://localhost:8000`. Tests: `pytest`.
 4. Generate `TOKEN_ENCRYPTION_KEY`: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 
 While the app is in "Testing" publishing status in Google Cloud Console, only test users you add explicitly can complete the consent screen.
+
+### Passcode login for the library-viewer (siblings)
+
+The family library-viewer normally has each visitor sign in with their own Google
+account, talking straight to Drive from the browser. Siblings without a Google
+account instead type a shared household passcode, which this backend checks and
+then proxies their Drive reads/writes through — see `app/api/routes/viewer.py`.
+To turn it on:
+
+1. Set `SIBLINGS_PASSCODE` in `backend/.env` to the shared passcode.
+2. Set `LIBRARY_VIEWER_ORIGIN` if the viewer isn't at the default
+   `https://bleedingrobot.github.io` GitHub Pages origin.
+3. **This backend has to be reachable over HTTPS from the internet** for the
+   passcode path to work at all — unlike Google sign-in, it's not just the
+   browser talking to Google; the browser has to reach `bookbrain.service`
+   itself. If it's currently only reachable on your home network, that's new
+   infrastructure to set up first (a reverse proxy + domain, or something like
+   Tailscale Funnel) — and only the `/api/viewer/*` routes should be exposed
+   publicly, not the rest of the admin API, which has no login check of its
+   own today.
+4. Set `library-viewer/src/lib/config.ts`'s `BACKEND_URL` to that public URL
+   and redeploy the viewer.
+5. Leave `VIEWER_COOKIE_SECURE=true` (the default) once step 3 is done — it's
+   only for testing the passcode login locally over plain http.
 
 ## Frontend
 
@@ -42,7 +104,94 @@ npm install
 npm run dev
 ```
 
-Runs at `http://localhost:5173`, proxies `/api` to `http://localhost:8000`.
+Runs at `http://localhost:5173`, proxies `/api` to `http://localhost:8000`. In
+production this isn't run separately at all — see below.
+
+## Running in production (systemd)
+
+On a persistent Linux box (this is how it's currently deployed) BookBrain runs
+as a systemd service instead of a manual `uvicorn --reload` window:
+
+- **`bookbrain.service`** — the backend
+  (`uvicorn app.main:app --host 0.0.0.0 --port 8000`, `Restart=always`), also
+  responsible for the OpenBooks acquire helper child process. Because it's
+  always running, the nightly job's in-process APScheduler layer is what
+  actually fires — the Windows Scheduled Task fallback above isn't needed on
+  a box like this. It also serves the **built admin frontend** (`frontend/dist`,
+  from `npm run build`) directly, so there's one permanent URL instead of a
+  locally-launched `npm run dev` server.
+- **`bookbrain-dashboard.service`** — an optional status readout on the
+  server's own console (tty1); unrelated to the app itself. Its `ALERTS` block
+  (`dashboard/dashboard.sh`) is the one place a 3am failure shows up, and
+  `dashboard/alerts.log` records each raise/clear so it's still readable at
+  breakfast. `dashboard/test_alerts.sh` covers the conditions.
+
+### Acquisition providers
+
+OpenBooks and Libgen are on. **Torrent is off as of 2026-09-18**
+(`TORRENT_ENABLED=false` in `backend/.env`): all-time it managed 4 successful
+downloads against 2,210 failures — 0.18%, versus openbooks 125/8 and libgen
+79/41 — while producing steady log volume and 2,214 DB rows in two days. That
+switch stops the submit, poll and fast local-scan legs. It does **not** stop
+the nightly `_pull_local_folder` step, so downloading a torrent by hand on
+JAMESGAMING and letting BookBrain pick it out of the watch folder still works;
+it just happens on the nightly pass instead of within two minutes. Set
+`TORRENT_ENABLED=true` and restart to bring it all back.
+
+Per-provider health, including a windowed success rate that can actually show
+"this died two hours ago", is at `GET /api/acquire/provider-health` and on both
+dashboards. It reports two different failures, because they need different
+fixes: **dead** = working the queue and getting nowhere, **stalled** = switched
+on and not even trying. Both raise an alert in `dashboard/alerts.log`.
+
+Three numbers, three meanings — worth knowing before reading the panel:
+
+- `got` / `failed` — downloads. `failed` has only ever meant "found the book,
+  couldn't fetch it".
+- `no match` — an auto-get search that came back empty. OpenBooks read "130
+  got / 6 failed" (96%!) while sitting on hundreds of these. This counter
+  starts from **2026-09-18**, when searches began being logged; it is not
+  backfilled (see `d5a2c8e41f76` for why the queue couldn't supply one).
+- `queued` — live queue state, not a work plan. `list_requests` re-ranks stored
+  candidates on every page load, so a row whose last real search was days ago
+  still reads `pending`.
+
+Both the outages this was built after (2026-09-16, ~15h of search timeouts;
+2026-09-17, ~19h of never joining IRC) produced no download attempt at all, so
+until searches were logged the `dead` flag had nothing to count and fired in
+**0 of 188** replayed 6h windows. If you tighten this logic, replay it against
+`acquisition_events` before believing it.
+
+Common commands:
+
+```
+sudo systemctl status bookbrain.service             # is it up?
+sudo systemctl restart bookbrain.service            # restart
+sudo journalctl -u bookbrain.service -f             # live logs (Ctrl+C to stop watching)
+
+sudo systemctl status bookbrain-dashboard.service   # tty1 / mobile status page
+sudo systemctl restart bookbrain-dashboard.service  # restart (picks up dashboard.sh edits)
+```
+
+**Updating to the latest code** — nothing pulls or rebuilds automatically;
+do this after every push you want live, from the repo root:
+
+```
+git pull
+cd backend && .venv/bin/python -m alembic upgrade head
+cd ../frontend && npm run build      # only matters if frontend/ changed; harmless otherwise
+sudo systemctl restart bookbrain.service
+```
+
+If `backend/pyproject.toml` picked up a new dependency, also run
+`.venv/bin/pip install -e ".[dev]"` from `backend/` before restarting.
+
+If only `dashboard/` changed (`dashboard.sh` and/or `dashboard/mobile/index.html`
+— no backend/frontend touched), `git pull` plus
+`sudo systemctl restart bookbrain-dashboard.service` is enough; the mobile
+page (served straight from `dashboard/mobile/`) picks up HTML/JS edits on
+its next browser refresh with no restart needed, but the shell script itself
+needs the restart to start writing the new `status.json` shape.
 
 ## Status
 
