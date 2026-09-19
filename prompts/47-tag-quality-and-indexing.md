@@ -244,6 +244,64 @@ while others answered in 4s. A tiny prompt isn't enough to tell whether
 Ollama is serving: test with a real-sized map prompt before starting
 throughput work (A.5).
 
+## Update — 2026-09-19, A.2 and A.4 shipped; A.5 shipped as something other than batching
+
+Once Ollama was restarted, the remaining steps ran in the planned order.
+
+**A.2 (stoplist):** both prompts now ask for specific multi-word themes,
+and the validators drop an exact bare match against ~50 generic nouns
+(`theme_dedup_service.GENERIC_THEMES`), which also filter
+`themesCanonical` for books tagged earlier. Same book, same model: the
+old prompt gave *The Serpent Sea* 8 themes, 5 of them bare generics
+("belonging", "identity", "survival", "community", "legacy"). The new
+one gave 10 specific phrases ("Restoration of a Broken Community",
+"Coexistence Between Species").
+
+**A.4 (JSON-Schema `format`):** a whole book (41 calls) with the schema
+parsed and validated every response, and took 4.7 min vs 4.8 min in
+`"json"` mode, so constraining costs no speed.
+
+**A.5: batching was measured and rejected.** On a real full-size chunk,
+prefill of ~6.3k tokens took 2.2s (~2,900 tok/s), while generating the
+~200-330-token summary took 5-8s (42 tok/s). Generation dominates, and N
+passages in one call still means N summaries. Holding N chunks also
+needs num_ctx ~N × 8192. At 8192, qwen3:14b is 10.3 GB and fits
+JamesGaming's GPU with nothing to spare. At 24576 it's 13.6 GB, Ollama
+could only put 10.3 GB on the GPU, and three passages batched took 158s
+vs 22s one at a time. (That 8192 fits *exactly* is also the best
+available explanation for this morning's hang: anything else using the
+GPU pushes the model partly onto the CPU. Unconfirmed.)
+
+What the measurements did point at, and what shipped instead:
+- **The chunker made ~30% more map calls than needed.** It split each
+  chapter bigger than the budget into full-size pieces plus a leftover
+  that became its own chunk, and nearly every chapter of a real novel is
+  bigger than the budget. A 1k-char leftover still costs ~6s, because
+  generation dominates. It now packs the book as one continuous stream.
+- **Every step re-downloaded the whole EPUB from Drive**, 3-4s through a
+  freshly spawned subprocess. The in-flight book's bytes are now kept
+  between ticks.
+
+**Measured against the live pipeline:**
+- *Before:* 12 books that finished back to back on 2026-09-18,
+  re-chunked to recover their step counts. 481 steps over 101 min is
+  12.6s per step, **7.1 books/hour**, in line with the 7.5/hour average
+  across all 553.
+- *After:* the real `tick()` against the live DB, Drive and Ollama for
+  25 min, with only the window check bypassed. Steps averaged 9.4s. The
+  *Books of the Raksura* omnibus took 12.9 min (old path: 121 × 12.6s ≈
+  25 min), *Strange Highways* 6.7 min (≈ 10.7), *Stories of the Raksura
+  Vol. 1* 2.9 min (≈ 4.6). The same 12 novels would now need 343 steps
+  at 9.4s ≈ 54 min, **~13.4 books/hour, about 1.9×.**
+- *Next lever, not done:* 9.4s per step is still ~2s above the Ollama
+  call itself. Each tick re-queries every organised file and re-extracts
+  the whole book.
+
+**Separate finding:** 26 books always fail with "no extractable text".
+They re-queue every 24h and are nearly all Dean Koontz titles. *Hell's
+Gate* extracts to zero spine documents, so this is the EPUB parser or
+those files, not tagging. Not investigated.
+
 ## Sources
 
 New this session:

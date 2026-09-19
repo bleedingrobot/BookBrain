@@ -87,6 +87,27 @@ def test_chunk_documents_empty_input() -> None:
     assert chunk_documents([], target_chars=100) == []
 
 
+def test_chunk_documents_packs_an_oversized_docs_remainder_with_the_next_doc() -> None:
+    # Old behaviour: [x200, x100, y150] — three calls for 450 chars.
+    chunks = chunk_documents(["x" * 300, "y" * 150], target_chars=260)
+    assert len(chunks) == 2
+    assert all(len(c) <= 260 for c in chunks)
+    assert "".join(chunks).replace("\n", "") == "x" * 300 + "y" * 150
+
+
+def test_chunk_documents_prefers_a_line_break_near_the_budget() -> None:
+    doc = "a" * 95 + "\n" + "b" * 50
+    chunks = chunk_documents([doc], target_chars=100)
+    assert chunks == ["a" * 95, "b" * 50]
+
+
+def test_chunk_documents_never_exceeds_the_budget_on_real_sized_input() -> None:
+    docs = [("para " * 40 + "\n") * n for n in (3, 250, 180, 20, 400, 5)]
+    chunks = chunk_documents(docs, target_chars=26_768)
+    assert all(len(c) <= 26_768 for c in chunks)
+    assert "".join("".join(chunks).split()) == "".join("".join(docs).split())  # no text lost
+
+
 # --------------------------------------------------------------------------
 # response validation
 # --------------------------------------------------------------------------
@@ -275,3 +296,20 @@ def test_schemas_require_every_field_the_validators_read() -> None:
     assert set(TAG_RESULT_SCHEMA["required"]) == set(TAG_RESULT_SCHEMA["properties"])
     payload = _valid_tag_payload()
     assert set(payload) == set(TAG_RESULT_SCHEMA["properties"])
+
+
+async def test_book_bytes_downloads_the_in_flight_book_once(monkeypatch) -> None:
+    from app.services import llm_tagging_service as svc
+
+    calls: list[str] = []
+
+    def fake_download(creds, file_id, *, timeout_seconds):
+        calls.append(file_id)
+        return f"epub-{file_id}".encode()
+
+    monkeypatch.setattr(svc, "download_file_with_hard_timeout", fake_download)
+    monkeypatch.setattr(svc, "_download_cache", None)
+    assert await svc._book_bytes(None, "a") == b"epub-a"
+    assert await svc._book_bytes(None, "a") == b"epub-a"
+    assert await svc._book_bytes(None, "b") == b"epub-b"
+    assert calls == ["a", "b"]

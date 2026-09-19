@@ -73,6 +73,15 @@ _CHARS_PER_TOKEN = 4
 # JSON output all eat into num_ctx before any book text does.
 _PROMPT_OVERHEAD_TOKENS = 1500
 _MIN_CHUNK_CHARS = 2000
+# prompts/47 A.5 planned to batch 3-5 chunks per map call (libtrails'
+# pattern). Measured 2026-09-19 and rejected for this hardware: a map call's
+# time is mostly *generating* its ~200-330-token summary (42 tok/s) rather
+# than reading the ~6k-token chunk (~2,900 tok/s), so N passages in one call
+# still means N summaries. And holding N chunks needs num_ctx ~N x 8192:
+# at 8192 qwen3:14b is 10.3 GB and fits JamesGaming's GPU exactly, but at
+# 24576 it's 13.6 GB, Ollama could only place 10.3 GB on the GPU, and the
+# batched call took 158s vs 22s for the same three passages one at a time.
+# Don't raise OLLAMA_NUM_CTX without checking `size_vram` in /api/ps first.
 
 _MAX_LIST_ITEMS = 12
 _STR_CAPS = {
@@ -133,23 +142,36 @@ def _local_now(settings: Settings) -> datetime:
 
 
 def chunk_documents(docs: list[str], *, target_chars: int) -> list[str]:
-    """Group spine documents into chunks near `target_chars`, in order.
-    A single document bigger than the budget on its own is hard-split."""
+    """Pack spine documents, in order, into chunks of at most `target_chars`,
+    treating the book as one continuous stream: a document that doesn't fit
+    is split, and its remainder shares the next chunk with whatever follows.
+
+    prompts/47 A.5 — this used to hard-split an oversized document into
+    full-size pieces plus a leftover that became a chunk on its own. Real
+    novels are mostly chapters bigger than the budget, so nearly every
+    chapter produced one of those leftovers: *The Serpent Sea* came out as
+    40 map calls where 26 cover the same text, and a map call costs ~6s
+    even for a 1k-char leftover (generation, not input, dominates).
+
+    Cuts prefer a line break in the last tenth of the budget, so passages
+    rarely end mid-sentence; a small final tail joins the previous chunk
+    when the two still fit."""
+    text = "\n\n".join(d for d in docs if d)
     chunks: list[str] = []
-    current: list[str] = []
-    current_len = 0
-    for doc in docs:
-        if current and current_len + len(doc) > target_chars:
-            chunks.append("\n\n".join(current))
-            current, current_len = [], 0
-        if len(doc) > target_chars:
-            for i in range(0, len(doc), target_chars):
-                chunks.append(doc[i : i + target_chars])
-            continue
-        current.append(doc)
-        current_len += len(doc)
-    if current:
-        chunks.append("\n\n".join(current))
+    start = 0
+    while start < len(text):
+        end = start + target_chars
+        if end < len(text):
+            brk = text.rfind("\n", start + target_chars * 9 // 10, end)
+            if brk > start:
+                end = brk
+        piece = text[start:end].strip()
+        if piece:
+            if chunks and len(chunks[-1]) + len(piece) + 2 <= target_chars:
+                chunks[-1] = f"{chunks[-1]}\n\n{piece}"
+            else:
+                chunks.append(piece)
+        start = end
     return chunks
 
 
@@ -372,6 +394,38 @@ async def _run_full_step(client: OllamaClient, book: Book, data: bytes, settings
     book.llm_tags_json = llm_tags
 
 
+# prompts/47 A.5 — the in-flight book's EPUB, kept between ticks. Every step
+# used to re-download it from Drive, and that download (a fresh spawned
+# subprocess, see below) measured 3-4s against a ~6-8s Ollama call: over a
+# third of each book's wall-clock time spent fetching the same bytes 40
+# times. One book at a time is ever in flight, so one slot is enough.
+_download_cache: tuple[str, bytes] | None = None
+
+
+async def _book_bytes(creds, drive_file_id: str) -> bytes:
+    global _download_cache
+    if _download_cache is not None and _download_cache[0] == drive_file_id:
+        return _download_cache[1]
+    # A chunked response trickling a few bytes just under drive/client.py's
+    # idle-recv timeout can stall forever without tripping it. Caught live
+    # 2026-09-14 (3+ hours) and again 2026-09-17 (~5 hours):
+    # `asyncio.wait_for` around a plain `asyncio.to_thread` download can't
+    # actually save you here — once the worker thread is blocked inside a
+    # synchronous socket read, cancelling the *await* doesn't stop the
+    # thread, and wait_for wIll just sit there waiting for it to finish
+    # anyway. A subprocess can be SIGKILLed regardless of what syscall it's
+    # stuck in, so the real download now happens in one — see
+    # llm_tagging_download.py.
+    data = await asyncio.to_thread(
+        download_file_with_hard_timeout,
+        creds,
+        drive_file_id,
+        timeout_seconds=90.0,
+    )
+    _download_cache = (drive_file_id, data)
+    return data
+
+
 async def get_progress() -> dict:
     """Cheap DB-only counts (plus a little detail: the book in flight, the
     last few completed, the most recent failure) for the admin status
@@ -506,23 +560,7 @@ async def tick() -> dict:
         book = file.book
 
         try:
-            # A chunked response trickling a few bytes just under
-            # drive/client.py's idle-recv timeout can stall forever without
-            # tripping it. Caught live 2026-09-14 (3+ hours) and again
-            # 2026-09-17 (~5 hours): `asyncio.wait_for` around a plain
-            # `asyncio.to_thread` download can't actually save you here —
-            # once the worker thread is blocked inside a synchronous socket
-            # read, cancelling the *await* doesn't stop the thread, and
-            # wait_for wIll just sit there waiting for it to finish anyway.
-            # A subprocess can be SIGKILLed regardless of what syscall it's
-            # stuck in, so the real download now happens in one — see
-            # llm_tagging_download.py.
-            data = await asyncio.to_thread(
-                download_file_with_hard_timeout,
-                creds,
-                file.drive_file_id,
-                timeout_seconds=90.0,
-            )
+            data = await _book_bytes(creds, file.drive_file_id)
         except Exception as exc:  # noqa: BLE001 — a Drive hiccup, try again next tick
             logger.exception("llm tagging: download failed for book %s", book.id)
             return {"error": f"download failed: {exc}"}
