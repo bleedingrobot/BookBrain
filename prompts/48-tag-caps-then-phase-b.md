@@ -282,4 +282,4 @@ re-run had no problem. Not reproduced; unexplained.
 
 **Tagged since the A.1 deploy** (generatedAt > 2026-09-19 03:32 UTC):
 17 books as of 23:31 NZST, all exactly 4 genres / 5 moods. 16 are Wild
-Cards: Dark Fantasy on 10 of them, Superhero on only 1.
+Cards: Dark Fantasy on 11 of them, Superhero on only 1.
