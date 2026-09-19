@@ -27,6 +27,11 @@ class LlmTaggingError(BaseModel):
     failed_at: str | None
 
 
+class LlmTaggingOtherGenre(BaseModel):
+    genre: str
+    books: list[str]  # titles
+
+
 class LlmTaggingStatus(BaseModel):
     enabled: bool
     configured: bool  # whether ollama_host is set — enabled with this False does nothing
@@ -35,3 +40,5 @@ class LlmTaggingStatus(BaseModel):
     current: LlmTaggingCurrent | None = None  # book mid-map/reduce right now, if any
     recent: list[LlmTaggingRecent] = []  # most recently completed, newest first
     last_error: LlmTaggingError | None = None
+    # Genres outside the approved vocabulary, for review (prompts/47 A.1).
+    other_genres: list[LlmTaggingOtherGenre] = []

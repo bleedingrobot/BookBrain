@@ -510,6 +510,30 @@ export function Settings() {
             <div className="text-xs text-neutral-400">
               {llmTagging.data.full_done} tagged · {llmTagging.data.full_pending} remaining
             </div>
+
+            {llmTagging.data.other_genres && llmTagging.data.other_genres.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-neutral-500 select-none">
+                  Genres outside the vocabulary ({llmTagging.data.other_genres.length}) — for
+                  review
+                </summary>
+                <p className="mt-1 text-neutral-400">
+                  Genres and moods are picked from a fixed list (backend/app/services/tag_vocab.py).
+                  These are the genres that didn't fit it. One that keeps turning up may deserve a
+                  place on the list.
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {llmTagging.data.other_genres.map((g) => (
+                    <li key={g.genre}>
+                      <span className="font-medium">{g.genre}</span>{' '}
+                      <span className="text-neutral-400">
+                        ({g.books.length}) {g.books.join(' · ')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         )}
       </section>

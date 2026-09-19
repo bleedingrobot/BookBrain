@@ -448,3 +448,41 @@ async def test_tag_vocab_refresh_after_reduce_never_raises(monkeypatch, caplog) 
     await llm_tagging_service._refresh_tag_vocab()
     assert "tag vocab refresh failed" in caplog.text
 
+
+async def test_progress_lists_other_genres_for_review(db_session, monkeypatch) -> None:
+    from app.services import llm_tagging_service as svc
+
+    class _CM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(svc, "async_session_factory", lambda: _CM())
+    for i, (genres, other) in enumerate(
+        [(["Poetry", "Fantasy"], []), (["poetry"], []), (["Fantasy"], ["Solarpunk"])]
+    ):
+        book = Book(
+            canonical_title=f"B{i}",
+            llm_tags_json={"full": {"status": "done", "genres": genres, "otherGenre": other}},
+        )
+        db_session.add(book)
+        await db_session.flush()
+        db_session.add(
+            File(
+                drive_file_id=f"d{i}",
+                filename=f"b{i}.epub",
+                sha256=f"s{i}",
+                size_bytes=1,
+                status=FileStatus.organised,
+                book_id=book.id,
+            )
+        )
+    await db_session.commit()
+
+    progress = await svc.get_progress()
+    assert progress["other_genres"] == [
+        {"genre": "Poetry", "books": ["B0", "B1"]},
+        {"genre": "Solarpunk", "books": ["B2"]},
+    ]

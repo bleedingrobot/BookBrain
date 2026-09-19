@@ -15,9 +15,16 @@ export interface NightlySettings {
 
 export type BackupSettings = NightlySettings
 
+export interface LlmTaggingOtherGenre {
+  genre: string
+  books: string[]
+}
+
 export interface LlmTaggingStatus {
   enabled: boolean
   configured: boolean
   full_done: number
   full_pending: number
+  // prompts/47 A.1 — genres the approved vocabulary has no slot for.
+  other_genres?: LlmTaggingOtherGenre[]
 }

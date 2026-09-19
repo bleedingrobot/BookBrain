@@ -514,7 +514,8 @@ async def _book_bytes(creds, drive_file_id: str) -> bytes:
 
 async def get_progress() -> dict:
     """Cheap DB-only counts (plus a little detail: the book in flight, the
-    last few completed, the most recent failure) for the admin status
+    last few completed, the most recent failure, the otherGenre review
+    list) for the admin status
     endpoint — no Ollama/Drive calls. "pending" here means "would be picked
     up on a future tick" (never attempted, or failed and past its retry
     backoff)."""
@@ -537,6 +538,7 @@ async def get_progress() -> dict:
     current: dict | None = None
     recent: list[dict] = []
     last_error: dict | None = None
+    other_genres: dict[str, dict] = {}
     for file in rows:
         book = file.book
         full = (book.llm_tags_json or {}).get("full")
@@ -545,14 +547,18 @@ async def get_progress() -> dict:
 
         if status == "done":
             counts["full_done"] += 1
+            fields = tag_vocab.canonical_fields(full)
             recent.append(
                 {
                     "title": book.canonical_title,
                     "author": author,
                     "generated_at": full.get("generatedAt"),
-                    "genres": full.get("genres") or [],
+                    "genres": fields["genresCanonical"],
                 }
             )
+            for genre in fields["otherGenreCanonical"]:
+                slot = other_genres.setdefault(genre.casefold(), {"genre": genre, "books": []})
+                slot["books"].append(book.canonical_title)
             continue
 
         if status in ("mapping", "reducing"):
@@ -586,6 +592,11 @@ async def get_progress() -> dict:
         "current": current,
         "recent": recent[:5],
         "last_error": last_error,
+        # prompts/47 A.1 — genres the closed vocabulary had no slot for,
+        # for James to review now and then: most-used first.
+        "other_genres": sorted(
+            other_genres.values(), key=lambda g: (-len(g["books"]), g["genre"].casefold())
+        ),
     }
 
 
