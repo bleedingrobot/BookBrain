@@ -305,7 +305,18 @@ and `SPEC.md` § "Identification pipeline (2026)".
   Phase B: feed deduped themes into embeddings, RRF search fusion, MMR
   rerank on similar-books, a hard content-warning filter (data already
   exists, near-zero lift). Phase C (auto-shelves, relationship graph,
-  ask-your-library) deferred until A/B land on clean data. **Not started.**
+  ask-your-library) deferred until A/B land on clean data. **Phase A done
+  2026-09-19** (batching measured and rejected; throughput ~1.9× via
+  chunk packing + download caching instead). Phase B not started; see `48`.
+- [`48-tag-caps-then-phase-b.md`](48-tag-caps-then-phase-b.md) — what to do
+  next after A.1 shipped. **Step 1 is time-sensitive:** the model fills the
+  genre/mood caps (4/5) every time, putting filler like Dark Fantasy on
+  Raksura, and prompt wording didn't fix it. The plan: test lower caps on
+  the map step only (2/3) on two named books, with a code filter after the
+  reduce as the fallback, then get James's OK. Then B.1 (canonical themes
+  into embeddings), B.3 (MMR on similar books), B.2/B.4 if still open,
+  and two small items (per-step overhead, 26 unextractable books).
+  **Not started.**
 
 ## Shared context (every session should know this)
 
