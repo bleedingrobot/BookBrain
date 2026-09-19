@@ -30,6 +30,7 @@ from app.data.models import (
 )
 from app.providers.drive.client import build_drive_service
 from app.providers.drive.provider import DriveProvider
+from app.services import tag_vocab
 from app.services.collection_rules import build_query, parse
 from app.services.text_match import normalize_person_name, normalize_title
 
@@ -189,13 +190,28 @@ def _book_meta(hardcover_json: object) -> dict:
 
 def _llm_tags(llm_tags_json: object) -> dict:
     """`Book.llm_tags_json.full`, only once it's actually finished — a book
-    still mapping/reducing, or one that failed, has nothing worth showing."""
+    still mapping/reducing, or one that failed, has nothing worth showing.
+
+    prompts/47 A.1 — `genres`/`moods` here are the curated values
+    (`genresCanonical`/`moodsCanonical`), not the raw ones, for every reader
+    of this function at once: the viewer index (ShowcaseSection),
+    content_recs_service and embedding_service. Books tagged from now on can
+    only produce enum values, so reading raw values for older books would
+    leave two vocabularies side by side: "suspenseful" and "tense" as
+    different tags, and moods like "desperate" that describe one scene.
+    Computed from the raw values if the backfill hasn't reached this book
+    yet. `otherGenre` is left out: it's an unreviewed free-form value."""
     full = llm_tags_json.get("full") if isinstance(llm_tags_json, dict) else None
     if not isinstance(full, dict) or full.get("status") != "done":
         return {}
+    if "genresCanonical" in full and "moodsCanonical" in full:
+        curated = {"genres": full["genresCanonical"], "moods": full["moodsCanonical"]}
+    else:
+        fields = tag_vocab.canonical_fields(full)
+        curated = {"genres": fields["genresCanonical"], "moods": fields["moodsCanonical"]}
     out: dict = {}
     for key in _LLM_TAGS_KEYS:
-        value = full.get(key)
+        value = curated.get(key, full.get(key))
         if value in (None, "", []):
             continue
         out[key] = value

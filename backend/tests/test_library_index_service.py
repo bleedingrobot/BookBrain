@@ -296,6 +296,22 @@ async def test_build_index_payload_includes_llm_tags_only_when_done(db_session) 
     assert "llmTags" not in payload["books"]["drive-scion"]  # still in progress
 
 
+async def test_llm_tags_serve_curated_genres_and_moods() -> None:
+    from app.services.library_index_service import _llm_tags
+
+    raw = {"status": "done", "genres": ["Sci-Fi", "Drama", "Poetry"], "moods": ["desperate", "Eerie"]}
+    # Backfill not run yet: mapped on the fly.
+    tags = _llm_tags({"full": raw})
+    assert tags["genres"] == ["Science Fiction"]
+    assert tags["moods"] == ["unsettling"]
+    assert "otherGenre" not in tags and "otherGenreCanonical" not in tags
+    # Backfilled: the stored curated values win.
+    stored = {**raw, "genresCanonical": ["Fantasy"], "moodsCanonical": []}
+    tags = _llm_tags({"full": stored})
+    assert tags["genres"] == ["Fantasy"]
+    assert "moods" not in tags  # empty list omitted, like any other key
+
+
 async def test_build_index_payload_includes_smart_collection_membership(db_session) -> None:
     await _seed(db_session)
     will = (

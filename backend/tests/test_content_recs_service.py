@@ -105,14 +105,14 @@ async def test_content_warnings_never_influence_matching(db_session) -> None:
 
 
 async def test_common_tag_is_downweighted_relative_to_a_rare_one(db_session) -> None:
-    # "Fantasy" and "dark" both appear on several books (low IDF); "steampunk-ish"
+    # "Fantasy" and "dark" both appear on several books (low IDF); "whimsical"
     # appears only on Source + RareMatch (high IDF). Both CommonOnly and
     # RareMatch share exactly 2 scored tags with Source, but RareMatch's
     # shared tag is the rare one, so it should score higher.
-    source = await _seed(db_session, "Source", genres=["Fantasy"], moods=["steampunk-ish", "dark"])
+    source = await _seed(db_session, "Source", genres=["Fantasy"], moods=["whimsical", "dark"])
     common_only = await _seed(db_session, "CommonOnly", genres=["Fantasy"], moods=["dark"])
-    rare_match = await _seed(db_session, "RareMatch", genres=["Fantasy"], moods=["steampunk-ish"])
-    # Pad the pool so "Fantasy"/"dark" are common while "steampunk-ish" stays rare.
+    rare_match = await _seed(db_session, "RareMatch", genres=["Fantasy"], moods=["whimsical"])
+    # Pad the pool so "Fantasy"/"dark" are common while "whimsical" stays rare.
     for i in range(5):
         await _seed(db_session, f"Filler{i}", genres=["Fantasy"], moods=["dark"])
 
@@ -152,3 +152,14 @@ async def test_refresh_returns_summary_counts(db_session) -> None:
     await _seed(db_session, "C", themes=["only a theme, no scored tags"])
     result = await refresh_content_recs(db_session)
     assert result == {"books": 3, "withMatches": 2}
+
+
+async def test_raw_synonyms_match_through_the_curated_vocabulary(db_session) -> None:
+    # prompts/47 A.1 — scored on genresCanonical/moodsCanonical, so books
+    # tagged before the enum ("Sci-Fi", "suspenseful") match newer ones.
+    a = await _seed(db_session, "A", genres=["Sci-Fi"], moods=["suspenseful", "desperate"])
+    b = await _seed(db_session, "B", genres=["Science Fiction"], moods=["tense"])
+    a = await _refresh_book(db_session, a)
+    [match] = a.content_recs_json["similar"]
+    assert match["bookId"] == b.id
+    assert match["sharedTags"] == ["Science Fiction", "tense"]
