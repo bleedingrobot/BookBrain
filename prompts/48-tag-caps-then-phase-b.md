@@ -218,3 +218,68 @@ committing.
 
 Phase C (auto-shelves, relationship graph, mood-query parsing, ask your
 library), a re-tag of old books, and changes to the approved mappings.
+
+## Update — 2026-09-19, Step 1 built and dry-run (NOT deployed)
+
+Commit `7ec10a6`: map-only caps `_MAP_MAX_GENRES = 2`, `_MAP_MAX_MOODS = 3`
+in `CHUNK_RESULT_SCHEMA`, the map prompt and `validate_chunk_result`; the
+reduce keeps 4/5. `_GENRE_RULE`/`_MOOD_RULE` became `_genre_rule(cap)`/
+`_mood_rule(cap)`. Tests green (1046). **Waiting on James's yes before
+`systemctl restart`.** The service runs from this working tree, so any
+restart before then deploys it.
+
+Dry-runs 22:40-23:30 NZST, nothing written to the DB (SQLite opened
+`mode=ro`, OAuth token refreshed in memory only). The live job was running
+back-to-back throughout, so wall times include queueing; "compute" below
+is Ollama's `prompt_eval_duration + eval_duration`. A 4/5-caps mode of the
+script was checked byte-for-byte against the pre-`7ec10a6` map prompt and
+schema.
+
+**The Serpent Sea (596), 26 sections**
+
+| | stored → mapped | 4/5 map (prompts/47) | 2/3 map |
+|---|---|---|---|
+| genres | Fantasy, Science Fiction, Adventure, Mystery | Fantasy, Epic Fantasy, Adventure, Dark Fantasy | Fantasy, Adventure, Epic Fantasy, Mystery |
+| moods | atmospheric, tense, hopeful, reflective | adventurous, tense, unsettling, hopeful, reflective | adventurous, tense, reflective, hopeful, mysterious |
+
+Section tallies at 2/3: Fantasy 26, Adventure 19, Mystery 5, Epic Fantasy 2,
+**Dark Fantasy 0** (was 18). Moods: tense 25, adventurous 13, emotional 7,
+atmospheric 6, reflective 6, mysterious 5, unsettling 5 (was 20), dark 4,
+hopeful 3, melancholic 3, bittersweet 1. Map calls: 9.7s compute mean,
+298 output tokens (was ~348), 40.9 tok/s. Reduce 13.5s. Sum of compute 265s.
+
+**It Starts with Us (16), 17 sections**
+
+| | stored → mapped | 4/5 map | 2/3 map |
+|---|---|---|---|
+| genres | Contemporary Fiction, Romance | Romance, Contemporary Fiction, Slice of Life, Coming-of-Age | Romance, Contemporary Fiction |
+| moods | tense, emotional, hopeful, reflective, bittersweet, romantic | emotional, bittersweet, hopeful, reflective, tense | emotional, hopeful, reflective, romantic, tense |
+
+Section tallies, 4/5: Romance 17, Contemporary Fiction 17, Slice of Life 9,
+Coming-of-Age 6, Mystery 5, Dystopian 4, Psychological Thriller 3,
+Thriller 2, Erotica 1. At 2/3: Romance 17, Contemporary Fiction 16,
+Mystery 1. Moods at 2/3: emotional 17, tense 9, hopeful 8, reflective 7,
+romantic 6, bittersweet 3, melancholic 1. Map compute 10.2s (316 tok) at
+4/5 vs 9.4s (280 tok) at 2/3.
+
+**Findings.** Every map section still fills every slot (26/26, 17/17), but
+with fewer slots the filler mostly disappears. The reduce still filled 4
+genres on 596 (Epic Fantasy from 2 sections, Mystery from 5) and 5 moods
+on both books; on 16 it stopped at 2 genres.
+
+**Section-count filter, simulated offline** (keep a reduce value if in
+≥X% of sections, always keep the first):
+- 596: X=20% → Fantasy, Adventure / adventurous, tense, reflective. X≥25%
+  → moods adventurous, tense only. Mystery sits at 19%, right at the edge.
+- 16: X≤30% changes nothing; X=40% drops *romantic* (35%) from a romance,
+  X=50% leaves emotional, tense.
+- So X≈20% is the only value that helps 596 without hurting 16, and two
+  books is too small a sample to pick it. No code written.
+
+One map call (596 section 20, first attempt) streamed for the full 300s
+overall timeout; the same section re-run alone took 9.4s and the full
+re-run had no problem. Not reproduced; unexplained.
+
+**Tagged since the A.1 deploy** (generatedAt > 2026-09-19 03:32 UTC):
+17 books as of 23:31 NZST, all exactly 4 genres / 5 moods. 16 are Wild
+Cards: Dark Fantasy on 10 of them, Superhero on only 1.
