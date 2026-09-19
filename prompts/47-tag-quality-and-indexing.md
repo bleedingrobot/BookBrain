@@ -302,6 +302,42 @@ They re-queue every 24h and are nearly all Dean Koontz titles. *Hell's
 Gate* extracts to zero spine documents, so this is the EPUB parser or
 those files, not tagging. Not investigated.
 
+## Update — 2026-09-19, A.1 vocabulary approved (part 1 of 2)
+
+James approved the closed genre/mood sets and the raw→curated mapping as
+drafted. They live in `backend/app/services/tag_vocab.py`, which nothing
+imports yet. Part 2 (enum schemas, `otherGenre`, backfill, consumers) is
+still to do.
+
+**Measured on the 556 books with a done full pass:** 202 distinct raw
+genres and 177 raw moods (casefolded) → 46 genres and 23 moods. Every raw
+value in use has a mapping entry. Fifteen rare but real genres (poetry,
+epistolary, legal fiction…) map to `otherGenre` rather than being dropped.
+After mapping, one book (*Aura*) has no genres and one (*Nightmare
+Journey*, whose only mood was "Neutral") has no moods.
+
+**The bigger problem is overuse, not fragmentation.** After mapping,
+`tense` is on 544 of 556 books, `reflective` 492, Adventure 319, Mystery
+287 (*Sorcery of Thorns*, *Winner's Crime*). Books averaged 6.3 genres and
+7.4 moods, apparently because the reduce step unions every chunk's
+evidence. Many raw moods were a character's state in one scene (`desperate`
+143, `determined` 121, `relieved` 23), not the book's tone; those map to
+drop. The mapping can't fix overuse in existing data. Approved for new
+output: at most 4 genres and 5 moods (`MAX_GENRES`/`MAX_MOODS`), most
+defining first, plus prompt guidance for the overused values. A re-tag of
+old books would be the only fix for them (a done book keeps no
+chunkResults, so there's no reduce-only redo: ~42 window-hours). **Not
+approved; don't start one.**
+
+Notable calls, all approved: `urban fiction` → Urban Fantasy (all 10 were
+Rivers of London / Alpha & Omega); `epic fiction` → Epic Fantasy and `dark
+fiction` → Dark Fantasy (nearly all co-occur with Fantasy); `political
+thriller` → Political Intrigue only (also mapping it to Thriller would add
+71 books to an already overused value); `supernatural`,
+`speculative fiction`, `religious fiction`, `psychological fiction`,
+`philosophical fiction`, `drama` dropped. Genres are Title Case, moods
+lowercase.
+
 ## Sources
 
 New this session:
