@@ -239,3 +239,39 @@ async def test_theme_refresh_after_reduce_never_raises(monkeypatch, caplog) -> N
     monkeypatch.setattr(theme_dedup_service, "refresh_theme_canon", boom)
     await llm_tagging_service._refresh_theme_canon()
     assert "theme dedup refresh failed" in caplog.text
+
+
+class _RecordingClient:
+    def __init__(self, responses: list[dict]) -> None:
+        self.responses = responses
+        self.schemas: list[dict | None] = []
+
+    async def generate_json(self, *, system: str, prompt: str, schema: dict | None = None) -> dict:
+        self.schemas.append(schema)
+        return self.responses.pop(0)
+
+
+async def test_full_step_constrains_map_and_reduce_with_their_schemas(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.services import llm_tagging_service as svc
+
+    async def one_doc(data, settings):
+        return ["Some text."]
+
+    monkeypatch.setattr(svc, "_extract_documents", one_doc)
+    book = SimpleNamespace(canonical_title="T", author=None, llm_tags_json={})
+    client = _RecordingClient([{"chunkSummary": "s"}, _valid_tag_payload()])
+    await svc._run_full_step(client, book, b"", get_settings())
+    await svc._run_full_step(client, book, b"", get_settings())
+    assert client.schemas == [svc.CHUNK_RESULT_SCHEMA, svc.TAG_RESULT_SCHEMA]
+    assert book.llm_tags_json["full"]["status"] == "done"
+
+
+def test_schemas_require_every_field_the_validators_read() -> None:
+    from app.services.llm_tagging_service import CHUNK_RESULT_SCHEMA, TAG_RESULT_SCHEMA
+
+    assert set(CHUNK_RESULT_SCHEMA["required"]) == set(CHUNK_RESULT_SCHEMA["properties"])
+    assert set(TAG_RESULT_SCHEMA["required"]) == set(TAG_RESULT_SCHEMA["properties"])
+    payload = _valid_tag_payload()
+    assert set(payload) == set(TAG_RESULT_SCHEMA["properties"])

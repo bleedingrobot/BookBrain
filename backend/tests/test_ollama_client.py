@@ -85,3 +85,15 @@ async def test_generate_json_raises_bad_response_on_non_object_json() -> None:
     )
     with pytest.raises(OllamaBadResponse):
         await _client().generate_json(system="sys", prompt="prompt")
+
+
+@respx.mock
+async def test_generate_json_sends_schema_as_format_when_given() -> None:
+    import json
+
+    route = respx.post(f"{HOST}/api/generate").mock(
+        return_value=httpx.Response(200, json={"response": "{}"})
+    )
+    schema = {"type": "object", "properties": {"genres": {"type": "array"}}, "required": ["genres"]}
+    await _client().generate_json(system="sys", prompt="prompt", schema=schema)
+    assert json.loads(route.calls.last.request.content)["format"] == schema

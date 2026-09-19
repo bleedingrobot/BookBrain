@@ -206,6 +206,33 @@ _SCHEMA_INSTRUCTIONS = f"""Respond with ONLY a JSON object, no other text, with 
 - "shortDescription": a 2-3 sentence, SPOILER-FREE back-cover-style blurb. Do not reveal how the book ends, any twists, or events from its final act.
 - "longSummary": a fuller synopsis of several paragraphs. This one MAY include major plot points and how the book ends."""
 
+# prompts/47 A.4 — passed to Ollama as `format`, so decoding is
+# grammar-constrained to these exact shapes. The English above stays: the
+# schema fixes the shape, the prompt still explains what goes in each field.
+# The validators stay too (belt and braces, and they apply the caps/stoplist).
+_STRING_LIST = {"type": "array", "items": {"type": "string"}, "maxItems": _MAX_LIST_ITEMS}
+
+CHUNK_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "chunkSummary": {"type": "string"},
+        **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
+    },
+    "required": ["chunkSummary", *_TAG_LIST_KEYS],
+}
+
+TAG_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ageRating": {"type": "string", "enum": ["General", "Teen", "Mature", "Explicit"]},
+        **{key: _STRING_LIST for key in _TAG_LIST_KEYS},
+        "confidenceNotes": {"type": "string"},
+        "shortDescription": {"type": "string"},
+        "longSummary": {"type": "string"},
+    },
+    "required": ["ageRating", *_TAG_LIST_KEYS, "confidenceNotes", "shortDescription", "longSummary"],
+}
+
 _MAP_SYSTEM_PROMPT = (
     "You are reading one section of a novel out of several, in order. "
     "Summarize only what happens in THIS section and note any genre/mood/"
@@ -325,6 +352,7 @@ async def _run_full_step(client: OllamaClient, book: Book, data: bytes, settings
         raw = await client.generate_json(
             system=_MAP_SYSTEM_PROMPT,
             prompt=_build_map_prompt(book, chunks[idx], idx, len(chunks)),
+            schema=CHUNK_RESULT_SCHEMA,
         )
         chunk_result = validate_chunk_result(raw)
         full["chunkResults"] = [*full["chunkResults"], chunk_result]
@@ -335,6 +363,7 @@ async def _run_full_step(client: OllamaClient, book: Book, data: bytes, settings
         raw = await client.generate_json(
             system=_REDUCE_SYSTEM_PROMPT,
             prompt=_build_reduce_prompt(book, full["chunkResults"]),
+            schema=TAG_RESULT_SCHEMA,
         )
         tags = validate_tag_result(raw)
         full = {**tags, "status": "done", "generatedAt": _now_iso()}

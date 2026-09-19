@@ -2,7 +2,8 @@
 Tailscale — as a second LLM backend alongside `anthropic_client.py`. Used
 only by the slow-drip LLM-tagging background job (`llm_tagging_service`),
 never by the main identification pipeline. Structured output via Ollama's
-`format: "json"` mode. See prompts/38-llm-tagging.md.
+`format` — a JSON Schema when the caller has one, else plain `"json"` mode.
+See prompts/38-llm-tagging.md.
 
 Two distinct failure modes, kept as separate exceptions because the caller
 treats them very differently:
@@ -48,10 +49,16 @@ class OllamaClient:
         except httpx.HTTPError:
             return False
 
-    async def generate_json(self, *, system: str, prompt: str) -> dict:
+    async def generate_json(self, *, system: str, prompt: str, schema: dict | None = None) -> dict:
         """One non-streaming `/api/generate` call in structured-output mode.
         Raises `OllamaUnavailable` for any transport/HTTP failure and
         `OllamaBadResponse` when the model's own output isn't valid JSON.
+
+        `schema` (a JSON Schema object) is passed as Ollama's `format`, which
+        grammar-constrains decoding to that exact shape — the model cannot
+        emit a missing key or a string where a list belongs. Without it, the
+        bare `"json"` mode only guarantees syntactically valid JSON
+        (prompts/47 A.4).
 
         `"think": False` is essential, not optional, for a reasoning model
         like qwen3: Ollama's `format: "json"` grammar-constrains the very
@@ -70,7 +77,7 @@ class OllamaClient:
                         "model": self._model,
                         "system": system,
                         "prompt": prompt,
-                        "format": "json",
+                        "format": schema if schema is not None else "json",
                         "stream": False,
                         "think": False,
                         "options": {"num_ctx": self._num_ctx},
